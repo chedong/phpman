@@ -17,19 +17,22 @@
 $PHP_MAN_TITLE = "phpMan: Unix Manual / Perldoc Web Interface";
 
 //header
-echo "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"DTD/xhtml1-transitional.dtd\">
-<html>
+echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>
+<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"
+    \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">
+<html xmlns=\"http://www.w3.org/1999/xhtml\">
 <head>
 <title>$PHP_MAN_TITLE</title>
 <meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>
 <style type=\"text/css\">
 <!--
-b {color:brown}
-u {color:green}
+body {color:#000000;background-color:#EEEEEE}
+b {color:#996600;background-color:#EEEEEE}
+u {color:#008000;background-color:#EEEEEE}
 //-->
 </style>
 </head>
-<body bgcolor=\"#EEEEEE\">";
+<body>";
 
 //option checker
 if ($docType == "perldoc") {
@@ -44,11 +47,11 @@ else {
 //promter and recursive call
 echo "<b>$PHP_MAN_TITLE</b>
 <form action=\"$PHP_SELF\">
-Command:
+<p>Command:
 <input type=\"text\" size=\"20\" name=\"parm\" value=\"$parm\"/>
 <input type=\"radio\" name=\"docType\" value=\"man\"$check_man/>man
 <input type=\"radio\" name=\"docType\" value=\"perldoc\"$check_perldoc/>perldoc
-<input type=\"submit\"/>
+<input type=\"submit\"/></p>
 </form>";
 
 echo "<hr /><br />";
@@ -117,10 +120,13 @@ echo "</pre>
 <br />
 <p>
 <a href=\"http://validator.w3.org/check/referer\">
-<img src=\"http://www.w3.org/Icons/valid-xhtml10\"
- alt=\"Valid XHTML 1.0!\" height=\"31\" 
- width=\"88\" border=\"0\" />
-</a>
+<img style=\"border:0;width:88px;height:31px\"
+src=\"http://www.w3.org/Icons/valid-xhtml10\"
+alt=\"Valid XHTML 1.0!\" /></a>
+<a href=\"http://jigsaw.w3.org/css-validator/\">
+<img style=\"border:0;width:88px;height:31px\"
+src=\"http://jigsaw.w3.org/css-validator/images/vcss\" 
+alt=\"Valid CSS!\" /></a>
 <a href=\"http://sourceforge.net/projects/phpunixman/\">
 \$Id$
 </a>
