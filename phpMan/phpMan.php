@@ -36,12 +36,12 @@
  *
  * Sub function list:
  *     showHeader ( $css_style )             //show html header with css style
- *     showForm ($parameter, $check)              //show input form and recursive call
+ *     showForm ($parameter, $check)         //show input form and recursive call
  *     showFooter ( $validate )              //show html footer
- *     getManPage ($parameter, $mode)          //get html format man page
- *     getInfoPage ($parameter)                   //get html format info page
- *     getPerldocPage ($parameter)                //get html format perldoc page
- *     getSearchPage ($parameter)                 //get html format apropos page
+ *     getManPage ($parameter, $mode)        //get html format man page
+ *     getInfoPage ($parameter)              //get html format info page
+ *     getPerldocPage ($parameter)           //get html format perldoc page
+ *     getSearchPage ($parameter)            //get html format apropos page
  *     getManIndex ()                        //get man page index
  *     getPerldocIndex ()                    //get perldoc page index
  *     getInfoIndex ()                       //get info page index
@@ -61,12 +61,12 @@ $MAN_WIDTH = 132;
 
 //use colored man page
 $CSS_STYLE = "<style type=\"text/css\">\n".
-"<!--\n".
-"body {color:#000000;background-color:#EEEEEE}\n".
-"b {color:#996600;background-color:#EEEEEE}\n".
-"u {color:#008000;background-color:#EEEEEE}\n".
-"//-->\n".
-"</style>\n";
+    "<!--\n".
+    "body {color:#000000;background-color:#EEEEEE}\n".
+    "b {color:#996600;background-color:#EEEEEE}\n".
+    "u {color:#008000;background-color:#EEEEEE}\n".
+    "//-->\n".
+    "</style>\n";
 
 //unmask comments to show xhtml 1.0 and css validator
 $VALIDATOR = "";
@@ -92,7 +92,7 @@ $content = "";
 //output mode
 $mode = "man";
 $parameter = "";
-$section = "1";
+$section = "";
 
 $check[man] = "";
 $check[perldoc] = "";
@@ -126,7 +126,7 @@ $parameter =escapeshellcmd($parameter);
 $section = escapeshellcmd($section);
 //allow section option only, removed -m 
 if ( !preg_match("/\w+/", $section) ) {
-    $section = "1";
+    $section = "";
 }
 
 if ( $parameter != "" ) {    
@@ -134,19 +134,24 @@ if ( $parameter != "" ) {
 }
 
 //Show source of file
-if ( $mode == "php_source" ) {
+if ( $mode == "source" ) {
     showHeader($PHP_MAN_TITLE, $CSS_STYLE);
     show_source($_SERVER["SCRIPT_FILENAME"]);
     echo "</body></html>";
     exit;
 }
-
 //show php info
-else if ( $mode == "php_info" ) {    
+else if ( $mode == "phpinfo" ) {    
     phpinfo();    
     exit;
 }
-
+//show GPL
+else if ( $mode == "copyright" ) {
+    showHeader($PHP_MAN_TITLE, $CSS_STYLE);    
+    showCopyright();    
+    echo "</body></html>";
+    exit;
+}
 /**
  * option checker and get manual page content, if no parameter: get index tree
  * phpMan -- man     -- man page index: section list
@@ -219,47 +224,47 @@ showFooter($VALIDATOR);
 //show html header
 function showHeader ( $title = "", $css_style = "") {
     echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n".
-    "<!mode html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"".
-    " \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n".
-    "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n".
-    "<head>\n".
-    "<title>$title</title>\n".
-    "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>\n";
+        "<!mode html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"".
+        " \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n".
+        "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n".
+        "<head>\n".
+        "<title>$title</title>\n".
+        "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>\n";
 
     echo $css_style;
 
     echo "</head>\n<body>\n";
-    "<b><a href=\"http://savannah.gnu.org/projects/phpman/\">$title</a>".
-    "</b>\n";
+        "<b><a href=\"http://savannah.gnu.org/projects/phpman/\">$title</a>".
+        "</b>\n";
 }
 
 //promter and recursive call
 function showForm ($parameter, $check) {
     echo "<form action=\"".$_SERVER["SCRIPT_NAME"]."\" method=\"get\">\n".
-    "<p>Command: ".
-    "<input type=\"text\" size=\"20\" name=\"parameter\" value=\"".stripslashes($parameter)."\"/>\n".
-    "<input type=\"radio\" name=\"mode\" value=\"man\"$check[man]/>".
-    "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man\">man</a>\n".
-    "<input type=\"radio\" name=\"mode\" value=\"perldoc\"$check[perldoc]/>".
-    "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/perl\">perldoc</a>\n".
-    "<input type=\"radio\" name=\"mode\" value=\"info\"$check[info]/>".
-    "<a href=\"".$_SERVER["SCRIPT_NAME"]."/info\">info</a>\n".
-    "<input type=\"radio\" name=\"mode\" value=\"search\"$check[search]/>".
-    "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/apropos\">search(apropos)</a>\n".
-    "&nbsp;<input type=\"submit\"/></p>".
-    "</form>\n";
+        "<p>Command: ".
+        "<input type=\"text\" size=\"20\" name=\"parameter\" value=\"".stripslashes($parameter)."\"/>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"man\"$check[man]/>".
+        "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man\">man</a>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"perldoc\"$check[perldoc]/>".
+        "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/perl\">perldoc</a>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"info\"$check[info]/>".
+        "<a href=\"".$_SERVER["SCRIPT_NAME"]."/info\">info</a>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"search\"$check[search]/>".
+        "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/apropos\">search(apropos)</a>\n".
+        "&nbsp;<input type=\"submit\"/></p>".
+        "</form>\n";
 }
 
 //show footer
 function showFooter ($validator = "") {
     echo $validator;
 
-    echo "Generated by <a href=\"".$_SERVER["SCRIPT_NAME"]."/php_source\">".
-    "\$Id$".
-    "</a> on <a href=\"".$_SERVER["SCRIPT_NAME"]."/php_info\">".$_SERVER["SERVER_SOFTWARE"]."</a><br />".
-    "<a href=\"http://www.gnu.org/licenses/gpl.txt\">".
-    "GNU General Public License</a>".
-    "</body></html>";
+    echo "Generated by <a href=\"".$_SERVER["SCRIPT_NAME"]."/source\">".
+        "\$Id$".
+        "</a> on <a href=\"".$_SERVER["SCRIPT_NAME"]."/phpinfo\">".$_SERVER["SERVER_SOFTWARE"]."</a><br />".
+        "<a href=\"".$_SERVER["SCRIPT_NAME"]."/copyright\">".
+        "GNU General Public License</a>".
+        "</body></html>";
 }
 
 //get specified command's man page and convert to html format
@@ -443,8 +448,9 @@ function formatManPerldoc ( $lines, $mode = "man") {
 // | GNU GENERAL PUBLIC LICENSE   Version 2                                         |
 // |        http://www.gnu.org/licenses/gpl.txt                                     |
 // +--------------------------------------------------------------------------------+
-
-/*
+function showCopyright () {
+echo <<<END_OF_COPYRIGHT
+<pre>        
 		    GNU GENERAL PUBLIC LICENSE
 		       Version 2, June 1991
 
@@ -502,7 +508,7 @@ patent must be licensed for everyone's free use or not licensed at all.
 
   The precise terms and conditions for copying, distribution and
 modification follow.
-
+
 		    GNU GENERAL PUBLIC LICENSE
    TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
 
@@ -557,7 +563,7 @@ above, provided that you also meet all of these conditions:
     License.  (Exception: if the Program itself is interactive but
     does not normally print such an announcement, your work based on
     the Program is not required to print an announcement.)
-
+
 These requirements apply to the modified work as a whole.  If
 identifiable sections of that work are not derived from the Program,
 and can be reasonably considered independent and separate works in
@@ -615,7 +621,7 @@ access to copy from a designated place, then offering equivalent
 access to copy the source code from the same place counts as
 distribution of the source code, even though third parties are not
 compelled to copy the source along with the object code.
-
+
   4. You may not copy, modify, sublicense, or distribute the Program
 except as expressly provided under this License.  Any attempt
 otherwise to copy, modify, sublicense or distribute the Program is
@@ -672,7 +678,7 @@ impose that choice.
 
 This section is intended to make thoroughly clear what is believed to
 be a consequence of the rest of this License.
-
+
   8. If the distribution and/or use of the Program is restricted in
 certain countries either by patents or by copyrighted interfaces, the
 original copyright holder who places the Program under this License
@@ -725,7 +731,7 @@ PROGRAMS), EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGES.
 
 		     END OF TERMS AND CONDITIONS
-
+
 	    How to Apply These Terms to Your New Programs
 
   If you develop a new program, and you want it to be of the greatest
@@ -786,7 +792,9 @@ consider it more useful to permit linking proprietary applications with the
 library.  If this is what you want to do, use the GNU Library General
 Public License instead of this License.
 
+</pre>
+END_OF_COPYRIGHT;
 
+}
 
-*/
 ?>
