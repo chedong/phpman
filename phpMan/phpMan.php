@@ -31,7 +31,7 @@
  *     showForm ($parm, $check)              //show input form and recursive call
  *     showHeader ( $title )                 //show html header css style
  *     showFooter ( $validate )              //show html footer
- *     getManPage ($parm, $man_width = 128)  //get html format man page
+ *     getManPage ($parm, $docType)          //get html format man page
  *     getInfoPage ($parm)                   //get html format info page
  *     getPerldocPage ($parm)                //get html format perldoc page
  *     getSearchPage ($parm)                 //get html format apropos page
@@ -169,7 +169,7 @@ function showForm ($parm, $check) {
 	"<input type=\"radio\" name=\"docType\" value=\"man\"$check[man]/>".
 	"<a href=\"?docType=man\">man</a>".
 	"<input type=\"radio\" name=\"docType\" value=\"perldoc\"$checked[perldoc]/>".
-	"<a href=\"?docType=search&amp;parm=pm%20perl\">perldoc</a>".
+	"<a href=\"?docType=search&amp;parm=perl\">perldoc</a>".
 	"<input type=\"radio\" name=\"docType\" value=\"info\"$check[info]/>".
 	"<a href=\"?docType=info\">info</a>".
 	"<input type=\"radio\" name=\"docType\" value=\"search\"$check[search]/>".
@@ -230,7 +230,7 @@ function getSearchPage ($parm) {
 		//for linux format of search output
 		"/(.*\/)?([\w\-\.\+:]+)((\s+\[)([\w\-\.:]+)(\]\s+))\(([\dnol]\w*)\)/",
 		//'(command)' => man page of command;
-		"/([\w+\.\-:]+)(\s+)?(\((\d\w*)\))/"
+		"/([\w+\.\-:]+)(\s+)?(\(([\dnol]\w*)\))/"
 		);
 	$replace = array(
 		"&amp;",
@@ -277,7 +277,7 @@ function getManIndex () {
 
 //get perldoc list by searching perl related keywords
 function getPerldocIndex () {
-	return getSearchPage("pm perl");
+	return getSearchPage("perl");
 }
 
 //get info page index page
