@@ -87,42 +87,33 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 		"/</",  //html special char: '>' => chr(6) => '&lt;';
 		"/>/",  //html special char: '<' => chr(7) => '&gt;';
 		"/.".chr(8).".".chr(8)."(.)".chr(8)."./",	// ?^H?^H?^H? => <b>?</b>
-		"/_".chr(8)."(.)".chr(8)."./",	// _^H?^H? => <b><u>?</u></b>
+		"/_".chr(8)."(.)".chr(8)."./",	// _^H?^H? => <b>?</b>
 		"/_".chr(8)."(.)/",  //_^H? => <u>?</u>
-		"/.".chr(8)."(.)/",  //?^H? => <b>?</b>		
+		"/.".chr(8)."(.)/",  //?^H? => <b>?</b>
 		"/".chr(5)."/",  //reverse '&'
 		"/".chr(6)."/",  //reverse '<'
-		"/".chr(7)."/"   //reverse '>'
+		"/".chr(7)."/",   //reverse '>'
+		"/<\/u><u>/", //removed duplicated html tag
+		"/<\/b><b>/", //removed duplicated html tag
+		"/ ([a-z_\-\.]+)\((\d)\)/" //transfer related command to hyperlinks
 		);
 	$replace = array(
 		chr(5),
 		chr(6),
 		chr(7),
 		"<b>\\1</b>",
-		"<b><u>\\1</u></b>",
+		"<b>\\1</b>",
 		"<u>\\1</u>",
-		"<b>\\1</b>",		
+		"<b>\\1</b>",
 		"&amp;",
 		"&lt;",
-		"&gt;"		
+		"&gt;",
+		"",
+		"",
+		" <a href=\"?docType=$docType&amp;parm=\\2 \\1\">\\1(\\2)</a>"
 		);
-	
-	$lines[$i] = preg_replace($patterns, $replace, $lines[$i]);		
-	
-	//remove html tags for next step command(#) translate
-	$lines[$i] = preg_replace_callback(
-		"/([\/<>\w:\-\.]+)(\(\d\))/", 
-		"_remove_html_tags", 
-		$lines[$i]
-		);
-	
-	//traslate command(#) to hyperlink to related commands
-	$lines[$i] = preg_replace(
-		"/ ([\w:\-\.]+)\((\d)\)/",
-		" <a href=\"?docType=$docType&amp;parm=\\2 \\1\">\\1(\\2)</a>",
-		$lines[$i]
-		);
-	
+
+	$lines[$i] = preg_replace($patterns, $replace, $lines[$i]);
 	echo "$lines[$i] <br />";
 }
 
@@ -135,12 +126,4 @@ echo "</pre>
 </a>
 </body>
 </html>";
-
-//remove the html tags: <b>l</b><b>s</b>(1) => ls(1)
-function _remove_html_tags ( $match_array ) {
-	//remove html tags
-	$match_array[0] = preg_replace("/<.*?>/", "", $match_array[0]);
-	$out = $match_array[0];
-	return $out;
-}
 ?>
