@@ -11,6 +11,19 @@
  *
  * Copyright (C) 2002 Che, Dong chedong@bigfoot.com
  *
+ * function list:
+ *    showFooter ()                         //show html footer
+ *    showForm ($parm, $check)              //show input form and recursive call
+ *    showHeader ( $title )                 //show html header css style
+ *    getManPage ($parm, $man_width = 128)  //get html format man page
+ *    getInfoPage ($parm)                   //get html format info page
+ *    getPerldocPage ($parm)                //get html format perldoc page
+ *    getSearchPage ($parm)                 //get html format apropos page
+ *    getManIndex ()                        //get man page index
+ *    getPerldocIndex ()                    //get perldoc page index
+ *    getInfoIndex ()                       //get info page index
+ *    formatManPerldoc ($lines)             //formate man and perldoc output
+ *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -28,6 +41,19 @@
 
 //global title
 $PHP_MAN_TITLE = "phpMan: Unix Manual / Perldoc / Info Web Interface";
+//default options
+$check[man] = "";
+$check[perldoc] = "";
+$check[info] = "";
+$check[search] = "";
+
+//content
+$content = "";
+
+//set default doc type to man page
+if ( !isset($docType) || $docType == "" ) {
+	$docType = "man";
+}
 
 //remove arbitrary commands
 if ( isset($parm) ) {
@@ -37,80 +63,237 @@ else {
 	$parm = "";
 }
 
-//set default doc type to man page
-if ( !isset($docType) || $docType == "" ) {
-	$docType = "man";
-}
-
 //Get screen size and set man page column size (It's only work under man above 1.5)
-$width = 128;  //default for 1024 * 768
 if (isset($screen) && $screen != "") {
-	$width = intval($screen) / 8;
+	$man_width = intval($screen) / 8;
 }
-
-//default options
-$check_man = " checked=\"checked\"";
-$check_perldoc = "";
-$check_info = "";
-
-//content array
-$lines = array();
 
 //option checker and get manual page content, if no parameter: get index tree
-if ($docType == "perldoc") {
-	$check_man = "";
-	$check_perldoc = " checked=\"checked\"";
-	$check_info = "";
-	if ( $parm != "" ){
-		exec("perldoc $parm", $lines);
-	}
-	else {
-		//show all possable perl entrance by keyword: 'pm' 'perl'
- 		exec("apropos perl pm",$lines);
-	}
-}
-else if ($docType == "info") {
-	$check_man = "";
-	$check_perldoc = "";
-	$check_info = " checked=\"checked\"";
-	if ( $parm != "" ){
-		exec("MANWIDTH=$width info $parm", $lines);
-	}
-	else {
-		exec("info", $lines);
-	}
-}
-else if ($docType == "man"){
-	$check_man = " checked=\"checked\"";
-	$check_perldoc = "";
-	$check_info = "";
-	if ( $parm != "" ){
-		exec("MANWIDTH=$width man $parm", $lines);
-	}
-	else {
-		if ( isset($section) ) {
-			//show all possable man page entrance by section			
-			exec("apropos \\($section\\)", $lines);
+switch ( $docType ) {
+	case "man":
+		$check[man] = " checked=\"checked\"";
+		//show man pages
+		if ( $parm != "" ){
+			$content = getManPage($parm, $man_width);
+		}
+		//redirect to search sections
+		else {
+			$content = getManIndex();
+
+		}
+		break;
+	case "perldoc":
+		$check[perldoc] = " checked=\"checked\"";
+		if ( $parm != "" ) {
+			//exec("perldoc $parm", $lines);
+	 		$content = getPerldocPage($parm);
 		}
 		else {
-			$lines[] =	"<a href=\"?docType=$docType&amp;section=1\">1 - General Commands</a>";
-			$lines[] =	"<a href=\"?docType=$docType&amp;section=2\">2 - System Calls</a>";
-			$lines[] =	"<a href=\"?docType=$docType&amp;section=3\">3 - Subroutines</a>";
-			$lines[] =	"<a href=\"?docType=$docType&amp;section=4\">4 - Special Files</a>";
-			$lines[] =	"<a href=\"?docType=$docType&amp;section=5\">5 - File Formats</a>";
-			$lines[] =	"<a href=\"?docType=$docType&amp;section=6\">6 - Games</a>";
-			$lines[] =	"<a href=\"?docType=$docType&amp;section=7\">7 - Macros and Conventions</a>";
-			$lines[] =	"<a href=\"?docType=$docType&amp;section=8\">8 - Maintenance Commands</a>";
-			$lines[] =	"<a href=\"?docType=$docType&amp;section=9\">9 - Kernel Interface</a>";
-			$lines[] =	"<a href=\"?docType=$docType&amp;section=n\">n - New Commands</a>";
-		}		
-	}
+			//show all possable perl entrance by keyword: 'pm' 'perl'
+			$content = getPerldocIndex();
+		}
+		break;
+	case "info":
+		$check[info] = " checked=\"checked\"";
+		if ( $parm != "" ){
+			$content = getInfoPage($parm);
+			//
+		}
+		else {
+			$content = getInfoIndex();
+			//exec("info", $lines);
+		}
+		break;
+	case "search":
+		$check[search] = " checked=\"checked\"";
+		if ( $parm != "" ){
+			$content = getSearchPage($parm);
+			//exec("info $parm", $lines);
+		}
+		break;
 }
 
-$count = count($lines);
+showHeader($PHP_MAN_TITLE);
+showForm($parm, $check);
 
-//regular replace patterns for specified command(module) name
-if ( $parm != "" ) {
+echo $content;
+
+showFooter();
+
+
+
+/*********************************
+ *  functions ********************
+ *********************************/
+
+//show html header
+function showHeader ( $title ) {
+	echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>".
+		"<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"".
+		" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
+		"<html xmlns=\"http://www.w3.org/1999/xhtml\">".
+		"<head>".
+		"<title>$title</title>".
+		"<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>".
+		"<style type=\"text/css\">".
+		"<!--".
+		"body {color:#000000;background-color:#EEEEEE} ".
+		"b {color:#996600;background-color:#EEEEEE} ".
+		"u {color:#008000;background-color:#EEEEEE} ".
+		"//-->".
+		"</style>".
+		"</head>".
+		"<body><b>$title</b>";
+}
+
+
+//promter and recursive call
+function showForm ($parm, $check) {
+	echo "<form action=\"$PHP_SELF\" method=\"get\">".
+	"<p>Command:".
+	"<input type=\"text\" size=\"20\" name=\"parm\" value=\"".stripslashes($parm)."\"/>".
+	"<input type=\"radio\" name=\"docType\" value=\"man\"$check[man]/><a href=\"?docType=man\">man</a>".
+	"<input type=\"radio\" name=\"docType\" value=\"perldoc\"$checked[perldoc]/>".
+	"<a href=\"?docType=search&amp;parm=pm%20perl\">perldoc</a>".
+	"<input type=\"radio\" name=\"docType\" value=\"info\"$check[info]/>".
+	"<a href=\"?docType=info\">info</a>".
+	"<input type=\"radio\" name=\"docType\" value=\"search\"$check[search]/>".
+	"<a href=\"?docType=man&amp;parm=apropos\">search</a>".
+	"<script language=\"JavaScript\" type=\"text/javascript\">".
+	"<!--".
+	"this.document.write('<input type=\"hidden\" name=\"screen\" value=\"' + screen.width + '\"/>');".
+	"-->".
+	"</script>".
+	"<input type=\"submit\"/></p>".
+	"</form>".
+	"<hr />".
+	"<pre>";
+}
+
+//show footer
+function showFooter () {
+	echo "</pre>".
+	"<hr />".
+	"<!--".
+	"<a href=\"http://validator.w3.org/check/referer\">".
+	"<img style=\"border:0;width:88px;height:31px\" ".
+	"src=\"http://www.w3.org/Icons/valid-xhtml10\" ".
+	"alt=\"Valid XHTML 1.0!\" /></a>".
+	"<a href=\"http://jigsaw.w3.org/css-validator/\">".
+	"<img style=\"border:0;width:88px;height:31px\"".
+	"src=\"http://jigsaw.w3.org/css-validator/images/vcss\"".
+	"alt=\"Valid CSS!\" /></a>".
+	"-->".
+	"<a href=\"http://sourceforge.net/projects/phpunixman/\">".
+	"\$Id$".
+	"</a>".
+	"</body>".
+	"</html>";
+}
+
+//get specified command's man page and convert to html format
+function getManPage ($parm, $man_width = 128) {
+	exec("MANWIDTH=$man_width man $parm", $lines);
+	$output = formatManPerldoc($lines);
+	return $output;
+}
+
+//get specified perl module's man page and convert to html format
+function getPerldocPage ($parm) {
+	exec("perldoc $parm", $lines);
+	$output = formatManPerlDoc($lines);
+	return $output;
+}
+
+//get specified command's info page
+function getInfoPage ($parm) {
+	exec("info $parm", $lines);
+	$output = formatManPerlDoc($lines);
+	return $output;
+}
+
+//search specified keyword by apropos and convert output link to man pages
+function getSearchPage ($parm) {
+	$patterns = array(
+			"/&/",  //html special char: '&' => '&gt;';
+			"/</",  //html special char: '>' => '&lt;';
+			"/>/",  //html special char: '<' => '&gt;';
+			//for linux format of search output
+			"/(.*\/)?([\w\-\.\+:]+)((\s+\[)([\w\-\.:]+)(\]\s+))\(([\dnol]\w*)\)/",
+			//'(command)' => man page of command;
+			"/([\w+\.\-:]+)(\s+)?(\((\d\w*)\))/"
+			);
+	$replace = array(
+		"&amp;",
+		"&lt;",
+		"&gt;",
+		"\\1\\2\\4<a href=\"?docType=man&amp;parm=\\7 \\5\">\\5</a>\\6(\\7)",
+		"<a href=\"?docType=man&amp;parm=\\4 \\1\">\\1</a>\\2\\3"
+		);
+	$cmd = "apropos ".$parm;
+	//echo $cmd;
+	exec($cmd, $lines);
+	$output = "";
+	$count = count($lines);
+	for ( $i = 0; $i < $count; $i ++ ) {
+		$output .= preg_replace($patterns, $replace, $lines[$i]);
+		$output .= " <br />";
+	}
+	return $output;
+
+}
+
+//link to man page list by searching section tag
+function getManIndex () {
+	$output .= "<a href=\"?docType=search&amp;parm=(1)\">1 - General Commands</a><br />";
+	$output .= "<a href=\"?docType=search&amp;parm=(2)\">2 - System Calls</a><br />";
+	$output .= "<a href=\"?docType=search&amp;parm=(3)\">3 - Subroutines</a><br />";
+	$output .= "<a href=\"?docType=search&amp;parm=(4)\">4 - Special Files</a><br />";
+	$output .= "<a href=\"?docType=search&amp;parm=(5)\">5 - File Formats</a><br />";
+	$output .= "<a href=\"?docType=search&amp;parm=(6)\">6 - Games</a><br />";
+	$output .= "<a href=\"?docType=search&amp;parm=(7)\">7 - Macros and Conventions</a><br />";
+	$output .= "<a href=\"?docType=search&amp;parm=(8)\">8 - Maintenance Commands</a><br />";
+	$output .= "<a href=\"?docType=search&amp;parm=(9)\">9 - Kernel Interface</a><br />";
+	$output .= "<a href=\"?docType=search&amp;parm=(n)\">n - New Commands</a><br />";
+	return $output;
+}
+
+
+//get perldoc list by searching perl related keywords
+function getPerldocIndex () {
+	return getSearchPage("pm perl");
+}
+
+//get info page index page
+function getInfoIndex () {
+	exec("info", $lines);
+	$patterns = array(
+			"/&/",  //html special char: '&' => '&gt;';
+			"/</",  //html special char: '>' => '&lt;';
+			"/>/",  //html special char: '<' => '&gt;';
+			"/\(([a-z0-9_\-]+)\)([a-z0-9_\+]+)/", //'(group)command' => info page of command;
+			"/\(([a-z0-9_\-]+)\)/"     //'(command)' => info page of command;
+			);
+
+	$replace = array(
+		"&amp;",
+		"&lt;",
+		"&gt;",
+		"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)".
+		"<a href=\"?docType=$docType&amp;parm=\\2\">\\2</a>",
+		"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)"
+		);
+	$output = "";
+	$count = count($lines);
+	for ( $i = 0; $i < $count; $i ++ ) {
+		$output .= preg_replace($patterns, $replace, $lines[$i]);
+		$output .= " <br />";
+	}
+	return $output;
+}
+
+//convert man perldoc output to html
+function formatManPerldoc ($lines) {
 	$patterns = array(
 		"/&/",  //html special char: '&' => chr(5) => '&gt;';
 		"/</",  //html special char: '>' => chr(6) => '&lt;';
@@ -156,110 +339,12 @@ if ( $parm != "" ) {
 		"\\1<a href=\"?docType=man&amp;screen=$screen&amp;parm=\\3 \\2\">\\2(\\3)</a>",
 		"\\3<a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\4\">\\4</a>"
 		);
-}
-//not specify command(module) name: try to show index
-else {
-	if ( ($docType == "man" && isset($section)) || $docType == "perldoc" ) {		
-		$patterns = array(
-			"/&/",  //html special char: '&' => '&gt;';
-			"/</",  //html special char: '>' => '&lt;';
-			"/>/",  //html special char: '<' => '&gt;';
-			//for linux format of apropos output
-			"/(.*\/)?([\w\-\.\+:]+)((\s+\[)([\w\-\.:]+)(\]\s+))\(([\dnol]\w*)\)/",
-			//'(command)' => man page of command;
-			"/([\w+\.\-:]+)(\s+)?(\((\d\w*)\))/"
-			);	
-		$replace = array(
-			"&amp;",
-			"&lt;",
-			"&gt;",
-			"\\1\\2\\4<a href=\"?docType=man&amp;parm=\\7 \\5\">\\5</a>\\6(\\7)",
-			"<a href=\"?docType=man&amp;parm=\\4 \\1\">\\1</a>\\2\\3"
-			);			
+	$output = "";
+	$count = count($lines);
+	for ( $i = 0; $i < $count; $i ++ ) {
+		$output .= preg_replace($patterns, $replace, $lines[$i]);
+		$output .= " <br />";
 	}
-	else if ( $docType == "info" ) {
-		$patterns = array(
-			"/&/",  //html special char: '&' => '&gt;';
-			"/</",  //html special char: '>' => '&lt;';
-			"/>/",  //html special char: '<' => '&gt;';
-			"/\(([a-z0-9_\-]+)\)([a-z0-9_\+]+)/", //'(group)command' => info page of command;
-			"/\(([a-z0-9_\-]+)\)/"     //'(command)' => info page of command;
-			);
-
-		$replace = array(
-			"&amp;",
-			"&lt;",
-			"&gt;",
-			"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)".
-			"<a href=\"?docType=$docType&amp;parm=\\2\">\\2</a>",
-			"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)"
-			);
-	}
+	return $output;
 }
-
-
-//show header
-echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>".
-	"<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"".
-	" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
-	"<html xmlns=\"http://www.w3.org/1999/xhtml\">".
-	"<head>".
-	"<title>$PHP_MAN_TITLE</title>".
-	"<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>".
-	"<style type=\"text/css\">".
-	"<!--".
-	"body {color:#000000;background-color:#EEEEEE} ".
-	"b {color:#996600;background-color:#EEEEEE} ".
-	"u {color:#008000;background-color:#EEEEEE} ".
-	"//-->".
-	"</style>".
-	"</head>".
-	"<body>";
-
-//promter and recursive call
-echo "<b>$PHP_MAN_TITLE</b>".
-	"<form action=\"$PHP_SELF\" method=\"get\">".
-	"<p>Command:".
-	"<input type=\"text\" size=\"20\" name=\"parm\" value=\"".stripslashes($parm)."\"/>".
-	"<input type=\"radio\" name=\"docType\" value=\"man\"$check_man/><a href=\"?docType=man\">man</a>".
-	"<input type=\"radio\" name=\"docType\" value=\"perldoc\"$check_perldoc/>".
-	"<a href=\"?docType=perldoc\">perldoc</a>".
-	"<input type=\"radio\" name=\"docType\" value=\"info\"$check_info/>".
-	"<a href=\"?docType=info\">info</a>".
-	"<script language=\"JavaScript\" type=\"text/javascript\">".
-	"<!--".
-	"this.document.write('<input type=\"hidden\" name=\"screen\" value=\"' + screen.width + '\"/>');".
-	"-->".
-	"</script>".
-	"<input type=\"submit\"/></p>".
-	"</form>".
-	"<hr />".
-	"<pre>";
-
-//highlighting attribute characters
-for ( $i = 0; $i < $count; $i ++ ) {
-	if ( is_array($patterns) && is_array($replace) ) {
-		$lines[$i] = preg_replace($patterns, $replace, $lines[$i]);
-	}
-	echo "$lines[$i] <br />";
-}
-
-//show footer
-echo "</pre>".
-	"<hr />".
-	"<!--".
-	"<a href=\"http://validator.w3.org/check/referer\">".
-	"<img style=\"border:0;width:88px;height:31px\" ".
-	"src=\"http://www.w3.org/Icons/valid-xhtml10\" ".
-	"alt=\"Valid XHTML 1.0!\" /></a>".
-	"<a href=\"http://jigsaw.w3.org/css-validator/\">".
-	"<img style=\"border:0;width:88px;height:31px\"".
-	"src=\"http://jigsaw.w3.org/css-validator/images/vcss\"".
-	"alt=\"Valid CSS!\" /></a>".
-	"-->".
-	"<a href=\"http://sourceforge.net/projects/phpunixman/\">".
-	"\$Id$".
-	"</a>".
-	"</body>".
-	"</html>";
 ?>
