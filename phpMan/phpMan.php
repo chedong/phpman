@@ -109,7 +109,7 @@ else if ($docType == "man"){
 $count = count($lines);
 
 //regular replace patterns for specified command(module) name
-if ( $parm != "" ) {  
+if ( $parm != "" ) {
 	$patterns = array(
 		"/&/",  //html special char: '&' => chr(5) => '&gt;';
 		"/</",  //html special char: '>' => chr(6) => '&lt;';
@@ -131,9 +131,9 @@ if ( $parm != "" ) {
 		"/<.>([a-z_\-\.\+]+)<\/.>\((\d)\)/", //'<b>command</b>(#)' => ' command(#)'
 		"/<.>([a-z_\-\.\+]+)\((\d)\)<\/.>/", //'<b>command(#)</b>' => ' command(#)'
 		"/\s([a-z_\-\.\+]+)\((\d)\)/",       //' command(#)' => hyperlink to command(#)
-		//translate link to related perl modules, but $obj->Module::Name will not be translate
-		"/<.>([\w_\-]+(::[\w_\-]+)+)<\/.>/", //'<u>Module::Name</u>' => ' Module::Name'
-		"/\s([\w_\-]+(::[\w_\-]+)+)/"        //' Module::Name'  => hyperlink to Module::Name
+		//translate link to related perl modules, but $obj->Module::Name-> will not be translate
+		"/<.>([\w_]+(::[\w_]+)+)<\/.>/", //'<u>Module::Name</u>' => ' Module::Name'
+		"/\s([\w_]+(::[\w_]+)+)/"        //' Module::Name'  => hyperlink to Module::Name
 		);
 
 	$replace = array(
@@ -206,7 +206,7 @@ echo "<b>$PHP_MAN_TITLE</b>
 	</form>
 	<hr />
 	<pre>";
-	
+
 //highlighting attribute characters
 for ( $i = 0; $i < $count; $i ++ ) {
 	$lines[$i] = preg_replace($patterns, $replace, $lines[$i]);
