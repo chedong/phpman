@@ -2,7 +2,7 @@
 // +--------------------------------------------------------------------------------+
 // | phpMan:      Unix Man page / Perldoc / Info page Web Interface                 |
 // +--------------------------------------------------------------------------------+
-// | Copyright (C) 2002 Che, Dong chedong@bigfoot.com                               |
+// | Copyright (C) 2002 -2004 Che, Dong chedongATbigfoot.com                         |
 // +--------------------------------------------------------------------------------+
 // | This program is free software; you can redistribute it and/or                  |
 // | modify it under the terms of the GNU General Public License                    |
@@ -218,7 +218,7 @@ switch ( $mode ) {
 // | show output                                                                    |
 // +--------------------------------------------------------------------------------+
 showHeader($PHP_MAN_TITLE, $CSS_STYLE);
-echo "<b><a href=\"http://savannah.gnu.org/projects/phpman/\">$PHP_MAN_TITLE</a></b>\n";
+echo "<b><a href=\"http://sourceforge.net/projects/phpunixman/\">$PHP_MAN_TITLE</a></b>\n";
 showForm($parameter, $check);
 echo "<hr /><pre>".$content."</pre><hr />";
 showFooter($VALIDATOR);
