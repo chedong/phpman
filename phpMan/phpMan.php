@@ -58,14 +58,13 @@ echo "<hr /><br />";
 echo "<pre>";
 
 //remove arbitrary commands
-$semi = strpos($parm,";");
-if ($semi > 1)
-	$parm = substr($parm, 0, $semi);
+$parm = escapeshellcmd($parm);
+
 //get
 if ( $docType == "perldoc" )
-	exec("perldoc $parm",$lines,$rc);
+	exec("perldoc $parm", $lines, $rc);
 else
-	exec("man $parm",$lines,$rc);
+	exec("man $parm", $lines, $rc);
 
 $count = count($lines);
 for ( $i = 1; $i <= $count; $i ++ ) {
