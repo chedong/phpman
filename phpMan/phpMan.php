@@ -122,8 +122,8 @@ else {
     }
 }
 
-//removed arbitrary commands
-$parameter = escapeshellcmd($parameter);
+//removed arbitrary commands: replace "/" avoid Security exposure on Linux
+$parameter = str_replace("/", " ", escapeshellcmd($parameter));
 $section = escapeshellcmd($section);
 
 //allow section option only, removed -m
