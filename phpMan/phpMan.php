@@ -132,7 +132,7 @@ if ( $parm != "" ) {
 		"<b>_",
 		"",
 		" <a href=\"?docType=man&amp;screen=$screen&amp;parm=\\6 \\3\">\\3(\\6)</a>",
-		" <a href=\"?docType=perldoc&amp;screen=$screen&amp;parm=\\3\">\\3</a>"
+		" <a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\3\">\\3</a>"
 		);
 }
 //not specify command(module) name: try to show index
