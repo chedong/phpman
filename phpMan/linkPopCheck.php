@@ -40,15 +40,18 @@ if ( $show == "source" ) {
 $url = $_GET["url"];
 
 if ( $url ) {
+    
 	//if url not start with 'http://'
 	if ( !preg_match("/^http:\/\//", $url) ) {
 		$url = "http://" . $url;
-	}
-
+	}  
+    
 	$url_encoded = urlencode( $url );
 	$url_no_http = preg_replace("/^http:\/\//", "", $url); //removed "http://"
 	$url_no_http = urlencode($url_no_http);
-
+    
+    header("Location: http://www.alltheweb.com/urlinfo?q=$url_no_http");
+    
 	//$score_nl = getNl( $url_encoded );
 	$score_nl = 0;        
 	$score_fast = getFast( $url_no_http );

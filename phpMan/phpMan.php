@@ -95,10 +95,10 @@ $mode = "";
 $parameter = "";
 $section = "";
 
-$check[man] = "";
-$check[perldoc] = "";
-$check[info] = "";
-$check[search] = "";
+$check['man'] = "";
+$check['perldoc'] = "";
+$check['info'] = "";
+$check['search'] = "";
 
 /**
  * parse parameters from $_SERVER["PATH_INFO"]: phpMan.php/$mode/$parameter/$section
@@ -117,7 +117,7 @@ else {
         $parameter = trim($_GET["parameter"]);
     }
 
-    if ($_GET["section"] && trim($_GET["section"]) != "") {
+    if ( isset($_GET["section"]) && trim($_GET["section"]) != "") {
         $section = trim($_GET["section"]);
     }
 }
@@ -176,7 +176,7 @@ else if ( $mode == "copyright" ) {
  */
 switch ( $mode ) {
     case "man":
-        $check[man] = " checked=\"checked\"";
+        $check['man'] = " checked=\"checked\"";
         //show man pages
         if ( $parameter != "" ) {
             $content = getManPage($parameter, $section);
@@ -191,7 +191,7 @@ switch ( $mode ) {
         }
         break;
     case "perldoc":
-        $check[perldoc] = " checked=\"checked\"";
+        $check['perldoc'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
             //exec("perldoc $parameter", $lines);
             $content = getPerldocPage($parameter);
@@ -202,7 +202,7 @@ switch ( $mode ) {
         }
         break;
     case "info":
-        $check[info] = " checked=\"checked\"";
+        $check['info'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
             $content = getInfoPage($parameter);
         }
@@ -211,7 +211,7 @@ switch ( $mode ) {
         }
         break;
     case "search":
-        $check[search] = " checked=\"checked\"";
+        $check['search'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
             $content = getSearchPage($parameter);
         }
@@ -342,7 +342,7 @@ function getSearchPage ($parameter) {
 
 //link to man page list by searching section tag
 function getManIndex () {
-    $output .= "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/(1)\">1 - General Commands</a> ".
+    $output = "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/(1)\">1 - General Commands</a> ".
                "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/intro/1\">intro(1)</a>\n";
     $output .= "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/(2)\">2 - System Calls</a> ".
                "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/intro/2\">intro(2)</a>\n";
