@@ -95,7 +95,7 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 		"/".chr(7)."/",   //reverse '>'
 		"/<\/u><u>/", //removed duplicated html tag
 		"/<\/b><b>/", //removed duplicated html tag
-		"/ ([a-z_\-\.]+)\((\d)\)/" //transfer related command to hyperlinks
+		"/\s([a-z_\-\.]+)\((\d)\)/" //transfer related command to hyperlinks
 		);
 	$replace = array(
 		chr(5),
