@@ -110,11 +110,13 @@ if ( $parm != "" ) {
 		"/<u>_<\/u><b>/",   // '<u>_<\/u><b>' => '<b>_'
 		"/<\/b><b>/",       // '<\/b><b>' => ''
 		//transfer related command to hyperlinks, but $b->func(#) will not be translate.
-		//'<b>command</b>(<b>#</b>)</b>' => ' command(#)'
+		//'<b>command</b>(<b>#</b>),</b>' => ' command(#)' => link to command
 		//Man Page Howto: http://www.schweikhardt.net/man_page_howto.html
-		"/((<.>)|\s){1}([a-z0-9_\-\.\+]+)(<\/.>)?\((<.>)?([\dnol])(<\/.>)?\)(<\/.>)?/",
+		"/((<.>){1}|([\s,]){1})([a-z0-9_\-\.\+]+)(<\/.>)?\((<.>)?([\dnol][MXS]?)(<\/.>)?\)(,)?(<\/.>)?/",
+		"/([\s,])([a-z0-9_\-\.\+]+)\(([\dnol][MXS]?)\)/",
 		//translate link to related perl modules, but $obj->Module::Name-> will not be translate
-		"/((<.>)|\s){1}(\w+(::\w+)+)(<\/.>)?/", //'<u>Module::Name</u>' => ' Module::Name'
+		//'<u>Module::Name</u>' => ' Module::Name'
+		"/((<.>){1}|([\s,]))([a-zA-Z]+(::[a-zA-Z]+)+)(<\/.>)?/", 
 		);
 
 	$replace = array(
@@ -131,8 +133,9 @@ if ( $parm != "" ) {
 		"",
 		"<b>_",
 		"",
-		" <a href=\"?docType=man&amp;screen=$screen&amp;parm=\\6 \\3\">\\3(\\6)</a>",
-		" <a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\3\">\\3</a>"
+		"\\3\\4(\\7)\\9",
+		"\\1<a href=\"?docType=man&amp;screen=$screen&amp;parm=\\3 \\2\">\\2(\\3)</a>",
+		"\\3<a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\4\">\\4</a>"
 		);
 }
 //not specify command(module) name: try to show index
