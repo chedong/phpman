@@ -164,7 +164,9 @@ function showHeader ( $show_style = 1 ) {
 			"//-->".
 			"</style>";
 	}
-	echo "</head><body><b><a href=\"$PHP_SELF?show=source\">$PHP_MAN_TITLE</a></b>";
+	echo "</head><body><b>".
+		"<a href=\"http://sourceforge.net/projects/phpunixman/\">$PHP_MAN_TITLE</a>".
+		"</b>";
 }
 
 //promter and recursive call
@@ -196,7 +198,7 @@ function showFooter ($show_validator = 0) {
 		" src=\"http://jigsaw.w3.org/css-validator/images/vcss\"".
 		" alt=\"Valid CSS!\" /></a>";
 	}
-	echo "<a href=\"http://sourceforge.net/projects/phpunixman/\">".
+	echo "<a href=\"$PHP_SELF?show=source\">".
 	"\$Id$".
 	"</a></body></html>";
 }
