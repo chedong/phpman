@@ -137,7 +137,7 @@ if ( $parm != "" ) {
 }
 //not specify command(module) name: try to show index
 else {
-	if ( $docType == "man" || $docType = "perldoc") {
+	if ( $docType == "man" || $docType == "perldoc") {
 		$patterns = array(
 			"/&/",  //html special char: '&' => '&gt;';
 			"/</",  //html special char: '>' => '&lt;';
