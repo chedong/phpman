@@ -28,8 +28,8 @@
  * Tested on Linux and FreeBSD under php 4.x above.
  *
  * function list:
- *     showForm ($parm, $check)              //show input form and recursive call
  *     showHeader ( $title )                 //show html header css style
+ *     showForm ($parm, $check)              //show input form and recursive call
  *     showFooter ( $validate )              //show html footer
  *     getManPage ($parm, $docType)          //get html format man page
  *     getInfoPage ($parm)                   //get html format info page
@@ -176,7 +176,7 @@ function showForm ($parm, $check) {
 	"<input type=\"text\" size=\"20\" name=\"parm\" value=\"".stripslashes($parm)."\"/>".
 	"<input type=\"radio\" name=\"docType\" value=\"man\"$check[man]/>".
 	"<a href=\"?docType=man\">man</a>".
-	"<input type=\"radio\" name=\"docType\" value=\"perldoc\"$checked[perldoc]/>".
+	"<input type=\"radio\" name=\"docType\" value=\"perldoc\"$check[perldoc]/>".
 	"<a href=\"?docType=search&amp;parm=perl\">perldoc</a>".
 	"<input type=\"radio\" name=\"docType\" value=\"info\"$check[info]/>".
 	"<a href=\"?docType=info\">info</a>".
@@ -244,8 +244,8 @@ function getSearchPage ($parm) {
 		"&amp;",
 		"&lt;",
 		"&gt;",
-		"\\1\\2\\4<a href=\"?docType=man&amp;parm=\\7 \\5\">\\5</a>\\6(\\7)",
-		"<a href=\"?docType=man&amp;parm=\\4 \\1\">\\1</a>\\2\\3"
+		"\\1\\2\\4<a href=\"?docType=man&amp;parm=\\7%20\\5\">\\5</a>\\6(\\7)",
+		"<a href=\"?docType=man&amp;parm=\\4%20\\1\">\\1</a>\\2\\3"
 		);
 	$cmd = "apropos ".$parm;
 	//echo $cmd;
@@ -262,23 +262,23 @@ function getSearchPage ($parm) {
 //link to man page list by searching section tag
 function getManIndex () {
 	$output .= "<a href=\"?docType=search&amp;parm=(1)\">1 - General Commands</a> ".
-		"<a href=\"?docType=man&amp;parm=1 intro\">intro(1)</a>"."<br />";
+		"<a href=\"?docType=man&amp;parm=1%20intro\">intro(1)</a>"."<br />";
 	$output .= "<a href=\"?docType=search&amp;parm=(2)\">2 - System Calls</a> ".
-		"<a href=\"?docType=man&amp;parm=2 intro\">intro(2)</a>"."<br />";
+		"<a href=\"?docType=man&amp;parm=2%20intro\">intro(2)</a>"."<br />";
 	$output .= "<a href=\"?docType=search&amp;parm=(3)\">3 - Subroutines</a> ".
-		"<a href=\"?docType=man&amp;parm=3 intro\">intro(3)</a>"."<br />";
+		"<a href=\"?docType=man&amp;parm=3%20intro\">intro(3)</a>"."<br />";
 	$output .= "<a href=\"?docType=search&amp;parm=(4)\">4 - Special Files</a> ".
-		"<a href=\"?docType=man&amp;parm=4 intro\">intro(4)</a>"."<br />";
+		"<a href=\"?docType=man&amp;parm=4%20intro\">intro(4)</a>"."<br />";
 	$output .= "<a href=\"?docType=search&amp;parm=(5)\">5 - File Formats</a> ".
-		"<a href=\"?docType=man&amp;parm=5 intro\">intro(5)</a>"."<br />";
+		"<a href=\"?docType=man&amp;parm=5%20intro\">intro(5)</a>"."<br />";
 	$output .= "<a href=\"?docType=search&amp;parm=(6)\">6 - Games</a> ".
-		"<a href=\"?docType=man&amp;parm=6 intro\">intro(6)</a>"."<br />";
+		"<a href=\"?docType=man&amp;parm=6%20intro\">intro(6)</a>"."<br />";
 	$output .= "<a href=\"?docType=search&amp;parm=(7)\">7 - Macros and Conventions</a> ".
-		"<a href=\"?docType=man&amp;parm=7 intro\">intro(7)</a>"."<br />";
+		"<a href=\"?docType=man&amp;parm=7%20intro\">intro(7)</a>"."<br />";
 	$output .= "<a href=\"?docType=search&amp;parm=(8)\">8 - Maintenance Commands</a> ".
-		"<a href=\"?docType=man&amp;parm=8 intro\">intro(8)</a>"."<br />";
+		"<a href=\"?docType=man&amp;parm=8%20intro\">intro(8)</a>"."<br />";
 	$output .= "<a href=\"?docType=search&amp;parm=(9)\">9 - Kernel Interface</a> ".
-		"<a href=\"?docType=man&amp;parm=9 intro\">intro(9)</a>"."<br />";
+		"<a href=\"?docType=man&amp;parm=9%20intro\">intro(9)</a>"."<br />";
 	$output .= "<a href=\"?docType=search&amp;parm=(n)\">n - New Commands</a><br />";
 	return $output;
 }
@@ -342,6 +342,7 @@ function formatManPerldoc ( $lines, $docType = "man") {
 		//translate link to related perl modules, but $obj->Module::Name-> will not be translate
 		//'<u>Module::Name</u>' => ' Module::Name'
 		"/((<.>)|([\s,]))(\w+(::\w+)+)(<\/.>)?/",
+		"/(([\w\-\.]+)@([\w\-]+)(\.[\w\-]+)+)/" //link to email
 		);
 
 	$replace = array(
@@ -359,8 +360,9 @@ function formatManPerldoc ( $lines, $docType = "man") {
 		"<b>_",
 		"",
 		"\\3\\4(\\7)\\9",
-		"\\1<a href=\"?docType=man&amp;&amp;parm=\\3 \\2\">\\2(\\3)</a>",
-		"\\3<a href=\"?docType=$docType&amp;&amp;parm=\\4\">\\4</a>"
+		"\\1<a href=\"?docType=man&amp;parm=\\3%20\\2\">\\2(\\3)</a>",
+		"\\3<a href=\"?docType=$docType&amp;parm=\\4\">\\4</a>",
+		"<a href=\"mailto:\\1\">\\1</a>"
 		);
 	$output = "";
 	$count = count($lines);
