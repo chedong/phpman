@@ -104,7 +104,7 @@ $check[search] = "";
  * parse parameters from $_SERVER["PATH_INFO"]: phpMan.php/$mode/$parameter/$section
  * or parse parameters from HTTP/GET
  */
-if ( isset($_SERVER["PATH_INFO"]) ) {
+if ( isset($_SERVER["PATH_INFO"]) && trim($_SERVER["PATH_INFO"]) != "") {
     list($nothing, $mode, $parameter, $section) = explode('/', $_SERVER["PATH_INFO"]);
     $parameter = urldecode($parameter);
 }
@@ -244,7 +244,7 @@ function showHeader ( $title = "", $css_style = "") {
         "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
         "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n".
         "<head>\n".
-        "<title>$title - " . $_SERVER["REMOTE_ADDR"] . " - " . date(" M d H:i") . "</title>\n".
+        "<title>$title - " . date(" M d H:i") . " @". $_SERVER["REMOTE_ADDR"] . " by " . $_SERVER["HTTP_USER_AGENT"] . "</title>\n".
         "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>\n";
 
     echo $css_style;
@@ -448,7 +448,7 @@ function formatManPerldoc ( $lines, $mode = "man") {
                    "\\3<a href=\"".$_SERVER["SCRIPT_NAME"]."/$mode/\\4\">\\4</a>",
                    "<b>\\1</b>",
                    "<u>\\1</u>",
-                   "<a href=\"mailto:\\2AT\\3\\4\">\\2<u> AT </u>\\3\\4</a>",
+                   "<a href=\"mailto:\\2 AT \\3\\4\">\\2<u> AT </u>\\3\\4</a>",
                    "<a href=\"\\1\" target=\"_blank\">\\1</a>"
                );
     $output = "";
