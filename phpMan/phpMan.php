@@ -72,7 +72,7 @@ $count = count($lines);
 
 //promter and recursive call
 echo "<b>$PHP_MAN_TITLE</b>
-	<form action=\"$PHP_SELF\">
+	<form action=\"$PHP_SELF\" method=\"GET\">
 	<p>Command:
 	<input type=\"text\" size=\"20\" name=\"parm\" value=\"$parm\"/>
 	<input type=\"radio\" name=\"docType\" value=\"man\"$check_man/>man
@@ -88,7 +88,7 @@ echo "<b>$PHP_MAN_TITLE</b>
 	<pre>";
 
 //highlighting attribute characters
-for ( $i = 1; $i <= $count; $i ++ ) {
+for ( $i = 1; $i < $count; $i ++ ) {
 	$patterns = array(
 		"/&/",  //html special char: '&' => chr(5) => '&gt;';
 		"/</",  //html special char: '>' => chr(6) => '&lt;';
@@ -111,7 +111,7 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 		"/<b>([a-z_\-\.]+)<\/b>\((\d)\)/", //'<b>command</b>(#)' => hyperlink to command(#)
 		"/<b>([a-z_\-\.]+)\((\d)\)<\/b>/", //'<b>command(#)</b>' => hyperlink to command(#)
 		//translate link to related perl modules
-		"/(\w+(::\w+)+)/"
+		"/\s(\w+(::\w+)+)/"
 		);
 
 	$replace = array(
@@ -131,16 +131,16 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 		" <a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\2 \\1\">\\1(\\2)</a>",
 		"<a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\2 \\1\">\\1(\\2)</a>",
 		"<a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\2 \\1\">\\1(\\2)</a>",
-		"<a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\1\">\\1</a>"
+		" <a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\1\">\\1</a>"
 		);
 
 	$lines[$i] = preg_replace($patterns, $replace, $lines[$i]);
-	echo "$lines[$i] <br />";
+	echo "$lines[$i]<br />";
 }
 
 //show footer
-echo "</pre>
-	<hr />
+echo "</pre>	
+	<hr />	
 	<!--
 	<a href=\"http://validator.w3.org/check/referer\">
 	<img style=\"border:0;width:88px;height:31px\"
