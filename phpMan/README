@@ -1,0 +1,20 @@
+Project update process list
+$Id$
+
+Project home:
+    http://sourceforge.net/projects/phpunixman
+
+Chekc out cvs source code:
+    export CVS_RSH=ssh 
+    cvs -z3 -d:ext:chedong@cvs.sourceforge.net:/cvsroot/phpunixman co -P phpMan
+
+
+Upload new release file to file release system
+    ftp upload.sourceforge.net
+    cd incoming
+    put phpMan.php.gz
+
+Update homepage:
+    scp phpMan.php chedong@web.sourceforge.net:/home/groups/p/ph/phpunixman/htdocs/index.php
+
+
