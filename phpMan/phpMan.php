@@ -26,6 +26,7 @@
  * to use 'more' or 'pg' filters. Just try it if you feel hard to remember the command
  * for page back or need to dump man page into text/html format.
  * Tested on GNU/Linux and FreeBSD with PHP 4.2 above.
+ * Note: Apache 2.0 need configure: AcceptPathInfo On
  *
  * You can also find other web interface:
  *   shell-sed-awk based script at:
@@ -122,18 +123,24 @@ else {
 }
 
 //removed arbitrary commands
-$parameter =escapeshellcmd($parameter);
+$parameter = escapeshellcmd($parameter);
 $section = escapeshellcmd($section);
+
 //allow section option only, removed -m
 if ( !preg_match("/\w+/", $section) ) {
     $section = "";
 }
 
 if ( $parameter != "" ) {
-    $PHP_MAN_TITLE = "phpMan: ".stripslashes($parameter)."(".$section.")";
+    if ( $section == "" ) {
+        $PHP_MAN_TITLE = stripslashes($parameter) . " - phpMan";
+    }
+    else {
+        $PHP_MAN_TITLE = stripslashes($parameter) . "(" . $section . ") - phpMan";
+    }
 }
 
-//Show source of file
+//show source of file
 if ( $mode == "source" ) {
     showHeader($PHP_MAN_TITLE, $CSS_STYLE);
     show_source($_SERVER["SCRIPT_FILENAME"]);
