@@ -1,16 +1,29 @@
 <?php
 /**
+ * $Id$
+ *
  * phpMan is a web interface of Unix command 'man' and 'perldoc'.
  * This script makes it easier to read man pages which is lengthy
  * and require you to use 'more' or 'pg' filters.
  * Just try it if you feel hard to remember the command for page back
  * or need to dump man page into text/html format.
+ * Tested on Linux, FreeBSD and Solaris.
  *
- * $Id$
- * Author: Che, Dong
- * chedong@bigfoot.com
+ * Copyright (C) 2002 Che, Dong chedong@bigfoot.com
  *
- * Tested on Linux and FreeBSD
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
 //global title
