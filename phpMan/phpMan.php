@@ -28,7 +28,7 @@
  * Tested on Linux and FreeBSD under php 4.x above.
  *
  * function list:
- *     showHeader ( $title )                 //show html header css style
+ *     showHeader ( $css_style )             //show html header with css style
  *     showForm ($parm, $check)              //show input form and recursive call
  *     showFooter ( $validate )              //show html footer
  *     getManPage ($parm, $docType)          //get html format man page
@@ -45,7 +45,7 @@
 // +--------------------------------------------------------------------------------+
 // | global configures                                                              |
 // +--------------------------------------------------------------------------------+
- 
+
 //app title
 $PHP_MAN_TITLE = "phpMan: Unix Man page/ Perldoc / Info page Web Interface";
 
@@ -70,7 +70,7 @@ $SHOW_VALIDATOR = 0;
 
 //Show source of file
 if ( $show == "source" ) {
-    show_source ($SCRIPT_FILENAME);
+    show_source($SCRIPT_FILENAME);
     exit;
 }
 
