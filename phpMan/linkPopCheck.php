@@ -131,14 +131,27 @@ popularity?</a>
 <tr>
 <td><a href="http://alltheweb.com/">Alltheweb</a>(powered by <a href="http://www.fastsearch.com/">Fast</a>)</td>		
 <td>
-<a href="http://alltheweb.com/search?cat=web&amp;lang=any&amp;query=link.all%3A$url_h">$score_fast </a>
+<a href="http://alltheweb.com/search?cat=web&amp;query=link.all%3A$url&amp;lang=any">$score_fast</a>
 </td>
 </tr>
 </table>
 
 <p><b>popularity=$score</b></p>
-<a href="?show=source">\$Id$</a>
 
+<p>Testing cases:<br>  
+page rank:<br />  
+ <a href="?url=http://www.sina.com.cn"> http://www.sina.com.cn</a><br />
+ <a href="?url=http://news.sina.com.cn"> http://news.sina.com.cn</a><br />
+ <a href="?url=http://news.sina.com.cn/news1000.shtml"> http://news.sina.com.cn/news1000.shtml</a><br />
+redirection:<br /> 
+ <a href="?url=http://www.yeah.net"> http://www.yeah.net</a><br />
+ <a href="?url=http://chedong.yeah.net"> http://chedong.yeah.net</a><br />
+some sites rank:<br />  
+ <a href="?url=http://www.google.com"> http://www.google.com</a><br />
+ <a href="?url=http://www.yahoo.com"> http://www.yahoo.com</a><br />
+ <a href="?url=http://www.w3c.org">http://www.w3c.org</a><br />
+</p>
+<a href="?show=source">\$Id$</a>
 </body>
 </html>
 END;
