@@ -162,13 +162,13 @@ function showForm ($parm, $check) {
 	"<input type=\"radio\" name=\"docType\" value=\"info\"$check[info]/>".
 	"<a href=\"?docType=info\">info</a>".
 	"<input type=\"radio\" name=\"docType\" value=\"search\"$check[search]/>".
-	"<a href=\"?docType=man&amp;parm=apropos\">search</a>".
+	"<a href=\"?docType=man&amp;parm=apropos\">search(apropos)</a>".
 	"<script language=\"JavaScript\" type=\"text/javascript\">".
 	"<!--".
 	"this.document.write('<input type=\"hidden\" name=\"screen\" value=\"' + screen.width + '\"/>');".
 	"-->".
 	"</script>".
-	"<input type=\"submit\"/></p>".
+	"&nbsp;<input type=\"submit\"/></p>".
 	"</form>";
 }
 
