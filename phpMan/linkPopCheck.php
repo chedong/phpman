@@ -29,6 +29,8 @@
  *     getNl  ( $url )              //get score from northen light
  */
 
+//DEBUG $url = "http://news.sina.com.cn";
+
 //Show source of file
 if ( $show == "source" ) {
     show_source ($SCRIPT_FILENAME);
@@ -48,7 +50,7 @@ if ( $url ) {
 	$score_nl = getNl( $url_encoded );
 	$score_fast = getFast( $url_no_http );
 	$score_msn = getMsn( $url_encoded );
-	//echo "get score: $score_nl \t $score_msn \t $score_fast\n ";
+	//DEBUG echo "get score: $score_nl \t $score_msn \t $score_fast\n ";
 
 	$msn_orig = "";
 	$nl_orig = "";
@@ -90,50 +92,55 @@ else {
 echo <<<END
 <?xml version="1.0" encoding="ISO-8859-1"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
 <html xmlns="http://www.w3.org/1999/xhtml">
+
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1"/>
 <title>Link Popularity Checker</title>
 </head>
+
 <body>
+
 <form method="get" action="">
-  <p>
-  <input type="text" name="url" size="50" value="$url"/>
-  <input type="submit"/>
-  <a href="http://searchenginewatch.com/webmasters/popularity.html">What's link
+<p>
+<input type="text" name="url" size="50" value="$url"/>
+<input type="submit"/>
+<a href="http://searchenginewatch.com/webmasters/popularity.html">What's link
 popularity?</a>
-  </p>
+</p>
 </form>
+
 <table width="100%" border="1">
-	<tr>
-		<td>Search engine</td>
-		<td>Score</td>		
-	</tr>
-	<tr>
-		<td><a href="http://www.northernlight.com/">Northern Light</a></td>
-		<td>
-		<a href="http://www.northernlight.com/nlquery.fcg?qr=link%3A$url">$score_nl $nl_orig</a>
-		</td>
-	</tr>
-	<tr>
-		<td><a href="http://search.msn.com">MSN</a>(powered by <a href="http://www.inktomi.com">Inktomi</a>)</td>
-		<td>
-		<a href="http://search.msn.com/results.asp?q=$url&amp;FORM=SMCA&amp;cfg=SMCINK&amp;v=1&amp;ba=0&amp;f=lnk&amp;sort=&amp;rgn=&amp;lng=&amp;dom=&amp;depth=&amp;d0=&amp;d1=&amp;cf=">$score_msn $msn_orig</a>
-		</td>
-	</tr>
-	<tr>
-		<td><a href="http://alltheweb.com/">Alltheweb</a>(powered by <a href="http://www.fastsearch.com/">Fast</a>)</td>		
-		<td>
-		<a href="http://alltheweb.com/search?cat=web&amp;lang=any&amp;query=link.all%3A$url_h">$score_fast </a>
-		</td>
-	</tr>
+<tr>
+<td>Search engine</td>
+<td>Score</td>		
+</tr>
+<tr>
+<td><a href="http://www.northernlight.com/">Northern Light</a></td>
+<td>
+<a href="http://www.northernlight.com/nlquery.fcg?qr=link%3A$url">$score_nl $nl_orig</a>
+</td>
+</tr>
+<tr>
+<td><a href="http://search.msn.com">MSN</a>(powered by <a href="http://www.inktomi.com">Inktomi</a>)</td>
+<td>
+<a href="http://search.msn.com/results.asp?q=$url&amp;FORM=SMCA&amp;cfg=SMCINK&amp;v=1&amp;ba=0&amp;f=lnk&amp;sort=&amp;rgn=&amp;lng=&amp;dom=&amp;depth=&amp;d0=&amp;d1=&amp;cf=">$score_msn $msn_orig</a>
+</td>
+</tr>
+<tr>
+<td><a href="http://alltheweb.com/">Alltheweb</a>(powered by <a href="http://www.fastsearch.com/">Fast</a>)</td>		
+<td>
+<a href="http://alltheweb.com/search?cat=web&amp;lang=any&amp;query=link.all%3A$url_h">$score_fast </a>
+</td>
+</tr>
 </table>
 
 <p><b>popularity=$score</b></p>
 <a href="?show=source">\$Id$</a>
+
 </body>
 </html>
-
 END;
 
 /*
@@ -153,10 +160,10 @@ function getMsn ( $url ) {
         fputs ($fp, "GET /results.asp?q=$url&FORM=SMCA&cfg=SMCINK&v=1&ba=0&f=lnk&sort=&rgn=&lng=&dom=&depth=&d0=&d1=&cf= HTTP/1.1\nAccept: */*\nHost: search.msn.com\nUser-Agent: Mozilla/4.0 (compatible; MSIE 5.0; Windows 98; DigExt)\n\n");
         while (!feof($fp)) {
         	$line = fgets ($fp,4096);
-        	//echo $line;
+        	//DEBUG echo $line;
         	if ( preg_match("/ of about (\d+) containing/",$line,$matches) ) {
         		$score = $matches[1];
-        		//echo "msn=$score\n";
+        		//DEBUG echo "msn=$score\n";
         		return $score;
             }
             else if ( preg_match("/Sorry, no results were found containing/", $line) ) {
@@ -186,10 +193,10 @@ function getFast ( $url ) {
         fputs ($fp, "GET /search?cat=web&lang=any&query=link.all%3A$url HTTP/1.1\nAccept: */*\nHost: www.alltheweb.com\nUser-Agent: Mozilla/4.0 (compatible; MSIE 5.0; Windows 98; DigExt)\n\n");
         while (!feof($fp)) {
         	$line = fgets ($fp,4096);
-        	//echo $line;
+        	//DEBUG echo $line;
         	if ( preg_match("/<b>([\d,]+)<\/b> web pages found/",$line,$matches) ) {
         		$score = intval( str_replace(",", "", $matches[1]) );
-        		//echo "fast=$score\n";
+        		//DEBUG echo "fast=$score\n";
         		return $score;
             }
             else if ( preg_match("/No Web pages found/", $line) ) {
@@ -216,18 +223,18 @@ function getNl ( $url ) {
         return -1;
     }
     else {
-        fputs ($fp, "GET /nlquery.fcg?qr=link%3A$url HTTP/1.1\nAccept: */*\nHost: uk.altavista.com\nUser-Agent: Mozilla/4.0 (compatible; MSIE 5.0; Windows 98; DigExt)\n\n");
+        fputs ($fp, "GET /nlquery.fcg?qr=link%3A$url HTTP/1.1\nAccept: */*\nHost: www.northernlight.com\nUser-Agent: Mozilla/4.0 (compatible; MSIE 5.0; Windows 98; DigExt)\n\n");
         while (!feof($fp)) {
         	$line = fgets ($fp,4096);
-        	//echo $line;
+        	//DEBUG echo $line;
         	if ( preg_match("/<b>([\d,]+) items<\/b>/", $line, $matches) ) {
+        		$score = intval( str_replace(",", "", $matches[1]) );
+        		//225 items in 5 sources for expamle:
+        		//http://www.cs.ualberta.ca/~xun/sanmao/SM-2-1.html
         		if ( preg_match("/<b>([\d,]+) sources<\/b>/", $line, $match) ) {
         			$score = intval( str_replace(",", "", $match[1]) );
         		}
-        		else {
-        			$score = intval( str_replace(",", "", $matches[1]) );
-        		}
-        		//echo "nl=$score\n";
+        		//DEBUG echo "nl=$score\n";
         		return $score;
             }
             else if ( preg_match("/Your query did not find any documents/", $line) ) {
