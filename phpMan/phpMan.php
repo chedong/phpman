@@ -12,9 +12,9 @@
  * Copyright (C) 2002 Che, Dong chedong@bigfoot.com
  *
  * function list:
- *    showFooter ()                         //show html footer
  *    showForm ($parm, $check)              //show input form and recursive call
  *    showHeader ( $title )                 //show html header css style
+ *    showFooter ( $validate )              //show html footer
  *    getManPage ($parm, $man_width = 128)  //get html format man page
  *    getInfoPage ($parm)                   //get html format info page
  *    getPerldocPage ($parm)                //get html format perldoc page
@@ -41,13 +41,14 @@
 
 //global title
 $PHP_MAN_TITLE = "phpMan: Unix Manual / Perldoc / Info Web Interface";
+
 //default options
 $check[man] = "";
 $check[perldoc] = "";
 $check[info] = "";
 $check[search] = "";
 
-//content
+//page content
 $content = "";
 
 //set default doc type to man page
@@ -63,12 +64,22 @@ else {
 	$parm = "";
 }
 
-//Get screen size and set man page column size (It's only work under man above 1.5)
+//Get screen size and set man page column size (It's only work under man1.5+)
 if (isset($screen) && $screen != "") {
 	$man_width = intval($screen) / 8;
 }
 
-//option checker and get manual page content, if no parameter: get index tree
+/*
+ * option checker and get manual page content, if no parameter: get index tree
+ * phpMan -- man     -- man page index: section list
+ *                   \- man page by section: command list(by search)
+ *                    \ man page: specified command
+ *        \- perldoc -- command list: (by search)
+ *                   \- perldoc page: specified module
+ *        \- info    -- info page index: list
+ *                   \- info page: 
+ *        \- search  -- apropos search results: man page entrance list
+ */
 switch ( $docType ) {
 	case "man":
 		$check[man] = " checked=\"checked\"";
@@ -79,7 +90,6 @@ switch ( $docType ) {
 		//redirect to search sections
 		else {
 			$content = getManIndex();
-
 		}
 		break;
 	case "perldoc":
@@ -89,7 +99,7 @@ switch ( $docType ) {
 	 		$content = getPerldocPage($parm);
 		}
 		else {
-			//show all possable perl entrance by keyword: 'pm' 'perl'
+			//show all possable perl entrance by search keywords: 'pm' 'perl'
 			$content = getPerldocIndex();
 		}
 		break;
@@ -97,37 +107,31 @@ switch ( $docType ) {
 		$check[info] = " checked=\"checked\"";
 		if ( $parm != "" ){
 			$content = getInfoPage($parm);
-			//
 		}
 		else {
 			$content = getInfoIndex();
-			//exec("info", $lines);
 		}
 		break;
 	case "search":
 		$check[search] = " checked=\"checked\"";
 		if ( $parm != "" ){
 			$content = getSearchPage($parm);
-			//exec("info $parm", $lines);
 		}
 		break;
 }
 
+//output
 showHeader($PHP_MAN_TITLE);
 showForm($parm, $check);
-
-echo $content;
-
-showFooter();
-
-
+echo "<hr /><pre>".$content."</pre><hr />";
+showFooter(0);
 
 /*********************************
- *  functions ********************
+ ******  functions ***************
  *********************************/
 
 //show html header
-function showHeader ( $title ) {
+function showHeader ($title) {
 	echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>".
 		"<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"".
 		" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
@@ -165,30 +169,24 @@ function showForm ($parm, $check) {
 	"-->".
 	"</script>".
 	"<input type=\"submit\"/></p>".
-	"</form>".
-	"<hr />".
-	"<pre>";
+	"</form>";
 }
 
 //show footer
-function showFooter () {
-	echo "</pre>".
-	"<hr />".
-	"<!--".
-	"<a href=\"http://validator.w3.org/check/referer\">".
-	"<img style=\"border:0;width:88px;height:31px\" ".
-	"src=\"http://www.w3.org/Icons/valid-xhtml10\" ".
-	"alt=\"Valid XHTML 1.0!\" /></a>".
-	"<a href=\"http://jigsaw.w3.org/css-validator/\">".
-	"<img style=\"border:0;width:88px;height:31px\"".
-	"src=\"http://jigsaw.w3.org/css-validator/images/vcss\"".
-	"alt=\"Valid CSS!\" /></a>".
-	"-->".
-	"<a href=\"http://sourceforge.net/projects/phpunixman/\">".
+function showFooter ($show_validate = 0) {
+	if ( $show_validate ) {
+		echo "<a href=\"http://validator.w3.org/check/referer\">".
+		"<img style=\"border:0;width:88px;height:31px\" ".
+		"src=\"http://www.w3.org/Icons/valid-xhtml10\" ".
+		"alt=\"Valid XHTML 1.0!\" /></a>".
+		"<a href=\"http://jigsaw.w3.org/css-validator/\">".
+		"<img style=\"border:0;width:88px;height:31px\"".
+		"src=\"http://jigsaw.w3.org/css-validator/images/vcss\"".
+		"alt=\"Valid CSS!\" /></a>";
+	}
+	echo "<a href=\"http://sourceforge.net/projects/phpunixman/\">".
 	"\$Id$".
-	"</a>".
-	"</body>".
-	"</html>";
+	"</a></body></html>";
 }
 
 //get specified command's man page and convert to html format
@@ -258,7 +256,6 @@ function getManIndex () {
 	return $output;
 }
 
-
 //get perldoc list by searching perl related keywords
 function getPerldocIndex () {
 	return getSearchPage("pm perl");
@@ -274,7 +271,6 @@ function getInfoIndex () {
 			"/\(([a-z0-9_\-]+)\)([a-z0-9_\+]+)/", //'(group)command' => info page of command;
 			"/\(([a-z0-9_\-]+)\)/"     //'(command)' => info page of command;
 			);
-
 	$replace = array(
 		"&amp;",
 		"&lt;",
