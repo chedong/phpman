@@ -93,7 +93,7 @@ $VALIDATOR = "<a href=\"http://validator.w3.org/check/referer\">".
 //page content
 $content = "";
 //output mode
-$mode = "man";
+$mode = "";
 $parameter = "";
 $section = "";
 
@@ -124,6 +124,10 @@ else {
     }
 }
 
+// set default mode
+if ( $mode == "" ) {
+    $mode = "man";
+}
 //removed arbitrary commands: replace "/" avoid Security exposure on Linux
 $parameter = str_replace("/", " ", escapeshellcmd($parameter));
 $section = escapeshellcmd($section);
