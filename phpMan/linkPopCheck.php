@@ -210,7 +210,7 @@ function getFast ( $url ) {
         while (!feof($fp)) {
         	$line = fgets ($fp,4096);
         	//DEBUG echo $line;        	
-        	if ( preg_match("/<.*>([\d,]+)<\/.*> web pages found/",$line,$matches) ) {
+        	if ( preg_match("/<.*>([\d,]+)<\/.*>/",$line,$matches) ) {
         		$score = intval( str_replace(",", "", $matches[1]) );
         		//DEBUG echo "fast=$score\n";
         		return $score;
