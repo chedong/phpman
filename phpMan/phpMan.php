@@ -35,6 +35,8 @@
  *   perl based script at:
  *     http://www.freebsd.org/cgi/man.cgi
  *     http://www.freebsd.org/cgi/man.cgi/source
+ *   dwww of debian:
+ *     http://packages.debian.org/stable/doc/dwww
  *
  * Sub function list:
  *     showHeader ( $css_style )             //show html header with css style
