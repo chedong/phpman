@@ -36,12 +36,12 @@
  *
  * Sub function list:
  *     showHeader ( $css_style )             //show html header with css style
- *     showForm ($parm, $check)              //show input form and recursive call
+ *     showForm ($parameter, $check)              //show input form and recursive call
  *     showFooter ( $validate )              //show html footer
- *     getManPage ($parm, $docType)          //get html format man page
- *     getInfoPage ($parm)                   //get html format info page
- *     getPerldocPage ($parm)                //get html format perldoc page
- *     getSearchPage ($parm)                 //get html format apropos page
+ *     getManPage ($parameter, $mode)          //get html format man page
+ *     getInfoPage ($parameter)                   //get html format info page
+ *     getPerldocPage ($parameter)                //get html format perldoc page
+ *     getSearchPage ($parameter)                 //get html format apropos page
  *     getManIndex ()                        //get man page index
  *     getPerldocIndex ()                    //get perldoc page index
  *     getInfoIndex ()                       //get info page index
@@ -56,7 +56,7 @@
 //app title
 $PHP_MAN_TITLE = "phpMan: Unix Man page/ Perldoc / Info page Web Interface";
 
-//set MANWIDTH for man1.5+, default for 1024 * 768
+//set MANWIDTH for man 1.5+, default for 1024 * 768
 $MAN_WIDTH = 132;
 
 //use colored man page
@@ -85,43 +85,69 @@ $VALIDATOR = "<a href=\"http://validator.w3.org/check/referer\">".
 // | parameter checking and format page output                                      |
 // +--------------------------------------------------------------------------------+
 
-//Show source of file
-if ( $_GET["show"] == "source" ) {
-    show_source($_SERVER["SCRIPT_FILENAME"]);
-    exit;
-}
-else if ( $_GET["show"] == "info" ) {
-    phpinfo();
-    exit;
-}
-
 //default options
+
+//page content
+$content = "";
+//output mode
+$mode = "man";
+$parameter = "";
+$section = "1";
+
 $check[man] = "";
 $check[perldoc] = "";
 $check[info] = "";
 $check[search] = "";
 
-//page content
-$content = "";
-
-//set default doc type to man page
-if ( !isset($_GET["docType"]) || $_GET["docType"] == "" ) {
-    $docType = "man";
+/** 
+ * parse parameters from $_SERVER["PATH_INFO"]: phpMan.php/$mode/$parameter/$section
+ * or parse parameters from HTTP/GET
+ */
+if ( isset($_SERVER["PATH_INFO"]) ) {
+    list($nothing, $mode, $parameter, $section) = explode('/', $_SERVER["PATH_INFO"]);
+    $parameter = urldecode($parameter);
 }
 else {
-    $docType = $_GET["docType"];
+    if ( isset($_GET["mode"]) && trim($_GET["mode"]) != "" ) {
+        $mode = trim($_GET["mode"]);
+    }
+    
+    if ( isset($_GET["parameter"]) && trim($_GET["parameter"]) != "" ) {
+        $parameter = trim($_GET["parameter"]);
+    }
+    
+    if ($_GET["section"] && trim($_GET["section"]) != "") {
+        $section = trim($_GET["section"]);
+    }
 }
 
-//remove arbitrary commands
-if ( isset($_GET["parm"]) ) {
-    $parm = escapeshellcmd($_GET["parm"]);
-    $PHP_MAN_TITLE = "phpMan: ".stripslashes($parm);
-}
-else {
-    $parm = "";
+//removed arbitrary commands
+$parameter =escapeshellcmd($parameter);
+$section = escapeshellcmd($section);
+//allow section option only, removed -m 
+if ( !preg_match("/\w+/", $section) ) {
+    $section = "1";
 }
 
-/*
+if ( $parameter != "" ) {    
+    $PHP_MAN_TITLE = "phpMan: ".stripslashes($parameter)."(".$section.")";
+}
+
+//Show source of file
+if ( $mode == "php_source" ) {
+    showHeader($PHP_MAN_TITLE, $CSS_STYLE);
+    show_source($_SERVER["SCRIPT_FILENAME"]);
+    echo "</body></html>";
+    exit;
+}
+
+//show php info
+else if ( $mode == "php_info" ) {    
+    phpinfo();    
+    exit;
+}
+
+/**
  * option checker and get manual page content, if no parameter: get index tree
  * phpMan -- man     -- man page index: section list
  *        |          \- man page by section: command list(via search)
@@ -132,15 +158,15 @@ else {
  *        |          \- info page:
  *        \- search  -- apropos search results: man page entrance list
  */
-switch ( $docType ) {
+switch ( $mode ) {
     case "man":
         $check[man] = " checked=\"checked\"";
         //show man pages
-        if ( $parm != "" ) {
-            $content = getManPage($parm);
+        if ( $parameter != "" ) {
+            $content = getManPage($parameter, $section);
             //not find command then redirect to search sections
             if (trim($content) == "") {
-                $content = getSearchPage($parm);
+                $content = getSearchPage($parameter);
             }
         }
         //redirect to search sections
@@ -150,9 +176,9 @@ switch ( $docType ) {
         break;
     case "perldoc":
         $check[perldoc] = " checked=\"checked\"";
-        if ( $parm != "" ) {
-            //exec("perldoc $parm", $lines);
-            $content = getPerldocPage($parm);
+        if ( $parameter != "" ) {
+            //exec("perldoc $parameter", $lines);
+            $content = getPerldocPage($parameter);
         }
         else {
             //show all possable perl entrance by search keywords: 'perl'
@@ -161,8 +187,8 @@ switch ( $docType ) {
         break;
     case "info":
         $check[info] = " checked=\"checked\"";
-        if ( $parm != "" ) {
-            $content = getInfoPage($parm);
+        if ( $parameter != "" ) {
+            $content = getInfoPage($parameter);
         }
         else {
             $content = getInfoIndex();
@@ -170,8 +196,8 @@ switch ( $docType ) {
         break;
     case "search":
         $check[search] = " checked=\"checked\"";
-        if ( $parm != "" ) {
-            $content = getSearchPage($parm);
+        if ( $parameter != "" ) {
+            $content = getSearchPage($parameter);
         }
         break;
 }
@@ -180,7 +206,8 @@ switch ( $docType ) {
 // | show output                                                                    |
 // +--------------------------------------------------------------------------------+
 showHeader($PHP_MAN_TITLE, $CSS_STYLE);
-showForm($parm, $check);
+echo "<b><a href=\"http://savannah.gnu.org/projects/phpman/\">$PHP_MAN_TITLE</a></b>\n";
+showForm($parameter, $check);
 echo "<hr /><pre>".$content."</pre><hr />";
 showFooter($VALIDATOR);
 
@@ -192,7 +219,7 @@ showFooter($VALIDATOR);
 //show html header
 function showHeader ( $title = "", $css_style = "") {
     echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n".
-    "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"".
+    "<!mode html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"".
     " \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n".
     "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n".
     "<head>\n".
@@ -201,24 +228,24 @@ function showHeader ( $title = "", $css_style = "") {
 
     echo $css_style;
 
-    echo "</head>\n<body>\n<b>".
-    "<a href=\"http://savannah.gnu.org/projects/phpman/\">$title</a>".
+    echo "</head>\n<body>\n";
+    "<b><a href=\"http://savannah.gnu.org/projects/phpman/\">$title</a>".
     "</b>\n";
 }
 
 //promter and recursive call
-function showForm ($parm, $check) {
-    echo "<form action=\"\" method=\"get\">\n".
+function showForm ($parameter, $check) {
+    echo "<form action=\"".$_SERVER["SCRIPT_NAME"]."\" method=\"get\">\n".
     "<p>Command: ".
-    "<input type=\"text\" size=\"20\" name=\"parm\" value=\"".stripslashes($parm)."\"/>\n".
-    "<input type=\"radio\" name=\"docType\" value=\"man\"$check[man]/>".
-    "<a href=\"?docType=man\">man</a>\n".
-    "<input type=\"radio\" name=\"docType\" value=\"perldoc\"$check[perldoc]/>".
-    "<a href=\"?docType=search&amp;parm=perl\">perldoc</a>\n".
-    "<input type=\"radio\" name=\"docType\" value=\"info\"$check[info]/>".
-    "<a href=\"?docType=info\">info</a>\n".
-    "<input type=\"radio\" name=\"docType\" value=\"search\"$check[search]/>".
-    "<a href=\"?docType=man&amp;parm=apropos\">search(apropos)</a>\n".
+    "<input type=\"text\" size=\"20\" name=\"parameter\" value=\"".stripslashes($parameter)."\"/>\n".
+    "<input type=\"radio\" name=\"mode\" value=\"man\"$check[man]/>".
+    "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man\">man</a>\n".
+    "<input type=\"radio\" name=\"mode\" value=\"perldoc\"$check[perldoc]/>".
+    "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/perl\">perldoc</a>\n".
+    "<input type=\"radio\" name=\"mode\" value=\"info\"$check[info]/>".
+    "<a href=\"".$_SERVER["SCRIPT_NAME"]."/info\">info</a>\n".
+    "<input type=\"radio\" name=\"mode\" value=\"search\"$check[search]/>".
+    "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/apropos\">search(apropos)</a>\n".
     "&nbsp;<input type=\"submit\"/></p>".
     "</form>\n";
 }
@@ -227,42 +254,42 @@ function showForm ($parm, $check) {
 function showFooter ($validator = "") {
     echo $validator;
 
-    echo "Generated by <a href=\"?show=source\">".
+    echo "Generated by <a href=\"".$_SERVER["SCRIPT_NAME"]."/php_source\">".
     "\$Id$".
-    "</a> on <a href=\"?show=info\">".$_SERVER["SERVER_SOFTWARE"]."</a><br />".
+    "</a> on <a href=\"".$_SERVER["SCRIPT_NAME"]."/php_info\">".$_SERVER["SERVER_SOFTWARE"]."</a><br />".
     "<a href=\"http://www.gnu.org/licenses/gpl.txt\">".
     "GNU General Public License</a>".
     "</body></html>";
 }
 
 //get specified command's man page and convert to html format
-function getManPage ($parm) {
+function getManPage ($parameter, $section = "1") {
     global $MAN_WIDTH;
-    exec("MANWIDTH=$MAN_WIDTH man ".escapeshellarg($parm), $lines);
+    exec("MANWIDTH=$MAN_WIDTH man ".$section." ".escapeshellarg($parameter), $lines);
     $output = formatManPerldoc($lines, "man");
     return $output;
 }
 
 //get specified perl module's man page and convert to html format
-function getPerldocPage ($parm) {
-    exec("perldoc ".escapeshellarg($parm), $lines);
+function getPerldocPage ($parameter) {
+    exec("perldoc ".escapeshellarg($parameter), $lines);
     $output = formatManPerlDoc($lines, "perldoc");
     return $output;
 }
 
 //get specified command's info page
-function getInfoPage ($parm) {
-    exec("info ".escapeshellarg($parm), $lines);
+function getInfoPage ($parameter) {
+    exec("info ".escapeshellarg($parameter), $lines);
     $output = formatManPerlDoc($lines, "info");
     return $output;
 }
 
-/*
+/**
  * search specified keyword by apropos and convert output link to man pages
  * Note: on linux, rebuild whatis database under root with:
  * /usr/sbin/makewhatis -w
  */
-function getSearchPage ($parm) {
+function getSearchPage ($parameter) {
     $patterns = array(
                     "/&/",  //html special char: '&' => '&gt;';
                     "/</",  //html special char: '>' => '&lt;';
@@ -276,14 +303,14 @@ function getSearchPage ($parm) {
                    "&amp;",
                    "&lt;",
                    "&gt;",
-                   "\\1\\2\\4<a href=\"?docType=man&amp;parm=\\7%20\\5\">\\5</a>\\6(\\7)",
-                   "<a href=\"?docType=man&amp;parm=\\4%20\\1\">\\1</a>\\2\\3"
+                   "\\1\\2\\4<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/\\5/\\7\">\\5</a>\\6(\\7)",
+                   "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/\\1/\\4\">\\1</a>\\2\\3"
                );
     // get last parameter of search string
     // example: "1 GCC" ==> "GCC"
-    $parm = array_pop(split(" ",$parm));
+    $parameter = array_pop(split(" ",$parameter));
     
-    $cmd = "apropos \"$parm\"";
+    $cmd = "apropos \"$parameter\"";
     
     exec($cmd, $lines);
     $output = "";
@@ -297,25 +324,26 @@ function getSearchPage ($parm) {
 
 //link to man page list by searching section tag
 function getManIndex () {
-    $output .= "<a href=\"?docType=search&amp;parm=(1)\">1 - General Commands</a> ".
-               "<a href=\"?docType=man&amp;parm=1%20intro\">intro(1)</a>\n";
-    $output .= "<a href=\"?docType=search&amp;parm=(2)\">2 - System Calls</a> ".
-               "<a href=\"?docType=man&amp;parm=2%20intro\">intro(2)</a>\n";
-    $output .= "<a href=\"?docType=search&amp;parm=(3)\">3 - Subroutines</a> ".
-               "<a href=\"?docType=man&amp;parm=3%20intro\">intro(3)</a>\n";
-    $output .= "<a href=\"?docType=search&amp;parm=(4)\">4 - Special Files</a> ".
-               "<a href=\"?docType=man&amp;parm=4%20intro\">intro(4)</a>\n";
-    $output .= "<a href=\"?docType=search&amp;parm=(5)\">5 - File Formats</a> ".
-               "<a href=\"?docType=man&amp;parm=5%20intro\">intro(5)</a>\n";
-    $output .= "<a href=\"?docType=search&amp;parm=(6)\">6 - Games</a> ".
-               "<a href=\"?docType=man&amp;parm=6%20intro\">intro(6)</a>\n";
-    $output .= "<a href=\"?docType=search&amp;parm=(7)\">7 - Macros and Conventions</a> ".
-               "<a href=\"?docType=man&amp;parm=7%20intro\">intro(7)</a>\n";
-    $output .= "<a href=\"?docType=search&amp;parm=(8)\">8 - Maintenance Commands</a> ".
-               "<a href=\"?docType=man&amp;parm=8%20intro\">intro(8)</a>\n";
-    $output .= "<a href=\"?docType=search&amp;parm=(9)\">9 - Kernel Interface</a> ".
-               "<a href=\"?docType=man&amp;parm=9%20intro\">intro(9)</a>\n";
-    $output .= "<a href=\"?docType=search&amp;parm=(n)\">n - New Commands</a>\n";
+    $output .= "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/(1)\">1 - General Commands</a> ".
+               "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/intro/1\">intro(1)</a>\n";
+    $output .= "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/(2)\">2 - System Calls</a> ".
+               "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/intro/2\">intro(2)</a>\n";
+    $output .= "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/(3)\">3 - Subroutines</a> ".
+               "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/intro/3\">intro(3)</a>\n";
+    $output .= "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/(4)\">4 - Special Files</a> ".
+               "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/intro/4\">intro(4)</a>\n";
+    $output .= "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/(5)\">5 - File Formats</a> ".
+               "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/intro/5\">intro(5)</a>\n";
+    $output .= "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/(6)\">6 - Games</a> ".
+               "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/intro/6\">intro(6)</a>\n";
+    $output .= "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/(7)\">7 - Macros and Conventions</a> ".
+               "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/intro/7\">intro(7)</a>\n";
+    $output .= "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/(8)\">8 - Maintenance Commands</a> ".
+               "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/intro/8\">intro(8)</a>\n";
+    $output .= "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/(9)\">9 - Kernel Interface</a> ".
+               "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/intro/9\">intro(9)</a>\n";
+    $output .= "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/(n)\">n - New Commands</a>\n";
+    
     return $output;
 }
 
@@ -338,9 +366,9 @@ function getInfoIndex () {
                    "&amp;",
                    "&lt;",
                    "&gt;",
-                   "(<a href=\"?docType=info&amp;parm=\\1\">\\1</a>)".
-                   "<a href=\"?docType=info&amp;parm=\\2\">\\2</a>",
-                   "(<a href=\"?docType=info&amp;parm=\\1\">\\1</a>)"
+                   "(<a href=\"".$_SERVER["SCRIPT_NAME"]."/info/\\1\">\\1</a>)".
+                   "<a href=\"".$_SERVER["SCRIPT_NAME"]."/info/\\2\">\\2</a>",
+                   "(<a href=\"".$_SERVER["SCRIPT_NAME"]."/info/\\1\">\\1</a>)"
                );
     $output = "";
     $count = count($lines);
@@ -352,7 +380,7 @@ function getInfoIndex () {
 }
 
 //convert man perldoc output to html
-function formatManPerldoc ( $lines, $docType = "man") {
+function formatManPerldoc ( $lines, $mode = "man") {
     $patterns = array(
                     "/&/",  //html special char: '&' => chr(5) => '&gt;';
                     "/</",  //html special char: '>' => chr(6) => '&lt;';
@@ -397,9 +425,9 @@ function formatManPerldoc ( $lines, $docType = "man") {
                    "<b>_",
                    "",
                    "\\3\\4(\\7)\\9",
-                   "\\1<a href=\"?docType=man&amp;parm=\\3%20\\2\">\\2(\\3)</a>",
-                   "\\3<a href=\"?docType=$docType&amp;parm=\\4\">\\4</a>",
-                   "<a href=\"mailto:\\2AT\\3\\4\">\\2AT\\3\\4</a>",
+                   "\\1<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/\\2/\\3\">\\2(\\3)</a>",
+                   "\\3<a href=\"".$_SERVER["SCRIPT_NAME"]."/$mode/\\4\">\\4</a>",
+                   "<a href=\"mailto:\\2AT\\3\\4\">\\2<u>AT</u>\\3\\4</a>",
                    "<a href=\"\\1\" target=\"_blank\">\\1</a>"
                );
     $output = "";
