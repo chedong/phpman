@@ -47,6 +47,8 @@
 
 //global title
 $PHP_MAN_TITLE = "phpMan: Unix Manual / Perldoc / Info Web Interface";
+//set MANWIDTH for man1.5+, default for 1024 * 768
+$MAN_WIDTH = 132;
 
 //default options
 $check[man] = "";
@@ -70,14 +72,6 @@ else {
 	$parm = "";
 }
 
-//Get screen size and set man page column size (It's only work under man1.5+)
-if (isset($screen) && $screen != "") {
-	$man_width = intval($screen) / 8;
-}
-else {
-	$man_width = 128; //default for 1024 * 768
-}
-
 /*
  * option checker and get manual page content, if no parameter: get index tree
  * phpMan -- man     -- man page index: section list
@@ -94,7 +88,7 @@ switch ( $docType ) {
 		$check[man] = " checked=\"checked\"";
 		//show man pages
 		if ( $parm != "" ){
-			$content = getManPage($parm, $man_width);
+			$content = getManPage($parm);
 		}
 		//redirect to search sections
 		else {
@@ -132,7 +126,7 @@ switch ( $docType ) {
 // +--------------------------------------------------------------------------------+
 // | show output                                                                    |
 // +--------------------------------------------------------------------------------+
-showHeader($PHP_MAN_TITLE);
+showHeader(1);
 showForm($parm, $check);
 echo "<hr /><pre>".$content."</pre><hr />";
 showFooter(0);
@@ -142,25 +136,26 @@ showFooter(0);
 // +--------------------------------------------------------------------------------+
 
 //show html header
-function showHeader ($title) {
+function showHeader ( $show_style = 1 ) {
+	global $PHP_MAN_TITLE;
 	echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>".
 		"<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"".
 		" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
 		"<html xmlns=\"http://www.w3.org/1999/xhtml\">".
 		"<head>".
-		"<title>$title</title>".
-		"<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>".
-		"<style type=\"text/css\">".
+		"<title>$PHP_MAN_TITLE</title>".
+		"<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>";
+	if ( $show_style ) {
+		echo "<style type=\"text/css\">".
 		"<!--".
 		"body {color:#000000;background-color:#EEEEEE} ".
 		"b {color:#996600;background-color:#EEEEEE} ".
 		"u {color:#008000;background-color:#EEEEEE} ".
 		"//-->".
-		"</style>".
-		"</head>".
-		"<body><b>$title</b>";
+		"</style>";
+	}
+	echo "</head><body><b>$PHP_MAN_TITLE</b>";
 }
-
 
 //promter and recursive call
 function showForm ($parm, $check) {
@@ -175,9 +170,6 @@ function showForm ($parm, $check) {
 	"<a href=\"?docType=info\">info</a>".
 	"<input type=\"radio\" name=\"docType\" value=\"search\"$check[search]/>".
 	"<a href=\"?docType=man&amp;parm=apropos\">search(apropos)</a>".
-	"<script language=\"JavaScript\" type=\"text/javascript\"><!--".
-	"this.document.write('<input type=\"hidden\" name=\"screen\" value=\"' + screen.width + '\"/>');".
-	"--></script>".
 	"&nbsp;<input type=\"submit\"/></p>".
 	"</form>";
 }
@@ -200,9 +192,10 @@ function showFooter ($show_validate = 0) {
 }
 
 //get specified command's man page and convert to html format
-function getManPage ($parm, $man_width = 128) {
-	exec("MANWIDTH=$man_width man $parm", $lines);
-	$output = formatManPerldoc($lines, "man", $man_width);
+function getManPage ($parm) {
+	global $MAN_WIDTH;
+	exec("MANWIDTH=$MAN_WIDTH man $parm", $lines);
+	$output = formatManPerldoc($lines, "man");
 	return $output;
 }
 
@@ -311,7 +304,7 @@ function getInfoIndex () {
 }
 
 //convert man perldoc output to html
-function formatManPerldoc ( $lines, $docType = "man", $screen = 1024 ) {
+function formatManPerldoc ( $lines, $docType = "man") {
 	$patterns = array(
 		"/&/",  //html special char: '&' => chr(5) => '&gt;';
 		"/</",  //html special char: '>' => chr(6) => '&lt;';
@@ -354,8 +347,8 @@ function formatManPerldoc ( $lines, $docType = "man", $screen = 1024 ) {
 		"<b>_",
 		"",
 		"\\3\\4(\\7)\\9",
-		"\\1<a href=\"?docType=man&amp;screen=$screen&amp;parm=\\3 \\2\">\\2(\\3)</a>",
-		"\\3<a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\4\">\\4</a>"
+		"\\1<a href=\"?docType=man&amp;&amp;parm=\\3 \\2\">\\2(\\3)</a>",
+		"\\3<a href=\"?docType=$docType&amp;&amp;parm=\\4\">\\4</a>"
 		);
 	$output = "";
 	$count = count($lines);
