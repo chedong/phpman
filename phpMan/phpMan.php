@@ -68,34 +68,46 @@ $count = count($lines);
 for ( $i = 1; $i <= $count; $i ++ ) {
 	//highlighting attribute characters
 	$patterns = array(
-					"/&/",  //html special char: '&' => chr(5) => '&gt;';
-					"/</",  //html special char: '>' => chr(6) => '&lt;';
-					"/>/",  //html special char: '<' => chr(7) => '&gt;';
-					"/_".chr(8)."(.)".chr(8)."./",	// _^H?^H? => <b><u>?</u></b>
-					"/_".chr(8)."(.)/",  //_^H? => <u>?</u>
-					"/.".chr(8)."(.)/",  //?^H? => <b>?</b>
-					"/<b>.<\/b>".chr(8)."(<b>.<\/b>)/", //duplicated: <b>?</b>^H<b>?</b> => <b>?</b>
-					"/".chr(5)."/",  //reverse '&'
-					"/".chr(6)."/",  //reverse '<'
-					"/".chr(7)."/",  //reverse '>'
-					//ifconfig(8) => <a href="8 ifconfig">ifconfig(8)</f>
-					//IO::Handle(3) => IO::Handle
-					"/([\w:\.]+)\((\d)\)/"
-					);
+		"/&/",  //html special char: '&' => chr(5) => '&gt;';
+		"/</",  //html special char: '>' => chr(6) => '&lt;';
+		"/>/",  //html special char: '<' => chr(7) => '&gt;';
+		"/_".chr(8)."(.)".chr(8)."./",	// _^H?^H? => <b><u>?</u></b>
+		"/_".chr(8)."(.)/",  //_^H? => <u>?</u>
+		"/.".chr(8)."(.)/",  //?^H? => <b>?</b>
+		"/<b>.<\/b>".chr(8)."(<b>.<\/b>)/", //duplicated: <b>?</b>^H<b>?</b> => <b>?</b>
+		"/".chr(5)."/",  //reverse '&'
+		"/".chr(6)."/",  //reverse '<'
+		"/".chr(7)."/"   //reverse '>'
+		);
 	$replace = array(
-					chr(5),
-					chr(6),
-					chr(7),
-					"<b><u>\\1</u></b>",
-					"<u>\\1</u>",
-					"<b>\\1</b>",
-					"\\1",
-					"&amp;",
-					"&lt;",
-					"&gt;",
-					"<a href=\"?docType=$docType&amp;parm=\\2 \\1\">\\1(\\2)</a>"
-					);
-	$lines[$i] = preg_replace($patterns, $replace, $lines[$i]);
+		chr(5),
+		chr(6),
+		chr(7),
+		"<b><u>\\1</u></b>",
+		"<u>\\1</u>",
+		"<b>\\1</b>",
+		"\\1",
+		"&amp;",
+		"&lt;",
+		"&gt;"		
+		);
+	
+	$lines[$i] = preg_replace($patterns, $replace, $lines[$i]);		
+	
+	//remove html tags
+	$lines[$i] = preg_replace_callback(
+		"/([\/<>\w:\.]+)(\(\d\))/", 
+		"_remove_html_tags", 
+		$lines[$i]
+		);
+	
+	//link to related commands
+	$lines[$i] = preg_replace(
+		"/([\w:\.]+)\((\d)\)/",
+		"<a href=\"?docType=$docType&amp;parm=\\2 \\1\">\\1(\\2)</a>",
+		$lines[$i]
+		);
+	
 	echo "$lines[$i] <br />";
 }
 
@@ -105,10 +117,22 @@ echo "</pre>
 <br />
 <p>
 <a href=\"http://validator.w3.org/check/referer\">
-<img src=\"http://www.w3.org/Icons/valid-xhtml10\" alt=\"Valid XHTML 1.0!\" height=\"31\" width=\"88\" border=\"0\" />
+<img src=\"http://www.w3.org/Icons/valid-xhtml10\"
+ alt=\"Valid XHTML 1.0!\" height=\"31\" 
+ width=\"88\" border=\"0\" />
 </a>
-<a href=\"http://sourceforge.net/projects/phpunixman/\">\$Id$</a>
+<a href=\"http://sourceforge.net/projects/phpunixman/\">
+\$Id$
+</a>
 </p>
 </body>
 </html>";
+
+//remove the html tags: <b>l</b><b>s</b>(1) => ls(1)
+function _remove_html_tags ( $match_array ) {
+	//remove html tags
+	$match_array[0] = preg_replace("/<.*?>/", "", $match_array[0]);
+	$out = $match_array[0];
+	return $out;
+}
 ?>
