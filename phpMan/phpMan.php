@@ -161,24 +161,24 @@ if ( $parm != "" ) {
 else {
 	if ( $docType == "man" ) {
 		$patterns = array(
-			"/\(([\w\-]+)\)([\w\+]+)/", //'(group)command' => man page of command;
-			"/\(([\w\-]+)\)/"     //'(command)' => man page of command;
+			"/\(([a-z0-9\-]+)\)([a-z0-9\+]+)/", //'(group)command' => man page of command;
+			"/\(([a-z0-9\-]+)\)/"     //'(command)' => man page of command;
 			);
 
 		$replace = array(
-			"<a href=\"?docType=$docType&amp;parm=\\1\">(\\1)</a> <a href=\"?docType=$docType&amp;parm=\\2\">\\2</a>",
-			"<a href=\"?docType=$docType&amp;parm=\\1\">(\\1)</a>"
+			"( \\1 )<a href=\"?docType=$docType&amp;parm=\\2\">\\2</a>",
+			"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)"
 			);
 	}
 	else if ( $docType == "info" ) {
 		$patterns = array(
-			"/\(([\w\-]+)\)([\w\+]+)/", //'(group)command' => info page of command;
-			"/\(([\w\-]+)\)/"     //'(command)' => info page of command;
+			"/\(([a-z0-9\-]+)\)([a-z0-9\+]+)/", //'(group)command' => info page of command;
+			"/\(([a-z0-9\-]+)\)/"     //'(command)' => info page of command;
 			);
 
 		$replace = array(
-			"<a href=\"?docType=$docType&amp;parm=\\1\">(\\1)</a> <a href=\"?docType=$docType&amp;parm=\\2\">\\2</a>",
-			"<a href=\"?docType=$docType&amp;parm=\\1\">(\\1)</a>"
+			"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)<a href=\"?docType=$docType&amp;parm=\\2\">\\2</a>",
+			"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)"
 			);
 	}
 	else if ( $docType == "perldoc" ) {
