@@ -399,7 +399,7 @@ function formatManPerldoc ( $lines, $docType = "man") {
                    "\\3\\4(\\7)\\9",
                    "\\1<a href=\"?docType=man&amp;parm=\\3%20\\2\">\\2(\\3)</a>",
                    "\\3<a href=\"?docType=$docType&amp;parm=\\4\">\\4</a>",
-                   "<a href=\"mailto:\\1\">\\1</a>",
+                   "<a href=\"mailto:\\2AT\\3\\4\">\\2AT\\3\\4</a>",
                    "<a href=\"\\1\" target=\"_blank\">\\1</a>"
                );
     $output = "";
