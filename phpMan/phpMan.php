@@ -53,7 +53,7 @@ $PHP_MAN_TITLE = "phpMan: Unix Man page/ Perldoc / Info page Web Interface";
 $MAN_WIDTH = 132;
 
 //use colored man page
-$SHOW_CSS_STYLE = "<style type=\"text/css\">\n".
+$CSS_STYLE = "<style type=\"text/css\">\n".
 "<!--\n".
 "body {color:#000000;background-color:#EEEEEE}\n".
 "b {color:#996600;background-color:#EEEEEE}\n".
@@ -61,16 +61,27 @@ $SHOW_CSS_STYLE = "<style type=\"text/css\">\n".
 "//-->\n".
 "</style>\n";
 
+
 //show xhtml 1.0 and css validator
-$SHOW_VALIDATOR = 0;
+$VALIDATOR = "";
+/*
+$VALIDATOR = "<a href=\"http://validator.w3.org/check/referer\">".
+"<img style=\"border:0;width:88px;height:31px\"".
+" src=\"http://www.w3.org/Icons/valid-xhtml10\"".
+" alt=\"Valid XHTML 1.0!\" /></a>".
+"<a href=\"http://jigsaw.w3.org/css-validator/\">".
+"<img style=\"border:0;width:88px;height:31px\"".
+" src=\"http://jigsaw.w3.org/css-validator/images/vcss\"".
+" alt=\"Valid CSS!\" /></a>";
+*/
 
 // +--------------------------------------------------------------------------------+
 // | parameter checking and format page output                                      |
 // +--------------------------------------------------------------------------------+
 
 //Show source of file
-if ( $show == "source" ) {
-    show_source($SCRIPT_FILENAME);
+if ( $_GET["show"] == "source" ) {
+    show_source($_SERVER["SCRIPT_FILENAME"]);
     exit;
 }
 
@@ -84,13 +95,16 @@ $check[search] = "";
 $content = "";
 
 //set default doc type to man page
-if ( !isset($docType) || $docType == "" ) {
+if ( !isset($_GET["docType"]) || $_GET["docType"] == "" ) {
     $docType = "man";
+}
+else {
+    $docType = $_GET["docType"];
 }
 
 //remove arbitrary commands
-if ( isset($parm) ) {
-    $parm = escapeshellcmd($parm);
+if ( isset($_GET["parm"]) ) {
+    $parm = escapeshellcmd($_GET["parm"]);
 }
 else {
     $parm = "";
@@ -150,30 +164,29 @@ case "search":
 // +--------------------------------------------------------------------------------+
 // | show output                                                                    |
 // +--------------------------------------------------------------------------------+
-showHeader( $SHOW_CSS_STYLE );
+showHeader($PHP_MAN_TITLE, $CSS_STYLE);
 showForm($parm, $check);
 echo "<hr /><pre>".$content."</pre><hr />";
-showFooter($SHOW_VALIDATOR);
+showFooter($VALIDATOR);
 
 // +--------------------------------------------------------------------------------+
 // | sub functions                                                                  |
 // +--------------------------------------------------------------------------------+
 
 //show html header
-function showHeader ( $css_style = "" ) {
-    global $PHP_MAN_TITLE;
+function showHeader ( $title = "", $css_style = "") {
     echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n".
     "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"".
     " \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n".
     "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n".
     "<head>\n".
-    "<title>$PHP_MAN_TITLE</title>\n".
+    "<title>$title</title>\n".
     "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>\n";
-    if ( $css_style != "" ) {
-        echo $css_style;
-    }
+
+    echo $css_style;
+
     echo "</head>\n<body>\n<b>".
-    "<a href=\"http://sourceforge.net/projects/phpunixman/\">$PHP_MAN_TITLE</a>".
+    "<a href=\"http://sourceforge.net/projects/phpunixman/\">$title</a>".
     "</b>\n";
 }
 
@@ -195,17 +208,9 @@ function showForm ($parm, $check) {
 }
 
 //show footer
-function showFooter ($show_validator = 0) {
-    if ( $show_validator ) {
-        echo "<a href=\"http://validator.w3.org/check/referer\">".
-        "<img style=\"border:0;width:88px;height:31px\"".
-        " src=\"http://www.w3.org/Icons/valid-xhtml10\"".
-        " alt=\"Valid XHTML 1.0!\" /></a>".
-        "<a href=\"http://jigsaw.w3.org/css-validator/\">".
-        "<img style=\"border:0;width:88px;height:31px\"".
-        " src=\"http://jigsaw.w3.org/css-validator/images/vcss\"".
-        " alt=\"Valid CSS!\" /></a>";
-    }
+function showFooter ($validator = "") {
+    echo $validator;
+
     echo "<a href=\"?show=source\">".
     "\$Id$".
     "</a></body></html>";
@@ -381,3 +386,4 @@ function formatManPerldoc ( $lines, $docType = "man") {
     return $output;
 }
 ?>
+
