@@ -98,14 +98,14 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 	
 	//remove html tags
 	$lines[$i] = preg_replace_callback(
-		"/([\/<>\w:\.]+)(\(\d\))/", 
+		"/([\/<>\w:\-\.]+)(\(\d\))/", 
 		"_remove_html_tags", 
 		$lines[$i]
 		);
 	
 	//link to related commands
 	$lines[$i] = preg_replace(
-		"/([\w:\.]+)\((\d)\)/",
+		"/([\w:\-\.]+)\((\d)\)/",
 		"<a href=\"?docType=$docType&amp;parm=\\2 \\1\">\\1(\\2)</a>",
 		$lines[$i]
 		);
