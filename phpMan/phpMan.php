@@ -50,7 +50,7 @@ echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>
 //remove arbitrary commands
 $parm = escapeshellcmd($parm);
 
-//Get screen size and set man page column size (It's only work under linux)
+//Get screen size and set man page column size (It's only work under man above 1.5)
 $width = 132;  //default for 1024 * 768
 
 if (isset($screen) && $screen < 1024) {
@@ -103,16 +103,16 @@ for ( $i = 0; $i < $count; $i ++ ) {
 		"/".chr(6)."/",  //reverse '<'
 		"/".chr(7)."/",  //reverse '>'
 		//removed duplicated html tag
-		"/<\/u><u>/",
-		"/<u>_<\/u><b>/",
-		"/<\/b><b>/",
-		//transfer related command to hyperlinks, but $b->func(#) will not be translate.		
-		"/<.>([a-z_\-\.]+)<\/.>\((\d)\)/", //'<?>command</?>(#)' => ' command(#)'
-		"/<.>([a-z_\-\.]+)\((\d)\)<\/.>/", //'<?>command(#)</?>' => ' command(#)'
+		"/<\/u><u>/",       // '<\/u><u>' => ''
+		"/<u>_<\/u><b>/",   // '<u>_<\/u><b>' => '<b>_'
+		"/<\/b><b>/",       // '<\/b><b>' => ''
+		//transfer related command to hyperlinks, but $b->func(#) will not be translate.
+		"/<.>([a-z_\-\.]+)<\/.>\((\d)\)/", //'<b>command</b>(#)' => ' command(#)'
+		"/<.>([a-z_\-\.]+)\((\d)\)<\/.>/", //'<b>command(#)</b>' => ' command(#)'
 		"/\s([a-z_\-\.]+)\((\d)\)/",       //' command(#)' => hyperlink to command(#)
 		//translate link to related perl modules, but $obj->Module::Name will not be translate
-		"/<.>(\w+(::\w+)+)<\/.>/", //'<?>Module::Name</?>' => ' Module::Name'
-		"/\s(\w+(::\w+)+)/"              //' Module::Name'  => hyperlink to Module::Name		
+		"/<.>(\w+(::\w+)+)<\/.>/", //'<u>Module::Name</u>' => ' Module::Name'
+		"/\s(\w+(::\w+)+)/"        //' Module::Name'  => hyperlink to Module::Name
 		);
 
 	$replace = array(
@@ -141,8 +141,8 @@ for ( $i = 0; $i < $count; $i ++ ) {
 }
 
 //show footer
-echo "</pre>	
-	<hr />	
+echo "</pre>
+	<hr />
 	<!--
 	<a href=\"http://validator.w3.org/check/referer\">
 	<img style=\"border:0;width:88px;height:31px\"
