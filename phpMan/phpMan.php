@@ -238,21 +238,21 @@ function showFooter ($validator = "") {
 //get specified command's man page and convert to html format
 function getManPage ($parm) {
     global $MAN_WIDTH;
-    exec("MANWIDTH=$MAN_WIDTH man $parm", $lines);
+    exec("MANWIDTH=$MAN_WIDTH man ".escapeshellarg($parm), $lines);
     $output = formatManPerldoc($lines, "man");
     return $output;
 }
 
 //get specified perl module's man page and convert to html format
 function getPerldocPage ($parm) {
-    exec("perldoc $parm", $lines);
+    exec("perldoc ".escapeshellarg($parm), $lines);
     $output = formatManPerlDoc($lines, "perldoc");
     return $output;
 }
 
 //get specified command's info page
 function getInfoPage ($parm) {
-    exec("info $parm", $lines);
+    exec("info ".escapeshellarg($parm), $lines);
     $output = formatManPerlDoc($lines, "info");
     return $output;
 }
@@ -762,5 +762,3 @@ Public License instead of this License.
 
 */
 ?>
-
-
