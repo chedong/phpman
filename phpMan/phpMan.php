@@ -21,33 +21,33 @@
 // $Id$
 
 /**
-* phpMan is a web interface of Unix command 'man', 'perldoc', 'info' and 'apropos'.
-* This script makes it easier to read man pages which is lengthy and require you
-* to use 'more' or 'pg' filters. Just try it if you feel hard to remember the command
-* for page back or need to dump man page into text/html format.
-* Tested on GNU/Linux and FreeBSD with PHP 4.2 above.
-*
-* You can also find other web interface:
-*   shell-sed-awk based script at:
-*     http://www.softlab.ntua.gr/~christia/man-cgi.html
-*   perl based script at:
-*     http://www.freebsd.org/cgi/man.cgi
-*     http://www.freebsd.org/cgi/man.cgi/source
-*
-* Sub function list:
-*     showHeader ( $css_style )             //show html header with css style
-*     showForm ($parm, $check)              //show input form and recursive call
-*     showFooter ( $validate )              //show html footer
-*     getManPage ($parm, $docType)          //get html format man page
-*     getInfoPage ($parm)                   //get html format info page
-*     getPerldocPage ($parm)                //get html format perldoc page
-*     getSearchPage ($parm)                 //get html format apropos page
-*     getManIndex ()                        //get man page index
-*     getPerldocIndex ()                    //get perldoc page index
-*     getInfoIndex ()                       //get info page index
-*     formatManPerldoc ($lines)             //formate man, perldoc and info output
-*
-*/
+ * phpMan is a web interface of Unix command 'man', 'perldoc', 'info' and 'apropos'.
+ * This script makes it easier to read man pages which is lengthy and require you
+ * to use 'more' or 'pg' filters. Just try it if you feel hard to remember the command
+ * for page back or need to dump man page into text/html format.
+ * Tested on GNU/Linux and FreeBSD with PHP 4.2 above.
+ *
+ * You can also find other web interface:
+ *   shell-sed-awk based script at:
+ *     http://www.softlab.ntua.gr/~christia/man-cgi.html
+ *   perl based script at:
+ *     http://www.freebsd.org/cgi/man.cgi
+ *     http://www.freebsd.org/cgi/man.cgi/source
+ *
+ * Sub function list:
+ *     showHeader ( $css_style )             //show html header with css style
+ *     showForm ($parm, $check)              //show input form and recursive call
+ *     showFooter ( $validate )              //show html footer
+ *     getManPage ($parm, $docType)          //get html format man page
+ *     getInfoPage ($parm)                   //get html format info page
+ *     getPerldocPage ($parm)                //get html format perldoc page
+ *     getSearchPage ($parm)                 //get html format apropos page
+ *     getManIndex ()                        //get man page index
+ *     getPerldocIndex ()                    //get perldoc page index
+ *     getInfoIndex ()                       //get info page index
+ *     formatManPerldoc ($lines)             //formate man, perldoc and info output
+ *
+ */
 
 // +--------------------------------------------------------------------------------+
 // | global configures: output html style and whether show xhtml validators         |
@@ -122,54 +122,58 @@ else {
 }
 
 /*
-* option checker and get manual page content, if no parameter: get index tree
-* phpMan -- man     -- man page index: section list
-*        |          \- man page by section: command list(by search)
-*        |           \ man page: specified command
-*        \- perldoc -- command list: (by search)
-*        |          \- perldoc page: specified module
-*        \- info    -- info page index: list
-*        |          \- info page:
-*        \- search  -- apropos search results: man page entrance list
-*/
+ * option checker and get manual page content, if no parameter: get index tree
+ * phpMan -- man     -- man page index: section list
+ *        |          \- man page by section: command list(via search)
+ *        |          \- man page: specified command
+ *        \- perldoc -- command list: (by search)
+ *        |          \- perldoc page: specified module
+ *        \- info    -- info page index: list
+ *        |          \- info page:
+ *        \- search  -- apropos search results: man page entrance list
+ */
 switch ( $docType ) {
-case "man":
+    case "man":
         $check[man] = " checked=\"checked\"";
-    //show man pages
-    if ( $parm != "" ){
-        $content = getManPage($parm);
-    }
-    //redirect to search sections
-    else {
-        $content = getManIndex();
-    }
-    break;
-case "perldoc":
-    $check[perldoc] = " checked=\"checked\"";
-    if ( $parm != "" ) {
-        //exec("perldoc $parm", $lines);
-        $content = getPerldocPage($parm);
-    }
-    else {
-        //show all possable perl entrance by search keywords: 'perl'
-        $content = getPerldocIndex();
-    }
-    break;
-case "info":
-    $check[info] = " checked=\"checked\"";
-    if ( $parm != "" ){
-        $content = getInfoPage($parm);
-    }
-    else {
-        $content = getInfoIndex();
-    }
-    break;
-case "search":
-    $check[search] = " checked=\"checked\"";
-    if ( $parm != "" ){
-        $content = getSearchPage($parm);
-    }
-    break;
+        //show man pages
+        if ( $parm != "" ) {
+            $content = getManPage($parm);
+            //not find command then redirect to search sections
+            if (trim($content) == "") {
+                $content = getSearchPage($parm);
+            }
+        }
+        //redirect to search sections
+        else {
+            $content = getManIndex();
+        }
+        break;
+    case "perldoc":
+        $check[perldoc] = " checked=\"checked\"";
+        if ( $parm != "" ) {
+            //exec("perldoc $parm", $lines);
+            $content = getPerldocPage($parm);
+        }
+        else {
+            //show all possable perl entrance by search keywords: 'perl'
+            $content = getPerldocIndex();
+        }
+        break;
+    case "info":
+        $check[info] = " checked=\"checked\"";
+        if ( $parm != "" ) {
+            $content = getInfoPage($parm);
+        }
+        else {
+            $content = getInfoIndex();
+        }
+        break;
+    case "search":
+        $check[search] = " checked=\"checked\"";
+        if ( $parm != "" ) {
+            $content = getSearchPage($parm);
+        }
+        break;
 }
 
 // +--------------------------------------------------------------------------------+
@@ -254,10 +258,10 @@ function getInfoPage ($parm) {
 }
 
 /*
-* search specified keyword by apropos and convert output link to man pages
-* Note: on linux, rebuild whatis database under root with:
-* /usr/sbin/makewhatis -w
-*/
+ * search specified keyword by apropos and convert output link to man pages
+ * Note: on linux, rebuild whatis database under root with:
+ * /usr/sbin/makewhatis -w
+ */
 function getSearchPage ($parm) {
     $patterns = array(
                     "/&/",  //html special char: '&' => '&gt;';
@@ -275,8 +279,12 @@ function getSearchPage ($parm) {
                    "\\1\\2\\4<a href=\"?docType=man&amp;parm=\\7%20\\5\">\\5</a>\\6(\\7)",
                    "<a href=\"?docType=man&amp;parm=\\4%20\\1\">\\1</a>\\2\\3"
                );
-    $cmd = "apropos ".$parm;
-    //echo $cmd;
+    // get last parameter of search string
+    // example: "1 GCC" ==> "GCC"
+    $parm = array_pop(split(" ",$parm));
+    
+    $cmd = "apropos \"$parm\"";
+    
     exec($cmd, $lines);
     $output = "";
     $count = count($lines);
@@ -350,8 +358,8 @@ function formatManPerldoc ( $lines, $docType = "man") {
                     "/</",  //html special char: '>' => chr(6) => '&lt;';
                     "/>/",  //html special char: '<' => chr(7) => '&gt;';
                     //man page special chars
-                    "/.".chr(8).".".chr(8)."(.)".chr(8)."./",    // ?^H?^H?^H? => <b>?</b>
-                    "/_".chr(8)."(.)".chr(8)."./",    // _^H?^H? => <b>?</b>
+                    "/.".chr(8).".".chr(8)."(.)".chr(8)."./",	// ?^H?^H?^H? => <b>?</b>
+                    "/_".chr(8)."(.)".chr(8)."./",	// _^H?^H? => <b>?</b>
                     "/_".chr(8)."(.)/",  //_^H? => <u>?</u>
                     "/.".chr(8)."(.)/",  //?^H? => <b>?</b>
                     //reverse html special chars
@@ -370,7 +378,8 @@ function formatManPerldoc ( $lines, $docType = "man") {
                     //translate link to related perl modules, but $obj->Module::Name-> will not be translate
                     //'<u>Module::Name</u>' => ' Module::Name'
                     "/((<.>)|([\s,]))(\w+(::\w+)+)(<\/.>)?/",
-                    "/(([\w\-\.]+)@([\w\-]+)(\.[\w\-]+)+)/" //link to email
+                    "/(([\w\-\.]+)@([\w\-]+)(\.[\w\-]+)+)/",  //link to email
+                    "/([\w]+:\/\/[\w-?&;#~=\.\/\@]+[\w\/])/i" //link to url
                 );
 
     $replace = array(
@@ -390,7 +399,8 @@ function formatManPerldoc ( $lines, $docType = "man") {
                    "\\3\\4(\\7)\\9",
                    "\\1<a href=\"?docType=man&amp;parm=\\3%20\\2\">\\2(\\3)</a>",
                    "\\3<a href=\"?docType=$docType&amp;parm=\\4\">\\4</a>",
-                   "<a href=\"mailto:\\1\">\\1</a>"
+                   "<a href=\"mailto:\\1\">\\1</a>",
+                   "<a href=\"\\1\" target=\"_blank\">\\1</a>"
                );
     $output = "";
     $count = count($lines);
@@ -407,15 +417,15 @@ function formatManPerldoc ( $lines, $docType = "man") {
 // +--------------------------------------------------------------------------------+
 
 /*
-            GNU GENERAL PUBLIC LICENSE
-               Version 2, June 1991
+		    GNU GENERAL PUBLIC LICENSE
+		       Version 2, June 1991
 
-Copyright (C) 1989, 1991 Free Software Foundation, Inc.
+ Copyright (C) 1989, 1991 Free Software Foundation, Inc.
                        59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-Everyone is permitted to copy and distribute verbatim copies
-of this license document, but changing it is not allowed.
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
 
-                Preamble
+			    Preamble
 
   The licenses for most software are designed to take away your
 freedom to share and change it.  By contrast, the GNU General Public
@@ -464,8 +474,8 @@ patent must be licensed for everyone's free use or not licensed at all.
 
   The precise terms and conditions for copying, distribution and
 modification follow.
-
-            GNU GENERAL PUBLIC LICENSE
+
+		    GNU GENERAL PUBLIC LICENSE
    TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
 
   0. This License applies to any program or other work which contains
@@ -519,7 +529,7 @@ above, provided that you also meet all of these conditions:
     License.  (Exception: if the Program itself is interactive but
     does not normally print such an announcement, your work based on
     the Program is not required to print an announcement.)
-
+
 These requirements apply to the modified work as a whole.  If
 identifiable sections of that work are not derived from the Program,
 and can be reasonably considered independent and separate works in
@@ -577,7 +587,7 @@ access to copy from a designated place, then offering equivalent
 access to copy the source code from the same place counts as
 distribution of the source code, even though third parties are not
 compelled to copy the source along with the object code.
-
+
   4. You may not copy, modify, sublicense, or distribute the Program
 except as expressly provided under this License.  Any attempt
 otherwise to copy, modify, sublicense or distribute the Program is
@@ -634,7 +644,7 @@ impose that choice.
 
 This section is intended to make thoroughly clear what is believed to
 be a consequence of the rest of this License.
-
+
   8. If the distribution and/or use of the Program is restricted in
 certain countries either by patents or by copyrighted interfaces, the
 original copyright holder who places the Program under this License
@@ -664,7 +674,7 @@ make exceptions for this.  Our decision will be guided by the two goals
 of preserving the free status of all derivatives of our free software and
 of promoting the sharing and reuse of software generally.
 
-                NO WARRANTY
+			    NO WARRANTY
 
   11. BECAUSE THE PROGRAM IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
 FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW.  EXCEPT WHEN
@@ -686,9 +696,9 @@ YOU OR THIRD PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER
 PROGRAMS), EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGES.
 
-             END OF TERMS AND CONDITIONS
-
-        How to Apply These Terms to Your New Programs
+		     END OF TERMS AND CONDITIONS
+
+	    How to Apply These Terms to Your New Programs
 
   If you develop a new program, and you want it to be of the greatest
 possible use to the public, the best way to achieve this is to make it
