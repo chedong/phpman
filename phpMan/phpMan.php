@@ -1,6 +1,6 @@
 <?php
 // +--------------------------------------------------------------------------------+
-// | phpMan:      Unix Manual / Perldoc / Info Web Interface                        |
+// | phpMan:      Unix Man page / Perldoc / Info page Web Interface                 |
 // +--------------------------------------------------------------------------------+
 // | Copyright (C) 2002 Che, Dong chedong@bigfoot.com                               |
 // +--------------------------------------------------------------------------------+
@@ -52,7 +52,7 @@ if ( $show == "source" ) {
 }
 
 //global title
-$PHP_MAN_TITLE = "phpMan: Unix Manual / Perldoc / Info Web Interface";
+$PHP_MAN_TITLE = "phpMan: Unix Man page/ Perldoc / Info page Web Interface";
 //set MANWIDTH for man1.5+, default for 1024 * 768
 $MAN_WIDTH = 132;
 //use colored man page
@@ -171,7 +171,7 @@ function showHeader ( $show_style = 1 ) {
 
 //promter and recursive call
 function showForm ($parm, $check) {
-    echo "<form action=\"$PHP_SELF\" method=\"get\">".
+    echo "<form action=\"\" method=\"get\">".
     "<p>Command: ".
     "<input type=\"text\" size=\"20\" name=\"parm\" value=\"".stripslashes($parm)."\"/>".
     "<input type=\"radio\" name=\"docType\" value=\"man\"$check[man]/>".
@@ -198,7 +198,7 @@ function showFooter ($show_validator = 0) {
         " src=\"http://jigsaw.w3.org/css-validator/images/vcss\"".
         " alt=\"Valid CSS!\" /></a>";
     }
-    echo "<a href=\"$PHP_SELF?show=source\">".
+    echo "<a href=\"?show=source\">".
     "\$Id$".
     "</a></body></html>";
 }
@@ -227,7 +227,7 @@ function getInfoPage ($parm) {
 
 /*
  * search specified keyword by apropos and convert output link to man pages
- * Note: rebuild whatis database under root with:
+ * Note: on linux, rebuild whatis database under root with:
  * /usr/sbin/makewhatis -w
  */
 function getSearchPage ($parm) {
