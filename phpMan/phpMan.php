@@ -41,6 +41,29 @@
  *     formatManPerldoc ($lines)             //formate man, perldoc and info output
  */
 
+
+// +--------------------------------------------------------------------------------+
+// | global configures                                                              |
+// +--------------------------------------------------------------------------------+
+ 
+//app title
+$PHP_MAN_TITLE = "phpMan: Unix Man page/ Perldoc / Info page Web Interface";
+
+//set MANWIDTH for man1.5+, default for 1024 * 768
+$MAN_WIDTH = 132;
+
+//use colored man page
+$SHOW_CSS_STYLE = "<style type=\"text/css\">\n".
+"<!--\n".
+"body {color:#000000;background-color:#EEEEEE}\n".
+"b {color:#996600;background-color:#EEEEEE}\n".
+"u {color:#008000;background-color:#EEEEEE}\n".
+"//-->\n".
+"</style>\n";
+
+//show xhtml 1.0 and css validator
+$SHOW_VALIDATOR = 0;
+
 // +--------------------------------------------------------------------------------+
 // | parameter checking and format page output                                      |
 // +--------------------------------------------------------------------------------+
@@ -50,15 +73,6 @@ if ( $show == "source" ) {
     show_source ($SCRIPT_FILENAME);
     exit;
 }
-
-//global title
-$PHP_MAN_TITLE = "phpMan: Unix Man page/ Perldoc / Info page Web Interface";
-//set MANWIDTH for man1.5+, default for 1024 * 768
-$MAN_WIDTH = 132;
-//use colored man page
-$SHOW_CSS_STYLE = 1;
-//show xhtml 1.0 and css validator
-$SHOW_VALIDATOR = 0;
 
 //default options
 $check[man] = "";
@@ -136,7 +150,7 @@ case "search":
 // +--------------------------------------------------------------------------------+
 // | show output                                                                    |
 // +--------------------------------------------------------------------------------+
-showHeader($SHOW_CSS_STYLE);
+showHeader( $SHOW_CSS_STYLE );
 showForm($parm, $check);
 echo "<hr /><pre>".$content."</pre><hr />";
 showFooter($SHOW_VALIDATOR);
@@ -146,7 +160,7 @@ showFooter($SHOW_VALIDATOR);
 // +--------------------------------------------------------------------------------+
 
 //show html header
-function showHeader ( $show_style = 1 ) {
+function showHeader ( $css_style = "" ) {
     global $PHP_MAN_TITLE;
     echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n".
     "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"".
@@ -155,14 +169,8 @@ function showHeader ( $show_style = 1 ) {
     "<head>\n".
     "<title>$PHP_MAN_TITLE</title>\n".
     "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>\n";
-    if ( $show_style ) {
-        echo "<style type=\"text/css\">\n".
-        "<!--\n".
-        "body {color:#000000;background-color:#EEEEEE}\n".
-        "b {color:#996600;background-color:#EEEEEE}\n".
-        "u {color:#008000;background-color:#EEEEEE}\n".
-        "//-->\n".
-        "</style>\n";
+    if ( $css_style != "" ) {
+        echo $css_style;
     }
     echo "</head>\n<body>\n<b>".
     "<a href=\"http://sourceforge.net/projects/phpunixman/\">$PHP_MAN_TITLE</a>".
