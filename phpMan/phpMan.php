@@ -247,7 +247,8 @@ function showHeader ( $title = "", $css_style = "") {
         "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n".
         "<head>\n".
         "<title>$title</title>\n".
-        "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>\n";
+        "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>\n".
+        "<meta name=\"robots\" content=\"noindex,nofollow\">\n";
 
     echo $css_style;
 
@@ -277,7 +278,7 @@ function showFooter ($validator = "") {
         "\$Id$" .
         "</a><br />On <a href=\"".$_SERVER["SCRIPT_NAME"]."/phpinfo\">" . $_SERVER["SERVER_SOFTWARE"] .
         "</a><br />Under <a href=\"".$_SERVER["SCRIPT_NAME"]."/copyright\">GNU General Public License</a><br />".
-        "<a href=\"http://" . $_SERVER["HTTP_HOST"] . "\">" . date("Y-m-d H:i") . " @". $_SERVER["REMOTE_ADDR"] . " Crawl by " . $_SERVER["HTTP_USER_AGENT"] . "</a>" .
+        "<a href=\"http://" . $_SERVER["HTTP_HOST"] . "\">" . date("Y-m-d H:i") . " @". $_SERVER["REMOTE_ADDR"] . " Crawled by " . $_SERVER["HTTP_USER_AGENT"] . "</a>" .
         "<br />" . $validator . "</p>" .
         "</body></html>";
 }
