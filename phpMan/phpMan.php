@@ -112,7 +112,7 @@ if ( $parm != "" ) {
 		//transfer related command to hyperlinks, but $b->func(#) will not be translate.
 		//'<b>command</b>(<b>#</b>)</b>' => ' command(#)'
 		//Man Page Howto: http://www.schweikhardt.net/man_page_howto.html
-		"/((<.>)|\s){1,2}([a-z0-9_\-\.\+]+)(<\/.>)?\((<.>)?([\dnol])(<\/.>)?\)(<\/.>)?/",
+		"/((<.>)|\s){1}([a-z0-9_\-\.\+]+)(<\/.>)?\((<.>)?([\dnol])(<\/.>)?\)(<\/.>)?/",
 		//translate link to related perl modules, but $obj->Module::Name-> will not be translate
 		"/((<.>)|\s){1}(\w+(::\w+)+)(<\/.>)?/", //'<u>Module::Name</u>' => ' Module::Name'
 		);
