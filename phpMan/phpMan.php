@@ -262,23 +262,23 @@ function getSearchPage ($parm) {
 //link to man page list by searching section tag
 function getManIndex () {
     $output .= "<a href=\"?docType=search&amp;parm=(1)\">1 - General Commands</a> ".
-               "<a href=\"?docType=man&amp;parm=1%20intro\">intro(1)</a>"."\n";
+               "<a href=\"?docType=man&amp;parm=1%20intro\">intro(1)</a>\n";
     $output .= "<a href=\"?docType=search&amp;parm=(2)\">2 - System Calls</a> ".
-               "<a href=\"?docType=man&amp;parm=2%20intro\">intro(2)</a>"."\n";
+               "<a href=\"?docType=man&amp;parm=2%20intro\">intro(2)</a>\n";
     $output .= "<a href=\"?docType=search&amp;parm=(3)\">3 - Subroutines</a> ".
-               "<a href=\"?docType=man&amp;parm=3%20intro\">intro(3)</a>"."\n";
+               "<a href=\"?docType=man&amp;parm=3%20intro\">intro(3)</a>\n";
     $output .= "<a href=\"?docType=search&amp;parm=(4)\">4 - Special Files</a> ".
-               "<a href=\"?docType=man&amp;parm=4%20intro\">intro(4)</a>"."\n";
+               "<a href=\"?docType=man&amp;parm=4%20intro\">intro(4)</a>\n";
     $output .= "<a href=\"?docType=search&amp;parm=(5)\">5 - File Formats</a> ".
-               "<a href=\"?docType=man&amp;parm=5%20intro\">intro(5)</a>"."\n";
+               "<a href=\"?docType=man&amp;parm=5%20intro\">intro(5)</a>\n";
     $output .= "<a href=\"?docType=search&amp;parm=(6)\">6 - Games</a> ".
-               "<a href=\"?docType=man&amp;parm=6%20intro\">intro(6)</a>"."\n";
+               "<a href=\"?docType=man&amp;parm=6%20intro\">intro(6)</a>\n";
     $output .= "<a href=\"?docType=search&amp;parm=(7)\">7 - Macros and Conventions</a> ".
-               "<a href=\"?docType=man&amp;parm=7%20intro\">intro(7)</a>"."\n";
+               "<a href=\"?docType=man&amp;parm=7%20intro\">intro(7)</a>\n";
     $output .= "<a href=\"?docType=search&amp;parm=(8)\">8 - Maintenance Commands</a> ".
-               "<a href=\"?docType=man&amp;parm=8%20intro\">intro(8)</a>"."\n";
+               "<a href=\"?docType=man&amp;parm=8%20intro\">intro(8)</a>\n";
     $output .= "<a href=\"?docType=search&amp;parm=(9)\">9 - Kernel Interface</a> ".
-               "<a href=\"?docType=man&amp;parm=9%20intro\">intro(9)</a>"."\n";
+               "<a href=\"?docType=man&amp;parm=9%20intro\">intro(9)</a>\n";
     $output .= "<a href=\"?docType=search&amp;parm=(n)\">n - New Commands</a>\n";
     return $output;
 }
