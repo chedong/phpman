@@ -2,11 +2,12 @@
 // +--------------------------------------------------------------------------------+
 // | phpMan:      Unix Man page / Perldoc / Info page Web Interface                 |
 // +--------------------------------------------------------------------------------+
-// | Copyright(C) 2002 Che, Dong chedong@bigfoot.com                                |
+// | Copyright (C) 2002 Che, Dong chedong@bigfoot.com                               |
 // +--------------------------------------------------------------------------------+
 // | This program is free software; you can redistribute it and/or                  |
 // | modify it under the terms of the GNU General Public License                    |
-// | Version 2 as published by the Free Software Foundation.                        |
+// | the Free Software Foundation; either version 2 of the License, or              |
+// | (at your option) any later version.                                            |
 // |                                                                                |
 // | This program is distributed in the hope that it will be useful,                |
 // | but WITHOUT ANY WARRANTY; without even the implied warranty of                 |
@@ -40,134 +41,6 @@
  *     formatManPerldoc ($lines)             //formate man, perldoc and info output
  */
 
-
-// +--------------------------------------------------------------------------------+
-// | global configures                                                              |
-// +--------------------------------------------------------------------------------+
-
-//app title
-$PHP_MAN_TITLE = "phpMan: Unix Man page/ Perldoc / Info page Web Interface";
-
-//set MANWIDTH for man1.5+, default for 1024 * 768
-$MAN_WIDTH = 132;
-
-//use colored man page
-$CSS_STYLE = "<style type=\"text/css\">\n".
-"<!--\n".
-"body {color:#000000;background-color:#EEEEEE}\n".
-"b {color:#996600;background-color:#EEEEEE}\n".
-"u {color:#008000;background-color:#EEEEEE}\n".
-"//-->\n".
-"</style>\n";
-
-
-//show xhtml 1.0 and css validator
-$VALIDATOR = "";
-/*
-$VALIDATOR = "<a href=\"http://validator.w3.org/check/referer\">".
-"<img style=\"border:0;width:88px;height:31px\"".
-" src=\"http://www.w3.org/Icons/valid-xhtml10\"".
-" alt=\"Valid XHTML 1.0!\" /></a>".
-"<a href=\"http://jigsaw.w3.org/css-validator/\">".
-"<img style=\"border:0;width:88px;height:31px\"".
-" src=\"http://jigsaw.w3.org/css-validator/images/vcss\"".
-" alt=\"Valid CSS!\" /></a>";
-*/
-
-// +--------------------------------------------------------------------------------+
-// | parameter checking and format page output                                      |
-// +--------------------------------------------------------------------------------+
-
-//Show source of file
-if ( $_GET["show"] == "source" ) {
-    show_source($_SERVER["SCRIPT_FILENAME"]);
-    exit;
-}
-
-//default options
-$check[man] = "";
-$check[perldoc] = "";
-$check[info] = "";
-$check[search] = "";
-
-//page content
-$content = "";
-
-//set default doc type to man page
-if ( !isset($_GET["docType"]) || $_GET["docType"] == "" ) {
-    $docType = "man";
-}
-else {
-    $docType = $_GET["docType"];
-}
-
-//remove arbitrary commands
-if ( isset($_GET["parm"]) ) {
-    $parm = escapeshellcmd($_GET["parm"]);
-}
-else {
-    $parm = "";
-}
-
-/*
- * option checker and get manual page content, if no parameter: get index tree
- * phpMan -- man     -- man page index: section list
- *        |          \- man page by section: command list(by search)
- *        |           \ man page: specified command
- *        \- perldoc -- command list: (by search)
- *        |          \- perldoc page: specified module
- *        \- info    -- info page index: list
- *        |          \- info page:
- *        \- search  -- apropos search results: man page entrance list
- */
-switch ( $docType ) {
-case "man":
-        $check[man] = " checked=\"checked\"";
-    //show man pages
-    if ( $parm != "" ){
-        $content = getManPage($parm);
-    }
-    //redirect to search sections
-    else {
-        $content = getManIndex();
-    }
-    break;
-case "perldoc":
-    $check[perldoc] = " checked=\"checked\"";
-    if ( $parm != "" ) {
-        //exec("perldoc $parm", $lines);
-        $content = getPerldocPage($parm);
-    }
-    else {
-        //show all possable perl entrance by search keywords: 'perl'
-        $content = getPerldocIndex();
-    }
-    break;
-case "info":
-    $check[info] = " checked=\"checked\"";
-    if ( $parm != "" ){
-        $content = getInfoPage($parm);
-    }
-    else {
-        $content = getInfoIndex();
-    }
-    break;
-case "search":
-    $check[search] = " checked=\"checked\"";
-    if ( $parm != "" ){
-        $content = getSearchPage($parm);
-    }
-    break;
-}
-
-// +--------------------------------------------------------------------------------+
-// | show output                                                                    |
-// +--------------------------------------------------------------------------------+
-showHeader($PHP_MAN_TITLE, $CSS_STYLE);
-showForm($parm, $check);
-echo "<hr /><pre>".$content."</pre><hr />";
-showFooter($VALIDATOR);
-
 // +--------------------------------------------------------------------------------+
 // | sub functions                                                                  |
 // +--------------------------------------------------------------------------------+
@@ -185,7 +58,7 @@ function showHeader ( $title = "", $css_style = "") {
     echo $css_style;
 
     echo "</head>\n<body>\n<b>".
-    "<a href=\"http://sourceforge.net/projects/phpunixman/\">$title</a>".
+    "<a href=\"https://savannah.gnu.org/projects/phpman/\">$title</a>".
     "</b>\n";
 }
 
@@ -212,7 +85,9 @@ function showFooter ($validator = "") {
 
     echo "<a href=\"?show=source\">".
     "\$Id$".
-    "</a></body></html>";
+    "</a><br /><a href=\"http://www.gnu.org/licenses/gpl.txt\">".
+    "GNU General Public License</a>".
+    "</body></html>";
 }
 
 //get specified command's man page and convert to html format
@@ -384,6 +259,134 @@ function formatManPerldoc ( $lines, $docType = "man") {
     }
     return $output;
 }
+
+
+// +--------------------------------------------------------------------------------+
+// | global configures: output html style and whether show xhtml validators         |
+// +--------------------------------------------------------------------------------+
+
+//app title
+$PHP_MAN_TITLE = "phpMan: Unix Man page/ Perldoc / Info page Web Interface";
+
+//set MANWIDTH for man1.5+, default for 1024 * 768
+$MAN_WIDTH = 132;
+
+//use colored man page
+$CSS_STYLE = "<style type=\"text/css\">\n".
+"<!--\n".
+"body {color:#000000;background-color:#EEEEEE}\n".
+"b {color:#996600;background-color:#EEEEEE}\n".
+"u {color:#008000;background-color:#EEEEEE}\n".
+"//-->\n".
+"</style>\n";
+
+
+//unmask comments to show xhtml 1.0 and css validator
+$VALIDATOR = "";
+/*
+$VALIDATOR = "<a href=\"http://validator.w3.org/check/referer\">".
+"<img style=\"border:0;width:88px;height:31px\"".
+" src=\"http://www.w3.org/Icons/valid-xhtml10\"".
+" alt=\"Valid XHTML 1.0!\" /></a>".
+"<a href=\"http://jigsaw.w3.org/css-validator/\">".
+"<img style=\"border:0;width:88px;height:31px\"".
+" src=\"http://jigsaw.w3.org/css-validator/images/vcss\"".
+" alt=\"Valid CSS!\" /></a>";
+*/
+
+// +--------------------------------------------------------------------------------+
+// | parameter checking and format page output                                      |
+// +--------------------------------------------------------------------------------+
+
+//Show source of file
+if ( $show == "source" ) {
+    show_source($SCRIPT_FILENAME);
+    exit;
+}
+
+//default options
+$check[man] = "";
+$check[perldoc] = "";
+$check[info] = "";
+$check[search] = "";
+
+//page content
+$content = "";
+
+//set default doc type to man page
+if ( !isset($docType) || $docType == "" ) {
+    $docType = "man";
+}
+else {
+    $docType = $docType;
+}
+
+//remove arbitrary commands
+if ( isset($parm) ) {
+    $parm = escapeshellcmd($parm);
+}
+else {
+    $parm = "";
+}
+
+/*
+ * option checker and get manual page content, if no parameter: get index tree
+ * phpMan -- man     -- man page index: section list
+ *        |          \- man page by section: command list(by search)
+ *        |           \ man page: specified command
+ *        \- perldoc -- command list: (by search)
+ *        |          \- perldoc page: specified module
+ *        \- info    -- info page index: list
+ *        |          \- info page:
+ *        \- search  -- apropos search results: man page entrance list
+ */
+switch ( $docType ) {
+case "man":
+        $check[man] = " checked=\"checked\"";
+    //show man pages
+    if ( $parm != "" ){
+        $content = getManPage($parm);
+    }
+    //redirect to search sections
+    else {
+        $content = getManIndex();
+    }
+    break;
+case "perldoc":
+    $check[perldoc] = " checked=\"checked\"";
+    if ( $parm != "" ) {
+        //exec("perldoc $parm", $lines);
+        $content = getPerldocPage($parm);
+    }
+    else {
+        //show all possable perl entrance by search keywords: 'perl'
+        $content = getPerldocIndex();
+    }
+    break;
+case "info":
+    $check[info] = " checked=\"checked\"";
+    if ( $parm != "" ){
+        $content = getInfoPage($parm);
+    }
+    else {
+        $content = getInfoIndex();
+    }
+    break;
+case "search":
+    $check[search] = " checked=\"checked\"";
+    if ( $parm != "" ){
+        $content = getSearchPage($parm);
+    }
+    break;
+}
+
+// +--------------------------------------------------------------------------------+
+// | show output                                                                    |
+// +--------------------------------------------------------------------------------+
+showHeader($PHP_MAN_TITLE, $CSS_STYLE);
+showForm($parm, $check);
+echo "<hr /><pre>".$content."</pre><hr />";
+showFooter($VALIDATOR);
 
 // +--------------------------------------------------------------------------------+
 // | GNU GENERAL PUBLIC LICENSE   Version 2                                         |
