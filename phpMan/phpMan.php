@@ -28,22 +28,22 @@
  * Tested on Linux and FreeBSD under php 4.x above.
  *
  * function list:
- *    showForm ($parm, $check)              //show input form and recursive call
- *    showHeader ( $title )                 //show html header css style
- *    showFooter ( $validate )              //show html footer
- *    getManPage ($parm, $man_width = 128)  //get html format man page
- *    getInfoPage ($parm)                   //get html format info page
- *    getPerldocPage ($parm)                //get html format perldoc page
- *    getSearchPage ($parm)                 //get html format apropos page
- *    getManIndex ()                        //get man page index
- *    getPerldocIndex ()                    //get perldoc page index
- *    getInfoIndex ()                       //get info page index
- *    formatManPerldoc ($lines)             //formate man, perldoc and info output
+ *     showForm ($parm, $check)              //show input form and recursive call
+ *     showHeader ( $title )                 //show html header css style
+ *     showFooter ( $validate )              //show html footer
+ *     getManPage ($parm, $man_width = 128)  //get html format man page
+ *     getInfoPage ($parm)                   //get html format info page
+ *     getPerldocPage ($parm)                //get html format perldoc page
+ *     getSearchPage ($parm)                 //get html format apropos page
+ *     getManIndex ()                        //get man page index
+ *     getPerldocIndex ()                    //get perldoc page index
+ *     getInfoIndex ()                       //get info page index
+ *     formatManPerldoc ($lines)             //formate man, perldoc and info output
  */
- 
+
 // +--------------------------------------------------------------------------------+
 // | parameter checking and format page output                                      |
-// +--------------------------------------------------------------------------------+ 
+// +--------------------------------------------------------------------------------+
 
 //global title
 $PHP_MAN_TITLE = "phpMan: Unix Manual / Perldoc / Info Web Interface";
@@ -73,6 +73,9 @@ else {
 //Get screen size and set man page column size (It's only work under man1.5+)
 if (isset($screen) && $screen != "") {
 	$man_width = intval($screen) / 8;
+}
+else {
+	$man_width = 128; //default for 1024 * 768
 }
 
 /*
@@ -162,7 +165,7 @@ function showHeader ($title) {
 //promter and recursive call
 function showForm ($parm, $check) {
 	echo "<form action=\"$PHP_SELF\" method=\"get\">".
-	"<p>Command:".
+	"<p>Command: ".
 	"<input type=\"text\" size=\"20\" name=\"parm\" value=\"".stripslashes($parm)."\"/>".
 	"<input type=\"radio\" name=\"docType\" value=\"man\"$check[man]/>".
 	"<a href=\"?docType=man\">man</a>".
@@ -172,11 +175,9 @@ function showForm ($parm, $check) {
 	"<a href=\"?docType=info\">info</a>".
 	"<input type=\"radio\" name=\"docType\" value=\"search\"$check[search]/>".
 	"<a href=\"?docType=man&amp;parm=apropos\">search(apropos)</a>".
-	"<script language=\"JavaScript\" type=\"text/javascript\">".
-	"<!--".
+	"<script language=\"JavaScript\" type=\"text/javascript\"><!--".
 	"this.document.write('<input type=\"hidden\" name=\"screen\" value=\"' + screen.width + '\"/>');".
-	"-->".
-	"</script>".
+	"--></script>".
 	"&nbsp;<input type=\"submit\"/></p>".
 	"</form>";
 }
@@ -219,7 +220,11 @@ function getInfoPage ($parm) {
 	return $output;
 }
 
-//search specified keyword by apropos and convert output link to man pages
+/*
+ * search specified keyword by apropos and convert output link to man pages
+ * Note: rebuild whatis database under root with:
+ * /usr/sbin/makewhatis -w
+ */
 function getSearchPage ($parm) {
 	$patterns = array(
 		"/&/",  //html special char: '&' => '&gt;';
@@ -247,7 +252,6 @@ function getSearchPage ($parm) {
 		$output .= " <br />";
 	}
 	return $output;
-
 }
 
 //link to man page list by searching section tag
