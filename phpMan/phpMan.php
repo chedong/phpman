@@ -106,12 +106,13 @@ for ( $i = 0; $i < $count; $i ++ ) {
 		"/<\/u><u>/",
 		"/<u>_<\/u><b>/",
 		"/<\/b><b>/",
-		//transfer related command to hyperlinks, but $b->func(#) will not be translate.
+		//transfer related command to hyperlinks, but $b->func(#) will not be translate.		
+		"/<.>([a-z_\-\.]+)<\/.>\((\d)\)/", //'<?>command</?>(#)' => ' command(#)'
+		"/<.>([a-z_\-\.]+)\((\d)\)<\/.>/", //'<?>command(#)</?>' => ' command(#)'
 		"/\s([a-z_\-\.]+)\((\d)\)/",       //' command(#)' => hyperlink to command(#)
-		"/<b>([a-z_\-\.]+)<\/b>\((\d)\)/", //'<b>command</b>(#)' => hyperlink to command(#)
-		"/<b>([a-z_\-\.]+)\((\d)\)<\/b>/", //'<b>command(#)</b>' => hyperlink to command(#)
-		//translate link to related perl modules
-		"/\s(\w+(::\w+)+)/"
+		//translate link to related perl modules, but $obj->Module::Name will not be translate
+		"/<.>(\w+(::\w+)+)<\/.>/", //'<?>Module::Name</?>' => ' Module::Name'
+		"/\s(\w+(::\w+)+)/"              //' Module::Name'  => hyperlink to Module::Name		
 		);
 
 	$replace = array(
@@ -128,9 +129,10 @@ for ( $i = 0; $i < $count; $i ++ ) {
 		"",
 		"<b>_",
 		"",
+		" \\1(\\2)",
+		" \\1(\\2)",
 		" <a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\2 \\1\">\\1(\\2)</a>",
-		"<a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\2 \\1\">\\1(\\2)</a>",
-		"<a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\2 \\1\">\\1(\\2)</a>",
+		" \\1",
 		" <a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\1\">\\1</a>"
 		);
 
