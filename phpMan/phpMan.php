@@ -112,7 +112,7 @@ case "perldoc":
         $content = getPerldocPage($parm);
     }
     else {
-        //show all possable perl entrance by search keywords: 'pm' 'perl'
+        //show all possable perl entrance by search keywords: 'perl'
         $content = getPerldocIndex();
     }
     break;
@@ -148,42 +148,42 @@ showFooter($SHOW_VALIDATOR);
 //show html header
 function showHeader ( $show_style = 1 ) {
     global $PHP_MAN_TITLE;
-    echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>".
+    echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n".
     "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"".
-    " \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
-    "<html xmlns=\"http://www.w3.org/1999/xhtml\">".
-    "<head>".
-    "<title>$PHP_MAN_TITLE</title>".
-    "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>";
+    " \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n".
+    "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n".
+    "<head>\n".
+    "<title>$PHP_MAN_TITLE</title>\n".
+    "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>\n";
     if ( $show_style ) {
-        echo "<style type=\"text/css\">".
-        "<!--".
-        "body {color:#000000;background-color:#EEEEEE} ".
-        "b {color:#996600;background-color:#EEEEEE} ".
-        "u {color:#008000;background-color:#EEEEEE} ".
-        "//-->".
-        "</style>";
+        echo "<style type=\"text/css\">\n".
+        "<!--\n".
+        "body {color:#000000;background-color:#EEEEEE}\n".
+        "b {color:#996600;background-color:#EEEEEE}\n".
+        "u {color:#008000;background-color:#EEEEEE}\n".
+        "//-->\n".
+        "</style>\n";
     }
-    echo "</head><body><b>".
+    echo "</head>\n<body>\n<b>".
     "<a href=\"http://sourceforge.net/projects/phpunixman/\">$PHP_MAN_TITLE</a>".
-    "</b>";
+    "</b>\n";
 }
 
 //promter and recursive call
 function showForm ($parm, $check) {
-    echo "<form action=\"\" method=\"get\">".
+    echo "<form action=\"\" method=\"get\">\n".
     "<p>Command: ".
-    "<input type=\"text\" size=\"20\" name=\"parm\" value=\"".stripslashes($parm)."\"/>".
+    "<input type=\"text\" size=\"20\" name=\"parm\" value=\"".stripslashes($parm)."\"/>\n".
     "<input type=\"radio\" name=\"docType\" value=\"man\"$check[man]/>".
-    "<a href=\"?docType=man\">man</a>".
+    "<a href=\"?docType=man\">man</a>\n".
     "<input type=\"radio\" name=\"docType\" value=\"perldoc\"$check[perldoc]/>".
-    "<a href=\"?docType=search&amp;parm=perl\">perldoc</a>".
+    "<a href=\"?docType=search&amp;parm=perl\">perldoc</a>\n".
     "<input type=\"radio\" name=\"docType\" value=\"info\"$check[info]/>".
-    "<a href=\"?docType=info\">info</a>".
+    "<a href=\"?docType=info\">info</a>\n".
     "<input type=\"radio\" name=\"docType\" value=\"search\"$check[search]/>".
-    "<a href=\"?docType=man&amp;parm=apropos\">search(apropos)</a>".
+    "<a href=\"?docType=man&amp;parm=apropos\">search(apropos)</a>\n".
     "&nbsp;<input type=\"submit\"/></p>".
-    "</form>";
+    "</form>\n";
 }
 
 //show footer
@@ -254,7 +254,7 @@ function getSearchPage ($parm) {
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
         $output .= preg_replace($patterns, $replace, $lines[$i]);
-        $output .= " <br />";
+        $output .= "\n";
     }
     return $output;
 }
@@ -262,24 +262,24 @@ function getSearchPage ($parm) {
 //link to man page list by searching section tag
 function getManIndex () {
     $output .= "<a href=\"?docType=search&amp;parm=(1)\">1 - General Commands</a> ".
-               "<a href=\"?docType=man&amp;parm=1%20intro\">intro(1)</a>"."<br />";
+               "<a href=\"?docType=man&amp;parm=1%20intro\">intro(1)</a>"."\n";
     $output .= "<a href=\"?docType=search&amp;parm=(2)\">2 - System Calls</a> ".
-               "<a href=\"?docType=man&amp;parm=2%20intro\">intro(2)</a>"."<br />";
+               "<a href=\"?docType=man&amp;parm=2%20intro\">intro(2)</a>"."\n";
     $output .= "<a href=\"?docType=search&amp;parm=(3)\">3 - Subroutines</a> ".
-               "<a href=\"?docType=man&amp;parm=3%20intro\">intro(3)</a>"."<br />";
+               "<a href=\"?docType=man&amp;parm=3%20intro\">intro(3)</a>"."\n";
     $output .= "<a href=\"?docType=search&amp;parm=(4)\">4 - Special Files</a> ".
-               "<a href=\"?docType=man&amp;parm=4%20intro\">intro(4)</a>"."<br />";
+               "<a href=\"?docType=man&amp;parm=4%20intro\">intro(4)</a>"."\n";
     $output .= "<a href=\"?docType=search&amp;parm=(5)\">5 - File Formats</a> ".
-               "<a href=\"?docType=man&amp;parm=5%20intro\">intro(5)</a>"."<br />";
+               "<a href=\"?docType=man&amp;parm=5%20intro\">intro(5)</a>"."\n";
     $output .= "<a href=\"?docType=search&amp;parm=(6)\">6 - Games</a> ".
-               "<a href=\"?docType=man&amp;parm=6%20intro\">intro(6)</a>"."<br />";
+               "<a href=\"?docType=man&amp;parm=6%20intro\">intro(6)</a>"."\n";
     $output .= "<a href=\"?docType=search&amp;parm=(7)\">7 - Macros and Conventions</a> ".
-               "<a href=\"?docType=man&amp;parm=7%20intro\">intro(7)</a>"."<br />";
+               "<a href=\"?docType=man&amp;parm=7%20intro\">intro(7)</a>"."\n";
     $output .= "<a href=\"?docType=search&amp;parm=(8)\">8 - Maintenance Commands</a> ".
-               "<a href=\"?docType=man&amp;parm=8%20intro\">intro(8)</a>"."<br />";
+               "<a href=\"?docType=man&amp;parm=8%20intro\">intro(8)</a>"."\n";
     $output .= "<a href=\"?docType=search&amp;parm=(9)\">9 - Kernel Interface</a> ".
-               "<a href=\"?docType=man&amp;parm=9%20intro\">intro(9)</a>"."<br />";
-    $output .= "<a href=\"?docType=search&amp;parm=(n)\">n - New Commands</a><br />";
+               "<a href=\"?docType=man&amp;parm=9%20intro\">intro(9)</a>"."\n";
+    $output .= "<a href=\"?docType=search&amp;parm=(n)\">n - New Commands</a>\n";
     return $output;
 }
 
@@ -310,7 +310,7 @@ function getInfoIndex () {
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
         $output .= preg_replace($patterns, $replace, $lines[$i]);
-        $output .= " <br />";
+        $output .= " \n";
     }
     return $output;
 }
@@ -368,7 +368,7 @@ function formatManPerldoc ( $lines, $docType = "man") {
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
         $output .= preg_replace($patterns, $replace, $lines[$i]);
-        $output .= " <br />";
+        $output .= "\n";
     }
     return $output;
 }
