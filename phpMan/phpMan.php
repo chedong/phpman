@@ -45,12 +45,18 @@
 // | parameter checking and format page output                                      |
 // +--------------------------------------------------------------------------------+
 
+//Show source of file
+if ( $show == "source" ) {
+	show_source ($SCRIPT_FILENAME);
+	exit;
+}
+
 //global title
 $PHP_MAN_TITLE = "phpMan: Unix Manual / Perldoc / Info Web Interface";
 //set MANWIDTH for man1.5+, default for 1024 * 768
 $MAN_WIDTH = 132;
 //use colored man page
-$SHOW_CSS_STYLE = 1; 
+$SHOW_CSS_STYLE = 1;
 //show xhtml 1.0 and css validator
 $SHOW_VALIDATOR = 0;
 
@@ -151,14 +157,14 @@ function showHeader ( $show_style = 1 ) {
 		"<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>";
 	if ( $show_style ) {
 		echo "<style type=\"text/css\">".
-		"<!--".
-		"body {color:#000000;background-color:#EEEEEE} ".
-		"b {color:#996600;background-color:#EEEEEE} ".
-		"u {color:#008000;background-color:#EEEEEE} ".
-		"//-->".
-		"</style>";
+			"<!--".
+			"body {color:#000000;background-color:#EEEEEE} ".
+			"b {color:#996600;background-color:#EEEEEE} ".
+			"u {color:#008000;background-color:#EEEEEE} ".
+			"//-->".
+			"</style>";
 	}
-	echo "</head><body><b>$PHP_MAN_TITLE</b>";
+	echo "</head><body><b><a href=\"$PHP_SELF?show=source\">$PHP_MAN_TITLE</a></b>";
 }
 
 //promter and recursive call
