@@ -89,7 +89,7 @@ else {
 	$url = "http://";
 }
 
-echo <<<END
+echo <<<END_OF_HTML
 <?xml version="1.0" encoding="ISO-8859-1"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 
@@ -150,11 +150,14 @@ some sites rank:<br />
  <a href="?url=http://www.google.com"> http://www.google.com</a><br />
  <a href="?url=http://www.yahoo.com"> http://www.yahoo.com</a><br />
  <a href="?url=http://www.w3c.org">http://www.w3c.org</a><br />
+ <a href="?url=http://www.chedong.com">http://www.chedong.com</a><br />
 </p>
 <a href="?show=source">\$Id$</a>
+<br />
+<a href="http://hop.clickbank.net/?chedong/gseoguide">Boost your Google rankings, get more orders and make more $$$! Download your copy of "Google Ranking Secrets Revealed!" by clicking here!</a>
 </body>
 </html>
-END;
+END_OF_HTML;
 
 /*
  * get score from msn
@@ -206,8 +209,8 @@ function getFast ( $url ) {
         fputs ($fp, "GET /search?cat=web&lang=any&query=link.all%3A$url HTTP/1.1\nAccept: */*\nHost: www.alltheweb.com\nUser-Agent: Mozilla/4.0 (compatible; MSIE 5.0; Windows 98; DigExt)\n\n");
         while (!feof($fp)) {
         	$line = fgets ($fp,4096);
-        	//DEBUG echo $line;
-        	if ( preg_match("/<b>([\d,]+)<\/b> web pages found/",$line,$matches) ) {
+        	//DEBUG echo $line;        	
+        	if ( preg_match("/<.*>([\d,]+)<\/.*> web pages found/",$line,$matches) ) {
         		$score = intval( str_replace(",", "", $matches[1]) );
         		//DEBUG echo "fast=$score\n";
         		return $score;
