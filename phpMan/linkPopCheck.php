@@ -37,6 +37,8 @@ if ( $show == "source" ) {
     exit;
 }
 
+$url = $_GET["url"];
+
 if ( $url ) {
 	//if url not start with 'http://'
 	if ( !preg_match("/^http:\/\//", $url) ) {
@@ -47,9 +49,11 @@ if ( $url ) {
 	$url_no_http = preg_replace("/^http:\/\//", "", $url); //removed "http://"
 	$url_no_http = urlencode($url_no_http);
 
-	$score_nl = getNl( $url_encoded );
+	//$score_nl = getNl( $url_encoded );
+	$score_nl = 0;        
 	$score_fast = getFast( $url_no_http );
-	$score_msn = getMsn( $url_encoded );
+	//$score_msn = getMsn( $url_encoded );
+	$score_msn = 0;
 	//DEBUG echo "get score: $score_nl \t $score_msn \t $score_fast\n ";
 
 	$msn_orig = "";
@@ -82,7 +86,7 @@ if ( $url ) {
 
 
 	$score = $score_nl  + $score_fast  + $score_msn;
-	$avg = intval( $score / 3 ) ;
+	$avg = intval( $score ) ;
 
 }
 else {
@@ -92,16 +96,12 @@ else {
 echo <<<END_OF_HTML
 <?xml version="1.0" encoding="ISO-8859-1"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-
 <html xmlns="http://www.w3.org/1999/xhtml">
-
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1"/>
 <title>Link Popularity Checker</title>
 </head>
-
 <body>
-
 <form method="get" action="">
 <p>
 <input type="text" name="url" size="50" value="$url"/>
@@ -116,6 +116,7 @@ popularity?</a>
 <td>Search engine</td>
 <td>Score</td>		
 </tr>
+<!--
 <tr>
 <td><a href="http://www.northernlight.com/">Northern Light</a></td>
 <td>
@@ -128,6 +129,7 @@ popularity?</a>
 <a href="http://search.msn.com/results.asp?q=$url&amp;FORM=SMCA&amp;cfg=SMCINK&amp;v=1&amp;ba=0&amp;f=lnk&amp;sort=&amp;rgn=&amp;lng=&amp;dom=&amp;depth=&amp;d0=&amp;d1=&amp;cf=">$score_msn $msn_orig</a>
 </td>
 </tr>
+-->
 <tr>
 <td><a href="http://alltheweb.com/">Alltheweb</a>(powered by <a href="http://www.fastsearch.com/">Fast</a>)</td>		
 <td>
@@ -148,13 +150,11 @@ redirection:<br />
  <a href="?url=http://chedong.yeah.net"> http://chedong.yeah.net</a><br />
 some sites rank:<br />  
  <a href="?url=http://www.google.com"> http://www.google.com</a><br />
- <a href="?url=http://www.yahoo.com"> http://www.yahoo.com</a><br />
  <a href="?url=http://www.w3c.org">http://www.w3c.org</a><br />
  <a href="?url=http://www.chedong.com">http://www.chedong.com</a><br />
 </p>
 <a href="?show=source">\$Id$</a>
 <br />
-<a href="http://hop.clickbank.net/?chedong/gseoguide">Boost your Google rankings, get more orders and make more $$$! Download your copy of "Google Ranking Secrets Revealed!" by clicking here!</a>
 </body>
 </html>
 END_OF_HTML;
