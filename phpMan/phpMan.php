@@ -54,15 +54,11 @@ if ($docType == "perldoc") {
 	$check_perldoc = " checked=\"checked\"";
 	$check_info = "";
 	if ( $parm != "" ){
-		exec("MANWIDTH=$width perldoc $parm", $lines);
+		exec("perldoc $parm", $lines);
 	}
-	else {
-		$perl_mod_list = "'use ExtUtils::Installed;
-			my (\$inst) = ExtUtils::Installed->new();
-			my (@modules) = \$inst->modules();
-			print join(\"\\n\",@modules),\"\\n\"'";
-		//debug echo $perl_mod_list;
-		exec("perl -e $perl_mod_list",$lines);
+	else {		
+		//show all possable perl entrance
+		exec("man -k perl pm",$lines);
 	}
 }
 else if ($docType == "info") {
@@ -84,7 +80,8 @@ else if ($docType == "man"){
 		exec("MANWIDTH=$width man $parm", $lines);
 	}
 	else {
-		exec("info", $lines);
+		//show all possable man page entrance
+		exec("man -k a e i o u", $lines);
 	}
 }
 
@@ -112,11 +109,11 @@ if ( $parm != "" ) {
 		//transfer related command to hyperlinks, but $b->func(#) will not be translate.
 		//'<b>command</b>(<b>#</b>),</b>' => ' command(#)' => link to command
 		//Man Page Howto: http://www.schweikhardt.net/man_page_howto.html
-		"/((<.>){1}|([\s,]){1})([a-z0-9_\-\.\+]+)(<\/.>)?\((<.>)?([\dnol][MXS]?)(<\/.>)?\)(,)?(<\/.>)?/",
-		"/([\s,])([a-z0-9_\-\.\+]+)\(([\dnol][MXS]?)\)/",
+		"/((<.>)|([\s,]))([\w\-\.\+]+)(<\/.>)?\((<.>)?([\dnol]\w*)(<\/.>)?\)(,)?(<\/.>)?/",
+		"/([\s,])([\w\-\.\+]+)\(([\dnol]\w*)\)/",
 		//translate link to related perl modules, but $obj->Module::Name-> will not be translate
 		//'<u>Module::Name</u>' => ' Module::Name'
-		"/((<.>){1}|([\s,]))([a-zA-Z]+(::[a-zA-Z]+)+)(<\/.>)?/", 
+		"/((<.>)|([\s,:]))(\w+(::\w+)+)(<\/.>)?/",
 		);
 
 	$replace = array(
@@ -140,21 +137,21 @@ if ( $parm != "" ) {
 }
 //not specify command(module) name: try to show index
 else {
-	if ( $docType == "man" ) {
+	if ( $docType == "man" || $docType = "perldoc") {
 		$patterns = array(
 			"/&/",  //html special char: '&' => '&gt;';
 			"/</",  //html special char: '>' => '&lt;';
-			"/>/",  //html special char: '<' => '&gt;';
-			"/\(([a-z0-9_\-]+)\)([a-z0-9\+]+)/", //'(group)command' => man page of command;
-			"/\(([a-z0-9_\-]+)\)/"     //'(command)' => man page of command;			
+			"/>/",  //html special char: '<' => '&gt;';			
+			"/(.*\/)?([\w\-\.\+:]+)((\s+\[)([\w\-\.:]+)(\]\s+))\(([\dnol]\w*)\)/", //for linux format
+			"/([\w+\.\-:]+)(\s+)?(\((\d\w*)\))/"     //'(command)' => man page of command;
 			);
 
 		$replace = array(
 			"&amp;",
 			"&lt;",
 			"&gt;",
-			"( \\1 )<a href=\"?docType=$docType&amp;parm=\\2\">\\2</a>",
-			"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)"			
+			"\\1\\2\\4<a href=\"?docType=man&amp;parm=\\7 \\5\">\\5</a>\\6(\\7)",
+			"<a href=\"?docType=man&amp;parm=\\4 \\1\">\\1</a>\\2\\3"
 			);
 	}
 	else if ( $docType == "info" ) {
@@ -173,13 +170,7 @@ else {
 			"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)<a href=\"?docType=$docType&amp;parm=\\2\">\\2</a>",
 			"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)"
 			);
-	}
-	else if ( $docType == "perldoc" ) {
-		//'Module::Name' => perldoc page of module;
-		$patterns = array("/([\w:]+)/");
-
-		$replace = array("<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>");
-	}
+	}	
 }
 
 
