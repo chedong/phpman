@@ -29,75 +29,67 @@
 //global title
 $PHP_MAN_TITLE = "phpMan: Unix Manual / Perldoc Web Interface";
 
-//header
+//show header
 echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>
-<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"
-    \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">
-<html xmlns=\"http://www.w3.org/1999/xhtml\">
-<head>
-<title>$PHP_MAN_TITLE</title>
-<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>
-<style type=\"text/css\">
-<!--
-body {color:#000000;background-color:#EEEEEE}
-b {color:#996600;background-color:#EEEEEE}
-u {color:#008000;background-color:#EEEEEE}
-//-->
-</style>
-</head>
-<body>";
-
-//option checker
-if ($docType == "perldoc") {
-	$check_man = "";
-	$check_perldoc = " checked=\"checked\"";
-}
-else {
-	$check_man = " checked=\"checked\"";
-	$check_perldoc = "";
-}
-
-//promter and recursive call
-echo "<b>$PHP_MAN_TITLE</b>
-<form action=\"$PHP_SELF\">
-<p>Command:
-<input type=\"text\" size=\"20\" name=\"parm\" value=\"$parm\"/>
-<input type=\"radio\" name=\"docType\" value=\"man\"$check_man/>man
-<input type=\"radio\" name=\"docType\" value=\"perldoc\"$check_perldoc/>perldoc
-<script language=\"JavaScript\" type=\"text/javascript\">
-<!--
-this.document.write('<input type=\"hidden\" name=\"screen\" value=\"' + screen.width + '\"/>');
--->
-</script>
-<input type=\"submit\"/></p>
-</form>";
-
-echo "<hr /><br />";
-echo "<pre>";
+	<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"
+	    \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">
+	<html xmlns=\"http://www.w3.org/1999/xhtml\">
+	<head>
+	<title>$PHP_MAN_TITLE</title>
+	<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>
+	<style type=\"text/css\">
+	<!--
+	body {color:#000000;background-color:#EEEEEE}
+	b {color:#996600;background-color:#EEEEEE}
+	u {color:#008000;background-color:#EEEEEE}
+	//-->
+	</style>
+	</head>
+	<body>";
 
 //remove arbitrary commands
 $parm = escapeshellcmd($parm);
 
-/* 
- * Get screen size and set man page column size
- * It's only work under linux
- */
+//Get screen size and set man page column size (It's only work under linux)
 $width = 132;  //default for 1024 * 768
+
 if (isset($screen) && $screen < 1024) {
 	$width = $screen / 8;
 }
 
-//get manual page content
-if ( $docType == "perldoc" )
+//option checker and get manual page content
+if ($docType == "perldoc") {
+	$check_man = "";
+	$check_perldoc = " checked=\"checked\"";
 	exec("MANWIDTH=$width perldoc $parm", $lines);
-else
+}
+else {
+	$check_man = " checked=\"checked\"";
+	$check_perldoc = "";
 	exec("MANWIDTH=$width man $parm", $lines);
-
+}
 $count = count($lines);
+
+//promter and recursive call
+echo "<b>$PHP_MAN_TITLE</b>
+	<form action=\"$PHP_SELF\">
+	<p>Command:
+	<input type=\"text\" size=\"20\" name=\"parm\" value=\"$parm\"/>
+	<input type=\"radio\" name=\"docType\" value=\"man\"$check_man/>man
+	<input type=\"radio\" name=\"docType\" value=\"perldoc\"$check_perldoc/>perldoc
+	<script language=\"JavaScript\" type=\"text/javascript\">
+	<!--
+	this.document.write('<input type=\"hidden\" name=\"screen\" value=\"' + screen.width + '\"/>');
+	-->
+	</script>
+	<input type=\"submit\"/></p>
+	</form>
+	<hr />
+	<pre>";
 
 //highlighting attribute characters
 for ( $i = 1; $i <= $count; $i ++ ) {
-	$patterns = array(		
+	$patterns = array(
 		"/&/",  //html special char: '&' => chr(5) => '&gt;';
 		"/</",  //html special char: '>' => chr(6) => '&lt;';
 		"/>/",  //html special char: '<' => chr(7) => '&gt;';
@@ -113,7 +105,7 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 		//removed duplicated html tag
 		"/<\/u><u>/",
 		"/<u>_<\/u><b>/",
-		"/<\/b><b>/",		
+		"/<\/b><b>/",
 		//transfer related command to hyperlinks, but $b->func(#) will not be translate.
 		"/\s([a-z_\-\.]+)\((\d)\)/",       //' command(#)' => hyperlink to command(#)
 		"/<b>([a-z_\-\.]+)<\/b>\((\d)\)/", //'<b>command</b>(#)' => hyperlink to command(#)
@@ -135,7 +127,7 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 		"&gt;",
 		"",
 		"<b>_",
-		"",		
+		"",
 		" <a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\2 \\1\">\\1(\\2)</a>",
 		"<a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\2 \\1\">\\1(\\2)</a>",
 		"<a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\2 \\1\">\\1(\\2)</a>",
@@ -146,23 +138,22 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 	echo "$lines[$i] <br />";
 }
 
-//footer
+//show footer
 echo "</pre>
-<hr />
-<br />
-<!--
-<a href=\"http://validator.w3.org/check/referer\">
-<img style=\"border:0;width:88px;height:31px\"
-src=\"http://www.w3.org/Icons/valid-xhtml10\"
-alt=\"Valid XHTML 1.0!\" /></a>
-<a href=\"http://jigsaw.w3.org/css-validator/\">
-<img style=\"border:0;width:88px;height:31px\"
-src=\"http://jigsaw.w3.org/css-validator/images/vcss\" 
-alt=\"Valid CSS!\" /></a>
--->
-<a href=\"http://sourceforge.net/projects/phpunixman/\">
-\$Id$
-</a>
-</body>
-</html>";
+	<hr />
+	<!--
+	<a href=\"http://validator.w3.org/check/referer\">
+	<img style=\"border:0;width:88px;height:31px\"
+	src=\"http://www.w3.org/Icons/valid-xhtml10\"
+	alt=\"Valid XHTML 1.0!\" /></a>
+	<a href=\"http://jigsaw.w3.org/css-validator/\">
+	<img style=\"border:0;width:88px;height:31px\"
+	src=\"http://jigsaw.w3.org/css-validator/images/vcss\"
+	alt=\"Valid CSS!\" /></a>
+	-->
+	<a href=\"http://sourceforge.net/projects/phpunixman/\">
+	\$Id$
+	</a>
+	</body>
+	</html>";
 ?>
