@@ -49,6 +49,10 @@
 $PHP_MAN_TITLE = "phpMan: Unix Manual / Perldoc / Info Web Interface";
 //set MANWIDTH for man1.5+, default for 1024 * 768
 $MAN_WIDTH = 132;
+//use colored man page
+$SHOW_CSS_STYLE = 1; 
+//show xhtml 1.0 and css validator
+$SHOW_VALIDATOR = 0;
 
 //default options
 $check[man] = "";
@@ -126,10 +130,10 @@ switch ( $docType ) {
 // +--------------------------------------------------------------------------------+
 // | show output                                                                    |
 // +--------------------------------------------------------------------------------+
-showHeader(1);
+showHeader($SHOW_CSS_STYLE);
 showForm($parm, $check);
 echo "<hr /><pre>".$content."</pre><hr />";
-showFooter(0);
+showFooter($SHOW_VALIDATOR);
 
 // +--------------------------------------------------------------------------------+
 // | sub functions                                                                  |
@@ -175,8 +179,8 @@ function showForm ($parm, $check) {
 }
 
 //show footer
-function showFooter ($show_validate = 0) {
-	if ( $show_validate ) {
+function showFooter ($show_validator = 0) {
+	if ( $show_validator ) {
 		echo "<a href=\"http://validator.w3.org/check/referer\">".
 		"<img style=\"border:0;width:88px;height:31px\" ".
 		"src=\"http://www.w3.org/Icons/valid-xhtml10\" ".
