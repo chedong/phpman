@@ -64,6 +64,11 @@ echo "<b>$PHP_MAN_TITLE</b>
 <input type=\"text\" size=\"20\" name=\"parm\" value=\"$parm\"/>
 <input type=\"radio\" name=\"docType\" value=\"man\"$check_man/>man
 <input type=\"radio\" name=\"docType\" value=\"perldoc\"$check_perldoc/>perldoc
+<script language=\"JavaScript\" type=\"text/javascript\">
+<!--
+this.document.write('<input type=\"hidden\" name=\"screen\" value=\"' + screen.width + '\"/>');
+-->
+</script>
 <input type=\"submit\"/></p>
 </form>";
 
@@ -73,30 +78,50 @@ echo "<pre>";
 //remove arbitrary commands
 $parm = escapeshellcmd($parm);
 
-//get
+/* 
+ * Get screen size and set man page column size
+ * It's only work under linux
+ */
+$width = 132;  //default for 1024 * 768
+if (isset($screen) && $screen < 1024) {
+	$width = $screen / 8;
+}
+
+//get manual page content
 if ( $docType == "perldoc" )
-	exec("perldoc $parm", $lines, $rc);
+	exec("MANWIDTH=$width perldoc $parm", $lines);
 else
-	exec("man $parm", $lines, $rc);
+	exec("MANWIDTH=$width man $parm", $lines);
 
 $count = count($lines);
+
+//highlighting attribute characters
 for ( $i = 1; $i <= $count; $i ++ ) {
-	//highlighting attribute characters
-	$patterns = array(
+	$patterns = array(		
 		"/&/",  //html special char: '&' => chr(5) => '&gt;';
 		"/</",  //html special char: '>' => chr(6) => '&lt;';
 		"/>/",  //html special char: '<' => chr(7) => '&gt;';
+		//man page special chars
 		"/.".chr(8).".".chr(8)."(.)".chr(8)."./",	// ?^H?^H?^H? => <b>?</b>
 		"/_".chr(8)."(.)".chr(8)."./",	// _^H?^H? => <b>?</b>
 		"/_".chr(8)."(.)/",  //_^H? => <u>?</u>
 		"/.".chr(8)."(.)/",  //?^H? => <b>?</b>
+		//reverse html special chars
 		"/".chr(5)."/",  //reverse '&'
 		"/".chr(6)."/",  //reverse '<'
-		"/".chr(7)."/",   //reverse '>'
-		"/<\/u><u>/", //removed duplicated html tag
-		"/<\/b><b>/", //removed duplicated html tag
-		"/\s([a-z_\-\.]+)\((\d)\)/" //transfer related command to hyperlinks
+		"/".chr(7)."/",  //reverse '>'
+		//removed duplicated html tag
+		"/<\/u><u>/",
+		"/<u>_<\/u><b>/",
+		"/<\/b><b>/",		
+		//transfer related command to hyperlinks, but $b->func(#) will not be translate.
+		"/\s([a-z_\-\.]+)\((\d)\)/",       //' command(#)' => hyperlink to command(#)
+		"/<b>([a-z_\-\.]+)<\/b>\((\d)\)/", //'<b>command</b>(#)' => hyperlink to command(#)
+		"/<b>([a-z_\-\.]+)\((\d)\)<\/b>/", //'<b>command(#)</b>' => hyperlink to command(#)
+		//translate link to related perl modules
+		"/(\w+(::\w+)+)/"
 		);
+
 	$replace = array(
 		chr(5),
 		chr(6),
@@ -109,8 +134,12 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 		"&lt;",
 		"&gt;",
 		"",
-		"",
-		" <a href=\"?docType=$docType&amp;parm=\\2 \\1\">\\1(\\2)</a>"
+		"<b>_",
+		"",		
+		" <a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\2 \\1\">\\1(\\2)</a>",
+		"<a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\2 \\1\">\\1(\\2)</a>",
+		"<a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\2 \\1\">\\1(\\2)</a>",
+		"<a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\1\">\\1</a>"
 		);
 
 	$lines[$i] = preg_replace($patterns, $replace, $lines[$i]);
@@ -121,6 +150,16 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 echo "</pre>
 <hr />
 <br />
+<!--
+<a href=\"http://validator.w3.org/check/referer\">
+<img style=\"border:0;width:88px;height:31px\"
+src=\"http://www.w3.org/Icons/valid-xhtml10\"
+alt=\"Valid XHTML 1.0!\" /></a>
+<a href=\"http://jigsaw.w3.org/css-validator/\">
+<img style=\"border:0;width:88px;height:31px\"
+src=\"http://jigsaw.w3.org/css-validator/images/vcss\" 
+alt=\"Valid CSS!\" /></a>
+-->
 <a href=\"http://sourceforge.net/projects/phpunixman/\">
 \$Id$
 </a>
