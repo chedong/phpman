@@ -275,7 +275,7 @@ function showFooter ($validator = "") {
         "\$Id$" .
         "</a><br />On <a href=\"".$_SERVER["SCRIPT_NAME"]."/phpinfo\">" . $_SERVER["SERVER_SOFTWARE"] .
         "</a><br />Under <a href=\"".$_SERVER["SCRIPT_NAME"]."/copyright\">GNU General Public License</a><br />".
-        date("Y-m-d H:i") . " Crawl by " . $_SERVER["HTTP_USER_AGENT"] . " @". $_SERVER["REMOTE_ADDR"] .
+        "<a href=\"http://" . $_SERVER["HTTP_HOST"] . "\">" . date("Y-m-d H:i") . " @". $_SERVER["REMOTE_ADDR"] . " Crawl by " . $_SERVER["HTTP_USER_AGENT"] . "</a>" .
         "<br />" . $validator . "</p>" .
         "</body></html>";
 }
