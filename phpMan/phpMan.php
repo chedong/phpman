@@ -99,7 +99,7 @@ $check[perldoc] = "";
 $check[info] = "";
 $check[search] = "";
 
-/** 
+/**
  * parse parameters from $_SERVER["PATH_INFO"]: phpMan.php/$mode/$parameter/$section
  * or parse parameters from HTTP/GET
  */
@@ -111,11 +111,11 @@ else {
     if ( isset($_GET["mode"]) && trim($_GET["mode"]) != "" ) {
         $mode = trim($_GET["mode"]);
     }
-    
+
     if ( isset($_GET["parameter"]) && trim($_GET["parameter"]) != "" ) {
         $parameter = trim($_GET["parameter"]);
     }
-    
+
     if ($_GET["section"] && trim($_GET["section"]) != "") {
         $section = trim($_GET["section"]);
     }
@@ -124,12 +124,12 @@ else {
 //removed arbitrary commands
 $parameter =escapeshellcmd($parameter);
 $section = escapeshellcmd($section);
-//allow section option only, removed -m 
+//allow section option only, removed -m
 if ( !preg_match("/\w+/", $section) ) {
     $section = "";
 }
 
-if ( $parameter != "" ) {    
+if ( $parameter != "" ) {
     $PHP_MAN_TITLE = "phpMan: ".stripslashes($parameter)."(".$section.")";
 }
 
@@ -141,14 +141,14 @@ if ( $mode == "source" ) {
     exit;
 }
 //show php info
-else if ( $mode == "phpinfo" ) {    
-    phpinfo();    
+else if ( $mode == "phpinfo" ) {
+    phpinfo();
     exit;
 }
 //show GPL
 else if ( $mode == "copyright" ) {
-    showHeader($PHP_MAN_TITLE, $CSS_STYLE);    
-    showCopyright();    
+    showHeader($PHP_MAN_TITLE, $CSS_STYLE);
+    showCopyright();
     echo "</body></html>";
     exit;
 }
@@ -223,6 +223,11 @@ showFooter($VALIDATOR);
 
 //show html header
 function showHeader ( $title = "", $css_style = "") {
+    // always modified now
+    header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
+    // Expires one month later
+    header("Expires: " .gmdate ("D, d M Y H:i:s", time() + 3600 * 24 * 30). " GMT");
+
     echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n".
         "<!mode html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"".
         " \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n".
@@ -314,9 +319,9 @@ function getSearchPage ($parameter) {
     // get last parameter of search string
     // example: "1 GCC" ==> "GCC"
     $parameter = array_pop(split(" ",$parameter));
-    
+
     $cmd = "apropos \"$parameter\"";
-    
+
     exec($cmd, $lines);
     $output = "";
     $count = count($lines);
@@ -348,7 +353,7 @@ function getManIndex () {
     $output .= "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/(9)\">9 - Kernel Interface</a> ".
                "<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/intro/9\">intro(9)</a>\n";
     $output .= "<a href=\"".$_SERVER["SCRIPT_NAME"]."/search/(n)\">n - New Commands</a>\n";
-    
+
     return $output;
 }
 
@@ -411,6 +416,8 @@ function formatManPerldoc ( $lines, $mode = "man") {
                     //translate link to related perl modules, but $obj->Module::Name-> will not be translate
                     //'<u>Module::Name</u>' => ' Module::Name'
                     "/((<.>)|([\s,]))(\w+(::\w+)+)(<\/.>)?/",
+                    "/".chr(27)."\[1m(.*?)".chr(27)."\[0m/",  //for perldoc on RedHat 8 only
+                    "/".chr(27)."\[4m(.*?)".chr(27)."\[24m/", //for perldoc on RedHat 8 only
                     "/(([\w\-\.]+)@([\w\-]+)(\.[\w\-]+)+)/",  //link to email
                     "/([\w]+:\/\/[\w-?&;#~=\.\/\@]+[\w\/])/i" //link to url
                 );
@@ -432,6 +439,8 @@ function formatManPerldoc ( $lines, $mode = "man") {
                    "\\3\\4(\\7)\\9",
                    "\\1<a href=\"".$_SERVER["SCRIPT_NAME"]."/man/\\2/\\3\">\\2(\\3)</a>",
                    "\\3<a href=\"".$_SERVER["SCRIPT_NAME"]."/$mode/\\4\">\\4</a>",
+                   "<b>\\1</b>",
+                   "<u>\\1</u>",
                    "<a href=\"mailto:\\2AT\\3\\4\">\\2<u>AT</u>\\3\\4</a>",
                    "<a href=\"\\1\" target=\"_blank\">\\1</a>"
                );
@@ -450,7 +459,7 @@ function formatManPerldoc ( $lines, $mode = "man") {
 // +--------------------------------------------------------------------------------+
 function showCopyright () {
 echo <<<END_OF_COPYRIGHT
-<pre>        
+<pre>
 		    GNU GENERAL PUBLIC LICENSE
 		       Version 2, June 1991
 
@@ -796,5 +805,4 @@ Public License instead of this License.
 END_OF_COPYRIGHT;
 
 }
-
 ?>
