@@ -7,7 +7,7 @@
  * and require you to use 'more' or 'pg' filters.
  * Just try it if you feel hard to remember the command for page back
  * or need to dump man page into text/html format.
- * Tested on Linux, FreeBSD and Solaris.
+ * Tested on Linux and FreeBSD.
  *
  * Copyright (C) 2002 Che, Dong chedong@bigfoot.com
  *
@@ -28,24 +28,6 @@
 
 //global title
 $PHP_MAN_TITLE = "phpMan: Unix Manual / Perldoc / Info Web Interface";
-
-//show header
-echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>
-	<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"
-	    \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">
-	<html xmlns=\"http://www.w3.org/1999/xhtml\">
-	<head>
-	<title>$PHP_MAN_TITLE</title>
-	<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>
-	<style type=\"text/css\">
-	<!--
-	body {color:#000000;background-color:#EEEEEE}
-	b {color:#996600;background-color:#EEEEEE}
-	u {color:#008000;background-color:#EEEEEE}
-	//-->
-	</style>
-	</head>
-	<body>";
 
 //remove arbitrary commands
 if ( isset($parm) ) {
@@ -128,12 +110,11 @@ if ( $parm != "" ) {
 		"/<u>_<\/u><b>/",   // '<u>_<\/u><b>' => '<b>_'
 		"/<\/b><b>/",       // '<\/b><b>' => ''
 		//transfer related command to hyperlinks, but $b->func(#) will not be translate.
-		"/<.>([a-z_\-\.\+]+)<\/.>\((\d)\)/", //'<b>command</b>(#)' => ' command(#)'
-		"/<.>([a-z_\-\.\+]+)\((\d)\)<\/.>/", //'<b>command(#)</b>' => ' command(#)'
-		"/\s([a-z_\-\.\+]+)\((\d)\)/",       //' command(#)' => hyperlink to command(#)
+		//http://www.schweikhardt.net/man_page_howto.html
+		//'command</b>(<b>#</b>)' => ' command(#)'
+		"/((<.>)|\s)+([\w\-\.\+]+)(<\/.>)?\((<.>)?([\dnol])(<\/.>)?\)(<\/.>)?/",
 		//translate link to related perl modules, but $obj->Module::Name-> will not be translate
-		"/<.>([\w_]+(::[\w_]+)+)<\/.>/", //'<u>Module::Name</u>' => ' Module::Name'
-		"/\s([\w_]+(::[\w_]+)+)/"        //' Module::Name'  => hyperlink to Module::Name
+		"/((<.>)|\s)+(\w+(::\w+)+)(<\/.>)?/", //'<u>Module::Name</u>' => ' Module::Name'		
 		);
 
 	$replace = array(
@@ -149,12 +130,9 @@ if ( $parm != "" ) {
 		"&gt;",
 		"",
 		"<b>_",
-		"",
-		" \\1(\\2)",
-		" \\1(\\2)",
-		" <a href=\"?docType=man&amp;screen=$screen&amp;parm=\\2 \\1\">\\1(\\2)</a>",
-		" \\1",
-		" <a href=\"?docType=perldoc&amp;screen=$screen&amp;parm=\\1\">\\1</a>"
+		"",		
+		" <a href=\"?docType=man&amp;screen=$screen&amp;parm=\\6 \\3\">\\3(\\6)</a>",		
+		" <a href=\"?docType=perldoc&amp;screen=$screen&amp;parm=\\3\">\\3</a>"
 		);
 }
 //not specify command(module) name: try to show index
@@ -188,6 +166,25 @@ else {
 		$replace = array("<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>");
 	}
 }
+
+
+//show header
+echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>
+	<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"
+	    \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">
+	<html xmlns=\"http://www.w3.org/1999/xhtml\">
+	<head>
+	<title>$PHP_MAN_TITLE</title>
+	<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>
+	<style type=\"text/css\">
+	<!--
+	body {color:#000000;background-color:#EEEEEE}
+	b {color:#996600;background-color:#EEEEEE}
+	u {color:#008000;background-color:#EEEEEE}
+	//-->
+	</style>
+	</head>
+	<body>";
 
 //promter and recursive call
 echo "<b>$PHP_MAN_TITLE</b>
@@ -231,4 +228,5 @@ echo "</pre>
 	</a>
 	</body>
 	</html>";
+	
 ?>
