@@ -80,7 +80,7 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 					"/".chr(7)."/",  //reverse '>'
 					//ifconfig(8) => <a href="8 ifconfig">ifconfig(8)</f>
 					//IO::Handle(3) => IO::Handle
-					"/([\w:\.]+)\((\d)\)/",
+					"/([\w:\.]+)\((\d)\)/"
 					);
 	$replace = array(
 					chr(5),
@@ -93,7 +93,7 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 					"&amp;",
 					"&lt;",
 					"&gt;",
-					"<a href=\"?docType=$docType&amp;parm=\\2 \\1\">\\1(\\2)</a>",
+					"<a href=\"?docType=$docType&amp;parm=\\2 \\1\">\\1(\\2)</a>"
 					);
 	$lines[$i] = preg_replace($patterns, $replace, $lines[$i]);
 	echo "$lines[$i] <br />";
