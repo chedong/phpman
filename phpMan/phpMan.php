@@ -89,8 +89,7 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 		"/.".chr(8).".".chr(8)."(.)".chr(8)."./",	// ?^H?^H?^H? => <b>?</b>
 		"/_".chr(8)."(.)".chr(8)."./",	// _^H?^H? => <b><u>?</u></b>
 		"/_".chr(8)."(.)/",  //_^H? => <u>?</u>
-		"/.".chr(8)."(.)/",  //?^H? => <b>?</b>
-		//"/<b>.<\/b>".chr(8)."(<b>.<\/b>)/", //duplicated: <b>?</b>^H<b>?</b> => <b>?</b>
+		"/.".chr(8)."(.)/",  //?^H? => <b>?</b>		
 		"/".chr(5)."/",  //reverse '&'
 		"/".chr(6)."/",  //reverse '<'
 		"/".chr(7)."/"   //reverse '>'
@@ -102,8 +101,7 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 		"<b>\\1</b>",
 		"<b><u>\\1</u></b>",
 		"<u>\\1</u>",
-		"<b>\\1</b>",
-		//"\\1",
+		"<b>\\1</b>",		
 		"&amp;",
 		"&lt;",
 		"&gt;"		
@@ -111,14 +109,14 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 	
 	$lines[$i] = preg_replace($patterns, $replace, $lines[$i]);		
 	
-	//remove html tags
+	//remove html tags for next step command(#) translate
 	$lines[$i] = preg_replace_callback(
 		"/([\/<>\w:\-\.]+)(\(\d\))/", 
 		"_remove_html_tags", 
 		$lines[$i]
 		);
 	
-	//link to related commands
+	//traslate command(#) to hyperlink to related commands
 	$lines[$i] = preg_replace(
 		"/ ([\w:\-\.]+)\((\d)\)/",
 		" <a href=\"?docType=$docType&amp;parm=\\2 \\1\">\\1(\\2)</a>",
@@ -132,19 +130,9 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 echo "</pre>
 <hr />
 <br />
-<p>
-<a href=\"http://validator.w3.org/check/referer\">
-<img style=\"border:0;width:88px;height:31px\"
-src=\"http://www.w3.org/Icons/valid-xhtml10\"
-alt=\"Valid XHTML 1.0!\" /></a>
-<a href=\"http://jigsaw.w3.org/css-validator/\">
-<img style=\"border:0;width:88px;height:31px\"
-src=\"http://jigsaw.w3.org/css-validator/images/vcss\" 
-alt=\"Valid CSS!\" /></a>
 <a href=\"http://sourceforge.net/projects/phpunixman/\">
 \$Id$
 </a>
-</p>
 </body>
 </html>";
 
