@@ -27,7 +27,7 @@
  */
 
 //global title
-$PHP_MAN_TITLE = "phpMan: Unix Manual / Perldoc Web Interface";
+$PHP_MAN_TITLE = "phpMan: Unix Manual / Perldoc / Info Web Interface";
 
 //show header
 echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>
@@ -48,47 +48,68 @@ echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>
 	<body>";
 
 //remove arbitrary commands
-$parm = escapeshellcmd($parm);
+if ( isset($parm) ) {
+	$parm = escapeshellcmd($parm);
+}
+else {
+	$parm = "";
+}
+
+//default page type
+if ( $docType != "perldoc" && $docType != "man" && $docType != "info" ) {
+	$docType = "man";
+}
 
 //Get screen size and set man page column size (It's only work under man above 1.5)
 $width = 132;  //default for 1024 * 768
-
 if (isset($screen) && $screen < 1024) {
 	$width = $screen / 8;
 }
 
-//option checker and get manual page content
+//option checker and get manual page content, if no parameter: get index tree
 if ($docType == "perldoc") {
 	$check_man = "";
 	$check_perldoc = " checked=\"checked\"";
-	exec("MANWIDTH=$width perldoc $parm", $lines);
+	$check_info = "";
+	if ( $parm != "" ){
+		exec("MANWIDTH=$width perldoc $parm", $lines);
+	}
+	else {
+		$perl_mod_list = "'use ExtUtils::Installed;
+			my (\$inst) = ExtUtils::Installed->new();
+			my (@modules) = \$inst->modules();
+			print join(\"\\n\",@modules),\"\\n\"'";
+		//debug echo $perl_mod_list;
+		exec("perl -e $perl_mod_list",$lines);
+	}
 }
-else {
+else if ($docType == "info") {
+	$check_man = "";
+	$check_perldoc = "";
+	$check_info = " checked=\"checked\"";
+	if ( $parm != "" ){
+		exec("MANWIDTH=$width info $parm", $lines);
+	}
+	else {
+		exec("info", $lines);
+	}
+}
+else if ($docType == "man"){
 	$check_man = " checked=\"checked\"";
 	$check_perldoc = "";
-	exec("MANWIDTH=$width man $parm", $lines);
+	$check_info = "";
+	if ( $parm != "" ){
+		exec("MANWIDTH=$width man $parm", $lines);
+	}
+	else {
+		exec("info", $lines);
+	}
 }
+
 $count = count($lines);
 
-//promter and recursive call
-echo "<b>$PHP_MAN_TITLE</b>
-	<form action=\"$PHP_SELF\" method=\"GET\">
-	<p>Command:
-	<input type=\"text\" size=\"20\" name=\"parm\" value=\"$parm\"/>
-	<input type=\"radio\" name=\"docType\" value=\"man\"$check_man/>man
-	<input type=\"radio\" name=\"docType\" value=\"perldoc\"$check_perldoc/>perldoc
-	<script language=\"JavaScript\" type=\"text/javascript\">
-	<!--
-	this.document.write('<input type=\"hidden\" name=\"screen\" value=\"' + screen.width + '\"/>');
-	-->
-	</script>
-	<input type=\"submit\"/></p>
-	</form>
-	<hr />
-	<pre>";
-
-//highlighting attribute characters
-for ( $i = 0; $i < $count; $i ++ ) {
+//regular replace patterns for specified command(module) name
+if ( $parm != "" ) {  
 	$patterns = array(
 		"/&/",  //html special char: '&' => chr(5) => '&gt;';
 		"/</",  //html special char: '>' => chr(6) => '&lt;';
@@ -107,12 +128,12 @@ for ( $i = 0; $i < $count; $i ++ ) {
 		"/<u>_<\/u><b>/",   // '<u>_<\/u><b>' => '<b>_'
 		"/<\/b><b>/",       // '<\/b><b>' => ''
 		//transfer related command to hyperlinks, but $b->func(#) will not be translate.
-		"/<.>([a-z_\-\.]+)<\/.>\((\d)\)/", //'<b>command</b>(#)' => ' command(#)'
-		"/<.>([a-z_\-\.]+)\((\d)\)<\/.>/", //'<b>command(#)</b>' => ' command(#)'
-		"/\s([a-z_\-\.]+)\((\d)\)/",       //' command(#)' => hyperlink to command(#)
+		"/<.>([a-z_\-\.\+]+)<\/.>\((\d)\)/", //'<b>command</b>(#)' => ' command(#)'
+		"/<.>([a-z_\-\.\+]+)\((\d)\)<\/.>/", //'<b>command(#)</b>' => ' command(#)'
+		"/\s([a-z_\-\.\+]+)\((\d)\)/",       //' command(#)' => hyperlink to command(#)
 		//translate link to related perl modules, but $obj->Module::Name will not be translate
-		"/<.>(\w+(::\w+)+)<\/.>/", //'<u>Module::Name</u>' => ' Module::Name'
-		"/\s(\w+(::\w+)+)/"        //' Module::Name'  => hyperlink to Module::Name
+		"/<.>([\w_\-]+(::[\w_\-]+)+)<\/.>/", //'<u>Module::Name</u>' => ' Module::Name'
+		"/\s([\w_\-]+(::[\w_\-]+)+)/"        //' Module::Name'  => hyperlink to Module::Name
 		);
 
 	$replace = array(
@@ -131,11 +152,63 @@ for ( $i = 0; $i < $count; $i ++ ) {
 		"",
 		" \\1(\\2)",
 		" \\1(\\2)",
-		" <a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\2 \\1\">\\1(\\2)</a>",
+		" <a href=\"?docType=man&amp;screen=$screen&amp;parm=\\2 \\1\">\\1(\\2)</a>",
 		" \\1",
-		" <a href=\"?docType=$docType&amp;screen=$screen&amp;parm=\\1\">\\1</a>"
+		" <a href=\"?docType=perldoc&amp;screen=$screen&amp;parm=\\1\">\\1</a>"
 		);
+}
+//not specify command(module) name: try to show index
+else {
+	if ( $docType == "man" ) {
+		$patterns = array(
+			"/\(([\w\-]+)\)([\w\+]+)/", //'(group)command' => man page of command;
+			"/\(([\w\-]+)\)/"     //'(command)' => man page of command;
+			);
 
+		$replace = array(
+			"<a href=\"?docType=$docType&amp;parm=\\1\">(\\1)</a> <a href=\"?docType=$docType&amp;parm=\\2\">\\2</a>",
+			"<a href=\"?docType=$docType&amp;parm=\\1\">(\\1)</a>"
+			);
+	}
+	else if ( $docType == "info" ) {
+		$patterns = array(
+			"/\(([\w\-]+)\)([\w\+]+)/", //'(group)command' => info page of command;
+			"/\(([\w\-]+)\)/"     //'(command)' => info page of command;
+			);
+
+		$replace = array(
+			"<a href=\"?docType=$docType&amp;parm=\\1\">(\\1)</a> <a href=\"?docType=$docType&amp;parm=\\2\">\\2</a>",
+			"<a href=\"?docType=$docType&amp;parm=\\1\">(\\1)</a>"
+			);
+	}
+	else if ( $docType == "perldoc" ) {
+		//'Module::Name' => perldoc page of module;
+		$patterns = array("/([\w:]+)/");
+
+		$replace = array("<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>");
+	}
+}
+
+//promter and recursive call
+echo "<b>$PHP_MAN_TITLE</b>
+	<form action=\"$PHP_SELF\" method=\"GET\">
+	<p>Command:
+	<input type=\"text\" size=\"20\" name=\"parm\" value=\"$parm\"/>
+	<input type=\"radio\" name=\"docType\" value=\"man\"$check_man/><a href=\"?docType=man\">man</a>
+	<input type=\"radio\" name=\"docType\" value=\"perldoc\"$check_perldoc/><a href=\"?docType=perldoc\">perldoc</a>
+	<input type=\"radio\" name=\"docType\" value=\"info\"$check_info/><a href=\"?docType=info\">info</a>
+	<script language=\"JavaScript\" type=\"text/javascript\">
+	<!--
+	this.document.write('<input type=\"hidden\" name=\"screen\" value=\"' + screen.width + '\"/>');
+	-->
+	</script>
+	<input type=\"submit\"/></p>
+	</form>
+	<hr />
+	<pre>";
+	
+//highlighting attribute characters
+for ( $i = 0; $i < $count; $i ++ ) {
 	$lines[$i] = preg_replace($patterns, $replace, $lines[$i]);
 	echo "$lines[$i] <br />";
 }
