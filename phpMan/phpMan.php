@@ -202,21 +202,21 @@ function showFooter ($show_validate = 0) {
 //get specified command's man page and convert to html format
 function getManPage ($parm, $man_width = 128) {
 	exec("MANWIDTH=$man_width man $parm", $lines);
-	$output = formatManPerldoc($lines);
+	$output = formatManPerldoc($lines, "man", $man_width);
 	return $output;
 }
 
 //get specified perl module's man page and convert to html format
 function getPerldocPage ($parm) {
 	exec("perldoc $parm", $lines);
-	$output = formatManPerlDoc($lines);
+	$output = formatManPerlDoc($lines, "perldoc");
 	return $output;
 }
 
 //get specified command's info page
 function getInfoPage ($parm) {
 	exec("info $parm", $lines);
-	$output = formatManPerlDoc($lines);
+	$output = formatManPerlDoc($lines, "info");
 	return $output;
 }
 
@@ -297,9 +297,9 @@ function getInfoIndex () {
 		"&amp;",
 		"&lt;",
 		"&gt;",
-		"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)".
-		"<a href=\"?docType=$docType&amp;parm=\\2\">\\2</a>",
-		"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)"
+		"(<a href=\"?docType=info&amp;parm=\\1\">\\1</a>)".
+		"<a href=\"?docType=info&amp;parm=\\2\">\\2</a>",
+		"(<a href=\"?docType=info&amp;parm=\\1\">\\1</a>)"
 		);
 	$output = "";
 	$count = count($lines);
@@ -311,7 +311,7 @@ function getInfoIndex () {
 }
 
 //convert man perldoc output to html
-function formatManPerldoc ($lines) {
+function formatManPerldoc ( $lines, $docType = "man", $screen = 1024 ) {
 	$patterns = array(
 		"/&/",  //html special char: '&' => chr(5) => '&gt;';
 		"/</",  //html special char: '>' => chr(6) => '&lt;';
