@@ -43,9 +43,9 @@ if ( $docType != "perldoc" && $docType != "man" && $docType != "info" ) {
 }
 
 //Get screen size and set man page column size (It's only work under man above 1.5)
-$width = 132;  //default for 1024 * 768
-if (isset($screen) && $screen < 1024) {
-	$width = $screen / 8;
+$width = 128;  //default for 1024 * 768
+if (isset($screen) && $screen != "") {
+	$width = intval($screen) / 8;
 }
 
 //option checker and get manual page content, if no parameter: get index tree
@@ -113,7 +113,7 @@ if ( $parm != "" ) {
 		"/([\s,])([\w\-\.\+]+)\(([\dnol]\w*)\)/",
 		//translate link to related perl modules, but $obj->Module::Name-> will not be translate
 		//'<u>Module::Name</u>' => ' Module::Name'
-		"/((<.>)|([\s,:]))(\w+(::\w+)+)(<\/.>)?/",
+		"/((<.>)|([\s,]))(\w+(::\w+)+)(<\/.>)?/",
 		);
 
 	$replace = array(
