@@ -1,15 +1,31 @@
 <?php
+// +--------------------------------------------------------------------------------+
+// | phpMan:      Unix Manual / Perldoc / Info Web Interface                        |
+// +--------------------------------------------------------------------------------+
+// | Copyright (C) 2002 Che, Dong chedong@bigfoot.com                               |
+// +--------------------------------------------------------------------------------+
+// | This program is free software; you can redistribute it and/or                  |
+// | modify it under the terms of the GNU General Public License                    |
+// | as published by the Free Software Foundation; either version 2                 |
+// | of the License, or (at your option) any later version.                         |
+// |                                                                                |
+// | This program is distributed in the hope that it will be useful,                |
+// | but WITHOUT ANY WARRANTY; without even the implied warranty of                 |
+// | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the                  |
+// | GNU General Public License for more details.                                   |
+// |                                                                                |
+// | You should have received a copy of the GNU General Public License              |
+// | along with this program; if not, write to the Free Software                    |
+// | Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.    |
+// +--------------------------------------------------------------------------------+
+// $Id$
+
 /**
- * $Id$
- *
- * phpMan is a web interface of Unix command 'man' and 'perldoc'.
- * This script makes it easier to read man pages which is lengthy
- * and require you to use 'more' or 'pg' filters.
- * Just try it if you feel hard to remember the command for page back
- * or need to dump man page into text/html format.
- * Tested on Linux and FreeBSD.
- *
- * Copyright (C) 2002 Che, Dong chedong@bigfoot.com
+ * phpMan is a web interface of Unix command 'man', 'perldoc', 'info' and 'apropos'.
+ * This script makes it easier to read man pages which is lengthy and require you
+ * to use 'more' or 'pg' filters. Just try it if you feel hard to remember the command
+ * for page back or need to dump man page into text/html format.
+ * Tested on Linux and FreeBSD under php 4.x above.
  *
  * function list:
  *    showForm ($parm, $check)              //show input form and recursive call
@@ -22,22 +38,12 @@
  *    getManIndex ()                        //get man page index
  *    getPerldocIndex ()                    //get perldoc page index
  *    getInfoIndex ()                       //get info page index
- *    formatManPerldoc ($lines)             //formate man and perldoc output
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ *    formatManPerldoc ($lines)             //formate man, perldoc and info output
  */
+ 
+// +--------------------------------------------------------------------------------+
+// | parameter checking and format page output                                      |
+// +--------------------------------------------------------------------------------+ 
 
 //global title
 $PHP_MAN_TITLE = "phpMan: Unix Manual / Perldoc / Info Web Interface";
@@ -72,12 +78,12 @@ if (isset($screen) && $screen != "") {
 /*
  * option checker and get manual page content, if no parameter: get index tree
  * phpMan -- man     -- man page index: section list
- *                   \- man page by section: command list(by search)
- *                    \ man page: specified command
+ *        |          \- man page by section: command list(by search)
+ *        |           \ man page: specified command
  *        \- perldoc -- command list: (by search)
- *                   \- perldoc page: specified module
+ *        |          \- perldoc page: specified module
  *        \- info    -- info page index: list
- *                   \- info page: 
+ *        |          \- info page:
  *        \- search  -- apropos search results: man page entrance list
  */
 switch ( $docType ) {
@@ -120,15 +126,17 @@ switch ( $docType ) {
 		break;
 }
 
-//output
+// +--------------------------------------------------------------------------------+
+// | show output                                                                    |
+// +--------------------------------------------------------------------------------+
 showHeader($PHP_MAN_TITLE);
 showForm($parm, $check);
 echo "<hr /><pre>".$content."</pre><hr />";
 showFooter(0);
 
-/*********************************
- ******  functions ***************
- *********************************/
+// +--------------------------------------------------------------------------------+
+// | sub functions                                                                  |
+// +--------------------------------------------------------------------------------+
 
 //show html header
 function showHeader ($title) {
@@ -156,7 +164,8 @@ function showForm ($parm, $check) {
 	echo "<form action=\"$PHP_SELF\" method=\"get\">".
 	"<p>Command:".
 	"<input type=\"text\" size=\"20\" name=\"parm\" value=\"".stripslashes($parm)."\"/>".
-	"<input type=\"radio\" name=\"docType\" value=\"man\"$check[man]/><a href=\"?docType=man\">man</a>".
+	"<input type=\"radio\" name=\"docType\" value=\"man\"$check[man]/>".
+	"<a href=\"?docType=man\">man</a>".
 	"<input type=\"radio\" name=\"docType\" value=\"perldoc\"$checked[perldoc]/>".
 	"<a href=\"?docType=search&amp;parm=pm%20perl\">perldoc</a>".
 	"<input type=\"radio\" name=\"docType\" value=\"info\"$check[info]/>".
@@ -213,14 +222,14 @@ function getInfoPage ($parm) {
 //search specified keyword by apropos and convert output link to man pages
 function getSearchPage ($parm) {
 	$patterns = array(
-			"/&/",  //html special char: '&' => '&gt;';
-			"/</",  //html special char: '>' => '&lt;';
-			"/>/",  //html special char: '<' => '&gt;';
-			//for linux format of search output
-			"/(.*\/)?([\w\-\.\+:]+)((\s+\[)([\w\-\.:]+)(\]\s+))\(([\dnol]\w*)\)/",
-			//'(command)' => man page of command;
-			"/([\w+\.\-:]+)(\s+)?(\((\d\w*)\))/"
-			);
+		"/&/",  //html special char: '&' => '&gt;';
+		"/</",  //html special char: '>' => '&lt;';
+		"/>/",  //html special char: '<' => '&gt;';
+		//for linux format of search output
+		"/(.*\/)?([\w\-\.\+:]+)((\s+\[)([\w\-\.:]+)(\]\s+))\(([\dnol]\w*)\)/",
+		//'(command)' => man page of command;
+		"/([\w+\.\-:]+)(\s+)?(\((\d\w*)\))/"
+		);
 	$replace = array(
 		"&amp;",
 		"&lt;",
@@ -265,12 +274,12 @@ function getPerldocIndex () {
 function getInfoIndex () {
 	exec("info", $lines);
 	$patterns = array(
-			"/&/",  //html special char: '&' => '&gt;';
-			"/</",  //html special char: '>' => '&lt;';
-			"/>/",  //html special char: '<' => '&gt;';
-			"/\(([a-z0-9_\-]+)\)([a-z0-9_\+]+)/", //'(group)command' => info page of command;
-			"/\(([a-z0-9_\-]+)\)/"     //'(command)' => info page of command;
-			);
+		"/&/",  //html special char: '&' => '&gt;';
+		"/</",  //html special char: '>' => '&lt;';
+		"/>/",  //html special char: '<' => '&gt;';
+		"/\(([a-z0-9_\-]+)\)([a-z0-9_\+]+)/", //'(group)command' => info page of command;
+		"/\(([a-z0-9_\-]+)\)/"     //'(command)' => info page of command;
+		);
 	$replace = array(
 		"&amp;",
 		"&lt;",
