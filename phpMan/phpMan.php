@@ -88,7 +88,7 @@ echo "<b>$PHP_MAN_TITLE</b>
 	<pre>";
 
 //highlighting attribute characters
-for ( $i = 1; $i < $count; $i ++ ) {
+for ( $i = 0; $i < $count; $i ++ ) {
 	$patterns = array(
 		"/&/",  //html special char: '&' => chr(5) => '&gt;';
 		"/</",  //html special char: '>' => chr(6) => '&lt;';
@@ -135,7 +135,7 @@ for ( $i = 1; $i < $count; $i ++ ) {
 		);
 
 	$lines[$i] = preg_replace($patterns, $replace, $lines[$i]);
-	echo "$lines[$i]<br />";
+	echo "$lines[$i] <br />";
 }
 
 //show footer
