@@ -110,11 +110,11 @@ if ( $parm != "" ) {
 		"/<u>_<\/u><b>/",   // '<u>_<\/u><b>' => '<b>_'
 		"/<\/b><b>/",       // '<\/b><b>' => ''
 		//transfer related command to hyperlinks, but $b->func(#) will not be translate.
-		//http://www.schweikhardt.net/man_page_howto.html
-		//'command</b>(<b>#</b>)' => ' command(#)'
-		"/((<.>)|\s)+([\w\-\.\+]+)(<\/.>)?\((<.>)?([\dnol])(<\/.>)?\)(<\/.>)?/",
+		//'<b>command</b>(<b>#</b>)</b>' => ' command(#)'
+		//Man Page Howto: http://www.schweikhardt.net/man_page_howto.html
+		"/((<.>)|\s){1,2}([a-z0-9_\-\.\+]+)(<\/.>)?\((<.>)?([\dnol])(<\/.>)?\)(<\/.>)?/",
 		//translate link to related perl modules, but $obj->Module::Name-> will not be translate
-		"/((<.>)|\s)+(\w+(::\w+)+)(<\/.>)?/", //'<u>Module::Name</u>' => ' Module::Name'		
+		"/((<.>)|\s){1}(\w+(::\w+)+)(<\/.>)?/", //'<u>Module::Name</u>' => ' Module::Name'
 		);
 
 	$replace = array(
@@ -130,8 +130,8 @@ if ( $parm != "" ) {
 		"&gt;",
 		"",
 		"<b>_",
-		"",		
-		" <a href=\"?docType=man&amp;screen=$screen&amp;parm=\\6 \\3\">\\3(\\6)</a>",		
+		"",
+		" <a href=\"?docType=man&amp;screen=$screen&amp;parm=\\6 \\3\">\\3(\\6)</a>",
 		" <a href=\"?docType=perldoc&amp;screen=$screen&amp;parm=\\3\">\\3</a>"
 		);
 }
@@ -139,22 +139,34 @@ if ( $parm != "" ) {
 else {
 	if ( $docType == "man" ) {
 		$patterns = array(
-			"/\(([a-z0-9\-]+)\)([a-z0-9\+]+)/", //'(group)command' => man page of command;
-			"/\(([a-z0-9\-]+)\)/"     //'(command)' => man page of command;
+			"/&/",  //html special char: '&' => '&gt;';
+			"/</",  //html special char: '>' => '&lt;';
+			"/>/",  //html special char: '<' => '&gt;';
+			"/\(([a-z0-9_\-]+)\)([a-z0-9\+]+)/", //'(group)command' => man page of command;
+			"/\(([a-z0-9_\-]+)\)/"     //'(command)' => man page of command;			
 			);
 
 		$replace = array(
+			"&amp;",
+			"&lt;",
+			"&gt;",
 			"( \\1 )<a href=\"?docType=$docType&amp;parm=\\2\">\\2</a>",
-			"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)"
+			"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)"			
 			);
 	}
 	else if ( $docType == "info" ) {
 		$patterns = array(
-			"/\(([a-z0-9\-]+)\)([a-z0-9\+]+)/", //'(group)command' => info page of command;
-			"/\(([a-z0-9\-]+)\)/"     //'(command)' => info page of command;
+			"/&/",  //html special char: '&' => '&gt;';
+			"/</",  //html special char: '>' => '&lt;';
+			"/>/",  //html special char: '<' => '&gt;';
+			"/\(([a-z0-9_\-]+)\)([a-z0-9_\+]+)/", //'(group)command' => info page of command;
+			"/\(([a-z0-9_\-]+)\)/"     //'(command)' => info page of command;
 			);
 
 		$replace = array(
+			"&amp;",
+			"&lt;",
+			"&gt;",
 			"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)<a href=\"?docType=$docType&amp;parm=\\2\">\\2</a>",
 			"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)"
 			);
@@ -188,7 +200,7 @@ echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>
 
 //promter and recursive call
 echo "<b>$PHP_MAN_TITLE</b>
-	<form action=\"$PHP_SELF\" method=\"GET\">
+	<form action=\"$PHP_SELF\" method=\"get\">
 	<p>Command:
 	<input type=\"text\" size=\"20\" name=\"parm\" value=\"$parm\"/>
 	<input type=\"radio\" name=\"docType\" value=\"man\"$check_man/><a href=\"?docType=man\">man</a>
@@ -228,5 +240,4 @@ echo "</pre>
 	</a>
 	</body>
 	</html>";
-	
 ?>
