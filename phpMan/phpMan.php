@@ -37,8 +37,8 @@ else {
 	$parm = "";
 }
 
-//default page type
-if ( $docType != "perldoc" && $docType != "man" && $docType != "info" ) {
+//set default doc type to man page
+if ( !isset($docType) || $docType == "" ) {
 	$docType = "man";
 }
 
@@ -48,6 +48,14 @@ if (isset($screen) && $screen != "") {
 	$width = intval($screen) / 8;
 }
 
+//default options
+$check_man = " checked=\"checked\"";
+$check_perldoc = "";
+$check_info = "";
+
+//content array
+$lines = array();
+
 //option checker and get manual page content, if no parameter: get index tree
 if ($docType == "perldoc") {
 	$check_man = "";
@@ -56,9 +64,9 @@ if ($docType == "perldoc") {
 	if ( $parm != "" ){
 		exec("perldoc $parm", $lines);
 	}
-	else {		
-		//show all possable perl entrance
-		exec("man -k perl pm",$lines);
+	else {
+		//show all possable perl entrance by keyword: 'pm' 'perl'
+ 		exec("apropos perl pm",$lines);
 	}
 }
 else if ($docType == "info") {
@@ -80,8 +88,22 @@ else if ($docType == "man"){
 		exec("MANWIDTH=$width man $parm", $lines);
 	}
 	else {
-		//show all possable man page entrance
-		exec("man -k a e i o u", $lines);
+		if ( isset($section) ) {
+			//show all possable man page entrance by section			
+			exec("apropos \\($section\\)", $lines);
+		}
+		else {
+			$lines[] =	"<a href=\"?docType=$docType&amp;section=1\">1 - General Commands</a>";
+			$lines[] =	"<a href=\"?docType=$docType&amp;section=2\">2 - System Calls</a>";
+			$lines[] =	"<a href=\"?docType=$docType&amp;section=3\">3 - Subroutines</a>";
+			$lines[] =	"<a href=\"?docType=$docType&amp;section=4\">4 - Special Files</a>";
+			$lines[] =	"<a href=\"?docType=$docType&amp;section=5\">5 - File Formats</a>";
+			$lines[] =	"<a href=\"?docType=$docType&amp;section=6\">6 - Games</a>";
+			$lines[] =	"<a href=\"?docType=$docType&amp;section=7\">7 - Macros and Conventions</a>";
+			$lines[] =	"<a href=\"?docType=$docType&amp;section=8\">8 - Maintenance Commands</a>";
+			$lines[] =	"<a href=\"?docType=$docType&amp;section=9\">9 - Kernel Interface</a>";
+			$lines[] =	"<a href=\"?docType=$docType&amp;section=n\">n - New Commands</a>";
+		}		
 	}
 }
 
@@ -137,22 +159,23 @@ if ( $parm != "" ) {
 }
 //not specify command(module) name: try to show index
 else {
-	if ( $docType == "man" || $docType == "perldoc") {
+	if ( ($docType == "man" && isset($section)) || $docType == "perldoc" ) {		
 		$patterns = array(
 			"/&/",  //html special char: '&' => '&gt;';
 			"/</",  //html special char: '>' => '&lt;';
-			"/>/",  //html special char: '<' => '&gt;';			
-			"/(.*\/)?([\w\-\.\+:]+)((\s+\[)([\w\-\.:]+)(\]\s+))\(([\dnol]\w*)\)/", //for linux format
-			"/([\w+\.\-:]+)(\s+)?(\((\d\w*)\))/"     //'(command)' => man page of command;
-			);
-
+			"/>/",  //html special char: '<' => '&gt;';
+			//for linux format of apropos output
+			"/(.*\/)?([\w\-\.\+:]+)((\s+\[)([\w\-\.:]+)(\]\s+))\(([\dnol]\w*)\)/",
+			//'(command)' => man page of command;
+			"/([\w+\.\-:]+)(\s+)?(\((\d\w*)\))/"
+			);	
 		$replace = array(
 			"&amp;",
 			"&lt;",
 			"&gt;",
 			"\\1\\2\\4<a href=\"?docType=man&amp;parm=\\7 \\5\">\\5</a>\\6(\\7)",
 			"<a href=\"?docType=man&amp;parm=\\4 \\1\">\\1</a>\\2\\3"
-			);
+			);			
 	}
 	else if ( $docType == "info" ) {
 		$patterns = array(
@@ -167,71 +190,76 @@ else {
 			"&amp;",
 			"&lt;",
 			"&gt;",
-			"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)<a href=\"?docType=$docType&amp;parm=\\2\">\\2</a>",
+			"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)".
+			"<a href=\"?docType=$docType&amp;parm=\\2\">\\2</a>",
 			"(<a href=\"?docType=$docType&amp;parm=\\1\">\\1</a>)"
 			);
-	}	
+	}
 }
 
 
 //show header
-echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>
-	<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"
-	    \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">
-	<html xmlns=\"http://www.w3.org/1999/xhtml\">
-	<head>
-	<title>$PHP_MAN_TITLE</title>
-	<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>
-	<style type=\"text/css\">
-	<!--
-	body {color:#000000;background-color:#EEEEEE}
-	b {color:#996600;background-color:#EEEEEE}
-	u {color:#008000;background-color:#EEEEEE}
-	//-->
-	</style>
-	</head>
-	<body>";
+echo "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>".
+	"<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"".
+	" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
+	"<html xmlns=\"http://www.w3.org/1999/xhtml\">".
+	"<head>".
+	"<title>$PHP_MAN_TITLE</title>".
+	"<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>".
+	"<style type=\"text/css\">".
+	"<!--".
+	"body {color:#000000;background-color:#EEEEEE} ".
+	"b {color:#996600;background-color:#EEEEEE} ".
+	"u {color:#008000;background-color:#EEEEEE} ".
+	"//-->".
+	"</style>".
+	"</head>".
+	"<body>";
 
 //promter and recursive call
-echo "<b>$PHP_MAN_TITLE</b>
-	<form action=\"$PHP_SELF\" method=\"get\">
-	<p>Command:
-	<input type=\"text\" size=\"20\" name=\"parm\" value=\"$parm\"/>
-	<input type=\"radio\" name=\"docType\" value=\"man\"$check_man/><a href=\"?docType=man\">man</a>
-	<input type=\"radio\" name=\"docType\" value=\"perldoc\"$check_perldoc/><a href=\"?docType=perldoc\">perldoc</a>
-	<input type=\"radio\" name=\"docType\" value=\"info\"$check_info/><a href=\"?docType=info\">info</a>
-	<script language=\"JavaScript\" type=\"text/javascript\">
-	<!--
-	this.document.write('<input type=\"hidden\" name=\"screen\" value=\"' + screen.width + '\"/>');
-	-->
-	</script>
-	<input type=\"submit\"/></p>
-	</form>
-	<hr />
-	<pre>";
+echo "<b>$PHP_MAN_TITLE</b>".
+	"<form action=\"$PHP_SELF\" method=\"get\">".
+	"<p>Command:".
+	"<input type=\"text\" size=\"20\" name=\"parm\" value=\"".stripslashes($parm)."\"/>".
+	"<input type=\"radio\" name=\"docType\" value=\"man\"$check_man/><a href=\"?docType=man\">man</a>".
+	"<input type=\"radio\" name=\"docType\" value=\"perldoc\"$check_perldoc/>".
+	"<a href=\"?docType=perldoc\">perldoc</a>".
+	"<input type=\"radio\" name=\"docType\" value=\"info\"$check_info/>".
+	"<a href=\"?docType=info\">info</a>".
+	"<script language=\"JavaScript\" type=\"text/javascript\">".
+	"<!--".
+	"this.document.write('<input type=\"hidden\" name=\"screen\" value=\"' + screen.width + '\"/>');".
+	"-->".
+	"</script>".
+	"<input type=\"submit\"/></p>".
+	"</form>".
+	"<hr />".
+	"<pre>";
 
 //highlighting attribute characters
 for ( $i = 0; $i < $count; $i ++ ) {
-	$lines[$i] = preg_replace($patterns, $replace, $lines[$i]);
+	if ( is_array($patterns) && is_array($replace) ) {
+		$lines[$i] = preg_replace($patterns, $replace, $lines[$i]);
+	}
 	echo "$lines[$i] <br />";
 }
 
 //show footer
-echo "</pre>
-	<hr />
-	<!--
-	<a href=\"http://validator.w3.org/check/referer\">
-	<img style=\"border:0;width:88px;height:31px\"
-	src=\"http://www.w3.org/Icons/valid-xhtml10\"
-	alt=\"Valid XHTML 1.0!\" /></a>
-	<a href=\"http://jigsaw.w3.org/css-validator/\">
-	<img style=\"border:0;width:88px;height:31px\"
-	src=\"http://jigsaw.w3.org/css-validator/images/vcss\"
-	alt=\"Valid CSS!\" /></a>
-	-->
-	<a href=\"http://sourceforge.net/projects/phpunixman/\">
-	\$Id$
-	</a>
-	</body>
-	</html>";
+echo "</pre>".
+	"<hr />".
+	"<!--".
+	"<a href=\"http://validator.w3.org/check/referer\">".
+	"<img style=\"border:0;width:88px;height:31px\" ".
+	"src=\"http://www.w3.org/Icons/valid-xhtml10\" ".
+	"alt=\"Valid XHTML 1.0!\" /></a>".
+	"<a href=\"http://jigsaw.w3.org/css-validator/\">".
+	"<img style=\"border:0;width:88px;height:31px\"".
+	"src=\"http://jigsaw.w3.org/css-validator/images/vcss\"".
+	"alt=\"Valid CSS!\" /></a>".
+	"-->".
+	"<a href=\"http://sourceforge.net/projects/phpunixman/\">".
+	"\$Id$".
+	"</a>".
+	"</body>".
+	"</html>";
 ?>
