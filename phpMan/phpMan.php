@@ -120,8 +120,8 @@ for ( $i = 1; $i <= $count; $i ++ ) {
 	
 	//link to related commands
 	$lines[$i] = preg_replace(
-		"/([\w:\-\.]+)\((\d)\)/",
-		"<a href=\"?docType=$docType&amp;parm=\\2 \\1\">\\1(\\2)</a>",
+		"/ ([\w:\-\.]+)\((\d)\)/",
+		" <a href=\"?docType=$docType&amp;parm=\\2 \\1\">\\1(\\2)</a>",
 		$lines[$i]
 		);
 	
