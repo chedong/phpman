@@ -247,8 +247,7 @@ function showHeader ( $title = "", $css_style = "") {
         "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n".
         "<head>\n".
         "<title>$title</title>\n".
-        "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>\n".
-        "<meta name=\"robots\" content=\"noindex,nofollow\">\n";
+        "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"/>\n";
 
     echo $css_style;
 
