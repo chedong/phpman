@@ -128,8 +128,11 @@ else {
 if ( $mode == "" ) {
     $mode = "man";
 }
-//removed arbitrary commands: replace "/" avoid Security exposure on Linux
-$parameter = str_replace("/", " ", escapeshellcmd($parameter));
+
+// removed arbitrary commands: replace "/" avoid Security exposure on Linux
+// added htmlspecialchars to avoid XSS
+// phpMan.php?parameter=%22%3E%3Cimg%20src=1%20onerror=javascript:alert(document.cookie)%3E&mode=man
+$parameter = str_replace("/", " ", htmlspecialchars( escapeshellcmd( $parameter ) ) );
 $section = escapeshellcmd($section);
 
 //allow section option only, removed -m
