@@ -296,9 +296,18 @@ function getManPage ($parameter, $section = "1") {
 
 //get specified perl module's man page and convert to html format
 function getPerldocPage ($parameter) {
-    exec("perldoc ".escapeshellarg($parameter), $lines);
-    $output = formatManPerlDoc($lines, "perldoc");
-    return $output;
+    exec("perldoc ".escapeshellarg($parameter), $lines, $return_code);
+    if ($return_code == 0) return formatManPerlDoc($lines, "perldoc");
+
+    // try build in function
+    exec("perldoc -f ".escapeshellarg($parameter), $lines, $return_code);
+    if ($return_code == 0) return formatManPerlDoc($lines, "perldoc");
+
+    // try perldoc search
+    exec("perldoc -q ".escapeshellarg($parameter), $lines, $return_code);
+    if ($return_code == 0) return formatManPerlDoc($lines, "perldoc");
+
+    return "";
 }
 
 //get specified command's info page
