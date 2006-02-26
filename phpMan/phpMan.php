@@ -426,7 +426,6 @@ function formatManPerldoc ( $lines, $mode = "man") {
                     //reverse html special chars
                     "/".chr(5)."/",  //reverse '&'
                     "/".chr(6)."/",  //reverse '<'
-                    "/".chr(7)."/",  //reverse '>'
                     //removed duplicated html tag
                     "/<\/u><u>/",       // '<\/u><u>' => ''
                     "/<u>_<\/u><b>/",   // '<u>_<\/u><b>' => '<b>_'
@@ -442,7 +441,8 @@ function formatManPerldoc ( $lines, $mode = "man") {
                     "/".chr(27)."\[1m(.*?)".chr(27)."\[0m/",  //for perldoc on RedHat 8 only
                     "/".chr(27)."\[4m(.*?)".chr(27)."\[24m/", //for perldoc on RedHat 8 only
                     "/(([\w\-\.]+)@([\w\-]+)(\.[\w\-]+)+)/",  //link to email
-                    "/([\w]+:\/\/[\w-?&;#~=\.\/\@]+[\w\/])/i" //link to url
+                    "/([\w]+:\/\/[\w%\-\?&;#~=\.\/\@]+[\w\/])/i", //link to url
+                    "/".chr(7)."/",  //reverse '>'
                 );
 
     $replace = array(
@@ -455,7 +455,6 @@ function formatManPerldoc ( $lines, $mode = "man") {
                    "<b>\\1</b>",
                    "&amp;",
                    "&lt;",
-                   "&gt;",
                    "",
                    "<b>_",
                    "",
@@ -465,7 +464,8 @@ function formatManPerldoc ( $lines, $mode = "man") {
                    "<b>\\1</b>",
                    "<u>\\1</u>",
                    "<a href=\"mailto:\\2 AT \\3\\4\">\\2<u> AT </u>\\3\\4</a>",
-                   "<a href=\"\\1\" target=\"_blank\">\\1</a>"
+                   "<a href=\"\\1\" target=\"_blank\">\\1</a>",
+                   "&gt;",
                );
     $output = "";
     $count = count($lines);
