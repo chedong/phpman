@@ -61,7 +61,7 @@
 $PHP_MAN_TITLE = "phpMan: Unix Man page/ Perldoc / Info page Web Interface";
 
 //set MANWIDTH for man 1.5+, default for 1024 * 768
-$MAN_WIDTH = 132;
+$MAN_WIDTH = 100;
 
 //use colored man page
 $CSS_STYLE = "<style type=\"text/css\">\n".
@@ -227,7 +227,7 @@ switch ( $mode ) {
 // | show output                                                                    |
 // +--------------------------------------------------------------------------------+
 showHeader($PHP_MAN_TITLE, $CSS_STYLE);
-echo "<h1><a href=\"http://sourceforge.net/projects/phpunixman/\">$PHP_MAN_TITLE</a></h1>\n";
+echo "<h1><a href=\"http://phpunixman.sourceforge.net\">$PHP_MAN_TITLE</a></h1>\n";
 showForm($parameter, $check);
 echo "<hr /><pre>".$content."</pre><hr />";
 showFooter($VALIDATOR);
