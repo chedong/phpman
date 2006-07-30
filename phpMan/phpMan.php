@@ -2,7 +2,7 @@
 // +--------------------------------------------------------------------------------+
 // | phpMan:      Unix Man page / Perldoc / Info page Web Interface                 |
 // +--------------------------------------------------------------------------------+
-// | Copyright (C) 2002 - 2005 Che, Dong chedong AT chedong.com                       |
+// | Copyright (C) 2002 - 2005 Che, Dong chedong AT chedong.com                     |
 // +--------------------------------------------------------------------------------+
 // | This program is free software; you can redistribute it and/or                  |
 // | modify it under the terms of the GNU General Public License                    |
@@ -107,8 +107,17 @@ $check['search'] = "";
  * or parse parameters from HTTP/GET
  */
 if ( isset($_SERVER["PATH_INFO"]) && trim($_SERVER["PATH_INFO"]) != "") {
-    list($nothing, $mode, $parameter, $section) = explode('/', $_SERVER["PATH_INFO"]);
-    $parameter = urldecode($parameter);
+    $array_param = explode('/', $_SERVER["PATH_INFO"]);
+    if (isset($array_param[1])) {
+        $mode = $array_param[1];
+    }
+    if (isset($array_param[2])) {
+        $parameter = $array_param[2];
+        $parameter = urldecode($parameter);
+    }
+    if (isset($array_param[3])) {
+        $section = $array_param[3];
+    }
 }
 else {
     if ( isset($_GET["mode"]) && trim($_GET["mode"]) != "" ) {
@@ -281,7 +290,7 @@ function showFooter ($validator = "") {
         "</a> Author: <a href=\"http://www.chedong.com/\">Che Dong</a><br />" .
         "On <a href=\"".$_SERVER["SCRIPT_NAME"]."/phpinfo\">" . $_SERVER["SERVER_SOFTWARE"] .
         "</a><br />Under <a href=\"".$_SERVER["SCRIPT_NAME"]."/copyright\">GNU General Public License</a><br />".
-        "<a href=\"http://" . $_SERVER["HTTP_HOST"] . "\">" . date("Y-m-d H:i") . " @". $_SERVER["REMOTE_ADDR"] . " Crawled by " . $_SERVER["HTTP_USER_AGENT"] . "</a>" .
+        "<a href=\"http://" . $_SERVER["HTTP_HOST"] . "\">" . date("Y-m-d H:i") . " @". $_SERVER["REMOTE_ADDR"] . " CrawledBy " . $_SERVER["HTTP_USER_AGENT"] . "</a>" .
         "<br />" . $validator . "</p>" .
         "</body></html>";
 }
