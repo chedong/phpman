@@ -49,7 +49,7 @@
  *     getManIndex ()                        //get man page index
  *     getPerldocIndex ()                    //get perldoc page index
  *     getInfoIndex ()                       //get info page index
- *     formatManPerldoc ($lines)             //formate man, perldoc and info output
+ *     formatManPerlDoc ($lines)             //formate man, perldoc and info output
  *
  */
 
@@ -299,7 +299,7 @@ function showFooter ($validator = "") {
 function getManPage ($parameter, $section = "1") {
     global $MAN_WIDTH;
     exec("MANWIDTH=$MAN_WIDTH man ".$section." ".escapeshellarg($parameter), $lines);
-    $output = formatManPerldoc($lines, "man");
+    $output = formatManPerlDoc($lines, "man");
     return $output;
 }
 
@@ -422,7 +422,7 @@ function getInfoIndex () {
 }
 
 //convert man perldoc output to html
-function formatManPerldoc ( $lines, $mode = "man") {
+function formatManPerlDoc ( $lines, $mode = "man") {
     $patterns = array(
                     "/&/",  //html special char: '&' => chr(5) => '&gt;';
                     "/</",  //html special char: '>' => chr(6) => '&lt;';
