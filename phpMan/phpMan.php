@@ -194,6 +194,12 @@ switch ( $mode ) {
         //show man pages
         if ( $parameter != "" ) {
             $content = getManPage($parameter, $section);
+
+            // try lower case if content is empty
+            if ( preg_match("/[A-Z]+/",$parameter) && trim($content) == ""){
+                $content = getManPage(strtolower($parameter), $section);
+            }
+
             //not find command then redirect to search sections
             if (trim($content) == "") {
                 $content = getSearchPage($parameter);
