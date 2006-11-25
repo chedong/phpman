@@ -195,8 +195,8 @@ switch ( $mode ) {
         if ( $parameter != "" ) {
             $content = getManPage($parameter, $section);
 
-            // try lower case if content is empty
-            if ( preg_match("/[A-Z]+/",$parameter) && trim($content) == ""){
+            // retry lower case if content is empty
+            if ( preg_match("/^[A-Z\._]+$/",$parameter) && trim($content) == ""){
                 $content = getManPage(strtolower($parameter), $section);
             }
 
