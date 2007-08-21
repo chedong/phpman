@@ -103,6 +103,13 @@ $check['info'] = "";
 $check['search'] = "";
 
 /**
+ * trans$_SERVER["ORIG_PATH_INFO"] to $_SERVER["PATH_INFO"]
+ * for cgi/fcgi mode of php
+ */
+if ( isset($_SERVER["ORIG_PATH_INFO"])){
+    $_SERVER["PATH_INFO"] = $_SERVER["ORIG_PATH_INFO"];
+}
+/**
  * parse parameters from $_SERVER["PATH_INFO"]: phpMan.php/$mode/$parameter/$section
  * or parse parameters from HTTP/GET
  */
