@@ -151,6 +151,7 @@ $content = "";
 $mode = "";
 $parameter = "";
 $section = "";
+$isSearchFallback = false;
 
 $check['man'] = "";
 $check['perldoc'] = "";
@@ -315,7 +316,7 @@ switch ( $mode ) {
             $content = getManPage($parameter, $section, $format);
 
             // retry lower case if content is empty
-            if ( preg_match("/^[A-Z\._]+$/",$parameter) && trim($content) == ""){
+            if ( preg_match("/^[A-Z\\._]+$/",$parameter) && trim($content) == ""){
                 $content = getManPage(strtolower($parameter), $section, $format);
             }
 
@@ -330,6 +331,7 @@ switch ( $mode ) {
             //still not found then redirect to search sections
             if (trim($content) == "") {
                 $content = getSearchPage($parameter, $section, $format);
+                $isSearchFallback = true;
             }
         }
         //redirect to search sections
@@ -391,9 +393,8 @@ if ($content !== ""
     // Determine if content is real content (not index/search fallback)
     // For man mode: if parameter was given and content is not from search redirect
     $isDetailPage = false;
-    if ($mode === "man" && trim($content) !== "") {
-        // Check if content contains search result patterns (section headers like "1 - General Commands")
-        $isDetailPage = true; // assume detail; the content check above already filters empty
+    if ($mode === "man" && trim($content) !== "" && !$isSearchFallback) {
+        $isDetailPage = true;
     }
     if ($mode === "perldoc" && $parameter !== "") {
         $isDetailPage = true;
