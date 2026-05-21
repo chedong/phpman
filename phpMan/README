@@ -4,11 +4,9 @@ $Id$
 Project home:
     http://sourceforge.net/projects/phpunixman
 
-Chekc out cvs source code:
-    export CVS_RSH=ssh 
-    cvs -z3 -d:ext:chedong@cvs.sourceforge.net:/cvsroot/phpunixman co -P phpMan
-
-
+Check out source code:
+    git clone https://git.code.sf.net/p/phpunixman/code phpunixman
+    cd phpunixman/phpMan
 Upload new release file to file release system
     ftp upload.sourceforge.net
     cd incoming
