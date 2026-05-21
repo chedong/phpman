@@ -65,11 +65,9 @@ $MAN_WIDTH = 100;
 
 //use colored man page
 $CSS_STYLE = "<style type=\"text/css\">\n".
-    "<!--\n".
     "body {color:#000000;background-color:#EEEEEE;}\n".
-    "b {color:#996600;background-color:#EEEEEE}\n".
-    "u {color:#008000;background-color:#EEEEEE}\n".
-    "//-->\n".
+    "b {color:#996600;background-color:#EEEEEE;}\n".
+    "u {color:#008000;background-color:#EEEEEE;}\n".
     "</style>\n";
 
 $VALIDATOR = "";
@@ -81,9 +79,9 @@ $VALIDATOR = "<a href=\"https://validator.w3.org/check?uri=" . urlencode($curren
 "<img style=\"border:0;width:88px;height:31px\"".
 " src=\"http://www.w3.org/Icons/valid-xhtml10\"".
 " alt=\"Valid XHTML 1.0!\" /></a>".
-"<a href=\"http://jigsaw.w3.org/css-validator/\">".
+"<a href=\"https://jigsaw.w3.org/css-validator/validator?uri=" . urlencode($currentUrl) . "&amp;profile=css3svg&amp;usermedium=all&amp;warning=1&amp;vextwarning=&amp;lang=zh-cn\">".
 "<img style=\"border:0;width:88px;height:31px\"".
-" src=\"http://jigsaw.w3.org/css-validator/images/vcss\"".
+" src=\"https://jigsaw.w3.org/css-validator/images/vcss\"".
 " alt=\"Valid CSS!\" /></a>";
 
 // +--------------------------------------------------------------------------------+
