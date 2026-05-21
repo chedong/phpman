@@ -19,7 +19,7 @@ declare(strict_types=1);
 // | along with this program; if not, write to the Free Software                    |
 // | Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.    |
 // +--------------------------------------------------------------------------------+
-// $Id$
+// $Id: phpMan.php,v 4.54 2007/08/21 09:05:22 chedong Exp $
 
 /**
  * phpMan is a web interface of Unix command 'man', 'perldoc', 'info' and 'apropos'.
@@ -62,7 +62,7 @@ declare(strict_types=1);
 $PHP_MAN_TITLE = "phpMan: Unix Man page/ Perldoc / Info page Web Interface";
 
 //set MANWIDTH for man 1.5+, default for 1024 * 768
-$MAN_WIDTH = 128;
+$MAN_WIDTH = 100;
 
 //use colored man page
 $CSS_STYLE = "<style type=\"text/css\">\n".
@@ -82,7 +82,7 @@ $VALIDATOR = "<a href=\"https://validator.w3.org/check?uri=" . urlencode($curren
 " alt=\"Valid XHTML 1.0!\" /></a>".
 "<a href=\"https://jigsaw.w3.org/css-validator/validator?uri=" . urlencode($currentUrl) . "&amp;profile=css3svg&amp;usermedium=all&amp;warning=1&amp;vextwarning=&amp;lang=zh-cn\">".
 "<img style=\"border:0;width:88px;height:31px\"".
-" src=\"https://jigsaw.w3.org/css-validator/images/vcss-blue\"".
+" src=\"https://jigsaw.w3.org/css-validator/images/vcss\"".
 " alt=\"Valid CSS!\" /></a>";
 
 ini_set("default_charset", "UTF-8");
@@ -319,17 +319,9 @@ switch ( $mode ) {
                 $content = getManPage(strtolower($parameter), $section, $format);
             }
 
-            //not find command then try perldoc (for perl modules with :: or section 3pm/3perl)
-            //before falling back to search
+            //not find command then redirect to search sections
             if (trim($content) == "") {
-                if (strpos($parameter, "::") !== false || $section === "3pm" || $section === "3perl") {
-                    $content = getPerldocPage($parameter, $format);
-                }
-            }
-
-            //still not found then redirect to search sections
-            if (trim($content) == "") {
-                $content = getSearchPage($parameter, $section, $format);
+                $content = getSearchPage($parameter, $format);
             }
         }
         //redirect to search sections
@@ -359,7 +351,7 @@ switch ( $mode ) {
     case "search":
         $check['search'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
-            $content = getSearchPage($parameter, $section, $format);
+            $content = getSearchPage($parameter, $format);
         }
         break;
 }
@@ -380,39 +372,7 @@ showHeader($PHP_MAN_TITLE, $CSS_STYLE);
 echo "<h1><a href=\"".$_SERVER['PHP_SELF']."\">".h($PHP_MAN_TITLE)."</a></h1>\n";
 showForm($parameter, $check);
 echo "<hr /><pre>".$content."</pre><hr />";
-
-// Build markdown version URL for detail pages (actual man/perldoc/info content)
-$markdownUrl = "";
-if ($content !== ""
-    && in_array($mode, ["man", "perldoc", "info"])
-    && $parameter !== ""
-    && $mode !== "search"
-) {
-    // Determine if content is real content (not index/search fallback)
-    // For man mode: if parameter was given and content is not from search redirect
-    $isDetailPage = false;
-    if ($mode === "man" && trim($content) !== "") {
-        // Check if content contains search result patterns (section headers like "1 - General Commands")
-        $isDetailPage = true; // assume detail; the content check above already filters empty
-    }
-    if ($mode === "perldoc" && $parameter !== "") {
-        $isDetailPage = true;
-    }
-    if ($mode === "info" && $parameter !== "") {
-        $isDetailPage = true;
-    }
-
-    if ($isDetailPage) {
-        $script_name_path = scriptName();
-        $markdownUrl = $script_name_path . "/" . $mode . "/" . urlencode($parameter);
-        if ($mode === "man" && $section !== "") {
-            $markdownUrl .= "/" . $section;
-        }
-        $markdownUrl .= "/markdown";
-    }
-}
-
-showFooter($VALIDATOR, $markdownUrl);
+showFooter($VALIDATOR);
 
 
 // +--------------------------------------------------------------------------------+
@@ -437,35 +397,7 @@ function showHeader (string $title = "", string $css_style = ""): void {
 
     echo $css_style;
 
-    echo "<style type=\"text/css\">\n".
-        "#back-to-top {\n".
-        "  position: fixed;\n".
-        "  bottom: 20px;\n".
-        "  right: 20px;\n".
-        "  display: none;\n".
-        "  padding: 6px 12px;\n".
-        "  background: #444;\n".
-        "  color: #fff;\n".
-        "  text-decoration: none;\n".
-        "  font-size: 13px;\n".
-        "  border-radius: 4px;\n".
-        "}\n".
-        "#back-to-top:hover {\n".
-        "  background: #666;\n".
-        "}\n".
-        "</style>\n".
-        "<script type=\"text/javascript\">\n".
-        "//<![CDATA[\n".
-        "window.addEventListener('scroll',function(){\n".
-        "  var btn=document.getElementById('back-to-top');\n".
-        "  if(!btn)return;\n".
-        "  if(window.scrollY>window.innerHeight)btn.style.display='block';\n".
-        "  else btn.style.display='none';\n".
-        "});\n".
-        "//]]>\n".
-        "</script>\n";
-
-    echo "</head>\n<body>\n<a id=\"top\"></a>\n";
+    echo "</head>\n<body>\n";
 }
 
 //promter and recursive call
@@ -489,23 +421,21 @@ function showForm (string $parameter, array $check): void {
 }
 
 //show footer
-function showFooter (string $validator = "", string $markdownUrl = ""): void {
+function showFooter (string $validator = ""): void {
     $script_name = h(scriptName());
     $server_software = h(serverValue("SERVER_SOFTWARE", "unknown server"));
     $home_url = h("http://" . serverValue("HTTP_HOST", "localhost"));
     $remote_addr = h(serverValue("REMOTE_ADDR", "unknown"));
     $user_agent = h(serverValue("HTTP_USER_AGENT", "unknown"));
 
-    echo "<p>Generated by <a href=\"https://sourceforge.net/projects/phpunixman/\">phpMan</a>" .
-        " Author: <a href=\"http://www.chedong.com/\">Che Dong</a>" .
-        " On <a href=\"".$script_name."/phpinfo\">" . $server_software .
-        "</a> Under <a href=\"".$script_name."/copyright\">GNU General Public License</a>" .
-        ($markdownUrl !== "" ? " - <a href=\"" . h($markdownUrl) . "\">MarkDown Format</a>" : "") .
-        "<br />" .
+    echo "<p>Generated by <a href=\"".$script_name."/source\">" .
+        "\$Id: phpMan.php,v 4.54 2007/08/21 09:05:22 chedong Exp $" .
+        "</a> Author: <a href=\"http://www.chedong.com/\">Che Dong</a><br />" .
+        "On <a href=\"".$script_name."/phpinfo\">" . $server_software .
+        "</a><br />Under <a href=\"".$script_name."/copyright\">GNU General Public License</a><br />" .
         "<a href=\"" . $home_url . "\">" . date("Y-m-d H:i") . " @". $remote_addr .
         " CrawledBy " . $user_agent . "</a>" .
         "<br />" . $validator . "</p>" .
-        "<a id=\"back-to-top\" href=\"#top\">^_back to top</a>" .
         "</body></html>";
 }
 
@@ -521,7 +451,7 @@ function getManPage (string $parameter, string $section = "1", string $format = 
 
     exec($command, $lines);
     if ($format === "markdown") {
-        return formatManPerlDocToMarkdown($lines);
+        return formatManPerlDocToMarkdown($lines, "man");
     }
     return formatManPerlDoc($lines, "man");
 }
@@ -531,21 +461,21 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
     exec("perldoc ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
-        return $format === "markdown" ? formatManPerlDocToMarkdown($lines) : formatManPerlDoc($lines, "perldoc");
+        return $format === "markdown" ? formatManPerlDocToMarkdown($lines, "perldoc") : formatManPerlDoc($lines, "perldoc");
     }
 
     // try build in function
     $lines = array();
     exec("perldoc -f ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
-        return $format === "markdown" ? formatManPerlDocToMarkdown($lines) : formatManPerlDoc($lines, "perldoc");
+        return $format === "markdown" ? formatManPerlDocToMarkdown($lines, "perldoc") : formatManPerlDoc($lines, "perldoc");
     }
 
     // try perldoc search
     $lines = array();
     exec("perldoc -q ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
-        return $format === "markdown" ? formatManPerlDocToMarkdown($lines) : formatManPerlDoc($lines, "perldoc");
+        return $format === "markdown" ? formatManPerlDocToMarkdown($lines, "perldoc") : formatManPerlDoc($lines, "perldoc");
     }
 
     return "";
@@ -555,7 +485,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
 function getInfoPage (string $parameter, string $format = "html"): string {
     $lines = array();
     exec("info ".escapeshellarg($parameter), $lines);
-    return $format === "markdown" ? formatManPerlDocToMarkdown($lines) : formatManPerlDoc($lines, "info");
+    return $format === "markdown" ? formatManPerlDocToMarkdown($lines, "info") : formatManPerlDoc($lines, "info");
 }
 
 /**
@@ -563,7 +493,7 @@ function getInfoPage (string $parameter, string $format = "html"): string {
  * Note: on linux, rebuild whatis database under root with:
  * /usr/sbin/makewhatis -w
  */
-function getSearchPage (string $parameter, string $section = "", string $format = "html"): string {
+function getSearchPage (string $parameter, string $format = "html"): string {
     $script_name = scriptName();
     
     // get last parameter of search string
@@ -575,74 +505,48 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         return "";
     }
 
-    // detect section search pattern like "(1)", "(2)", etc.
-    // use "apropos -s N ." for section listing instead of "apropos '(N)'"
-    if ($section !== "" && preg_match("/^[0-9n]$/", $section)) {
-        $cmd = "apropos -s " . escapeshellarg($section) . " .";
-    } elseif (preg_match("/^\(([0-9n]+)\)$/", $parameter, $m)) {
-        $cmd = "apropos -s " . escapeshellarg($m[1]) . " .";
-    } else {
-        $cmd = "apropos " . escapeshellarg($parameter);
-    }
+    $cmd = "apropos ".escapeshellarg($parameter);
     $lines = array();
     exec($cmd, $lines);
 
-    // determine link mode: perl modules (section 3pm or name with ::) use perldoc, others use man
+    if ($format === "markdown") {
+        $patterns = array(
+            "/(.*\/)?([\w\-\.\+:]+)((\s+\[)([\w\-\.:]+)(\]\s+))\(([\dnol]\w*)\)/",
+            "/([\w+\.\-:]+)(\s+)?(\(([\dnol]\w*)\))/"
+        );
+        $replace = array(
+            '$1$2$4[$5($7)]('.$script_name.'/man/$5/$7/markdown)$6($7)',
+            '[$1($3)]('.$script_name.'/man/$1/$3/markdown)'
+        );
+        $output = "";
+        $count = count($lines);
+        for ( $i = 0; $i < $count; $i ++ ) {
+            $output .= preg_replace($patterns, $replace, $lines[$i]) . "\n";
+        }
+        return $output;
+    }
+
+    $patterns = array(
+                    "/&/",  //html special char: '&' => '&gt;';
+                    "/</",  //html special char: '>' => '&lt;';
+                    "/>/",  //html special char: '<' => '&gt;';
+                    //for linux format of search output
+                    "/(.*\/)?([\w\-\.\+:]+)((\s+\[)([\w\-\.:]+)(\]\s+))\(([\dnol]\w*)\)/",
+                    //'(command)' => man page of command;
+                    "/([\w+\.\-:]+)(\s+)?(\(([\dnol]\w*)\))/"
+                );
+    $replace = array(
+                   "&amp;",
+                   "&lt;",
+                   "&gt;",
+                   '$1$2$4<a href="'.$script_name.'/man/$5/$7">$5</a>$6($7)',
+                   '<a href="'.$script_name.'/man/$1/$4">$1</a>$2$3'
+               );
     $output = "";
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
-        $line = $lines[$i];
-
-        // detect perl module: section 3pm/3perl or name contains ::
-        $is_perl = (preg_match("/\\((3pm|3perl)\\)/", $line) || preg_match("/\\w+::\\w+/", $line));
-        $link_mode = $is_perl ? "perldoc" : "man";
-
-        if ($format === "markdown") {
-            $patterns = array(
-                "/(.*\\/)?([\\w\\-\\.\\+:]+)((\\s+\\[)([\\w\\-\\.:]+)(\\]\\s+))\\(([\\dnol]\\w*)\\)/",
-                "/([\\w+\\.\\-:]+)(\\s+)?(\\(([\\dnol]\\w*)\\))/"
-            );
-            if ($link_mode === "perldoc") {
-                $replace = array(
-                    '$1$2$4[$5($7)]('.$script_name.'/perldoc/$5/markdown)$6($7)',
-                    '[$1($3)]('.$script_name.'/perldoc/$1/markdown)'
-                );
-            } else {
-                $replace = array(
-                    '$1$2$4[$5($7)]('.$script_name.'/man/$5/$7/markdown)$6($7)',
-                    '[$1($3)]('.$script_name.'/man/$1/$3/markdown)'
-                );
-            }
-            $output .= preg_replace($patterns, $replace, $line) . "\n";
-        } else {
-            $patterns = array(
-                "/&/",  //html special char: '&' => '&amp;';
-                "/</",  //html special char: '<' => '&lt;';
-                "/>/",  //html special char: '>' => '&gt;';
-                //for linux format of search output
-                "/(.*\\/)?([\\w\\-\\.\\+:]+)((\\s+\\[)([\\w\\-\\.:]+)(\\]\\s+))\\(([\\dnol]\\w*)\\)/",
-                //'(command)' => man page of command;
-                "/([\\w+\\.\\-:]+)(\\s+)?(\\(([\\dnol]\\w*)\\))/"
-            );
-            if ($link_mode === "perldoc") {
-                $replace = array(
-                    "&amp;",
-                    "&lt;",
-                    "&gt;",
-                    '$1$2$4<a href="'.$script_name.'/perldoc/$5">$5</a>$6($7)',
-                    '<a href="'.$script_name.'/perldoc/$1">$1</a>$2$3'
-                );
-            } else {
-                $replace = array(
-                    "&amp;",
-                    "&lt;",
-                    "&gt;",
-                    '$1$2$4<a href="'.$script_name.'/man/$5/$7">$5</a>$6($7)',
-                    '<a href="'.$script_name.'/man/$1/$4">$1</a>$2$3'
-                );
-            }
-            $output .= preg_replace($patterns, $replace, $line) . "\n";
-        }
+        $output .= preg_replace($patterns, $replace, $lines[$i]);
+        $output .= "\n";
     }
     return $output;
 }
@@ -806,7 +710,9 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
 }
 
 //convert man perldoc output to markdown
-function formatManPerlDocToMarkdown (array $lines): string {
+function formatManPerlDocToMarkdown (array $lines, string $mode = "man"): string {
+    $script_name = scriptName();
+    $mode = h($mode);
 
     $patterns = array(
         "/.".chr(8).".".chr(8)."(.)".chr(8)."./",  // ?^H?^H?^H? => bold
@@ -843,24 +749,24 @@ function formatManPerlDocToMarkdown (array $lines): string {
         }
 
         // Email
-        $line = preg_replace('/([\w\-\.]+)@([\w\-]+(?:\.[\w\-]+)+)/', '<$0>', $line);
-        // URL: wrap as autolink, no need to escape :: in markdown
-        $line = preg_replace('/(https?:\/\/[\w%\-\?&;#~=\.\/\@\:]+[\w\/])/i', '<$0>', $line);
+        $line = preg_replace('/([\w\-\.]+)@([\w\-]+(?:\.[\w\-]+)+)/', '[$0](mailto:$0)', $line);
+        // URL
+        $line = preg_replace('/(https?:\/\/[\w%\-\?&;#~=\.\/\@]+[\w\/])/i', '[$0]($0)', $line);
 
-        // Command references: show as bracketed reference without link
+        // Command references
         $line = preg_replace_callback(
             '/(?<![\w])(?:\*\*|_)?([\w\-\.\+]+)(?:\*\*|_)?\((?:\*\*|_)?([\dnol]\w*)(?:\*\*|_)?\)/',
-            function ($matches) {
-                return '[' . $matches[0] . ']';
+            function ($matches) use ($script_name) {
+                return '[' . $matches[0] . '](' . $script_name . '/man/' . urlencode($matches[1]) . '/' . urlencode($matches[2]) . '/markdown)';
             },
             $line
         );
         
-        // Perl modules: Module::Name → show as [Module::Name] without link
+        // Perl modules: Module::Name
         $line = preg_replace_callback(
             '/(?<![\w])(?:\*\*|_)?(\w+(?:::\w+)+)(?:\*\*|_)?/',
-            function ($matches) {
-                return '[' . $matches[0] . ']';
+            function ($matches) use ($script_name, $mode) {
+                return '[' . $matches[0] . '](' . $script_name . '/' . $mode . '/' . urlencode($matches[1]) . '/markdown)';
             },
             $line
         );
