@@ -812,7 +812,8 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                     "/>/",  //html special char: '<' => chr(7) => '&gt;';
                     //man page special chars
                     "/.".chr(8).".".chr(8)."(.)".chr(8)."./",	// ?^H?^H?^H? => <b>?</b>
-                    "/_".chr(8)."(.)/",  //_^H? => <u>?</u>
+                    "/_".chr(8)."(.)".chr(8)."./",  //_^H?^H? => <b>?</b>
+                    "/_".chr(8)."(.)/",  //_^H? => <b>?</b>
                     "/.".chr(8)."(.)/",  //?^H? => <b>?</b>
                     //reverse html special chars
                     "/".chr(5)."/",  //reverse '&'
@@ -841,7 +842,8 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                    chr(6),
                    chr(7),
                    '<b>$1</b>',
-                   '<u>$1</u>',
+                   '<b>$1</b>',
+                   '<b>$1</b>',
                    '<b>$1</b>',
                    "&amp;",
                    "&lt;",
