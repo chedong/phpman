@@ -663,9 +663,28 @@ function addManPageToc (string $html): array {
     unset($line); // break reference
 
     // ---- Pass 2: detect Level 2 items, grouped under current Level 1 ----
-    // A Level 2 item is an indented line (≥3 spaces) that starts with <b>.
-    // It belongs to the most recent Level 1 section encountered.
-    $subPattern = '/^(?:(?: {3,})|(?:\t+))<b>([^<]{1,50})<\/b>/';
+    // A Level 2 item is an indented line starting with <b>.
+    // To exclude deeply nested list items, we dynamically determine the
+    // range of acceptable indentation:
+    //   min_indent = shallowest indented <b> line
+    //   max_indent = min_indent + 4 (catch first nesting level only)
+    $minIndent = null;
+    $maxIndent = null;
+    foreach ($lines as $line) {
+        if (preg_match('/^(\s+)<b>/', $line, $m)) {
+            $ws = strlen($m[1]);
+            if ($minIndent === null || $ws < $minIndent) {
+                $minIndent = $ws;
+            }
+        }
+    }
+    if ($minIndent !== null) {
+        $maxIndent = $minIndent + 4;
+        // Accept spaces in [minIndent, maxIndent], or 1+ tabs
+        $subPattern = '/^(?: {' . $minIndent . ',' . $maxIndent . '}|\t+)<b>([^<]{1,50})<\/b>/';
+    } else {
+        $subPattern = '/^(?!x)x/'; // never matches — no indented <b> items found
+    }
     $currentL1Idx = null; // index into $tocItems
 
     foreach ($lines as $i => &$line) {
