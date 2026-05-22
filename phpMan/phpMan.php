@@ -576,7 +576,7 @@ function showFooter (string $validator = "", string $markdownUrl = ""): void {
 function getManPage (string $parameter, string $section = "1", string $format = "html"): string {
     global $MAN_WIDTH;
     $lines = array();
-    $command = "MANWIDTH=".(int)$MAN_WIDTH." man ";
+    $command = "MANWIDTH=".(int)$MAN_WIDTH." man -Tascii ";
     if ($section !== "") {
         $command .= escapeshellarg($section)." ";
     }
