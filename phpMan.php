@@ -681,7 +681,8 @@ function addManPageToc (string $html): array {
     if ($minIndent !== null) {
         $maxIndent = $minIndent + 4;
         // Accept spaces in [minIndent, maxIndent], or 1+ tabs
-        $subPattern = '/^(?: {' . $minIndent . ',' . $maxIndent . '}|\t+)<b>([^<]{1,50})<\/b>/';
+        // Capture all consecutive <b>...</b> groups (multi-bold headings like "The Classical nroff/troff System")
+        $subPattern = '/^(?: {' . $minIndent . ',' . $maxIndent . '}|\t+)((?:<b>[^<]+<\/b>\s*)+)/';
     } else {
         $subPattern = '/^(?!x)x/'; // never matches — no indented <b> items found
     }
@@ -705,8 +706,12 @@ function addManPageToc (string $html): array {
 
         // Not a Level 1 line; check if it's an indented <b> item
         if ($currentL1Idx !== null && preg_match($subPattern, $line, $m)) {
-            $label = trim($m[1]);
+            // Use the FULL bold content (all <b> groups) as the label, not just the first word
+            $label = trim(strip_tags($m[1]));
             if (strlen($label) < 1) continue;
+
+            // Skip items whose bold content has no word characters (e.g., roff comments like \")
+            if (!preg_match('/\w/', $label)) continue;
 
             $id = 'sub-' . strtolower(preg_replace('/[^A-Z0-9]+/i', '-', $label));
             $id = trim($id, '-');
