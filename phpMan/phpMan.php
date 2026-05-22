@@ -378,7 +378,10 @@ if ($format === "markdown") {
 // +--------------------------------------------------------------------------------+
 // | show output                                                                    |
 // +--------------------------------------------------------------------------------+
-showHeader($PHP_MAN_TITLE, $CSS_STYLE, $parameter, $section, $mode);
+// Determine if this page has real content (for robots meta)
+$hasRealContent = (trim($content) !== "" && !$isSearchFallback);
+
+showHeader($PHP_MAN_TITLE, $CSS_STYLE, $parameter, $section, $mode, $hasRealContent);
 echo "<h1><a href=\"".$_SERVER['PHP_SELF']."\">".h($PHP_MAN_TITLE)."</a></h1>\n";
 showForm($parameter, $check);
 echo "<hr /><pre>".$content."</pre><hr />";
@@ -421,7 +424,7 @@ showFooter($VALIDATOR, $markdownUrl);
 // +--------------------------------------------------------------------------------+
 
 //show html header
-function showHeader (string $title = "", string $css_style = "", string $parameter = "", string $section = "", string $mode = ""): void {
+function showHeader (string $title = "", string $css_style = "", string $parameter = "", string $section = "", string $mode = "", bool $hasRealContent = true): void {
     header("Content-Type: text/html; charset=UTF-8");
     // always modified now
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
@@ -467,7 +470,7 @@ function showHeader (string $title = "", string $css_style = "", string $paramet
         "<meta name=\"description\" content=\"".h($meta_description)."\"/>\n".
         "<meta name=\"keywords\" content=\"".h($meta_keywords)."\"/>\n".
         "<link rel=\"canonical\" href=\"".h($canonical_url)."\"/>\n".
-        "<meta name=\"robots\" content=\"index, follow\"/>\n".
+        "<meta name=\"robots\" content=\"".($hasRealContent ? "index, follow" : "noindex, follow")."\"/>\n".
         // Open Graph tags
         "<meta property=\"og:title\" content=\"".h($title)."\"/>\n".
         "<meta property=\"og:description\" content=\"".h($meta_description)."\"/>\n".
