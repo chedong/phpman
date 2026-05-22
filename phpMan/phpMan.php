@@ -40,7 +40,7 @@ declare(strict_types=1);
  *     http://packages.debian.org/stable/doc/dwww
  *
  * Sub function list:
- *     showHeader ( $css_style )             //show html header with css style
+ *     showHeader ( $title )               //show html header with css style
  *     showForm ($parameter, $check)         //show input form and recursive call
  *     showFooter ( $validate )              //show html footer
  *     getManPage ($parameter, $mode)        //get html format man page
@@ -64,12 +64,7 @@ $PHP_MAN_TITLE = "phpMan: Unix Man page/ Perldoc / Info page Web Interface";
 //set MANWIDTH for man 1.5+, default for 1024 * 768
 $MAN_WIDTH = 128;
 
-//use colored man page
-$CSS_STYLE = "<style type=\"text/css\">\n".
-    "body {color:#000000;background-color:#EEEEEE;font-family:'Courier New',Courier,monospace;font-size:14px;}\n".
-    "b {color:#996600;background-color:#EEEEEE;}\n".
-    "u {color:#008000;background-color:#EEEEEE;}\n".
-    "</style>\n";
+//use colored man page - merged into showHeader()
 
 $VALIDATOR = "";
 
@@ -280,7 +275,7 @@ if ( $parameter != "" ) {
 
 //show source of file
 if ( $mode == "source" ) {
-    showHeader($PHP_MAN_TITLE, $CSS_STYLE, "", "", $mode);
+    showHeader($PHP_MAN_TITLE, "", "", $mode);
     highlight_file(serverValue("SCRIPT_FILENAME", __FILE__));
     echo "</body></html>";
     exit;
@@ -292,7 +287,7 @@ else if ( $mode == "phpinfo" ) {
 }
 //show GPL
 else if ( $mode == "copyright" ) {
-    showHeader($PHP_MAN_TITLE, $CSS_STYLE, "", "", $mode);
+    showHeader($PHP_MAN_TITLE, "", "", $mode);
     showCopyright();
     echo "</body></html>";
     exit;
@@ -381,7 +376,7 @@ if ($format === "markdown") {
 // Determine if this page has real content (for robots meta)
 $hasRealContent = (trim($content) !== "" && !$isSearchFallback);
 
-showHeader($PHP_MAN_TITLE, $CSS_STYLE, $parameter, $section, $mode, $hasRealContent);
+showHeader($PHP_MAN_TITLE, $parameter, $section, $mode, $hasRealContent);
 echo "<h1><a href=\"".$_SERVER['PHP_SELF']."\">".h($PHP_MAN_TITLE)."</a></h1>\n";
 showForm($parameter, $check);
 echo "<hr /><pre>".$content."</pre><hr />";
@@ -424,7 +419,7 @@ showFooter($VALIDATOR, $markdownUrl);
 // +--------------------------------------------------------------------------------+
 
 //show html header
-function showHeader (string $title = "", string $css_style = "", string $parameter = "", string $section = "", string $mode = "", bool $hasRealContent = true): void {
+function showHeader (string $title = "", string $parameter = "", string $section = "", string $mode = "", bool $hasRealContent = true): void {
     header("Content-Type: text/html; charset=UTF-8");
     // always modified now
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
@@ -460,9 +455,8 @@ function showHeader (string $title = "", string $css_style = "", string $paramet
         }
     }
 
-    echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n".
-        "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" ".
-        "\"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd\">".
+    echo "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" ".
+        "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
         "<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\">\n".
         "<head>\n".
         "<title>".h($title)."</title>\n".
@@ -476,9 +470,10 @@ function showHeader (string $title = "", string $css_style = "", string $paramet
         "<meta name=\"citation_online_date\" content=\"".gmdate("Y/m/d")."\"/>\n".
         "<meta name=\"citation_author\" content=\"Che Dong\"/>\n";
 
-    echo $css_style;
-
     echo "<style type=\"text/css\">\n".
+        "body {color:#000000;background-color:#EEEEEE;font-family:'Courier New',Courier,monospace;font-size:14px;}\n".
+        "b {color:#996600;background-color:#EEEEEE;}\n".
+        "u {color:#008000;background-color:#EEEEEE;text-decoration:underline;}\n".
         "#back-to-top {\n".
         "  position: fixed;\n".
         "  bottom: 20px;\n".
@@ -491,7 +486,6 @@ function showHeader (string $title = "", string $css_style = "", string $paramet
         "#back-to-top a {\n".
         "  color: #fff;\n".
         "  text-decoration: none;\n".
-        "  font-size: 14px;\n".
         "}\n".
         "#back-to-top:hover {\n".
         "  background: #666;\n".
@@ -818,15 +812,14 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                     "/>/",  //html special char: '<' => chr(7) => '&gt;';
                     //man page special chars
                     "/.".chr(8).".".chr(8)."(.)".chr(8)."./",	// ?^H?^H?^H? => <b>?</b>
-                    "/_".chr(8)."(.)".chr(8)."./",	// _^H?^H? => <b>?</b>
-                    "/_".chr(8)."(.)/",  //_^H? => <span style="text-decoration:underline;">?</span>
+                    "/_".chr(8)."(.)/",  //_^H? => <u>?</u>
                     "/.".chr(8)."(.)/",  //?^H? => <b>?</b>
                     //reverse html special chars
                     "/".chr(5)."/",  //reverse '&'
                     "/".chr(6)."/",  //reverse '<'
                     //removed duplicated html tag
-                    "/<\/span><span style=\"text-decoration:underline;\">/",       // '<\/span><span...>' => ''
-                    "/<span style=\"text-decoration:underline;\">_<\/span><b>/",   // '<span...>_</span><b>' => '<b>_'
+                    "/<\/u><u>/",           // '</u><u>' => ''
+                    "/<u>_<\/u>/",          // '<u>_</u>' => '_'
                     "/<\/b><b>/",       // '<\/b><b>' => ''
                     //transfer related command to hyperlinks, but $b->func(#) will not be translate.
                     //'<b>command</b>(<b>#</b>),</b>' => ' command(#)' => link to command
@@ -834,7 +827,7 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                     "/((<.>)|([\s,]))([\w\-\.\+]+)(<\/.>)?\((<.>)?([\dnol]\w*)(<\/.>)?\)(,)?(<\/.>)?/",
                     "/([\s,])([\w\-\.\+]+)\(([\dnol]\w*)\)/",
                     //translate link to related perl modules, but $obj->Module::Name-> will not be translate
-                    //'<span style="text-decoration:underline;">Module::Name</span>' => ' Module::Name'
+                    //'<u>Module::Name</u>' => ' Module::Name'
                     "/((<.>)|([\s,]))(\w+(::\w+)+)(<\/.>)?/",
                     "/".chr(27)."\[1m(.*?)".chr(27)."\[0m/",  //for perldoc on RedHat 8 only
                     "/".chr(27)."\[4m(.*?)".chr(27)."\[24m/", //for perldoc on RedHat 8 only
@@ -848,20 +841,19 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                    chr(6),
                    chr(7),
                    '<b>$1</b>',
-                   '<b>$1</b>',
-                   '<span style="text-decoration:underline;">$1</span>',
+                   '<u>$1</u>',
                    '<b>$1</b>',
                    "&amp;",
                    "&lt;",
                    "",
-                   "<b>_",
+                   "_",
                    "",
                    '$3$4($7)$9',
                    '$1<a href="'.$script_name.'/man/$2/$3">$2($3)</a>',
                    '$3<a href="'.$script_name.'/'.$mode.'/$4">$4</a>',
                    '<b>$1</b>',
-                   '<span style="text-decoration:underline;">$1</span>',
-                   '<a href="mailto:$2 AT $3$4">$2<span style="text-decoration:underline;"> AT </span>$3$4</a>',
+                   '<u>$1</u>',
+                   '<a href="mailto:$2 AT $3$4">$2<u> AT </u>$3$4</a>',
                    '<a href="$1" rel="noopener noreferrer">$1</a>',
                    "&gt;",
                );
@@ -879,14 +871,12 @@ function formatManPerlDocToMarkdown (array $lines): string {
 
     $patterns = array(
         "/.".chr(8).".".chr(8)."(.)".chr(8)."./",  // ?^H?^H?^H? => bold
-        "/_".chr(8)."(.)".chr(8)."./",  // _^H?^H? => bold
         "/_".chr(8)."(.)/",  // _^H? => underline
         "/.".chr(8)."(.)/",  // ?^H? => bold
         "/".chr(27)."\[1m(.*?)".chr(27)."\[0m/",  // perldoc ANSI bold
         "/".chr(27)."\[4m(.*?)".chr(27)."\[24m/", // perldoc ANSI underline
     );
     $replace = array(
-        "\x01$1\x02",
         "\x01$1\x02",
         "\x03$1\x04",
         "\x01$1\x02",
