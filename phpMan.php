@@ -578,7 +578,9 @@ function showFooter (string $validator = "", string $markdownUrl = ""): void {
 //get specified command's man page and convert to html format
 function getManPage (string $parameter, string $section = "1", string $format = "html"): string {
     $lines = array();
-    $command = "man ";
+    // GROFF_NO_SGR=1 forces overstrike output (X^HX) instead of SGR escape sequences,
+    // which formatManPerlDoc() converts to <b> and <u> tags.
+    $command = "GROFF_NO_SGR=1 man ";
     if ($section !== "") {
         $command .= escapeshellarg($section)." ";
     }
