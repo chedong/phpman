@@ -388,11 +388,15 @@ if ($mode === "man" && $parameter !== "" && trim($content) !== "") {
     if (count($tocItems) > 1) {
         echo "<div id=\"toc-sidebar\">\n";
         echo "<div class=\"toc-title\">Sections</div>\n";
-        $currentLevel = 0;
-        foreach ($tocItems as $item) {
-            $level = isset($item[2]) ? (int)$item[2] : 0;
-            $cls = $level > 0 ? " class=\"toc-sub\"" : "";
-            echo "<a href=\"#" . h($item[0]) . "\"" . $cls . ">" . h($item[1]) . "</a>\n";
+        foreach ($tocItems as $l1) {
+            echo "<a href=\"#" . h($l1['id']) . "\">" . h($l1['label']) . "</a>\n";
+            if (!empty($l1['children'])) {
+                echo "<div class=\"toc-subs\">\n";
+                foreach ($l1['children'] as $l2) {
+                    echo "<a href=\"#" . h($l2['id']) . "\" class=\"toc-sub\">" . h($l2['label']) . "</a>\n";
+                }
+                echo "</div>\n";
+            }
         }
         echo "</div>\n";
     }
@@ -607,16 +611,19 @@ function getManPage (string $parameter, string $section = "1", string $format = 
  * Add anchor IDs to man page section headings and build floating TOC.
  * Two levels:
  *   Level 1: all-caps section names on their own line (e.g., NAME, DESCRIPTION)
- *   Level 2: indented lines starting with <b> (e.g., option flags, subsection headings)
- * @return array [htmlWithAnchors, tocItems] where tocItems is [[id, label, level], ...]
+ *   Level 2: indented lines (≥3 spaces) starting with &lt;b&gt;, grouped under
+ *            the most recent Level 1 section (e.g., option flags under DESCRIPTION)
+ * @return array [htmlWithAnchors, tocItems]
+ *   Where tocItems is array of ['id'=>, 'label'=>, 'children'=>[['id'=>, 'label'=>],...]]
  */
 function addManPageToc (string $html): array {
     $lines = explode("\n", $html);
-    $tocItems = array();
-    $sectionNum = 0;
 
     // Collect level-1 (section) IDs to avoid duplicating anchors
     $level1Ids = array();
+
+    // Hierarchical TOC: [ ['id'=>, 'label'=>, 'children'=>[...]], ... ]
+    $tocItems = array();
 
     // ---- Pass 1: detect Level 1 (section) anchors ----
     // Regex: line that is either:
@@ -638,57 +645,67 @@ function addManPageToc (string $html): array {
             if (preg_match('/^[A-Z][A-Z0-9._-]{0,2}\(\d\)$/', $name)) {
                 continue;
             }
-            // Skip known non-section lines that are all-caps
-            if (preg_match('/^[A-Z0-9._-]{2,6}\(\d\)$/', $name)) {
-                continue;
-            }
             // Must be at least 3 chars and not look like a version string
             if (strlen($name) < 3 || preg_match('/^[A-Z][a-z]/', $name)) {
                 continue;
             }
 
-            $sectionNum++;
             $id = 'section-' . strtolower(preg_replace('/[^A-Z0-9]+/i', '-', $name));
             $id = trim($id, '-');
 
             // Wrap with anchor
             $line = '<a id="' . h($id) . '"></a>' . $line;
 
-            $tocItems[] = array($id, $name, 0); // level = 0 (section)
+            $tocItems[] = array('id' => $id, 'label' => $name, 'children' => array());
             $level1Ids[] = $id;
         }
     }
     unset($line); // break reference
 
-    // ---- Pass 2: detect Level 2 (subsection) anchors ----
-    // A Level 2 item is an indented line that starts with <b> (bold label)
+    // ---- Pass 2: detect Level 2 items, grouped under current Level 1 ----
+    // A Level 2 item is an indented line (≥3 spaces) that starts with <b>.
+    // It belongs to the most recent Level 1 section encountered.
     $subPattern = '/^(\s{3,})<b>([^<]{1,50})<\/b>/';
+    $currentL1Idx = null; // index into $tocItems
 
     foreach ($lines as $i => &$line) {
-        if (preg_match($subPattern, $line, $m)) {
-            $label = trim($m[2]);
-            // Skip if too short or looks like a header/footer
-            if (strlen($label) < 1) continue;
-            if (preg_match('/^[A-Z0-9._-]{2,6}\(\d\)$/', $label)) continue;
+        // Check if this line is a Level 1 header (anchor we just added)
+        if (strpos($line, '<a id="section-') === 0) {
+            // Extract the section ID to find the matching toc entry
+            if (preg_match('/<a id="(section-[^"]+)">/', $line, $m)) {
+                $secId = $m[1];
+                foreach ($tocItems as $idx => $l1) {
+                    if ($l1['id'] === $secId) {
+                        $currentL1Idx = $idx;
+                        break;
+                    }
+                }
+            }
+            continue; // skip Level 1 lines, they're already in TOC
+        }
 
-            // Build anchor ID
+        // Not a Level 1 line; check if it's an indented <b> item
+        if ($currentL1Idx !== null && preg_match($subPattern, $line, $m)) {
+            $label = trim($m[2]);
+            if (strlen($label) < 1) continue;
+
             $id = 'sub-' . strtolower(preg_replace('/[^A-Z0-9]+/i', '-', $label));
             $id = trim($id, '-');
 
-            // Avoid duplicating: skip if this ID already exists as Level 1
+            // Skip if this ID already used as a Level 1 section
             if (in_array($id, $level1Ids)) continue;
 
-            // Avoid adding the same sub ID twice
-            $already = false;
-            foreach ($tocItems as $item) {
-                if ($item[0] === $id) { $already = true; break; }
+            // Avoid duplicating the same sub-item within the same section
+            $dupe = false;
+            foreach ($tocItems[$currentL1Idx]['children'] as $child) {
+                if ($child['id'] === $id) { $dupe = true; break; }
             }
-            if ($already) continue;
+            if ($dupe) continue;
 
-            // Insert anchor
-            $line = '<a id="' . h($id) . '"></a>' . $line;
+            // Insert anchor in the raw line
+            $lines[$i] = '<a id="' . h($id) . '"></a>' . $line;
 
-            $tocItems[] = array($id, $label, 1); // level = 1 (subsection)
+            $tocItems[$currentL1Idx]['children'][] = array('id' => $id, 'label' => $label);
         }
     }
     unset($line);
