@@ -388,8 +388,11 @@ if ($mode === "man" && $parameter !== "" && trim($content) !== "") {
     if (count($tocItems) > 1) {
         echo "<div id=\"toc-sidebar\">\n";
         echo "<div class=\"toc-title\">Sections</div>\n";
+        $currentLevel = 0;
         foreach ($tocItems as $item) {
-            echo "<a href=\"#" . h($item[0]) . "\">" . h($item[1]) . "</a>\n";
+            $level = isset($item[2]) ? (int)$item[2] : 0;
+            $cls = $level > 0 ? " class=\"toc-sub\"" : "";
+            echo "<a href=\"#" . h($item[0]) . "\"" . $cls . ">" . h($item[1]) . "</a>\n";
         }
         echo "</div>\n";
     }
@@ -502,6 +505,8 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "#toc-sidebar a {display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;".
             "color:#333;text-decoration:none;padding:2px 4px;border-radius:2px;}\n".
         "#toc-sidebar a:hover {background:#DDD;color:#000;}\n".
+        "#toc-sidebar a.toc-sub {padding-left:18px;font-size:11px;color:#555;}\n".
+        "#toc-sidebar a.toc-sub:hover {color:#000;}\n".
         "#toc-sidebar .toc-title {font-weight:bold;border-bottom:1px solid #CCC;margin-bottom:4px;padding-bottom:2px;}\n".
         "#back-to-top {position:fixed;bottom:20px;right:20px;z-index:100;}\n".
         "#back-to-top a {display:block;padding:8px 14px;background:#333;color:#FFF;text-decoration:none;".
@@ -600,25 +605,35 @@ function getManPage (string $parameter, string $section = "1", string $format = 
 
 /**
  * Add anchor IDs to man page section headings and build floating TOC.
- * Detects lines with all-caps section names (with or without <b> tags)
- * on their own line.
- * @return array [htmlWithAnchors, tocItems] where tocItems is [[id, label], ...]
+ * Two levels:
+ *   Level 1: all-caps section names on their own line (e.g., NAME, DESCRIPTION)
+ *   Level 2: indented lines starting with <b> (e.g., option flags, subsection headings)
+ * @return array [htmlWithAnchors, tocItems] where tocItems is [[id, label, level], ...]
  */
 function addManPageToc (string $html): array {
     $lines = explode("\n", $html);
     $tocItems = array();
     $sectionNum = 0;
 
+    // Collect level-1 (section) IDs to avoid duplicating anchors
+    $level1Ids = array();
+
+    // ---- Pass 1: detect Level 1 (section) anchors ----
     // Regex: line that is either:
     //   1) <b>ALL_CAPS_TEXT</b> (bold section)
     //   2) Plain ALL_CAPS_TEXT on its own line
+    //   3) <b>ALL_CAPS</b> <b>WORDS</b> (multi-bold section like "SEE ALSO")
     // Must have at least 3 uppercase chars, and not be a "LS(1)" header/footer.
-    $sectionPattern = '/^(?:<b>)?([A-Z][A-Z0-9_ \x2d]{2,}?)(?:<\/b>)?\r?$/';
+    $sectionPattern = '/^(?:<b>)?([A-Z][A-Z0-9_ \x2d]{2,}?)(?:<\/b>)?(?:\s+<b>([A-Z][A-Z0-9_ \x2d]{2,})<\/b>)?\r?$/';
 
     foreach ($lines as $i => &$line) {
         $stripped = strip_tags($line);
         if (preg_match($sectionPattern, $line, $m)) {
             $name = trim($m[1]);
+            // Handle multi-bold sections like <b>SEE</b> <b>ALSO</b>
+            if (isset($m[2]) && $m[2] !== "") {
+                $name .= " " . $m[2];
+            }
             // Skip false positives: man page header/footer like "LS(1)"
             if (preg_match('/^[A-Z][A-Z0-9._-]{0,2}\(\d\)$/', $name)) {
                 continue;
@@ -637,17 +652,46 @@ function addManPageToc (string $html): array {
             $id = trim($id, '-');
 
             // Wrap with anchor
-            if (strpos($line, '<b>') !== false) {
-                // <b>NAME</b> => <a id="section-name"></a><b>NAME</b>
-                $line = '<a id="' . h($id) . '"></a>' . $line;
-            } else {
-                $line = '<a id="' . h($id) . '"></a>' . $line;
-            }
+            $line = '<a id="' . h($id) . '"></a>' . $line;
 
-            $tocItems[] = array($id, $name);
+            $tocItems[] = array($id, $name, 0); // level = 0 (section)
+            $level1Ids[] = $id;
         }
     }
     unset($line); // break reference
+
+    // ---- Pass 2: detect Level 2 (subsection) anchors ----
+    // A Level 2 item is an indented line that starts with <b> (bold label)
+    $subPattern = '/^(\s{3,})<b>([^<]{1,50})<\/b>/';
+
+    foreach ($lines as $i => &$line) {
+        if (preg_match($subPattern, $line, $m)) {
+            $label = trim($m[2]);
+            // Skip if too short or looks like a header/footer
+            if (strlen($label) < 1) continue;
+            if (preg_match('/^[A-Z0-9._-]{2,6}\(\d\)$/', $label)) continue;
+
+            // Build anchor ID
+            $id = 'sub-' . strtolower(preg_replace('/[^A-Z0-9]+/i', '-', $label));
+            $id = trim($id, '-');
+
+            // Avoid duplicating: skip if this ID already exists as Level 1
+            if (in_array($id, $level1Ids)) continue;
+
+            // Avoid adding the same sub ID twice
+            $already = false;
+            foreach ($tocItems as $item) {
+                if ($item[0] === $id) { $already = true; break; }
+            }
+            if ($already) continue;
+
+            // Insert anchor
+            $line = '<a id="' . h($id) . '"></a>' . $line;
+
+            $tocItems[] = array($id, $label, 1); // level = 1 (subsection)
+        }
+    }
+    unset($line);
 
     return array(implode("\n", $lines), $tocItems);
 }
