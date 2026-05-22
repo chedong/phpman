@@ -819,14 +819,14 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                     //man page special chars
                     "/.".chr(8).".".chr(8)."(.)".chr(8)."./",	// ?^H?^H?^H? => <b>?</b>
                     "/_".chr(8)."(.)".chr(8)."./",	// _^H?^H? => <b>?</b>
-                    "/_".chr(8)."(.)/",  //_^H? => <u>?</u>
+                    "/_".chr(8)."(.)/",  //_^H? => <span style="text-decoration:underline;">?</span>
                     "/.".chr(8)."(.)/",  //?^H? => <b>?</b>
                     //reverse html special chars
                     "/".chr(5)."/",  //reverse '&'
                     "/".chr(6)."/",  //reverse '<'
                     //removed duplicated html tag
-                    "/<\/u><u>/",       // '<\/u><u>' => ''
-                    "/<u>_<\/u><b>/",   // '<u>_<\/u><b>' => '<b>_'
+                    "/<\/span><span style=\"text-decoration:underline;\">/",       // '<\/span><span...>' => ''
+                    "/<span style=\"text-decoration:underline;\">_<\/span><b>/",   // '<span...>_</span><b>' => '<b>_'
                     "/<\/b><b>/",       // '<\/b><b>' => ''
                     //transfer related command to hyperlinks, but $b->func(#) will not be translate.
                     //'<b>command</b>(<b>#</b>),</b>' => ' command(#)' => link to command
@@ -834,7 +834,7 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                     "/((<.>)|([\s,]))([\w\-\.\+]+)(<\/.>)?\((<.>)?([\dnol]\w*)(<\/.>)?\)(,)?(<\/.>)?/",
                     "/([\s,])([\w\-\.\+]+)\(([\dnol]\w*)\)/",
                     //translate link to related perl modules, but $obj->Module::Name-> will not be translate
-                    //'<u>Module::Name</u>' => ' Module::Name'
+                    //'<span style="text-decoration:underline;">Module::Name</span>' => ' Module::Name'
                     "/((<.>)|([\s,]))(\w+(::\w+)+)(<\/.>)?/",
                     "/".chr(27)."\[1m(.*?)".chr(27)."\[0m/",  //for perldoc on RedHat 8 only
                     "/".chr(27)."\[4m(.*?)".chr(27)."\[24m/", //for perldoc on RedHat 8 only
@@ -849,7 +849,7 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                    chr(7),
                    '<b>$1</b>',
                    '<b>$1</b>',
-                   '<u>$1</u>',
+                   '<span style="text-decoration:underline;">$1</span>',
                    '<b>$1</b>',
                    "&amp;",
                    "&lt;",
@@ -860,8 +860,8 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                    '$1<a href="'.$script_name.'/man/$2/$3">$2($3)</a>',
                    '$3<a href="'.$script_name.'/'.$mode.'/$4">$4</a>',
                    '<b>$1</b>',
-                   '<u>$1</u>',
-                   '<a href="mailto:$2 AT $3$4">$2<u> AT </u>$3$4</a>',
+                   '<span style="text-decoration:underline;">$1</span>',
+                   '<a href="mailto:$2 AT $3$4">$2<span style="text-decoration:underline;"> AT </span>$3$4</a>',
                    '<a href="$1" rel="noopener noreferrer">$1</a>',
                    "&gt;",
                );
