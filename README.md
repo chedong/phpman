@@ -1,9 +1,7 @@
 # phpMan - Unix Manual Pages in PHP
-
 phpMan is a PHP-based Unix manual page viewer. It parses man page output and renders it as HTML.
 
 ## Project Home
-
 - <https://sourceforge.net/projects/phpunixman>
 
 ## Check Out Source Code
@@ -11,15 +9,13 @@ phpMan is a PHP-based Unix manual page viewer. It parses man page output and ren
 ### HTTPS (read-only)
 
 ```bash
-git clone https://git.code.sf.net/p/phpunixman/code phpunixman
-cd phpunixman
+git clone https://git.code.sf.net/p/phpunixman/code phpman
 ```
 
 ### SSH (developers)
 
 ```bash
-git clone ssh://chedong@git.code.sf.net/p/phpunixman/code.git phpunixman
-cd phpunixman
+git clone ssh://chedong@git.code.sf.net/p/phpunixman/code.git phpman
 ```
 
 ## Publish Updates
@@ -41,13 +37,7 @@ git push sf master
 scp phpMan.php chedong@web.sourceforge.net:/home/groups/p/ph/phpunixman/htdocs/index.php
 ```
 
-### 3. Update Homepage (chedong.com)
-
-```bash
-scp phpMan.php chedong.com:/var/www/html/index.php
-```
-
-### 4. Upload Release
+### 3. Upload Release
 
 Upload the compressed archive via SourceForge File Manager:
 <https://sourceforge.net/projects/phpunixman/files/>`
