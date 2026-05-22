@@ -80,7 +80,7 @@ $VALIDATOR = "<a href=\"https://validator.w3.org/check?uri=" . urlencode($curren
 "<img style=\"border:0;width:88px;height:31px\"".
 " src=\"http://www.w3.org/Icons/valid-xhtml10\"".
 " alt=\"Valid XHTML 1.0!\" /></a>".
-"<a href=\"https://jigsaw.w3.org/css-validator/validator?uri=" . urlencode($currentUrl) . "&amp;profile=css3svg&amp;usermedium=all&amp;warning=1&amp;vextwarning=&amp;lang=zh-cn\">".
+"<a href=\"https://jigsaw.w3.org/css-validator/validator?uri=" . urlencode($currentUrl) . "\">".
 "<img style=\"border:0;width:88px;height:31px\"".
 " src=\"https://jigsaw.w3.org/css-validator/images/vcss-blue\"".
 " alt=\"Valid CSS!\" /></a>";
