@@ -478,7 +478,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
         "<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\">\n".
         "<head>\n".
-        "<!-- phpMan v2026-05-22b - GROFF_NO_SGR=1 restored -->\n".
+        "<!-- phpMan v2026-05-22c - back to -Tascii for DreamHost -->\n".
         "<title>".h($title)."</title>\n".
         "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n".
         "<meta name=\"description\" content=\"".h($meta_description)."\"/>\n".
@@ -503,6 +503,10 @@ function showHeader (string $title = "", string $parameter = "", string $section
             "color:#333;text-decoration:none;padding:2px 4px;border-radius:2px;}\n".
         "#toc-sidebar a:hover {background:#DDD;color:#000;}\n".
         "#toc-sidebar .toc-title {font-weight:bold;border-bottom:1px solid #CCC;margin-bottom:4px;padding-bottom:2px;}\n".
+        "#back-to-top {position:fixed;bottom:20px;right:20px;z-index:100;}\n".
+        "#back-to-top a {display:block;padding:8px 14px;background:#333;color:#FFF;text-decoration:none;".
+            "border-radius:6px;font-size:13px;font-family:monospace;}\n".
+        "#back-to-top a:hover {background:#555;}\n".
         "@media (max-width:768px) {#toc-sidebar{display:none;}#content-wrap{margin-right:0;max-width:100%;}}\n".
         "</style>\n";
 
@@ -579,10 +583,9 @@ function showFooter (string $validator = "", string $markdownUrl = ""): void {
 //get specified command's man page and convert to html format
 function getManPage (string $parameter, string $section = "1", string $format = "html"): string {
     $lines = array();
-    // GROFF_NO_SGR=1 forces overstrike output (X^HX) instead of SGR escape sequences,
-    // which formatManPerlDoc() converts to <b> and <u> tags.
-    // @version 2026-05-22b — GROFF_NO_SGR=1 for overstrike → <b>/<u> conversion
-    $command = "GROFF_NO_SGR=1 man ";
+    // use man -Tascii so formatManPerlDoc() converts overstrike to <b>/<u> tags
+    // @version 2026-05-22c — back to -Tascii for DreamHost compatibility
+    $command = "man -Tascii ";
     if ($section !== "") {
         $command .= escapeshellarg($section)." ";
     }
