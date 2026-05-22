@@ -890,8 +890,10 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                     //translate link to related perl modules, but $obj->Module::Name-> will not be translate
                     //'<u>Module::Name</u>' => ' Module::Name'
                     "/((<.>)|([\s,]))(\w+(::\w+)+)(<\/.>)?/",
-                    "/".chr(27)."\[1m(.*?)".chr(27)."\[0m/",  //for perldoc on RedHat 8 only
-                    "/".chr(27)."\[4m(.*?)".chr(27)."\[24m/", //for perldoc on RedHat 8 only
+                    // SGR escape sequences (modern man): handle ESC[1m..ESC[0m and ESC[1m..ESC[22m
+                    "/".chr(27)."\[1m(.*?)".chr(27)."\[(?:0|22)m/",
+                    // SGR underline: handle ESC[4m..ESC[0m and ESC[4m..ESC[24m
+                    "/".chr(27)."\[4m(.*?)".chr(27)."\[(?:0|24)m/",
                     "/(([\w\-\.]+)@([\w\-]+)(\.[\w\-]+)+)/",  //link to email
                     "/([\w]+:\/\/[\w%\-\?&;#~=\.\/\@]+[\w\/])/i", //link to url
                     "/".chr(7)."/",  //reverse '>'
