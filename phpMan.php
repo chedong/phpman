@@ -73,8 +73,8 @@ $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' :
 $currentUrl = $scheme . '://' . serverValue("HTTP_HOST", "localhost") . serverValue("REQUEST_URI", scriptName());
 $VALIDATOR = "<a href=\"https://validator.w3.org/check?uri=" . urlencode($currentUrl) . "\">".
 "<img style=\"border:0;width:88px;height:31px\"".
-" src=\"https://www.w3.org/Icons/valid-xhtml11\"".
-" alt=\"Valid XHTML 1.1!\" /></a>".
+" src=\"https://www.w3.org/Icons/valid-xhtml10\"".
+" alt=\"Valid XHTML 1.0 Transitional\" /></a>".
 "<a href=\"https://jigsaw.w3.org/css-validator/validator?uri=" . urlencode($currentUrl) . "\">".
 "<img style=\"border:0;width:88px;height:31px\"".
 " src=\"https://jigsaw.w3.org/css-validator/images/vcss-blue\"".
@@ -382,7 +382,7 @@ showForm($parameter, $check);
 echo "<hr /><div id=\"content-wrap\">\n";
 
 // For man page content, add section anchors and floating TOC
-if ($mode === "man" && $parameter !== "" && trim($content) !== "") {
+if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
     list($anchoredContent, $tocItems) = addManPageToc($content);
 
     if (count($tocItems) > 1) {
@@ -663,15 +663,15 @@ function addManPageToc (string $html): array {
     unset($line); // break reference
 
     // ---- Pass 2: detect Level 2 items, grouped under current Level 1 ----
-    // A Level 2 item is an indented line starting with <b>.
+    // A Level 2 item is an indented line starting with <b> or <u>.
     // To exclude deeply nested list items, we dynamically determine the
     // range of acceptable indentation:
-    //   min_indent = shallowest indented <b> line
+    //   min_indent = shallowest indented <b> or <u> line
     //   max_indent = min_indent + 4 (catch first nesting level only)
     $minIndent = null;
     $maxIndent = null;
     foreach ($lines as $line) {
-        if (preg_match('/^(\s+)<b>/', $line, $m)) {
+        if (preg_match('/^(\s+)<(?:b|u)>/', $line, $m)) {
             $ws = strlen($m[1]);
             if ($minIndent === null || $ws < $minIndent) {
                 $minIndent = $ws;
@@ -682,7 +682,7 @@ function addManPageToc (string $html): array {
         $maxIndent = $minIndent + 4;
         // Accept spaces in [minIndent, maxIndent], or 1+ tabs
         // Capture all consecutive <b>...</b> groups (multi-bold headings like "The Classical nroff/troff System")
-        $subPattern = '/^(?: {' . $minIndent . ',' . $maxIndent . '}|\t+)((?:<b>[^<]+<\/b>\s*)+)/';
+        $subPattern = '/^(?: {' . $minIndent . ',' . $maxIndent . '}|\t+)((?:<(?:b|u)>[^<]+<\/(?:b|u)>\s*)+)/';
     } else {
         $subPattern = '/^(?!x)x/'; // never matches — no indented <b> items found
     }
@@ -970,6 +970,9 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                     "/<\/u><u>/",           // '</u><u>' => ''
                     "/<u>_<\/u>/",          // '<u>_</u>' => '_'
                     "/<\/b><b>/",       // '<\/b><b>' => ''
+                    //perldoc specific: plain text headings (no overstrike sequences in perldoc output)
+                    "/^([A-Z][A-Z0-9][A-Z0-9\/\s]{1,50})\s*$/",
+                    "/^ {2}([A-Z][a-z][\w\s:\x27;,-]+)\s*$/",
                     //transfer related command to hyperlinks, but $b->func(#) will not be translate.
                     //'<b>command</b>(<b>#</b>),</b>' => ' command(#)' => link to command
                     //Man Page Howto: http://www.schweikhardt.net/man_page_howto.html
@@ -1000,6 +1003,8 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                    "",
                    "_",
                    "",
+                   '<b>$1</b>',
+                   '  <u>$1</u>',
                    '$3$4($7)$9',
                    '$1<a href="'.$script_name.'/man/$2/$3">$2($3)</a>',
                    '$3<a href="'.$script_name.'/'.$mode.'/$4">$4</a>',
