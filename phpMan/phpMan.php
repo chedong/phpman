@@ -73,13 +73,13 @@ $CSS_STYLE = "<style type=\"text/css\">\n".
 
 $VALIDATOR = "";
 
-//unmask comments to show xhtml 1.0 and css validator
+//unmask comments to show xhtml 1.1 and css validator
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $currentUrl = $scheme . '://' . serverValue("HTTP_HOST", "localhost") . serverValue("REQUEST_URI", scriptName());
 $VALIDATOR = "<a href=\"https://validator.w3.org/check?uri=" . urlencode($currentUrl) . "\">".
 "<img style=\"border:0;width:88px;height:31px\"".
-" src=\"http://www.w3.org/Icons/valid-xhtml10\"".
-" alt=\"Valid XHTML 1.0!\" /></a>".
+" src=\"https://www.w3.org/Icons/valid-xhtml11\"".
+" alt=\"Valid XHTML 1.1!\" /></a>".
 "<a href=\"https://jigsaw.w3.org/css-validator/validator?uri=" . urlencode($currentUrl) . "\">".
 "<img style=\"border:0;width:88px;height:31px\"".
 " src=\"https://jigsaw.w3.org/css-validator/images/vcss-blue\"".
@@ -461,9 +461,9 @@ function showHeader (string $title = "", string $css_style = "", string $paramet
     }
 
     echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n".
-        "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" ".
-        "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
-        "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n".
+        "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" ".
+        "\"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd\">".
+        "<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\">\n".
         "<head>\n".
         "<title>".h($title)."</title>\n".
         "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n".
@@ -486,10 +486,12 @@ function showHeader (string $title = "", string $css_style = "", string $paramet
         "  display: none;\n".
         "  padding: 6px 12px;\n".
         "  background: #444;\n".
+        "  border-radius: 4px;\n".
+        "}\n".
+        "#back-to-top a {\n".
         "  color: #fff;\n".
         "  text-decoration: none;\n".
         "  font-size: 13px;\n".
-        "  border-radius: 4px;\n".
         "}\n".
         "#back-to-top:hover {\n".
         "  background: #666;\n".
@@ -532,7 +534,7 @@ function showHeader (string $title = "", string $css_style = "", string $paramet
         echo "<script type=\"application/ld+json\">\n{$schema_json}\n</script>\n";
     }
 
-    echo "</head>\n<body>\n<a id=\"top\"></a>\n";
+    echo "</head>\n<body>\n<div id=\"top\"></div>\n";
 }
 
 //promter and recursive call
@@ -572,7 +574,7 @@ function showFooter (string $validator = "", string $markdownUrl = ""): void {
         "<a href=\"" . $home_url . "\">" . date("Y-m-d H:i") . " @". $remote_addr .
         " CrawledBy " . $user_agent . "</a>" .
         "<br />" . $validator . "</p>" .
-        "<a id=\"back-to-top\" href=\"#top\">^_back to top</a>" .
+        "<div id=\"back-to-top\"><a href=\"#top\">^_back to top</a></div>" .
         "</body></html>";
 }
 
@@ -860,7 +862,7 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                    '<b>$1</b>',
                    '<u>$1</u>',
                    '<a href="mailto:$2 AT $3$4">$2<u> AT </u>$3$4</a>',
-                   '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>',
+                   '<a href="$1" rel="noopener noreferrer">$1</a>',
                    "&gt;",
                );
     $output = "";
