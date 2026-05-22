@@ -665,7 +665,7 @@ function addManPageToc (string $html): array {
     // ---- Pass 2: detect Level 2 items, grouped under current Level 1 ----
     // A Level 2 item is an indented line (≥3 spaces) that starts with <b>.
     // It belongs to the most recent Level 1 section encountered.
-    $subPattern = '/^(\s{3,})<b>([^<]{1,50})<\/b>/';
+    $subPattern = '/^(?:(?: {3,})|(?:\t+))<b>([^<]{1,50})<\/b>/';
     $currentL1Idx = null; // index into $tocItems
 
     foreach ($lines as $i => &$line) {
@@ -686,7 +686,7 @@ function addManPageToc (string $html): array {
 
         // Not a Level 1 line; check if it's an indented <b> item
         if ($currentL1Idx !== null && preg_match($subPattern, $line, $m)) {
-            $label = trim($m[2]);
+            $label = trim($m[1]);
             if (strlen($label) < 1) continue;
 
             $id = 'sub-' . strtolower(preg_replace('/[^A-Z0-9]+/i', '-', $label));
