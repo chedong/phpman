@@ -66,7 +66,7 @@ $MAN_WIDTH = 128;
 
 //use colored man page
 $CSS_STYLE = "<style type=\"text/css\">\n".
-    "body {color:#000000;background-color:#EEEEEE;}\n".
+    "body {color:#000000;background-color:#EEEEEE;font-family:'Courier New',Courier,monospace;font-size:14px;}\n".
     "b {color:#996600;background-color:#EEEEEE;}\n".
     "u {color:#008000;background-color:#EEEEEE;}\n".
     "</style>\n";
@@ -491,7 +491,7 @@ function showHeader (string $title = "", string $css_style = "", string $paramet
         "#back-to-top a {\n".
         "  color: #fff;\n".
         "  text-decoration: none;\n".
-        "  font-size: 13px;\n".
+        "  font-size: 14px;\n".
         "}\n".
         "#back-to-top:hover {\n".
         "  background: #666;\n".
