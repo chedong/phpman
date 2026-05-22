@@ -478,6 +478,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
         "<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\">\n".
         "<head>\n".
+        "<!-- phpMan v2026-05-22b - GROFF_NO_SGR=1 restored -->\n".
         "<title>".h($title)."</title>\n".
         "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n".
         "<meta name=\"description\" content=\"".h($meta_description)."\"/>\n".
@@ -580,6 +581,7 @@ function getManPage (string $parameter, string $section = "1", string $format = 
     $lines = array();
     // GROFF_NO_SGR=1 forces overstrike output (X^HX) instead of SGR escape sequences,
     // which formatManPerlDoc() converts to <b> and <u> tags.
+    // @version 2026-05-22b — GROFF_NO_SGR=1 for overstrike → <b>/<u> conversion
     $command = "GROFF_NO_SGR=1 man ";
     if ($section !== "") {
         $command .= escapeshellarg($section)." ";
