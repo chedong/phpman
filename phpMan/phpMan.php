@@ -280,7 +280,7 @@ if ( $parameter != "" ) {
 
 //show source of file
 if ( $mode == "source" ) {
-    showHeader($PHP_MAN_TITLE, $CSS_STYLE);
+    showHeader($PHP_MAN_TITLE, $CSS_STYLE, "", "", $mode);
     highlight_file(serverValue("SCRIPT_FILENAME", __FILE__));
     echo "</body></html>";
     exit;
@@ -292,7 +292,7 @@ else if ( $mode == "phpinfo" ) {
 }
 //show GPL
 else if ( $mode == "copyright" ) {
-    showHeader($PHP_MAN_TITLE, $CSS_STYLE);
+    showHeader($PHP_MAN_TITLE, $CSS_STYLE, "", "", $mode);
     showCopyright();
     echo "</body></html>";
     exit;
@@ -378,7 +378,7 @@ if ($format === "markdown") {
 // +--------------------------------------------------------------------------------+
 // | show output                                                                    |
 // +--------------------------------------------------------------------------------+
-showHeader($PHP_MAN_TITLE, $CSS_STYLE);
+showHeader($PHP_MAN_TITLE, $CSS_STYLE, $parameter, $section, $mode);
 echo "<h1><a href=\"".$_SERVER['PHP_SELF']."\">".h($PHP_MAN_TITLE)."</a></h1>\n";
 showForm($parameter, $check);
 echo "<hr /><pre>".$content."</pre><hr />";
@@ -421,12 +421,41 @@ showFooter($VALIDATOR, $markdownUrl);
 // +--------------------------------------------------------------------------------+
 
 //show html header
-function showHeader (string $title = "", string $css_style = ""): void {
+function showHeader (string $title = "", string $css_style = "", string $parameter = "", string $section = "", string $mode = ""): void {
     header("Content-Type: text/html; charset=UTF-8");
     // always modified now
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
     // Expires one month later
     header("Expires: " .gmdate ("D, d M Y H:i:s", time() + 3600 * 24 * 30). " GMT");
+
+    // Build SEO meta values
+    $site_name = "phpMan";
+    $base_url = "https://www.chedong.com/phpMan.php";
+    $canonical_url = $base_url;
+    $meta_description = "phpMan: Web interface for Unix/Linux man pages, Perl perldoc, and GNU info pages";
+    $meta_keywords = "man page, unix manual, linux command, perldoc, info page, phpMan";
+
+    if ($parameter !== "") {
+        $section_suffix = $section !== "" ? "({$section})" : "";
+        $canonical_url = $base_url . "/" . urlencode($mode ?: "man") . "/" . urlencode($parameter);
+        if ($section !== "") {
+            $canonical_url .= "/" . urlencode($section);
+        }
+
+        if ($mode === "man") {
+            $meta_description = "Online man page for {$parameter}{$section_suffix}: read the Unix/Linux manual page in your browser";
+            $meta_keywords = "{$parameter} man page, {$parameter} linux, {$parameter} unix, man {$parameter}, {$parameter} command";
+        } elseif ($mode === "perldoc") {
+            $meta_description = "Online perldoc for {$parameter}: read the Perl documentation in your browser";
+            $meta_keywords = "{$parameter} perldoc, {$parameter} perl, perl {$parameter}, {$parameter} documentation";
+        } elseif ($mode === "info") {
+            $meta_description = "Online info page for {$parameter}: read the GNU info documentation in your browser";
+            $meta_keywords = "{$parameter} info page, {$parameter} gnu, info {$parameter}, {$parameter} documentation";
+        } elseif ($mode === "search") {
+            $meta_description = "Search results for '{$parameter}' in Unix/Linux man pages, perldoc, and info pages";
+            $meta_keywords = "{$parameter}, man page search, {$parameter} command, search manual";
+        }
+    }
 
     echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n".
         "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" ".
@@ -434,7 +463,21 @@ function showHeader (string $title = "", string $css_style = ""): void {
         "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n".
         "<head>\n".
         "<title>".h($title)."</title>\n".
-        "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n";
+        "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n".
+        "<meta name=\"description\" content=\"".h($meta_description)."\"/>\n".
+        "<meta name=\"keywords\" content=\"".h($meta_keywords)."\"/>\n".
+        "<link rel=\"canonical\" href=\"".h($canonical_url)."\"/>\n".
+        "<meta name=\"robots\" content=\"index, follow\"/>\n".
+        // Open Graph tags
+        "<meta property=\"og:title\" content=\"".h($title)."\"/>\n".
+        "<meta property=\"og:description\" content=\"".h($meta_description)."\"/>\n".
+        "<meta property=\"og:type\" content=\"article\"/>\n".
+        "<meta property=\"og:url\" content=\"".h($canonical_url)."\"/>\n".
+        "<meta property=\"og:site_name\" content=\"".h($site_name)."\"/>\n".
+        // GEO: citation for AI/LLM attribution
+        "<meta name=\"citation_title\" content=\"".h($title)."\"/>\n".
+        "<meta name=\"citation_online_date\" content=\"".gmdate("Y/m/d")."\"/>\n".
+        "<meta name=\"citation_author\" content=\"Che Dong\"/>\n";
 
     echo $css_style;
 
@@ -465,6 +508,32 @@ function showHeader (string $title = "", string $css_style = ""): void {
         "});\n".
         "//]]>\n".
         "</script>\n";
+
+    // JSON-LD structured data for SEO/GEO
+    if ($parameter !== "" && in_array($mode, ["man", "perldoc", "info"])) {
+        $schema_type = "TechArticle";
+        $section_label = $section !== "" ? " (section {$section})" : "";
+        $schema_json = json_encode([
+            "@context" => "https://schema.org",
+            "@type" => $schema_type,
+            "name" => $parameter . $section_label,
+            "description" => $meta_description,
+            "url" => $canonical_url,
+            "author" => [
+                "@type" => "Organization",
+                "name" => $site_name,
+                "url" => $base_url
+            ],
+            "publisher" => [
+                "@type" => "Person",
+                "name" => "Che Dong",
+                "url" => "http://www.chedong.com/"
+            ],
+            "datePublished" => gmdate("Y-m-d"),
+            "inLanguage" => "en"
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        echo "<script type=\"application/ld+json\">\n{$schema_json}\n</script>\n";
+    }
 
     echo "</head>\n<body>\n<a id=\"top\"></a>\n";
 }
