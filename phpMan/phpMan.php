@@ -73,13 +73,13 @@ $CSS_STYLE = "<style type=\"text/css\">\n".
 
 $VALIDATOR = "";
 
-//unmask comments to show html5 and css validator
+//unmask comments to show xhtml 1.0 and css validator
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $currentUrl = $scheme . '://' . serverValue("HTTP_HOST", "localhost") . serverValue("REQUEST_URI", scriptName());
-$VALIDATOR = "<a href=\"https://validator.w3.org/nu/?doc=" . urlencode($currentUrl) . "\">".
+$VALIDATOR = "<a href=\"https://validator.w3.org/check?uri=" . urlencode($currentUrl) . "\">".
 "<img style=\"border:0;width:88px;height:31px\"".
-" src=\"https://www.w3.org/Icons/valid-html401\"".
-" alt=\"Valid HTML!\" /></a>".
+" src=\"http://www.w3.org/Icons/valid-xhtml10\"".
+" alt=\"Valid XHTML 1.0!\" /></a>".
 "<a href=\"https://jigsaw.w3.org/css-validator/validator?uri=" . urlencode($currentUrl) . "\">".
 "<img style=\"border:0;width:88px;height:31px\"".
 " src=\"https://jigsaw.w3.org/css-validator/images/vcss-blue\"".
@@ -460,8 +460,10 @@ function showHeader (string $title = "", string $css_style = "", string $paramet
         }
     }
 
-    echo "<!DOCTYPE html>\n".
-        "<html lang=\"en\">\n".
+    echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n".
+        "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" ".
+        "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
+        "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n".
         "<head>\n".
         "<title>".h($title)."</title>\n".
         "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n".
@@ -469,12 +471,6 @@ function showHeader (string $title = "", string $css_style = "", string $paramet
         "<meta name=\"keywords\" content=\"".h($meta_keywords)."\"/>\n".
         "<link rel=\"canonical\" href=\"".h($canonical_url)."\"/>\n".
         "<meta name=\"robots\" content=\"".($hasRealContent ? "index, follow" : "noindex, follow")."\"/>\n".
-        // Open Graph tags
-        "<meta property=\"og:title\" content=\"".h($title)."\"/>\n".
-        "<meta property=\"og:description\" content=\"".h($meta_description)."\"/>\n".
-        "<meta property=\"og:type\" content=\"article\"/>\n".
-        "<meta property=\"og:url\" content=\"".h($canonical_url)."\"/>\n".
-        "<meta property=\"og:site_name\" content=\"".h($site_name)."\"/>\n".
         // GEO: citation for AI/LLM attribution
         "<meta name=\"citation_title\" content=\"".h($title)."\"/>\n".
         "<meta name=\"citation_online_date\" content=\"".gmdate("Y/m/d")."\"/>\n".
