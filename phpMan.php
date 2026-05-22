@@ -474,33 +474,8 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "body {color:#000000;background-color:#EEEEEE;font-family:'Courier New',Courier,monospace;font-size:14px;}\n".
         "b {color:#996600;background-color:#EEEEEE;}\n".
         "u {color:#008000;background-color:#EEEEEE;text-decoration:underline;}\n".
-        "#back-to-top {\n".
-        "  position: fixed;\n".
-        "  bottom: 20px;\n".
-        "  right: 20px;\n".
-        "  display: none;\n".
-        "  padding: 6px 12px;\n".
-        "  background: #444;\n".
-        "  border-radius: 4px;\n".
-        "}\n".
-        "#back-to-top a {\n".
-        "  color: #fff;\n".
-        "  text-decoration: none;\n".
-        "}\n".
-        "#back-to-top:hover {\n".
-        "  background: #666;\n".
-        "}\n".
-        "</style>\n".
-        "<script type=\"text/javascript\">\n".
-        "//<![CDATA[\n".
-        "window.addEventListener('scroll',function(){\n".
-        "  var btn=document.getElementById('back-to-top');\n".
-        "  if(!btn)return;\n".
-        "  if(window.scrollY>window.innerHeight)btn.style.display='block';\n".
-        "  else btn.style.display='none';\n".
-        "});\n".
-        "//]]>\n".
-        "</script>\n";
+        "pre {width:100%;overflow-x:auto;white-space:pre;}\n".
+        "</style>\n";
 
     // JSON-LD structured data for SEO/GEO
     if ($parameter !== "" && in_array($mode, ["man", "perldoc", "info"])) {
