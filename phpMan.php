@@ -61,8 +61,8 @@ declare(strict_types=1);
 //app title
 $PHP_MAN_TITLE = "phpMan: Unix Man page/ Perldoc / Info page Web Interface";
 
-//set MANWIDTH for man 1.5+, default for 1024 * 768
-$MAN_WIDTH = 128;
+// TOC entries for floating right sidebar (populated when rendering man page content)
+$TOC_ITEMS = array();
 
 //use colored man page - merged into showHeader()
 
@@ -379,7 +379,26 @@ $hasRealContent = (trim($content) !== "" && !$isSearchFallback);
 showHeader($PHP_MAN_TITLE, $parameter, $section, $mode, $hasRealContent);
 echo "<h1><a href=\"".$_SERVER['PHP_SELF']."\">".h($PHP_MAN_TITLE)."</a></h1>\n";
 showForm($parameter, $check);
-echo "<hr /><pre>".$content."</pre><hr />";
+echo "<hr /><div id=\"content-wrap\">\n";
+
+// For man page content, add section anchors and floating TOC
+if ($mode === "man" && $parameter !== "" && trim($content) !== "") {
+    list($anchoredContent, $tocItems) = addManPageToc($content);
+
+    if (count($tocItems) > 1) {
+        echo "<div id=\"toc-sidebar\">\n";
+        echo "<div class=\"toc-title\">Sections</div>\n";
+        foreach ($tocItems as $item) {
+            echo "<a href=\"#" . h($item[0]) . "\">" . h($item[1]) . "</a>\n";
+        }
+        echo "</div>\n";
+    }
+
+    echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
+} else {
+    echo "<pre>" . $content . "</pre>\n";
+}
+echo "</div><hr />";
 
 // Build markdown version URL for detail pages (actual man/perldoc/info content)
 $markdownUrl = "";
@@ -471,10 +490,19 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "<meta name=\"citation_author\" content=\"Che Dong\"/>\n";
 
     echo "<style type=\"text/css\">\n".
+        "html {scroll-behavior:smooth;}\n".
         "body {color:#000000;background-color:#EEEEEE;font-family:'Courier New',Courier,monospace;font-size:14px;}\n".
         "b {color:#996600;background-color:#EEEEEE;}\n".
         "u {color:#008000;background-color:#EEEEEE;text-decoration:underline;}\n".
-        "pre {width:100%;overflow-x:auto;white-space:pre;}\n".
+        "#content-wrap {max-width:90%;margin-right:180px;}\n".
+        "#man-content pre {width:100%;overflow-x:auto;white-space:pre;}\n".
+        "#toc-sidebar {position:fixed;top:20px;right:10px;width:160px;max-height:90vh;overflow-y:auto;".
+            "background:#F8F8F8;border:1px solid #CCC;padding:8px;font-size:12px;z-index:100;}\n".
+        "#toc-sidebar a {display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;".
+            "color:#333;text-decoration:none;padding:2px 4px;border-radius:2px;}\n".
+        "#toc-sidebar a:hover {background:#DDD;color:#000;}\n".
+        "#toc-sidebar .toc-title {font-weight:bold;border-bottom:1px solid #CCC;margin-bottom:4px;padding-bottom:2px;}\n".
+        "@media (max-width:768px) {#toc-sidebar{display:none;}#content-wrap{margin-right:0;max-width:100%;}}\n".
         "</style>\n";
 
     // JSON-LD structured data for SEO/GEO
@@ -549,9 +577,8 @@ function showFooter (string $validator = "", string $markdownUrl = ""): void {
 
 //get specified command's man page and convert to html format
 function getManPage (string $parameter, string $section = "1", string $format = "html"): string {
-    global $MAN_WIDTH;
     $lines = array();
-    $command = "MANWIDTH=".(int)$MAN_WIDTH." man -Tascii ";
+    $command = "man ";
     if ($section !== "") {
         $command .= escapeshellarg($section)." ";
     }
@@ -562,6 +589,60 @@ function getManPage (string $parameter, string $section = "1", string $format = 
         return formatManPerlDocToMarkdown($lines);
     }
     return formatManPerlDoc($lines, "man");
+}
+
+/**
+ * Add anchor IDs to man page section headings and build floating TOC.
+ * Detects lines with all-caps section names (with or without <b> tags)
+ * on their own line.
+ * @return array [htmlWithAnchors, tocItems] where tocItems is [[id, label], ...]
+ */
+function addManPageToc (string $html): array {
+    $lines = explode("\n", $html);
+    $tocItems = array();
+    $sectionNum = 0;
+
+    // Regex: line that is either:
+    //   1) <b>ALL_CAPS_TEXT</b> (bold section)
+    //   2) Plain ALL_CAPS_TEXT on its own line
+    // Must have at least 3 uppercase chars, and not be a "LS(1)" header/footer.
+    $sectionPattern = '/^(?:<b>)?([A-Z][A-Z0-9_ \x2d]{2,}?)(?:<\/b>)?\r?$/';
+
+    foreach ($lines as $i => &$line) {
+        $stripped = strip_tags($line);
+        if (preg_match($sectionPattern, $line, $m)) {
+            $name = trim($m[1]);
+            // Skip false positives: man page header/footer like "LS(1)"
+            if (preg_match('/^[A-Z][A-Z0-9._-]{0,2}\(\d\)$/', $name)) {
+                continue;
+            }
+            // Skip known non-section lines that are all-caps
+            if (preg_match('/^[A-Z0-9._-]{2,6}\(\d\)$/', $name)) {
+                continue;
+            }
+            // Must be at least 3 chars and not look like a version string
+            if (strlen($name) < 3 || preg_match('/^[A-Z][a-z]/', $name)) {
+                continue;
+            }
+
+            $sectionNum++;
+            $id = 'section-' . strtolower(preg_replace('/[^A-Z0-9]+/i', '-', $name));
+            $id = trim($id, '-');
+
+            // Wrap with anchor
+            if (strpos($line, '<b>') !== false) {
+                // <b>NAME</b> => <a id="section-name"></a><b>NAME</b>
+                $line = '<a id="' . h($id) . '"></a>' . $line;
+            } else {
+                $line = '<a id="' . h($id) . '"></a>' . $line;
+            }
+
+            $tocItems[] = array($id, $name);
+        }
+    }
+    unset($line); // break reference
+
+    return array(implode("\n", $lines), $tocItems);
 }
 
 //get specified perl module's man page and convert to html format
