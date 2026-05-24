@@ -454,7 +454,10 @@ function showHeader (string $title = "", string $parameter = "", string $section
 
     // Build SEO meta values
     $site_name = "phpMan";
-    $base_url = "https://www.chedong.com/phpMan.php";
+    // Auto-detect base URL from current request (works for any deployment)
+    $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "http";
+    $script_path = isset($_SERVER['SCRIPT_NAME']) ? $_SERVER['SCRIPT_NAME'] : strtok($_SERVER['REQUEST_URI'], '?');
+    $base_url = $proto . "://" . $_SERVER['HTTP_HOST'] . $script_path;
     $canonical_url = $base_url;
     $meta_description = "phpMan: Web interface for Unix/Linux man pages, Perl perldoc, and GNU info pages";
     $meta_keywords = "man page, unix manual, linux command, perldoc, info page, phpMan";
@@ -537,7 +540,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
             "publisher" => [
                 "@type" => "Person",
                 "name" => "Che Dong",
-                "url" => "http://www.chedong.com/"
+                "url" => $base_url
             ],
             "datePublished" => gmdate("Y-m-d"),
             "inLanguage" => "en"
