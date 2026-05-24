@@ -387,7 +387,7 @@ if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
 
     if (count($tocItems) > 1) {
         echo "<div id=\"toc-sidebar\">\n";
-        echo "<div class=\"toc-title\">Sections</div>\n";
+        echo "<div class=\"toc-title\">TOC</div>\n";
         foreach ($tocItems as $l1) {
             echo "<a href=\"#" . h($l1['id']) . "\">" . h($l1['label']) . "</a>\n";
             if (!empty($l1['children'])) {
@@ -502,9 +502,9 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "body {color:#000000;background-color:#EEEEEE;font-family:'Courier New',Courier,monospace;font-size:14px;}\n".
         "b {color:#996600;background-color:#EEEEEE;}\n".
         "u {color:#008000;background-color:#EEEEEE;text-decoration:underline;}\n".
-        "#content-wrap {max-width:90%;margin-right:180px;}\n".
+        "#content-wrap {max-width:90%;margin-right:360px;}\n".
         "#man-content pre {width:100%;overflow-x:auto;white-space:pre;}\n".
-        "#toc-sidebar {position:fixed;top:20px;right:10px;width:160px;max-height:90vh;overflow-y:auto;".
+        "#toc-sidebar {position:fixed;top:20px;right:10px;width:320px;max-height:90vh;overflow-y:auto;".
             "background:#F8F8F8;border:1px solid #CCC;padding:8px;font-size:12px;z-index:100;}\n".
         "#toc-sidebar a {display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;".
             "color:#333;text-decoration:none;padding:2px 4px;border-radius:2px;}\n".
