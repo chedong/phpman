@@ -70,7 +70,7 @@ $VALIDATOR = "";
 
 //unmask comments to show xhtml 1.1 and css validator
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$currentUrl = $scheme . '://' . serverValue("HTTP_HOST", "localhost") . serverValue("REQUEST_URI", scriptName());
+$currentUrl = $scheme . '://' . getSafeHost() . serverValue("REQUEST_URI", scriptName());
 $VALIDATOR = "<a href=\"https://validator.w3.org/check?uri=" . urlencode($currentUrl) . "\">".
 "<img style=\"border:0;width:88px;height:31px\"".
 " src=\"https://www.w3.org/Icons/valid-xhtml10\"".
@@ -92,6 +92,20 @@ function serverValue (string $key, string $default = ""): string {
 
 function scriptName (): string {
     return serverValue("SCRIPT_NAME", "phpMan.php");
+}
+
+/**
+ * Get a safe host value, validating HTTP_HOST against RFC 3986 format.
+ * Falls back to SERVER_NAME if HTTP_HOST is malformed or missing.
+ * Prevents Host header injection attacks on canonical URLs and Schema.org output.
+ */
+function getSafeHost (): string {
+    $host = serverValue("HTTP_HOST", "");
+    // Valid host: alphanumeric, hyphens, dots, optional port (e.g., "example.com:8080")
+    if ($host !== "" && preg_match('/^[a-zA-Z0-9]([a-zA-Z0-9\-\.]*[a-zA-Z0-9])?(\:\d+)?$/', $host) === 1) {
+        return $host;
+    }
+    return serverValue("SERVER_NAME", "localhost");
 }
 
 function requestValue (array $source, string $key): string {
@@ -377,7 +391,7 @@ if ($format === "markdown") {
 $hasRealContent = (trim($content) !== "" && !$isSearchFallback);
 
 showHeader($PHP_MAN_TITLE, $parameter, $section, $mode, $hasRealContent);
-echo "<h1><a href=\"".$_SERVER['PHP_SELF']."\">".h($PHP_MAN_TITLE)."</a></h1>\n";
+echo "<h1><a href=\"".h(scriptName())."\">".h($PHP_MAN_TITLE)."</a></h1>\n";
 showForm($parameter, $check);
 echo "<hr /><div id=\"content-wrap\">\n";
 
@@ -457,7 +471,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
     // Auto-detect base URL from current request (works for any deployment)
     $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "http";
     $script_path = isset($_SERVER['SCRIPT_NAME']) ? $_SERVER['SCRIPT_NAME'] : strtok($_SERVER['REQUEST_URI'], '?');
-    $base_url = $proto . "://" . $_SERVER['HTTP_HOST'] . $script_path;
+    $base_url = $proto . "://" . getSafeHost() . $script_path;
     $canonical_url = $base_url;
     $meta_description = "phpMan: Web interface for Unix/Linux man pages, Perl perldoc, and GNU info pages";
     $meta_keywords = "man page, unix manual, linux command, perldoc, info page, phpMan";
@@ -575,7 +589,7 @@ function showForm (string $parameter, array $check): void {
 function showFooter (string $validator = "", string $markdownUrl = ""): void {
     $script_name = h(scriptName());
     $server_software = h(serverValue("SERVER_SOFTWARE", "unknown server"));
-    $home_url = h("http://" . serverValue("HTTP_HOST", "localhost"));
+    $home_url = h("http://" . getSafeHost());
     $remote_addr = h(serverValue("REMOTE_ADDR", "unknown"));
     $user_agent = h(serverValue("HTTP_USER_AGENT", "unknown"));
 
