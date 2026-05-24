@@ -86,8 +86,14 @@ The `index.html` is a static project introduction page with screenshot and a dem
 
 ### 4. Upload Release
 
-Upload the compressed archive via SourceForge File Manager:
-<https://sourceforge.net/projects/phpunixman/files/>
+Upload the compressed archive to SourceForge File Release System:
+
+```bash
+gzip -k -f phpMan.php
+scp phpMan.php.gz chedong@frs.sourceforge.net:/home/frs/project/phpunixman/phpMan.php.gz
+```
+
+Or upload manually via: <https://sourceforge.net/projects/phpunixman/files/>
 
 ## License
 
