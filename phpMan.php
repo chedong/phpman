@@ -1075,6 +1075,11 @@ function formatManPerlDocToMarkdown (array $lines): string {
             $line = '## ' . $line;
         }
 
+        // Sub-section Headers: e.g. "  Methods you should implement" (perldoc)
+        if (preg_match('/^ {2}[A-Z][a-z][\w\s:\x27;\-,]+$/', $line)) {
+            $line = '### ' . trim($line);
+        }
+
         // Email
         $line = preg_replace('/([\w\-\.]+)@([\w\-]+(?:\.[\w\-]+)+)/', '<$0>', $line);
         // URL: wrap as autolink, no need to escape :: in markdown
