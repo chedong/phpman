@@ -1086,6 +1086,13 @@ function formatManPerlDocToMarkdown (array $lines): string {
             $line = '### ' . $m[1];
         }
 
+        // Sub-section Headers: man .SS bold — "   **Packages**" or "   **Symbol** **Tables**"
+        // Indented (2-8 spaces), line consists entirely of **bold** groups
+        if (preg_match('/^ {2,8}((?:\*\*[^*]+\*\*\s*)+)$/', $line, $m)) {
+            $plain = str_replace('**', '', trim($m[1]));
+            $line = '### ' . $plain;
+        }
+
         // Email
         $line = preg_replace('/([\w\-\.]+)@([\w\-]+(?:\.[\w\-]+)+)/', '<$0>', $line);
         // URL: wrap as autolink, no need to escape :: in markdown
