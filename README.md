@@ -14,7 +14,7 @@ Read lengthy manual pages in your browser — with syntax highlighting, section 
 
 ## Screenshot
 
-![phpMan: perldoc page with TOC sidebar](https://sourceforge.net/p/phpunixman/thumbnail/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A120260525-161915%402x-8c442be2.png)
+![phpMan: perldoc page with TOC sidebar](https://a.fsdn.com/con/app/proj/phpunixman/screenshots/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A120260525-161915%402x-8c442be2.png/750/400)
 
 ## Features
 
