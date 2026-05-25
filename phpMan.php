@@ -461,9 +461,8 @@ if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
 
     if (count($tocItems) > 1) {
         echo "<div id=\"toc-sidebar\">\n";
-        echo "<div class=\"toc-title\">TOC</div>\n";
         $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
-        echo "<a href=\"#top\"><b>" . h($pageLabel) . "</b></a>\n";
+        echo "<div class=\"toc-title\">" . h($pageLabel) . "</div>\n";
         foreach ($tocItems as $l1) {
             echo "<a href=\"#" . h($l1['id']) . "\">" . h($l1['label']) . "</a>\n";
             if (!empty($l1['children'])) {
