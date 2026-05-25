@@ -40,7 +40,7 @@ declare(strict_types=1);
  *     http://packages.debian.org/stable/doc/dwww
  *
  * Sub function list:
- *     showHeader ( $title )               //show html header with css style
+ *     showHeader ( $title, $parameter, $section, $mode, $hasRealContent, $showNav )  //show html header with css style
  *     showForm ($parameter, $check)         //show input form and recursive call
  *     showFooter ( $validate )              //show html footer
  *     getManPage ($parameter, $mode)        //get html format man page
@@ -447,10 +447,18 @@ if ($format === "markdown") {
 // +--------------------------------------------------------------------------------+
 // | show output                                                                    |
 // +--------------------------------------------------------------------------------+
+// Line threshold: ~80 lines ≈ two screens at 14px monospace
+$lineThreshold = 80;
 // Determine if this page has real content (for robots meta)
 $hasRealContent = (trim($content) !== "" && !$isSearchFallback);
 
-showHeader($PHP_MAN_TITLE, $parameter, $section, $mode, $hasRealContent);
+// Count content lines and set body class for CSS-based show/hide
+$showNav = false;
+if ($hasRealContent && preg_match_all('/\n/', $content, $_dummy)) {
+    $showNav = (intval(preg_match_all('/\n/', $content)) + 1 > $lineThreshold);
+}
+
+showHeader($PHP_MAN_TITLE, $parameter, $section, $mode, $hasRealContent, $showNav);
 echo "<h1><a href=\"".h(scriptName())."\">".h($PHP_MAN_TITLE)."</a></h1>\n";
 showForm($parameter, $check);
 echo "<hr /><div id=\"content-wrap\">\n";
@@ -459,7 +467,7 @@ echo "<hr /><div id=\"content-wrap\">\n";
 if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
     list($anchoredContent, $tocItems) = addManPageToc($content);
 
-    if (count($tocItems) > 1) {
+    if (count($tocItems) > 1 && $showNav) {
         echo "<div id=\"toc-sidebar\">\n";
         $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
         echo "<div class=\"toc-title\">" . h($pageLabel) . "</div>\n";
@@ -512,7 +520,7 @@ if ($content !== ""
     }
 }
 
-showFooter($VALIDATOR, $markdownUrl);
+showFooter($VALIDATOR, $markdownUrl, $showNav);
 
 
 // +--------------------------------------------------------------------------------+
@@ -520,7 +528,7 @@ showFooter($VALIDATOR, $markdownUrl);
 // +--------------------------------------------------------------------------------+
 
 //show html header
-function showHeader (string $title = "", string $parameter = "", string $section = "", string $mode = "", bool $hasRealContent = true): void {
+function showHeader (string $title = "", string $parameter = "", string $section = "", string $mode = "", bool $hasRealContent = true, bool $showNav = false): void {
     header("Content-Type: text/html; charset=UTF-8");
     // always modified now
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
@@ -583,17 +591,19 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "#content-wrap {max-width:90%;margin-right:360px;}\n".
         "#man-content pre {width:100%;overflow-x:auto;white-space:pre;}\n".
         "#toc-sidebar {position:fixed;top:20px;right:10px;width:320px;max-height:90vh;overflow-y:auto;".
-            "background:#F8F8F8;border:1px solid #CCC;padding:8px;font-size:12px;z-index:100;}\n".
+            "background:#F8F8F8;border:1px solid #CCC;padding:8px;font-size:12px;z-index:100;".
+            "display:none;}\n".
         "#toc-sidebar a {display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;".
             "color:#333;text-decoration:none;padding:2px 4px;border-radius:2px;}\n".
         "#toc-sidebar a:hover {background:#DDD;color:#000;}\n".
         "#toc-sidebar a.toc-sub {padding-left:18px;font-size:11px;color:#555;}\n".
         "#toc-sidebar a.toc-sub:hover {color:#000;}\n".
         "#toc-sidebar .toc-title {font-weight:bold;border-bottom:1px solid #CCC;margin-bottom:4px;padding-bottom:2px;}\n".
-        "#back-to-top {position:fixed;bottom:20px;right:20px;z-index:100;}\n".
+        "#back-to-top {position:fixed;bottom:20px;right:20px;z-index:100;display:none;}\n".
         "#back-to-top a {display:block;padding:8px 14px;background:#333;color:#FFF;text-decoration:none;".
             "border-radius:6px;font-size:13px;font-family:monospace;}\n".
         "#back-to-top a:hover {background:#555;}\n".
+        "body.ext-nav #toc-sidebar, body.ext-nav #back-to-top {display:block;}\n".
         "@media (max-width:768px) {#toc-sidebar{display:none;}#content-wrap{margin-right:0;max-width:100%;}}\n".
         "</style>\n";
 
@@ -623,7 +633,8 @@ function showHeader (string $title = "", string $parameter = "", string $section
         echo "<script type=\"application/ld+json\">\n{$schema_json}\n</script>\n";
     }
 
-    echo "</head>\n<body>\n<div id=\"top\"></div>\n";
+    $bodyClass = $showNav ? ' class="ext-nav"' : '';
+    echo "</head>\n<body{$bodyClass}>\n<div id=\"top\"></div>\n";
 }
 
 //promter and recursive call
@@ -647,7 +658,7 @@ function showForm (string $parameter, array $check): void {
 }
 
 //show footer
-function showFooter (string $validator = "", string $markdownUrl = ""): void {
+function showFooter (string $validator = "", string $markdownUrl = "", bool $showNav = false): void {
     $script_name = h(scriptName());
     $server_software = h(serverValue("SERVER_SOFTWARE", "unknown server"));
     $home_url = h("http://" . getSafeHost());
@@ -663,7 +674,7 @@ function showFooter (string $validator = "", string $markdownUrl = ""): void {
         "<a href=\"" . $home_url . "\">" . date("Y-m-d H:i") . " @". $remote_addr .
         " CrawledBy " . $user_agent . "</a>" .
         "<br />" . $validator . "</p>" .
-        "<div id=\"back-to-top\"><a href=\"#top\">^_back to top</a></div>" .
+        ($showNav ? '<div id="back-to-top"><a href="#top">^_back to top</a></div>' : "") .
         "</body></html>";
 }
 
