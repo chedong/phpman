@@ -1024,7 +1024,7 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                    '  <u>$1</u>',
                    '$3$4($7)$9',
                    '$1<a href="'.$script_name.'/man/$2/$3">$2($3)</a>',
-                   '$3<a href="'.$script_name.'/'.$mode.'/$4">$4</a>',
+                   '$3<a href="'.$script_name.'/'.$mode.'/$4">$4</a>$6',
                    '<b>$1</b>',
                    '<u>$1</u>',
                    '<a href="mailto:$2 AT $3$4">$2<u> AT </u>$3$4</a>',
