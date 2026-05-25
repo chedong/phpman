@@ -86,6 +86,66 @@ function h (mixed $value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8");
 }
 
+/**
+ * Detect if a line (after backspace/ANSI processing) is a section heading,
+ * and return its level + text.
+ *
+ * Handles 4 heading patterns:
+ *   Level 1 (##): ALL_CAPS text (perldoc .SH, man .SH bold via **..**)
+ *   Level 2 (###): Indented title case (perldoc .SS),
+ *                   italic (man .SS via _.._),
+ *                   indented bold groups (man .SS bold via **..** **..**)
+ *
+ * @return array{level:int, text:string}|null
+ */
+function detectHeadingType (string $line): ?array {
+    // Normalize: convert HTML bold/underline to markdown-style markers
+    $line = preg_replace(['#</?b>#', '#</?u>#'], ['**', '_'], $line);
+
+    // Level 1: ALL CAPS (3-50 chars) — strip ALL formatting markers first
+    $plain = trim(str_replace(['**', '_'], '', $line));
+    if (preg_match('/^[A-Z][A-Z0-9_ \/\x2d]{2,50}$/', $plain)) {
+        return ['level' => 1, 'text' => $plain];
+    }
+
+    // Level 1: perldoc =head1 at column 0, mixed case — "In Practice"
+    if (preg_match('/^[A-Z][a-z][\w\s:\x27;\-,\.\(\)\/]+$/D', $line)
+        && !preg_match('/[.!?:]\s*$/', trim($line))
+        && strlen($line) >= 3 && strlen($line) <= 60) {
+        return ['level' => 1, 'text' => trim($line)];
+    }
+
+    // Level 2: perldoc .SS at column 0 — "Supported Encodings" (no indent)
+    $noUnderline = str_replace('_', '', $line);
+    if (preg_match('/^[A-Z][a-z][\w\s:\x27;\/\-\.\(\)]+$/D', $noUnderline)
+        && !preg_match('/[.!?,;:]\s*$/', trim($noUnderline))
+        && trim($noUnderline) !== strtoupper(trim($noUnderline))) {
+        $text = trim($noUnderline);
+        if (strlen($text) >= 3) {
+            return ['level' => 2, 'text' => $text];
+        }
+    }
+
+    // Level 2: perldoc .SS — "  Methods you should implement" (2-space indent)
+    $noUnderline = str_replace('_', '', $line);
+    if (preg_match('/^ {2}([A-Z][a-z][\w\s:\x27;\-,\.]+)$/', $noUnderline, $m)) {
+        return ['level' => 2, 'text' => trim($m[1])];
+    }
+
+    // Level 2: man .SS italic — "_Subheading_" (entire line is italic)
+    if (preg_match('/^_([A-Z][a-z][\w\s:\x27;\-,]+)_$/', $line, $m)) {
+        return ['level' => 2, 'text' => trim($m[1])];
+    }
+
+    // Level 2: man .SS bold — "   **Packages**" or "   **Symbol** **Tables**"
+    if (preg_match('/^ {2,8}((?:\*\*[^*]+\*\*\s*)+)$/', $line, $m)) {
+        $text = str_replace('**', '', trim($m[1]));
+        return ['level' => 2, 'text' => $text];
+    }
+
+    return null;
+}
+
 function serverValue (string $key, string $default = ""): string {
     return isset($_SERVER[$key]) ? (string)$_SERVER[$key] : $default;
 }
@@ -280,10 +340,10 @@ if ($parameter !== "" && $section === "" && $mode === "man") {
 
 if ( $parameter != "" ) {
     if ( $section == "" ) {
-        $PHP_MAN_TITLE = $parameter . " - phpMan";
+        $PHP_MAN_TITLE = $parameter . " - " . $mode . " - phpMan";
     }
     else {
-        $PHP_MAN_TITLE = $parameter . "(" . $section . ") - phpMan";
+        $PHP_MAN_TITLE = $parameter . "(" . $section . ") - " . $mode . " - phpMan";
     }
 }
 
@@ -402,6 +462,8 @@ if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
     if (count($tocItems) > 1) {
         echo "<div id=\"toc-sidebar\">\n";
         echo "<div class=\"toc-title\">TOC</div>\n";
+        $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
+        echo "<a href=\"#top\"><b>" . h($pageLabel) . "</b></a>\n";
         foreach ($tocItems as $l1) {
             echo "<a href=\"#" . h($l1['id']) . "\">" . h($l1['label']) . "</a>\n";
             if (!empty($l1['children'])) {
@@ -636,122 +698,30 @@ function getManPage (string $parameter, string $section = "1", string $format = 
 function addManPageToc (string $html): array {
     $lines = explode("\n", $html);
 
-    // Collect level-1 (section) IDs to avoid duplicating anchors
-    $level1Ids = array();
-
     // Hierarchical TOC: [ ['id'=>, 'label'=>, 'children'=>[...]], ... ]
     $tocItems = array();
+    $currentL1Idx = null;
 
-    // ---- Pass 1: detect Level 1 (section) anchors ----
-    // Regex: line that is either:
-    //   1) <b>ALL_CAPS_TEXT</b> (bold section)
-    //   2) Plain ALL_CAPS_TEXT on its own line
-    //   3) <b>ALL_CAPS</b> <b>WORDS</b> (multi-bold section like "SEE ALSO")
-    // Must have at least 3 uppercase chars, and not be a "LS(1)" header/footer.
-    $sectionPattern = '/^(?:<b>)?([A-Z][A-Z0-9_ \x2d]{2,}?)(?:<\/b>)?(?:\s+<b>([A-Z][A-Z0-9_ \x2d]{2,})<\/b>)?\r?$/';
-
-    foreach ($lines as $i => &$line) {
-        $stripped = strip_tags($line);
-        if (preg_match($sectionPattern, $line, $m)) {
-            $name = trim($m[1]);
-            // Handle multi-bold sections like <b>SEE</b> <b>ALSO</b>
-            if (isset($m[2]) && $m[2] !== "") {
-                $name .= " " . $m[2];
-            }
-            // Skip false positives: man page header/footer like "LS(1)"
-            if (preg_match('/^[A-Z][A-Z0-9._-]{0,2}\(\d\)$/', $name)) {
-                continue;
-            }
-            // Must be at least 3 chars and not look like a version string
-            if (strlen($name) < 3 || preg_match('/^[A-Z][a-z]/', $name)) {
-                continue;
-            }
-
-            $id = 'section-' . strtolower(preg_replace('/[^A-Z0-9]+/i', '-', $name));
-            $id = trim($id, '-');
-
-            // Wrap with anchor
-            $line = '<a id="' . h($id) . '"></a>' . $line;
-
-            $tocItems[] = array('id' => $id, 'label' => $name, 'children' => array());
-            $level1Ids[] = $id;
-        }
-    }
-    unset($line); // break reference
-
-    // ---- Pass 2: detect Level 2 items, grouped under current Level 1 ----
-    // A Level 2 item is an indented line starting with <b> or <u>.
-    // To exclude deeply nested list items, we dynamically determine the
-    // range of acceptable indentation:
-    //   min_indent = shallowest indented <b> or <u> line
-    //   max_indent = min_indent + 4 (catch first nesting level only)
-    $minIndent = null;
-    $maxIndent = null;
-    foreach ($lines as $line) {
-        if (preg_match('/^(\s+)<(?:b|u)>/', $line, $m)) {
-            $ws = strlen($m[1]);
-            if ($minIndent === null || $ws < $minIndent) {
-                $minIndent = $ws;
-            }
-        }
-    }
-    if ($minIndent !== null) {
-        $maxIndent = $minIndent + 4;
-        // Accept spaces in [minIndent, maxIndent], or 1+ tabs
-        // Capture all consecutive <b>...</b> groups (multi-bold headings like "The Classical nroff/troff System")
-        $subPattern = '/^(?: {' . $minIndent . ',' . $maxIndent . '}|\t+)((?:<(?:b|u)>[^<]+<\/(?:b|u)>\s*)+)/';
-    } else {
-        $subPattern = '/^(?!x)x/'; // never matches — no indented <b> items found
-    }
-    $currentL1Idx = null; // index into $tocItems
-
-    foreach ($lines as $i => &$line) {
-        // Check if this line is a Level 1 header (anchor we just added)
-        if (strpos($line, '<a id="section-') === 0) {
-            // Extract the section ID to find the matching toc entry
-            if (preg_match('/<a id="(section-[^"]+)">/', $line, $m)) {
-                $secId = $m[1];
-                foreach ($tocItems as $idx => $l1) {
-                    if ($l1['id'] === $secId) {
-                        $currentL1Idx = $idx;
-                        break;
-                    }
-                }
-            }
-            continue; // skip Level 1 lines, they're already in TOC
+    foreach ($lines as $i => $line) {
+        // Level 1 anchor already placed by formatManPerlDoc
+        if (preg_match('/<a id="(section-[^"]+)"><\/a>(.*)/', $line, $m)) {
+            $label = trim(strip_tags($m[2]));
+            $tocItems[] = array('id' => $m[1], 'label' => $label, 'children' => array());
+            $currentL1Idx = count($tocItems) - 1;
+            continue;
         }
 
-        // Not a Level 1 line; check if it's an indented <b> item
-        if ($currentL1Idx !== null && preg_match($subPattern, $line, $m)) {
-            // Use the FULL bold content (all <b> groups) as the label, not just the first word
-            $label = trim(strip_tags($m[1]));
-            if (strlen($label) < 1) continue;
-
-            // Skip items whose bold content has no word characters (e.g., roff comments like \")
-            if (!preg_match('/\w/', $label)) continue;
-
-            $id = 'sub-' . strtolower(preg_replace('/[^A-Z0-9]+/i', '-', $label));
-            $id = trim($id, '-');
-
-            // Skip if this ID already used as a Level 1 section
-            if (in_array($id, $level1Ids)) continue;
-
-            // Avoid duplicating the same sub-item within the same section
-            $dupe = false;
-            foreach ($tocItems[$currentL1Idx]['children'] as $child) {
-                if ($child['id'] === $id) { $dupe = true; break; }
+        // Level 2 anchor already placed by formatManPerlDoc
+        if (preg_match('/<a id="(sub-[^"]+)"><\/a>(.*)/', $line, $m)) {
+            if ($currentL1Idx !== null) {
+                $label = trim(strip_tags($m[2]));
+                $tocItems[$currentL1Idx]['children'][] = array('id' => $m[1], 'label' => $label);
             }
-            if ($dupe) continue;
-
-            // Insert anchor in the raw line
-            $lines[$i] = '<a id="' . h($id) . '"></a>' . $line;
-
-            $tocItems[$currentL1Idx]['children'][] = array('id' => $id, 'label' => $label);
+            continue;
         }
     }
-    unset($line);
 
-    return array(implode("\n", $lines), $tocItems);
+    return array($html, $tocItems);
 }
 
 //get specified perl module's man page and convert to html format
@@ -1034,8 +1004,15 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
     $output = "";
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
-        $output .= preg_replace($patterns, $replace, $lines[$i]);
-        $output .= "\n";
+        $line = preg_replace($patterns, $replace, $lines[$i]);
+        $heading = detectHeadingType($line);
+        if ($heading) {
+            $id = ($heading['level'] === 1 ? 'section-' : 'sub-')
+                . strtolower(preg_replace('/[^A-Z0-9]+/i', '-', $heading['text']));
+            $id = trim($id, '-');
+            $line = '<a id="' . h($id) . '"></a>' . $line;
+        }
+        $output .= $line . "\n";
     }
     return $output;
 }
@@ -1070,27 +1047,10 @@ function formatManPerlDocToMarkdown (array $lines): string {
         $line = str_replace(array("\x02\x01", "\x04\x03"), "", $line);
         $line = str_replace(array("\x01", "\x02", "\x03", "\x04"), array("**", "**", "_", "_"), $line);
         
-        // Section Headers: e.g. NAME (perldoc), **NAME** (man .SH), **SEE** **ALSO** (man multi-bold)
-        $plain = str_replace('**', '', $line);
-        if (preg_match('/^[A-Z][A-Z0-9_ \/\x2d]{2,50}$/', $plain)) {
-            $line = '## ' . $plain;
-        }
-
-        // Sub-section Headers: perldoc — "  Methods you should implement" (2-space indent)
-        if (preg_match('/^ {2}([A-Z][a-z][\w\s:\x27;\-,]+)$/', $line, $m)) {
-            $line = '### ' . $m[1];
-        }
-
-        // Sub-section Headers: man .SS — _Subheading_ (entire line is italic, from overstrike underline)
-        if (preg_match('/^_([A-Z][a-z][\w\s:\x27;\-,]+)_$/', $line, $m)) {
-            $line = '### ' . $m[1];
-        }
-
-        // Sub-section Headers: man .SS bold — "   **Packages**" or "   **Symbol** **Tables**"
-        // Indented (2-8 spaces), line consists entirely of **bold** groups
-        if (preg_match('/^ {2,8}((?:\*\*[^*]+\*\*\s*)+)$/', $line, $m)) {
-            $plain = str_replace('**', '', trim($m[1]));
-            $line = '### ' . $plain;
+        // Section / Sub-section Headers: detect via shared function
+        $heading = detectHeadingType($line);
+        if ($heading) {
+            $line = '## ' . $heading['text'];
         }
 
         // Email
