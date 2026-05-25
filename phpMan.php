@@ -997,6 +997,7 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                    '<a href="$1" rel="noopener noreferrer">$1</a>',
                    "&gt;",
                );
+    $seenIds = [];
     $output = "";
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
@@ -1006,6 +1007,13 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
             $id = ($heading['level'] === 1 ? 'section-' : 'sub-')
                 . strtolower(preg_replace('/[^A-Z0-9]+/i', '-', $heading['text']));
             $id = trim($id, '-');
+            // Ensure unique id for XHTML validation
+            if (isset($seenIds[$id])) {
+                $seenIds[$id]++;
+                $id = $id . '-' . $seenIds[$id];
+            } else {
+                $seenIds[$id] = 0;
+            }
             $line = '<a id="' . h($id) . '"></a>' . $line;
         }
         $output .= $line . "\n";
