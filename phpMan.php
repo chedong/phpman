@@ -1070,14 +1070,20 @@ function formatManPerlDocToMarkdown (array $lines): string {
         $line = str_replace(array("\x02\x01", "\x04\x03"), "", $line);
         $line = str_replace(array("\x01", "\x02", "\x03", "\x04"), array("**", "**", "_", "_"), $line);
         
-        // Section Headers: e.g. NAME, SYNOPSIS
-        if (preg_match('/^[A-Z][A-Z\s\-]{1,29}$/', $line)) {
-            $line = '## ' . $line;
+        // Section Headers: e.g. NAME (perldoc), **NAME** (man .SH), **SEE** **ALSO** (man multi-bold)
+        $plain = str_replace('**', '', $line);
+        if (preg_match('/^[A-Z][A-Z0-9_ \/\x2d]{2,50}$/', $plain)) {
+            $line = '## ' . $plain;
         }
 
-        // Sub-section Headers: e.g. "  Methods you should implement" (perldoc)
-        if (preg_match('/^ {2}[A-Z][a-z][\w\s:\x27;\-,]+$/', $line)) {
-            $line = '### ' . trim($line);
+        // Sub-section Headers: perldoc — "  Methods you should implement" (2-space indent)
+        if (preg_match('/^ {2}([A-Z][a-z][\w\s:\x27;\-,]+)$/', $line, $m)) {
+            $line = '### ' . $m[1];
+        }
+
+        // Sub-section Headers: man .SS — _Subheading_ (entire line is italic, from overstrike underline)
+        if (preg_match('/^_([A-Z][a-z][\w\s:\x27;\-,]+)_$/', $line, $m)) {
+            $line = '### ' . $m[1];
         }
 
         // Email
