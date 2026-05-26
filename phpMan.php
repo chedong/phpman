@@ -103,8 +103,11 @@ function detectHeadingType (string $line): ?array {
     $line = preg_replace(['#</?b>#', '#</?u>#'], ['**', '_'], $line);
 
     // Level 1: ALL CAPS (3-50 chars) — strip ALL formatting markers first
+    // Must start at column 0 (no leading space/indent) to avoid matching
+    // .SS subsection headings that are also ALL CAPS (e.g. CREDENTIALS, ENGINE).
     $plain = trim(str_replace(['**', '_'], '', $line));
-    if (preg_match('/^[A-Z][A-Z0-9_ \/\x2d]{2,50}$/', $plain)) {
+    if (isset($line[0]) && $line[0] !== ' ' && $line[0] !== "\t"
+        && preg_match('/^[A-Z][A-Z0-9_ \\/\\x2d]{2,50}$/', $plain)) {
         return ['level' => 1, 'text' => $plain];
     }
 
@@ -1442,7 +1445,9 @@ function formatManPerlDocToMarkdown (array $lines): string {
         // Section / Sub-section Headers: detect via shared function
         $heading = detectHeadingType($line);
         if ($heading) {
-            $line = '## ' . $heading['text'];
+            // L1 → ## (man .SH), L2 → ### (man .SS) to match HTML TOC hierarchy
+            $prefix = ($heading['level'] === 1) ? '## ' : '### ';
+            $line = $prefix . $heading['text'];
         }
 
         // Email
