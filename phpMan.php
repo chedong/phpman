@@ -518,7 +518,10 @@ echo "<hr /><div id=\"content-wrap\">\n";
 if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
     list($anchoredContent, $tocItems) = addManPageToc($content);
 
-    if (count($tocItems) > 1 && $showNav) {
+    // Show TOC when we have multiple L1 sections, or a single L1 section with L2 subsections
+    $hasTocContent = count($tocItems) > 1
+        || (count($tocItems) === 1 && !empty($tocItems[0]['children']));
+    if ($hasTocContent && $showNav) {
         echo "<div id=\"toc-sidebar\">\n";
         $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
         echo "<div class=\"toc-title\">" . h($pageLabel) . "</div>\n";
