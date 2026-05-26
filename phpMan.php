@@ -1405,7 +1405,8 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
     }
     $jsonData["sections"] = $jsonSections;
 
-    return json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    $result = json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    return $result !== false ? $result : '{}';
 }
 
 //convert man perldoc output to markdown
