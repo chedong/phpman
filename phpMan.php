@@ -234,17 +234,30 @@ $check['perldoc'] = "";
 $check['info'] = "";
 $check['search'] = "";
 
-// Detect format preference (markdown or html)
+// Detect format preference via: 1) GET param, 2) Accept header, 3) PATH_INFO segment, 4) default HTML
 $format = "html";
-if (requestValue($_GET, "format") === "markdown") {
+$formatSource = "default"; // track where format was decided
+
+// 1) GET parameter always takes highest priority
+if (requestValue($_GET, "format") === "json") {
+    $format = "json";
+    $formatSource = "get";
+} elseif (requestValue($_GET, "format") === "markdown") {
     $format = "markdown";
+    $formatSource = "get";
 } else {
-    $accept = serverValue("HTTP_ACCEPT");
-    if (str_contains(strtolower($accept), "text/markdown") || str_contains(strtolower($accept), "text/x-markdown")) {
+    // 2) Accept header negotiation
+    $accept = strtolower(serverValue("HTTP_ACCEPT", ""));
+    if (str_contains($accept, "application/json")) {
+        $format = "json";
+        $formatSource = "accept_header";
+    } elseif (str_contains($accept, "text/markdown") || str_contains($accept, "text/x-markdown")) {
         $format = "markdown";
+        $formatSource = "accept_header";
     }
 }
 
+// 3) PATH_INFO segment overrides Accept header (but not GET)
 /**
  * trans$_SERVER["ORIG_PATH_INFO"] to $_SERVER["PATH_INFO"]
  * for cgi/fcgi mode of php
@@ -279,7 +292,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
             }
             if ($seg_count >= 3) {
                 $third_seg_lower = strtolower($segments[2]);
-                if ($third_seg_lower === "html" || $third_seg_lower === "markdown") {
+                if ($third_seg_lower === "html" || $third_seg_lower === "markdown" || $third_seg_lower === "json") {
                     $format = $third_seg_lower;
                 } else {
                     $section = $segments[2];
@@ -287,7 +300,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
             }
             if ($seg_count >= 4) {
                 $fourth_seg_lower = strtolower($segments[3]);
-                if ($fourth_seg_lower === "html" || $fourth_seg_lower === "markdown") {
+                if ($fourth_seg_lower === "html" || $fourth_seg_lower === "markdown" || $fourth_seg_lower === "json") {
                     $format = $fourth_seg_lower;
                 } else {
                     $section = $segments[3];
@@ -300,7 +313,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
             
             if ($seg_count >= 2) {
                 $second_seg_lower = strtolower($segments[1]);
-                if ($second_seg_lower === "html" || $second_seg_lower === "markdown") {
+                if ($second_seg_lower === "html" || $second_seg_lower === "markdown" || $second_seg_lower === "json") {
                     $format = $second_seg_lower;
                 } else {
                     $section = $segments[1];
@@ -308,7 +321,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
             }
             if ($seg_count >= 3) {
                 $third_seg_lower = strtolower($segments[2]);
-                if ($third_seg_lower === "html" || $third_seg_lower === "markdown") {
+                if ($third_seg_lower === "html" || $third_seg_lower === "markdown" || $third_seg_lower === "json") {
                     $format = $third_seg_lower;
                 } else {
                     $section = $segments[2];
@@ -335,7 +348,7 @@ else {
 if ( requestValue($_GET, "format") != "" ) {
     $format = strtolower(trim(requestValue($_GET, "format")));
 }
-$format = in_array($format, ["html", "markdown"]) ? $format : "html";
+$format = in_array($format, ["html", "markdown", "json"]) ? $format : "html";
 
 // set default mode
 $mode = normalizeMode($mode);
@@ -437,6 +450,15 @@ if ($format === "markdown") {
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
     header("Expires: " . gmdate("D, d M Y H:i:s", time() + 3600 * 24 * 7) . " GMT");
     echo "# " . $PHP_MAN_TITLE . "\n\n" . $content;
+    exit;
+}
+
+// Show JSON output
+if ($format === "json") {
+    header("Content-Type: application/json; charset=UTF-8");
+    header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
+    header("Expires: " . gmdate("D, d M Y H:i:s", time() + 3600 * 24 * 7) . " GMT");
+    echo $content;
     exit;
 }
 
@@ -694,6 +716,9 @@ function getManPage (string $parameter, string $section = "1", string $format = 
     if ($format === "markdown") {
         return formatManPerlDocToMarkdown($lines);
     }
+    if ($format === "json") {
+        return formatToJSON($lines, $parameter, $section, "man");
+    }
     return formatManPerlDoc($lines, "man");
 }
 
@@ -740,21 +765,27 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
     exec("perldoc ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
-        return $format === "markdown" ? formatManPerlDocToMarkdown($lines) : formatManPerlDoc($lines, "perldoc");
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
+        if ($format === "json") return formatToJSON($lines, $parameter, "", "perldoc");
+        return formatManPerlDoc($lines, "perldoc");
     }
 
     // try build in function
     $lines = array();
     exec("perldoc -f ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
-        return $format === "markdown" ? formatManPerlDocToMarkdown($lines) : formatManPerlDoc($lines, "perldoc");
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
+        if ($format === "json") return formatToJSON($lines, $parameter, "-f", "perldoc");
+        return formatManPerlDoc($lines, "perldoc");
     }
 
     // try perldoc search
     $lines = array();
     exec("perldoc -q ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
-        return $format === "markdown" ? formatManPerlDocToMarkdown($lines) : formatManPerlDoc($lines, "perldoc");
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
+        if ($format === "json") return formatToJSON($lines, $parameter, "-q", "perldoc");
+        return formatManPerlDoc($lines, "perldoc");
     }
 
     return "";
@@ -764,7 +795,9 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
 function getInfoPage (string $parameter, string $format = "html"): string {
     $lines = array();
     exec("info ".escapeshellarg($parameter), $lines);
-    return $format === "markdown" ? formatManPerlDocToMarkdown($lines) : formatManPerlDoc($lines, "info");
+    if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
+    if ($format === "json") return formatToJSON($lines, $parameter, "", "info");
+    return formatManPerlDoc($lines, "info");
 }
 
 /**
@@ -795,6 +828,51 @@ function getSearchPage (string $parameter, string $section = "", string $format 
     }
     $lines = array();
     exec($cmd, $lines);
+
+    // json output
+    if ($format === "json") {
+        $results = array();
+        $count = count($lines);
+        for ($i = 0; $i < $count; $i++) {
+            $line = $lines[$i];
+            if (preg_match('/^(.+)\s+\[\s*(.+?)\s*\]\s+\(([\dnol]\w*)\)\s*$/', $line, $m)) {
+                $results[] = array(
+                    "name" => trim($m[1]),
+                    "description" => trim($m[2]),
+                    "section" => trim($m[3]),
+                    "link" => $script_name . "/man/" . urlencode(trim($m[3])) . "/" . "json",
+                );
+            } elseif (preg_match('/^(.+)\s+\(([\dnol]\w*)\)\s+—\s+(.+)$/', $line, $m)) {
+                $results[] = array(
+                    "name" => trim($m[1]),
+                    "description" => trim($m[3]),
+                    "section" => trim($m[2]),
+                    "link" => $script_name . "/man/" . urlencode(trim($m[2])) . "/" . "json",
+                );
+            } elseif (preg_match('/^([\w\.\:\-\+]+)\s+\(([\dnol]\w*)\)\s+—\s+(.+)$/', $line, $m)) {
+                $is_perl = (preg_match('/:/', $m[1]));
+                $link_mode = $is_perl ? "perldoc" : "man";
+                $results[] = array(
+                    "name" => trim($m[1]),
+                    "description" => trim($m[3]),
+                    "section" => trim($m[2]),
+                    "link" => $script_name . "/" . $link_mode . "/" . urlencode(trim($m[1])) . "/" . "json",
+                );
+            }
+        }
+        $jsonData = array(
+            "name" => "apropos " . urlencode($parameter) . ($section !== "" ? " (section {$section})" : ""),
+            "mode" => "search",
+            "parameter" => $parameter,
+            "section" => $section,
+            "url" => $script_name . "/search/" . urlencode($parameter) . ($section !== "" ? "/" . urlencode($section) : "") . "/json",
+            "generated" => gmdate("Y-m-d\TH:i:s\Z"),
+            "query" => $parameter,
+            "results" => $results,
+            "count" => count($results),
+        );
+        return json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    }
 
     // determine link mode: perl modules (section 3pm or name with ::) use perldoc, others use man
     $output = "";
@@ -872,6 +950,40 @@ function getManIndex (string $format = "html"): string {
                "[n - New Commands](".$script_name."/search/(n)/markdown)\n";
     }
 
+    // json output
+    if ($format === "json") {
+        $sections = array(
+            array("name" => "1 - General Commands", "section" => "1"),
+            array("name" => "2 - System Calls", "section" => "2"),
+            array("name" => "3 - Subroutines", "section" => "3"),
+            array("name" => "4 - Special Files", "section" => "4"),
+            array("name" => "5 - File Formats", "section" => "5"),
+            array("name" => "6 - Games", "section" => "6"),
+            array("name" => "7 - Macros and Conventions", "section" => "7"),
+            array("name" => "8 - Maintenance Commands", "section" => "8"),
+            array("name" => "9 - Kernel Interface", "section" => "9"),
+            array("name" => "n - New Commands", "section" => "n"),
+        );
+        $sectionItems = array();
+        foreach ($sections as $s) {
+            $sectionItems[] = array(
+                "name" => $s["name"],
+                "link" => $script_name . "/search/(" . urlencode($s["section"]) . ")/json",
+                "intro_link" => $script_name . "/man/intro/" . urlencode($s["section"]) . "/json",
+            );
+        }
+        $jsonData = array(
+            "name" => "man pages index",
+            "mode" => "index",
+            "index_type" => "man",
+            "url" => $script_name . "/man/json",
+            "generated" => gmdate("Y-m-d\TH:i:s\Z"),
+            "sections" => $sectionItems,
+            "count" => count($sectionItems),
+        );
+        return json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    }
+
     $script_name_html = h($script_name);
     $output = "<a href=\"".$script_name_html."/search/(1)\">1 - General Commands</a> ".
                "<a href=\"".$script_name_html."/man/intro/1\">intro(1)</a>\n";
@@ -924,6 +1036,47 @@ function getInfoIndex (string $format = "html"): string {
         return $output;
     }
 
+    // json output
+    if ($format === "json") {
+        $items = array();
+        $seen = array();
+        $count = count($lines);
+        for ($i = 0; $i < $count; $i++) {
+            $line = trim($lines[$i]);
+            // Parse "(group)command" or "(command)" format
+            if (preg_match('/\(([a-z0-9_\-]+)\)([a-z0-9_\+]+)/', $line, $m)) {
+                $name = $m[2];
+                if (!isset($seen[$name])) {
+                    $seen[$name] = true;
+                    $items[] = array(
+                        "name" => $name,
+                        "group" => $m[1],
+                        "link" => $script_name . "/info/" . urlencode($name) . "/json",
+                    );
+                }
+            } elseif (preg_match('/\(([a-z0-9_\-]+)\)/', $line, $m)) {
+                $name = $m[1];
+                if (!isset($seen[$name])) {
+                    $seen[$name] = true;
+                    $items[] = array(
+                        "name" => $name,
+                        "link" => $script_name . "/info/" . urlencode($name) . "/json",
+                    );
+                }
+            }
+        }
+        $jsonData = array(
+            "name" => "info pages index",
+            "mode" => "index",
+            "index_type" => "info",
+            "url" => $script_name . "/info/json",
+            "generated" => gmdate("Y-m-d\TH:i:s\Z"),
+            "items" => $items,
+            "count" => count($items),
+        );
+        return json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    }
+
     $patterns = array(
                     "/&/",  //html special char: '&' => '&gt;';
                     "/</",  //html special char: '>' => '&lt;';
@@ -938,7 +1091,7 @@ function getInfoIndex (string $format = "html"): string {
                    '(<a href="'.$script_name.'/info/$1">$1</a>)'.
                    '<a href="'.$script_name.'/info/$2">$2</a>',
                    '(<a href="'.$script_name.'/info/$1">$1</a>)'
-               );
+                );
     $output = "";
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
@@ -1034,6 +1187,198 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
         $output .= $line . "\n";
     }
     return $output;
+}
+
+//convert man perldoc output to json
+function formatToJSON (array $lines, string $parameter, string $section = "", string $mode = "man"): string {
+    // Clean backspaces/overstrike and ANSI escapes
+    $patterns = array(
+        "/.".chr(8).".".chr(8)."(.)".chr(8)."./",  // ?^H?^H?^H? => bold
+        "/_".chr(8)."(.)/",  // _^H? => underline
+        "/.".chr(8)."(.)/",  // ?^H? => bold
+        "/".chr(27)."\[1m(.*?)".chr(27)."\[0m/",  // perldoc ANSI bold
+        "/".chr(27)."\[4m(.*?)".chr(27)."\[24m/", // perldoc ANSI underline
+    );
+    $replace = array(
+        "\x01$1\x02",
+        "\x03$1\x04",
+        "\x01$1\x02",
+        "\x01$1\x02",
+        "\x03$1\x04",
+    );
+
+    // Clean lines
+    $cleaned = array();
+    foreach ($lines as $i => $line) {
+        $line = preg_replace($patterns, $replace, $line);
+        $line = str_replace(array("\x02\x01", "\x04\x03"), "", $line);
+        $line = str_replace(array("\x01", "\x02", "\x03", "\x04"), array("**", "**", "_", "_"), $line);
+        $cleaned[] = $line;
+    }
+    $lines = $cleaned;
+
+    $section_label = "";
+    if ($section !== "" && $section !== "-f" && $section !== "-q") {
+        $section_label = "({$section})";
+    } elseif ($section !== "") {
+        $section_label = " (-{$section})";
+    }
+
+    $script_name = scriptName();
+    $canonical_url = $script_name . "/" . $mode . "/" . urlencode($parameter);
+    if ($section !== "" && $section !== "-f" && $section !== "-q") {
+        $canonical_url .= "/" . urlencode($section);
+    }
+    $canonical_url .= "/json";
+
+    // Detect sections and subsections
+    $sections = array();
+    $currentSection = null;
+
+    $count = count($lines);
+    for ($i = 0; $i < $count; $i++) {
+        $rawLine = $lines[$i];
+        // Strip formatting markers for detection
+        $plainLine = trim(str_replace(array("**", "_"), "", $rawLine));
+        $trimmedRaw = trim($rawLine);
+
+        if ($plainLine === "") {
+            if ($currentSection !== null) {
+                $currentSection["content"][] = "";
+            }
+            continue;
+        }
+
+        // L1 heading: all-caps section names (NAME, SYNOPSIS, DESCRIPTION, etc.)
+        // Must be 2-50 chars, only A-Z, 0-9, underscore, space, slash, dash
+        if (preg_match('/^[A-Z][A-Z0-9_ \/\\-]{1,49}$/', $plainLine)) {
+            $currentSection = array(
+                "name" => $plainLine,
+                "level" => 1,
+                "content" => array(),
+                "subsections" => array(),
+            );
+            $sections[] = &$currentSection;
+            continue;
+        }
+
+        // L2 heading detection (only under L1)
+        if ($currentSection !== null) {
+            $isL2 = false;
+            $l2Text = "";
+
+            // "  Title Case" (2-space indent, Title Case)
+            if (preg_match('/^ {2}([A-Z][a-z][\w\s:\x27;\-,\.\(\)]+)$/', $trimmedRaw, $m)) {
+                $isL2 = true;
+                $l2Text = $m[1];
+            }
+            // "_Title_" (entire line is italic/underline)
+            elseif (preg_match('/^_([A-Z][a-z][\w\s:\x27;\-,]+)_$/', $plainLine, $m)) {
+                $isL2 = true;
+                $l2Text = $m[1];
+            }
+            // "   **Bold**" (2-8 space indent, bold markers)
+            elseif (preg_match('/^ {2,8}((?:\*\*[^*]+\*\*\s*)+)$/', $trimmedRaw, $m)) {
+                $isL2 = true;
+                $l2Text = str_replace('**', '', $m[1]);
+            }
+            // "Supported Encodings" style: Title Case, no trailing punctuation, not all-caps
+            elseif (preg_match('/^[A-Z][a-z][\w\s:\x27;\/\-\.\(\)]+$/D', $plainLine)
+                && !preg_match('/[.!?,;:]\s*$/', $plainLine)
+                && $plainLine !== strtoupper($plainLine)
+                && strlen($plainLine) >= 3
+                && strlen($plainLine) <= 60) {
+                $isL2 = true;
+                $l2Text = $plainLine;
+            }
+
+            if ($isL2) {
+                $subsection = array(
+                    "name" => $l2Text,
+                    "level" => 2,
+                    "content" => array(),
+                );
+                $currentSection["subsections"][] = &$subsection;
+                $currentSection = &$subsection;
+                continue;
+            }
+        }
+
+        // Regular content line
+        if ($currentSection !== null) {
+            $clean = trim($plainLine);
+            if ($clean !== "") {
+                $currentSection["content"][] = $clean;
+            }
+        }
+    }
+
+    // Build JSON structure
+    $jsonData = array(
+        "name" => $parameter . $section_label,
+        "mode" => $mode,
+        "parameter" => $parameter,
+        "section" => $section,
+        "url" => $canonical_url,
+        "generated" => gmdate("Y-m-d\TH:i:s\Z"),
+    );
+
+    // Extract SYNOPSIS section as top-level field
+    foreach ($sections as $sec) {
+        if ($sec["name"] === "SYNOPSIS") {
+            $synopsisText = implode("\n", array_filter($sec["content"], function($line) {
+                return trim($line) !== "";
+            }));
+            $jsonData["synopsis"] = trim($synopsisText);
+            break;
+        }
+    }
+
+    // Add plain text content (joined, trailing empty lines stripped)
+    $textLines = array();
+    foreach ($lines as $tline) {
+        $tline = trim($tline);
+        if ($tline !== "" || !empty($textLines)) {
+            $textLines[] = $tline;
+        }
+    }
+    $jsonData["content"] = implode("\n", $textLines);
+
+    // Add structured sections
+    $jsonSections = array();
+    foreach ($sections as $sec) {
+        $cleanSec = array(
+            "name" => $sec["name"],
+            "level" => $sec["level"],
+        );
+        $textParts = array();
+        foreach ($sec["content"] as $cl) {
+            if ($cl !== "" || !empty($textParts)) {
+                $textParts[] = $cl;
+            }
+        }
+        $cleanSec["content"] = implode("\n", $textParts);
+
+        $subsections = array();
+        foreach ($sec["subsections"] as $sub) {
+            $subText = array();
+            foreach ($sub["content"] as $cl) {
+                if ($cl !== "" || !empty($subText)) {
+                    $subText[] = $cl;
+                }
+            }
+            $subsections[] = array(
+                "name" => $sub["name"],
+                "level" => $sub["level"],
+                "content" => implode("\n", $subText),
+            );
+        }
+        $cleanSec["subsections"] = $subsections;
+        $jsonSections[] = $cleanSec;
+    }
+    $jsonData["sections"] = $jsonSections;
+
+    return json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 }
 
 //convert man perldoc output to markdown
