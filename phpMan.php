@@ -109,9 +109,12 @@ function detectHeadingType (string $line): ?array {
     }
 
     // Level 1: perldoc =head1 / man .SH at column 0, mixed case
+    // Must start at column 0 (no leading space/indent) — use $line[0]
+    // to distinguish indented .SS subsections from .SH sections.
     // Use $plain (stripped of ** and _ markers) because man bold overstrike
     // converts .SH headings like "Syntax" to **Syntax**.
-    if (preg_match('/^[A-Z][a-z][\w\s:\x27;\-,\.\(\)\/]+$/D', $plain)
+    if (isset($line[0]) && $line[0] !== ' ' && $line[0] !== "\t"
+        && preg_match('/^[A-Z][a-z][\w\s:\x27;\-,\.\(\)\/]+$/D', $plain)
         && !preg_match('/[.!?:]\s*$/', $plain)
         && strlen($plain) >= 3 && strlen($plain) <= 60) {
         return ['level' => 1, 'text' => $plain];
@@ -523,7 +526,7 @@ if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
     // Show TOC when we have multiple L1 sections, or a single L1 section with L2 subsections
     $hasTocContent = count($tocItems) > 1
         || (count($tocItems) === 1 && !empty($tocItems[0]['children']));
-    if ($hasTocContent && $showNav) {
+    if ($hasTocContent) {
         echo "<div id=\"toc-sidebar\">\n";
         $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
         echo "<div class=\"toc-title\">" . h($pageLabel) . "</div>\n";
@@ -538,6 +541,7 @@ if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
             }
         }
         echo "</div>\n";
+        echo "<script>document.body.className+=' ext-nav';</script>\n";
     }
 
     echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
