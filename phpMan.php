@@ -510,6 +510,7 @@ echo "</div><hr />";
 
 // Build markdown version URL for detail pages (actual man/perldoc/info content)
 $markdownUrl = "";
+$jsonUrl = "";
 if ($content !== ""
     && in_array($mode, ["man", "perldoc", "info"])
     && $parameter !== ""
@@ -535,10 +536,16 @@ if ($content !== ""
             $markdownUrl .= "/" . $section;
         }
         $markdownUrl .= "/markdown";
+
+        $jsonUrl = $script_name_path . "/" . $mode . "/" . urlencode($parameter);
+        if ($mode === "man" && $section !== "") {
+            $jsonUrl .= "/" . $section;
+        }
+        $jsonUrl .= "/json";
     }
 }
 
-showFooter($VALIDATOR, $markdownUrl, $showNav);
+showFooter($VALIDATOR, $markdownUrl, $jsonUrl, $showNav);
 
 
 // +--------------------------------------------------------------------------------+
@@ -676,7 +683,7 @@ function showForm (string $parameter, array $check): void {
 }
 
 //show footer
-function showFooter (string $validator = "", string $markdownUrl = "", bool $showNav = false): void {
+function showFooter (string $validator = "", string $markdownUrl = "", string $jsonUrl = "", bool $showNav = false): void {
     $script_name = h(scriptName());
     $home_url = h("http://" . getSafeHost());
     $remote_addr = h(serverValue("REMOTE_ADDR", "unknown"));
@@ -692,7 +699,7 @@ function showFooter (string $validator = "", string $markdownUrl = "", bool $sho
         " Author: <a href=\"http://www.chedong.com/\">Che Dong</a>" .
         $server_info .
         " Under <a href=\"".$script_name."/copyright\">GNU General Public License</a>" .
-        ($markdownUrl !== "" ? " - <a href=\"" . h($markdownUrl) . "\">MarkDown Format</a>" : "") .
+        ($markdownUrl !== "" ? " - <a href=\"" . h($markdownUrl) . "\">MarkDown Format</a>" . ($jsonUrl !== "" ? " | <a href=\"" . h($jsonUrl) . "\">JSON Format</a>" : "") : "") .
         "<br />" .
         "<a href=\"" . $home_url . "\">" . date("Y-m-d H:i") . " @". $remote_addr .
         " CrawledBy " . $user_agent . "</a>" .
