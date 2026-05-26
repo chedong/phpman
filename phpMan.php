@@ -1238,16 +1238,16 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
     }
     $canonical_url .= "/json";
 
-    // Detect sections and subsections
+    // Detect sections and subsections — uses shared detectHeadingType()
+    // to stay consistent with HTML and Markdown output
     $sections = array();
-    $currentSection = null;
+    $currentSection = null;   // reference to current section or subsection (for content accumulation)
+    $currentL1 = null;        // reference to current L1 section (for adding L2 subsections)
 
     $count = count($lines);
     for ($i = 0; $i < $count; $i++) {
         $rawLine = $lines[$i];
-        // Strip formatting markers for detection
         $plainLine = trim(str_replace(array("**", "_"), "", $rawLine));
-        $trimmedRaw = trim($rawLine);
 
         if ($plainLine === "") {
             if ($currentSection !== null) {
@@ -1256,59 +1256,37 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
             continue;
         }
 
-        // L1 heading: all-caps section names (NAME, SYNOPSIS, DESCRIPTION, etc.)
-        // Must be 2-50 chars, only A-Z, 0-9, underscore, space, slash, dash
-        if (preg_match('/^[A-Z][A-Z0-9_ \/\\-]{1,49}$/', $plainLine)) {
-            $currentSection = array(
-                "name" => $plainLine,
-                "level" => 1,
-                "content" => array(),
-                "subsections" => array(),
-            );
-            $sections[] = &$currentSection;
-            continue;
-        }
+        // Use shared heading detection (same as HTML/Markdown paths)
+        $heading = detectHeadingType($rawLine);
 
-        // L2 heading detection (only under L1)
-        if ($currentSection !== null) {
-            $isL2 = false;
-            $l2Text = "";
-
-            // "  Title Case" (2-space indent, Title Case)
-            if (preg_match('/^ {2}([A-Z][a-z][\w\s:\x27;\-,\.\(\)]+)$/', $trimmedRaw, $m)) {
-                $isL2 = true;
-                $l2Text = $m[1];
-            }
-            // "_Title_" (entire line is italic/underline)
-            elseif (preg_match('/^_([A-Z][a-z][\w\s:\x27;\-,]+)_$/', $plainLine, $m)) {
-                $isL2 = true;
-                $l2Text = $m[1];
-            }
-            // "   **Bold**" (2-8 space indent, bold markers)
-            elseif (preg_match('/^ {2,8}((?:\*\*[^*]+\*\*\s*)+)$/', $trimmedRaw, $m)) {
-                $isL2 = true;
-                $l2Text = str_replace('**', '', $m[1]);
-            }
-            // "Supported Encodings" style: Title Case, no trailing punctuation, not all-caps
-            elseif (preg_match('/^[A-Z][a-z][\w\s:\x27;\/\-\.\(\)]+$/D', $plainLine)
-                && !preg_match('/[.!?,;:]\s*$/', $plainLine)
-                && $plainLine !== strtoupper($plainLine)
-                && strlen($plainLine) >= 3
-                && strlen($plainLine) <= 60) {
-                $isL2 = true;
-                $l2Text = $plainLine;
-            }
-
-            if ($isL2) {
+        if ($heading !== null) {
+            if ($heading['level'] === 1) {
+                // Break previous references before creating new section
+                unset($currentSection);
+                $currentSection = array(
+                    "name" => $heading['text'],
+                    "level" => 1,
+                    "content" => array(),
+                    "subsections" => array(),
+                );
+                $sections[] = &$currentSection;
+                // L1 is also the current L1 for subsection attachment
+                unset($currentL1);
+                $currentL1 = &$currentSection;
+            } elseif ($heading['level'] === 2 && $currentL1 !== null) {
+                // L2 subsections always attach to the current L1 section
+                unset($subsection);
                 $subsection = array(
-                    "name" => $l2Text,
+                    "name" => $heading['text'],
                     "level" => 2,
                     "content" => array(),
                 );
-                $currentSection["subsections"][] = &$subsection;
+                $currentL1["subsections"][] = &$subsection;
+                // Switch content accumulation to the new subsection
+                unset($currentSection);
                 $currentSection = &$subsection;
-                continue;
             }
+            continue;
         }
 
         // Regular content line
