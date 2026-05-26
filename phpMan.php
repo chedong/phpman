@@ -143,7 +143,40 @@ function detectHeadingType (string $line): ?array {
         return ['level' => 2, 'text' => $text];
     }
 
+    // Level 2: man .TP tagged paragraphs with bold variable names + optional type
+    // e.g. "       **CREATE**_**HOME** (boolean)"
+    //      "       **GID**_ **MAX** (number)"
+    // Underscores between bold segments are literal chars (not overstrike-formatted),
+    // so they survive the <b>→** normalization as plain `_`.
+    if (preg_match('/^ {7,}((?:\*\*[^*]+\*\*[_\s]*)+)\([a-z]+\)$/', $line, $m)) {
+        $text = str_replace('**', '', trim($m[1]));
+        if (strlen($text) >= 3) {
+            return ['level' => 2, 'text' => $text];
+        }
+    }
+
     return null;
+}
+
+/**
+ * Detect man page option definition lines as L2 headings.
+ * Pattern: "       **-b**, **--base-dir** _BASE_DIR_"
+ * Requires $prevLineBlank=true to avoid matching inline option references
+ * like "see **-g**, **-N**, **-U**" in prose text.
+ *
+ * @return array{level:int, text:string}|null
+ */
+function detectOptionHeading (string $line, bool $prevLineBlank): ?array {
+    if (!$prevLineBlank) return null;
+    // Indented (3-7 spaces) line starting with bold **-**
+    if (!preg_match('/^ {3,7}\*\*-/', $line)) return null;
+    // Collect bold segments as the heading text
+    if (!preg_match_all('/\*\*([^*]+)\*\*/', $line, $matches)) return null;
+    // First bold segment must start with - (option flag)
+    if (!preg_match('/^-/', $matches[1][0])) return null;
+    $flags = implode(' ', $matches[1]);
+    if (strlen($flags) > 80) return null;
+    return ['level' => 2, 'text' => $flags];
 }
 
 function serverValue (string $key, string $default = ""): string {
