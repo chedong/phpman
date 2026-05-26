@@ -108,11 +108,13 @@ function detectHeadingType (string $line): ?array {
         return ['level' => 1, 'text' => $plain];
     }
 
-    // Level 1: perldoc =head1 at column 0, mixed case — "In Practice"
-    if (preg_match('/^[A-Z][a-z][\w\s:\x27;\-,\.\(\)\/]+$/D', $line)
-        && !preg_match('/[.!?:]\s*$/', trim($line))
-        && strlen($line) >= 3 && strlen($line) <= 60) {
-        return ['level' => 1, 'text' => trim($line)];
+    // Level 1: perldoc =head1 / man .SH at column 0, mixed case
+    // Use $plain (stripped of ** and _ markers) because man bold overstrike
+    // converts .SH headings like "Syntax" to **Syntax**.
+    if (preg_match('/^[A-Z][a-z][\w\s:\x27;\-,\.\(\)\/]+$/D', $plain)
+        && !preg_match('/[.!?:]\s*$/', $plain)
+        && strlen($plain) >= 3 && strlen($plain) <= 60) {
+        return ['level' => 1, 'text' => $plain];
     }
 
     // Level 2: perldoc .SS at column 0 — "Supported Encodings" (no indent)
