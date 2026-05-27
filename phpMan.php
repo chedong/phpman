@@ -697,15 +697,15 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "body {color:#000000;background-color:#EEEEEE;font-family:'Courier New',Courier,monospace;font-size:14px;}\n".
         "b {color:#996600;background-color:#EEEEEE;}\n".
         "u {color:#008000;background-color:#EEEEEE;text-decoration:underline;}\n".
-        "#content-wrap {max-width:90%;margin-right:360px;}\n".
+        "#content-wrap {max-width:90%;margin-right:230px;}\n".
         "#man-content pre {width:100%;overflow-x:auto;white-space:pre;}\n".
-        "#toc-sidebar {position:fixed;top:20px;right:10px;width:320px;max-height:90vh;overflow-y:auto;".
-            "background:#F8F8F8;border:1px solid #CCC;padding:8px;font-size:12px;z-index:100;".
+        "#toc-sidebar {position:fixed;top:20px;right:10px;width:200px;max-height:90vh;overflow-y:auto;".
+            "background:#F8F8F8;border:1px solid #CCC;padding:8px;font-size:14px;z-index:100;".
             "display:none;}\n".
         "#toc-sidebar a {display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;".
             "color:#333;text-decoration:none;padding:2px 4px;border-radius:2px;}\n".
         "#toc-sidebar a:hover {background:#DDD;color:#000;}\n".
-        "#toc-sidebar a.toc-sub {padding-left:18px;font-size:11px;color:#555;}\n".
+        "#toc-sidebar a.toc-sub {padding-left:18px;color:#555;}\n".
         "#toc-sidebar a.toc-sub:hover {color:#000;}\n".
         "#toc-sidebar .toc-title {font-weight:bold;border-bottom:1px solid #CCC;margin-bottom:4px;padding-bottom:2px;}\n".
         "#back-to-top {position:fixed;bottom:20px;right:20px;z-index:100;display:none;}\n".
