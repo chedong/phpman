@@ -224,6 +224,15 @@ function getSafeHost (): string {
 }
 
 /**
+ * Get the complete base URL of the current script (e.g. https://www.example.com/phpMan.php).
+ */
+function baseUrl(): string {
+    $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "http";
+    $script_path = isset($_SERVER['SCRIPT_NAME']) ? $_SERVER['SCRIPT_NAME'] : "phpMan.php";
+    return $proto . "://" . getSafeHost() . $script_path;
+}
+
+/**
  * Check if the current request is from localhost (like phpinfo() visibility).
  * Used to restrict server version disclosure to local access only.
  */
@@ -294,10 +303,10 @@ $format = "html";
 $formatSource = "default"; // track where format was decided
 
 // 1) GET parameter always takes highest priority
-if (requestValue($_GET, "format") === "json") {
+if (requestValue($_GET, "format") === "json" || requestValue($_GET, "amp;format") === "json") {
     $format = "json";
     $formatSource = "get";
-} elseif (requestValue($_GET, "format") === "markdown") {
+} elseif (requestValue($_GET, "format") === "markdown" || requestValue($_GET, "amp;format") === "markdown") {
     $format = "markdown";
     $formatSource = "get";
 } else {
@@ -388,20 +397,28 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
 else {
     if ( requestValue($_GET, "mode") != "" ) {
         $mode = requestValue($_GET, "mode");
+    } elseif ( requestValue($_GET, "amp;mode") != "" ) {
+        $mode = requestValue($_GET, "amp;mode");
     }
 
     if ( requestValue($_GET, "parameter") != "" ) {
         $parameter = requestValue($_GET, "parameter");
+    } elseif ( requestValue($_GET, "amp;parameter") != "" ) {
+        $parameter = requestValue($_GET, "amp;parameter");
     }
 
     if ( requestValue($_GET, "section") != "") {
         $section = requestValue($_GET, "section");
+    } elseif ( requestValue($_GET, "amp;section") != "") {
+        $section = requestValue($_GET, "amp;section");
     }
 }
 
 // GET parameter always overrides
 if ( requestValue($_GET, "format") != "" ) {
     $format = strtolower(trim(requestValue($_GET, "format")));
+} elseif ( requestValue($_GET, "amp;format") != "" ) {
+    $format = strtolower(trim(requestValue($_GET, "amp;format")));
 }
 $format = in_array($format, ["html", "markdown", "json"]) ? $format : "html";
 
@@ -563,9 +580,12 @@ if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
 }
 echo "</div><hr />";
 
-// Build markdown version URL for detail pages (actual man/perldoc/info content)
+// Build markdown/JSON URLs for footer links
 $markdownUrl = "";
 $jsonUrl = "";
+$script_name_path = baseUrl();
+
+// Detail pages (actual man/perldoc/info content): pathinfo URLs
 if ($content !== ""
     && in_array($mode, ["man", "perldoc", "info"])
     && $parameter !== ""
@@ -585,7 +605,6 @@ if ($content !== ""
     }
 
     if ($isDetailPage) {
-        $script_name_path = scriptName();
         $markdownUrl = $script_name_path . "/" . $mode . "/" . urlencode($parameter);
         if ($mode === "man" && $section !== "") {
             $markdownUrl .= "/" . $section;
@@ -598,6 +617,16 @@ if ($content !== ""
         }
         $jsonUrl .= "/json";
     }
+}
+// Index pages (man/perldoc/info without parameter): query param URLs
+elseif ($content !== "" && in_array($mode, ["man", "perldoc", "info"]) && $parameter === "") {
+    $markdownUrl = $script_name_path . "?mode=" . urlencode($mode) . "&format=markdown";
+    $jsonUrl = $script_name_path . "?mode=" . urlencode($mode) . "&format=json";
+}
+// Search results pages: query param URLs
+elseif ($mode === "search" && $parameter !== "") {
+    $markdownUrl = $script_name_path . "?parameter=" . urlencode($parameter) . "&mode=search&format=markdown";
+    $jsonUrl = $script_name_path . "?parameter=" . urlencode($parameter) . "&mode=search&format=json";
 }
 
 showFooter($VALIDATOR, $markdownUrl, $jsonUrl, $showNav);
@@ -754,7 +783,7 @@ function showFooter (string $validator = "", string $markdownUrl = "", string $j
         " Author: <a href=\"http://www.chedong.com/\">Che Dong</a>" .
         $server_info .
         " Under <a href=\"".$script_name."/copyright\">GNU General Public License</a>" .
-        ($markdownUrl !== "" ? " - <a href=\"" . h($markdownUrl) . "\">MarkDown Format</a>" . ($jsonUrl !== "" ? " | <a href=\"" . h($jsonUrl) . "\">JSON Format</a>" : "") : "") .
+        ($markdownUrl !== "" ? " - <a href=\"" . h($markdownUrl) . "\">MarkDown Format</a>" . ($jsonUrl !== "" ? " | <a href=\"" . h($jsonUrl) . "\">JSON Format</a>" : "") : ($jsonUrl !== "" ? " - <a href=\"" . h($jsonUrl) . "\">JSON Format</a>" : "")) .
         "<br />" .
         "<a href=\"" . $home_url . "\">" . date("Y-m-d H:i") . " @". $remote_addr .
         " CrawledBy " . $user_agent . "</a>" .
@@ -874,7 +903,7 @@ function getInfoPage (string $parameter, string $format = "html"): string {
  * /usr/sbin/makewhatis -w
  */
 function getSearchPage (string $parameter, string $section = "", string $format = "html"): string {
-    $script_name = scriptName();
+    $script_name = ($format === "markdown" || $format === "json") ? baseUrl() : scriptName();
     
     // get last parameter of search string
     // example: "1 GCC" ==> "GCC"
@@ -904,18 +933,28 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         for ($i = 0; $i < $count; $i++) {
             $line = $lines[$i];
             if (preg_match('/^(.+)\s+\[\s*(.+?)\s*\]\s+\(([\dnol]\w*)\)\s*$/', $line, $m)) {
+                $name = trim($m[1]);
+                $description = trim($m[2]);
+                $section_num = trim($m[3]);
+                $is_perl = preg_match('/:/', $name);
+                $link_mode = $is_perl ? "perldoc" : "man";
                 $results[] = array(
-                    "name" => trim($m[1]),
-                    "description" => trim($m[2]),
-                    "section" => trim($m[3]),
-                    "link" => $script_name . "/man/" . urlencode(trim($m[3])) . "/" . "json",
+                    "name" => $name,
+                    "description" => $description,
+                    "section" => $section_num,
+                    "link" => $script_name . "/" . $link_mode . "/" . urlencode($name) . "/" . urlencode($section_num) . "/json",
                 );
             } elseif (preg_match('/^(.+)\s+\(([\dnol]\w*)\)\s+—\s+(.+)$/', $line, $m)) {
+                $name = trim($m[1]);
+                $section_num = trim($m[2]);
+                $description = trim($m[3]);
+                $is_perl = preg_match('/:/', $name);
+                $link_mode = $is_perl ? "perldoc" : "man";
                 $results[] = array(
-                    "name" => trim($m[1]),
-                    "description" => trim($m[3]),
-                    "section" => trim($m[2]),
-                    "link" => $script_name . "/man/" . urlencode(trim($m[2])) . "/" . "json",
+                    "name" => $name,
+                    "description" => $description,
+                    "section" => $section_num,
+                    "link" => $script_name . "/" . $link_mode . "/" . urlencode($name) . "/" . urlencode($section_num) . "/json",
                 );
             } elseif (preg_match('/^([\w\.\:\-\+]+)\s+\(([\dnol]\w*)\)\s+—\s+(.+)$/', $line, $m)) {
                 $is_perl = (preg_match('/:/', $m[1]));
@@ -924,7 +963,20 @@ function getSearchPage (string $parameter, string $section = "", string $format 
                     "name" => trim($m[1]),
                     "description" => trim($m[3]),
                     "section" => trim($m[2]),
-                    "link" => $script_name . "/" . $link_mode . "/" . urlencode(trim($m[1])) . "/" . "json",
+                    "link" => $script_name . "/" . $link_mode . "/" . urlencode(trim($m[1])) . "/" . urlencode(trim($m[2])) . "/json",
+                );
+            } elseif (preg_match('/^(.+)\s+\(([\dnol]\w*)\)\s+-\s+(.+)$/', $line, $m)) {
+                // Linux "apropos" output: command (section) - description (with hyphens, not em dashes)
+                $name = trim($m[1]);
+                $section_num = trim($m[2]);
+                $description = trim($m[3]);
+                $is_perl = preg_match('/:/', $name);
+                $link_mode = $is_perl ? "perldoc" : "man";
+                $results[] = array(
+                    "name" => $name,
+                    "description" => $description,
+                    "section" => $section_num,
+                    "link" => $script_name . "/" . $link_mode . "/" . urlencode($name) . "/" . urlencode($section_num) . "/json",
                 );
             }
         }
@@ -1004,7 +1056,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
 
 //link to man page list by searching section tag
 function getManIndex (string $format = "html"): string {
-    $script_name = scriptName();
+    $script_name = ($format === "markdown" || $format === "json") ? baseUrl() : scriptName();
     if ($format === "markdown") {
         return "[1 - General Commands](".$script_name."/search/(1)/markdown) [intro(1)](".$script_name."/man/intro/1/markdown)\n" .
                "[2 - System Calls](".$script_name."/search/(2)/markdown) [intro(2)](".$script_name."/man/intro/2/markdown)\n" .
@@ -1085,7 +1137,7 @@ function getPerldocIndex (string $format = "html"): string {
 function getInfoIndex (string $format = "html"): string {
     $lines = array();
     exec("info", $lines);
-    $script_name = scriptName();
+    $script_name = ($format === "markdown" || $format === "json") ? baseUrl() : scriptName();
 
     if ($format === "markdown") {
         $patterns = array(
@@ -1292,7 +1344,7 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
         $section_label = " (-{$section})";
     }
 
-    $script_name = scriptName();
+    $script_name = baseUrl();
     $canonical_url = $script_name . "/" . $mode . "/" . urlencode($parameter);
     if ($section !== "" && $section !== "-f" && $section !== "-q") {
         $canonical_url .= "/" . urlencode($section);
@@ -1461,20 +1513,25 @@ function formatManPerlDocToMarkdown (array $lines): string {
         // URL: wrap as autolink, no need to escape :: in markdown
         $line = preg_replace('/(https?:\/\/[\w%\-\?&;#~=\.\/\@\:]+[\w\/])/i', '<$0>', $line);
 
-        // Command references: show as bracketed reference without link
+        // Command references: show as absolute markdown links
         $line = preg_replace_callback(
             '/(?<![\w])(?:\*\*|_)?([\w\-\.\+]+)(?:\*\*|_)?\((?:\*\*|_)?([\dnol]\w*)(?:\*\*|_)?\)/',
             function ($matches) {
-                return '[' . $matches[0] . ']';
+                $name = str_replace(['**', '_'], '', $matches[1]);
+                $sec = str_replace(['**', '_'], '', $matches[2]);
+                $base = baseUrl();
+                return '[' . $matches[0] . '](' . $base . '/man/' . urlencode($name) . '/' . urlencode($sec) . '/markdown)';
             },
             $line
         );
         
-        // Perl modules: Module::Name → show as [Module::Name] without link
+        // Perl modules: Module::Name → show as absolute markdown links
         $line = preg_replace_callback(
             '/(?<![\w])(?:\*\*|_)?(\w+(?:::\w+)+)(?:\*\*|_)?/',
             function ($matches) {
-                return '[' . $matches[0] . ']';
+                $name = str_replace(['**', '_'], '', $matches[1]);
+                $base = baseUrl();
+                return '[' . $matches[0] . '](' . $base . '/perldoc/' . urlencode($name) . '/markdown)';
             },
             $line
         );
