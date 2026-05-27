@@ -21,6 +21,9 @@ declare(strict_types=1);
 // +--------------------------------------------------------------------------------+
 // $Id$
 
+// Default terminal width for man/perldoc output (used as MANWIDTH env)
+$PHP_MAN_WIDTH = 100;
+
 /**
  * phpMan is a web interface of Unix command 'man', 'perldoc', 'info' and 'apropos'.
  * This script makes it easier to read man pages which is lengthy and require you
@@ -102,89 +105,100 @@ function detectHeadingType (string $line): ?array {
     // Normalize: convert HTML bold/underline to markdown-style markers
     $line = preg_replace(['#</?b>#', '#</?u>#'], ['**', '_'], $line);
 
-    // Level 1: ALL CAPS (3-50 chars) — strip ALL formatting markers first
-    // Must start at column 0 (no leading space/indent) to avoid matching
-    // .SS subsection headings that are also ALL CAPS (e.g. CREDENTIALS, ENGINE).
-    $plain = trim(str_replace(['**', '_'], '', $line));
-    if (isset($line[0]) && $line[0] !== ' ' && $line[0] !== "\t"
-        && preg_match('/^[A-Z][A-Z0-9_ \\/\\x2d]{2,50}$/', $plain)) {
-        return ['level' => 1, 'text' => $plain];
-    }
-
-    // Level 1: perldoc =head1 / man .SH at column 0, mixed case
-    // Must start at column 0 (no leading space/indent) — use $line[0]
-    // to distinguish indented .SS subsections from .SH sections.
-    // Use $plain (stripped of ** and _ markers) because man bold overstrike
-    // converts .SH headings like "Syntax" to **Syntax**.
-    if (isset($line[0]) && $line[0] !== ' ' && $line[0] !== "\t"
-        && preg_match('/^[A-Z][a-z][\w\s:\x27;\-,\.\(\)\/]+$/D', $plain)
-        && !preg_match('/[.!?:]\s*$/', $plain)
-        && strlen($plain) >= 3 && strlen($plain) <= 60) {
-        return ['level' => 1, 'text' => $plain];
-    }
-
-    // Level 2: perldoc .SS at column 0 — "Supported Encodings" (no indent)
-    $noUnderline = str_replace('_', '', $line);
-    if (preg_match('/^[A-Z][a-z][\w\s:\x27;\/\-\.\(\)]+$/D', $noUnderline)
-        && !preg_match('/[.!?,;:]\s*$/', trim($noUnderline))
-        && trim($noUnderline) !== strtoupper(trim($noUnderline))) {
-        $text = trim($noUnderline);
-        if (strlen($text) >= 3) {
-            return ['level' => 2, 'text' => $text];
-        }
-    }
-
-    // Level 2: perldoc .SS — "  Methods you should implement" (2-space indent)
-    $noUnderline = str_replace('_', '', $line);
-    if (preg_match('/^ {2}([A-Z][a-z][\w\s:\x27;\-,\.]+)$/', $noUnderline, $m)) {
-        return ['level' => 2, 'text' => trim($m[1])];
-    }
-
-    // Level 2: man .SS italic — "_Subheading_" (entire line is italic)
+    // Level 2: man .SS italic — "_Subheading_" (entire line wrapped in single _)
+    // Must check BEFORE L1 because strip '_' from "_Filename_" → "Filename"
+    // would otherwise hit the L1 mixed-case regex.
     if (preg_match('/^_([A-Z][a-z][\w\s:\x27;\-,]+)_$/', $line, $m)) {
         return ['level' => 2, 'text' => trim($m[1])];
     }
 
     // Level 2: man .SS bold — "   **Packages**" or "   **Symbol** **Tables**"
-    if (preg_match('/^ {2,8}((?:\*\*[^*]+\*\*\s*)+)$/', $line, $m)) {
+    // Also matches at column 0 for e.g. "**Line** **Buffering**"
+    if (preg_match('/^ {0,8}((?:\*\*[^*]+\*\*\s*)+)$/', $line, $m)) {
         $text = str_replace('**', '', trim($m[1]));
-        return ['level' => 2, 'text' => $text];
+        // Single bold word at column 0 (e.g. "**Overview**") is L1, not L2
+        if (!(strpos($line, '**') === 0 && substr_count($line, '**') === 2)) {
+            if (strlen($text) >= 3) {
+                return ['level' => 2, 'text' => $text];
+            }
+        }
     }
 
     // Level 2: man .TP tagged paragraphs with bold variable names + optional type
     // e.g. "       **CREATE**_**HOME** (boolean)"
     //      "       **GID**_ **MAX** (number)"
-    // Underscores between bold segments are literal chars (not overstrike-formatted),
-    // so they survive the <b>→** normalization as plain `_`.
-    if (preg_match('/^ {7,}((?:\*\*[^*]+\*\*[_\s]*)+)\([a-z]+\)$/', $line, $m)) {
+    //      "       **GID**_**MAX** (number), **GID**_**MIN** (number)"
+    // Capture full line including multiple bold+type groups after comma.
+    if (preg_match('/^ {7,}((?:(?:\*\*[^*]+\*\*[_\s]*)+\([a-z]+\)[,\s]*)+)/', $line, $m)) {
         $text = str_replace('**', '', trim($m[1]));
         if (strlen($text) >= 3) {
             return ['level' => 2, 'text' => $text];
         }
     }
 
-    return null;
-}
+    // Level 2: man option definition lines — e.g. "       **-R**, **--root** _CHROOT_DIR_"
+    // Matches indented (3-7 spaces) bold option flags starting with -
+    // Collects all bold segments starting with - as heading text
+    if (preg_match('/^ {3,7}(\*\*-\w[\w\-]*)/', $line, $m)) {
+        if (preg_match_all('/\*\*([^*]+)\*\*/', $line, $allMatches)) {
+            $flags = [];
+            foreach ($allMatches[1] as $seg) {
+                if (preg_match('/^-/', $seg)) {
+                    $flags[] = $seg;
+                }
+            }
+            if (!empty($flags)) {
+                $text = implode(' ', $flags);
+                if (strlen($text) <= 80) {
+                    return ['level' => 2, 'text' => $text];
+                }
+            }
+        }
+    }
 
-/**
- * Detect man page option definition lines as L2 headings.
- * Pattern: "       **-b**, **--base-dir** _BASE_DIR_"
- * Requires $prevLineBlank=true to avoid matching inline option references
- * like "see **-g**, **-N**, **-U**" in prose text.
- *
- * @return array{level:int, text:string}|null
- */
-function detectOptionHeading (string $line, bool $prevLineBlank): ?array {
-    if (!$prevLineBlank) return null;
-    // Indented (3-7 spaces) line starting with bold **-**
-    if (!preg_match('/^ {3,7}\*\*-/', $line)) return null;
-    // Collect bold segments as the heading text
-    if (!preg_match_all('/\*\*([^*]+)\*\*/', $line, $matches)) return null;
-    // First bold segment must start with - (option flag)
-    if (!preg_match('/^-/', $matches[1][0])) return null;
-    $flags = implode(' ', $matches[1]);
-    if (strlen($flags) > 80) return null;
-    return ['level' => 2, 'text' => $flags];
+    // Level 2: perldoc =head2 — "  Methods you should implement" (2-space indent)
+    // Handles both plain text and _wrapped_ variants by stripping _ markers
+    $testLine = preg_replace('/_/', '', $line);
+    if (preg_match('/^ {2}([A-Z][a-z][\w\s:\x27;\-,\.]+)$/', $testLine, $m)) {
+        $text = trim($m[1]);
+        // Reject sentence-like text (demonstrative + verb)
+        if (!preg_match('/^(This|That|These|Those|It|There)\s+(is|was|has|have|had|are|were)\b/i', $text)) {
+            return ['level' => 2, 'text' => $text];
+        }
+    }
+
+    // ---- Level 1 checks (LAST, after all L2 patterns) ----
+
+    // L1 ALL CAPS — strip formatting markers first
+    $plain = trim(str_replace(['**', '_'], '', $line));
+    if (isset($line[0]) && $line[0] !== ' ' && $line[0] !== "\t"
+        && preg_match('/^[A-Z][A-Z0-9_ \/\-]{2,50}$/', $plain)) {
+        return ['level' => 1, 'text' => $plain];
+    }
+
+    // L1 perldoc =head1 / man .SH at column 0, mixed case
+    // Single-word titles (e.g. "Syntax", "Description") match at 3+ chars.
+    // Two-word titles require 10+ chars.
+    // 3+ word titles require 16+ chars to avoid body text false positives.
+    // Also catches bold headings at column 0 like "**Overview**" after stripping markers.
+    $noBold = str_replace(['**', '_'], '', $line);
+    if (isset($line[0]) && $line[0] !== ' ' && $line[0] !== "\t"
+        && preg_match('/^[A-Z][a-z][\w\s:\x27;\-,\.\(\)\/]+$/D', $noBold)
+        && !preg_match('/[.!?:]\s*$/', $noBold)) {
+        $text = trim($noBold);
+        $wordCount = substr_count($text, ' ') + 1;
+        if ($wordCount === 1 && strlen($text) >= 3) {
+            return ['level' => 1, 'text' => $text];
+        }
+        if ($wordCount === 2 && strlen($text) >= 10) {
+            return ['level' => 1, 'text' => $text];
+        }
+        if ($wordCount >= 3 && strlen($text) >= 16) {
+            return ['level' => 1, 'text' => $text];
+        }
+    }
+
+    return null;
 }
 
 function serverValue (string $key, string $default = ""): string {
@@ -756,9 +770,12 @@ function showFooter (string $validator = "", string $markdownUrl = "", string $j
 //get specified command's man page and convert to html format
 function getManPage (string $parameter, string $section = "1", string $format = "html"): string {
     $lines = array();
-    // use man -Tascii so formatManPerlDoc() converts overstrike to <b>/<u> tags
-    // @version 2026-05-22c — back to -Tascii for DreamHost compatibility
-    $command = "man -Tascii ";
+    global $PHP_MAN_WIDTH;
+    putenv("MANWIDTH={$PHP_MAN_WIDTH}");
+    // Use man without -Tascii so MANWIDTH env var (set via $PHP_MAN_WIDTH)
+    // controls the output line length. Earlier versions used -Tascii but that
+    // makes man-db pass width control to groff, ignoring MANWIDTH.
+    $command = "man ";
     if ($section !== "") {
         $command .= escapeshellarg($section)." ";
     }
@@ -793,7 +810,11 @@ function addManPageToc (string $html): array {
     foreach ($lines as $i => $line) {
         // Level 1 anchor already placed by formatManPerlDoc
         if (preg_match('/<a id="(section-[^"]+)"><\/a>(.*)/', $line, $m)) {
-            $label = trim(strip_tags($m[2]));
+            // Decode entities first (e.g. &lt;strong&gt; → <strong>), then strip system
+            // formatting tags (<b>, <u>) but NOT <strong> (it's original content that
+            // should render as bold in the TOC). Avoid strip_tags() which would treat
+            // <sys/socket.h> as an HTML tag and remove it.
+            $label = trim(preg_replace('/<\/?(b|u)>/i', '', html_entity_decode($m[2], ENT_QUOTES, 'UTF-8')));
             $tocItems[] = array('id' => $m[1], 'label' => $label, 'children' => array());
             $currentL1Idx = count($tocItems) - 1;
             continue;
@@ -802,7 +823,7 @@ function addManPageToc (string $html): array {
         // Level 2 anchor already placed by formatManPerlDoc
         if (preg_match('/<a id="(sub-[^"]+)"><\/a>(.*)/', $line, $m)) {
             if ($currentL1Idx !== null) {
-                $label = trim(strip_tags($m[2]));
+                $label = trim(preg_replace('/<\/?(b|u)>/i', '', html_entity_decode($m[2], ENT_QUOTES, 'UTF-8')));
                 $tocItems[$currentL1Idx]['children'][] = array('id' => $m[1], 'label' => $label);
             }
             continue;
@@ -815,6 +836,8 @@ function addManPageToc (string $html): array {
 //get specified perl module's man page and convert to html format
 function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
+    global $PHP_MAN_WIDTH;
+    putenv("MANWIDTH={$PHP_MAN_WIDTH}");
     exec("perldoc ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
         if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
@@ -1363,16 +1386,6 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
             break;
         }
     }
-
-    // Add plain text content (joined, trailing empty lines stripped)
-    $textLines = array();
-    foreach ($lines as $tline) {
-        $tline = trim($tline);
-        if ($tline !== "" || !empty($textLines)) {
-            $textLines[] = $tline;
-        }
-    }
-    $jsonData["content"] = implode("\n", $textLines);
 
     // Add structured sections
     $jsonSections = array();
