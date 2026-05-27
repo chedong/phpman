@@ -13,7 +13,7 @@ All `exec()` calls use `escapeshellarg()` for user input. This is the primary de
 
 | Function | Command | Escaped? | Risk |
 |----------|---------|----------|------|
-| `getManPage()` | `man -Tascii [section] [parameter]` | Yes (both) | Low |
+| `getManPage()` | `man -Tutf8 [section] [parameter]` | Yes (both) | Low |
 | `getPerldocPage()` | `perldoc [parameter]` | Yes | Low |
 | `getPerldocPage()` | `perldoc -f [parameter]` | Yes | Low |
 | `getPerldocPage()` | `perldoc -q [parameter]` | Yes | Low |

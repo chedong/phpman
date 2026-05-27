@@ -35,7 +35,7 @@ phpMan supports three Unix documentation retrieval methods, each corresponding t
 
 | Item | Description |
 |------|-------------|
-| **System Command** | `man -Tascii <argument>` |
+| **System Command** | `man -Tutf8 <argument>` |
 | **Data Source** | `/usr/share/man/`, `/usr/local/share/man/` — files with `.1.gz`, `.3pm.gz` etc. |
 | **Source Format** | **troff / groff** (AT&T typesetting language), original content contains overstrike sequences (e.g., `W^HWA^HAR^HRN^H...`) |
 | **Standard** | **man-pages(7)** — 9 sections: 1=user commands, 2=system calls, 3=C library functions, 4=device files, 5=file formats, 6=games, 7=miscellaneous, 8=system administration, 9=kernel routines |

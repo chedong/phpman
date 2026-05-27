@@ -21,7 +21,7 @@ declare(strict_types=1);
 // +--------------------------------------------------------------------------------+
 // $Id$
 
-// Default terminal width for man/perldoc output (used as MANWIDTH env)
+// Default terminal width for man/perldoc output (used as MANROFFOPT -rLL=NNNn)
 $PHP_MAN_WIDTH = 100;
 
 /**
@@ -410,10 +410,6 @@ $mode = normalizeMode($mode);
 $parameter = normalizeParameter($parameter);
 $section = normalizeSection($section);
 
-if ($parameter !== "" && $section === "" && $mode === "man") {
-    $section = "1";
-}
-
 if ( $parameter != "" ) {
     if ( $section == "" ) {
         $PHP_MAN_TITLE = $parameter . " - " . $mode . " - phpMan";
@@ -655,7 +651,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
         "<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\">\n".
         "<head>\n".
-        "<!-- phpMan v2026-05-22c - back to -Tascii for DreamHost -->\n".
+        "<!-- phpMan — man -Tutf8 for SGR bold/underline support -->\n".
         "<title>".h($title)."</title>\n".
         "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n".
         "<meta name=\"description\" content=\"".h($meta_description)."\"/>\n".
@@ -768,14 +764,11 @@ function showFooter (string $validator = "", string $markdownUrl = "", string $j
 }
 
 //get specified command's man page and convert to html format
-function getManPage (string $parameter, string $section = "1", string $format = "html"): string {
+function getManPage (string $parameter, string $section = "", string $format = "html"): string {
     $lines = array();
-    global $PHP_MAN_WIDTH;
-    putenv("MANWIDTH={$PHP_MAN_WIDTH}");
-    // Use man without -Tascii so MANWIDTH env var (set via $PHP_MAN_WIDTH)
-    // controls the output line length. Earlier versions used -Tascii but that
-    // makes man-db pass width control to groff, ignoring MANWIDTH.
-    $command = "man ";
+    putenv("MANROFFOPT=-rLL=" . $GLOBALS['PHP_MAN_WIDTH'] . "n");
+    // Use -Tutf8 for SGR-encoded bold/underline output (parsed to <b>/<u> tags)
+    $command = "man -Tutf8 ";
     if ($section !== "") {
         $command .= escapeshellarg($section)." ";
     }
@@ -836,8 +829,8 @@ function addManPageToc (string $html): array {
 //get specified perl module's man page and convert to html format
 function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
-    global $PHP_MAN_WIDTH;
-    putenv("MANWIDTH={$PHP_MAN_WIDTH}");
+    // MANWIDTH controls perldoc output width (perldoc doesn't use groff)
+    putenv("MANWIDTH=" . $GLOBALS['PHP_MAN_WIDTH']);
     exec("perldoc ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
         if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
