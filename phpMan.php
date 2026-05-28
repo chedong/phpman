@@ -1673,9 +1673,7 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
     // Add structured sections
     $jsonSections = array();
     foreach ($sections as $sec) {
-        $cleanSec = array(
-            "level" => $sec["level"],
-        );
+        $cleanSec = array();
         $textParts = array();
         foreach ($sec["content"] as $cl) {
             if ($cl !== "" || !empty($textParts)) {
@@ -1694,7 +1692,6 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
             }
             $subsections[] = array(
                 "name" => $sub["name"],
-                "level" => $sub["level"],
                 "content" => implode("\n", $subText),
             );
         }
