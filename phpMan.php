@@ -1784,24 +1784,41 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
     return $result !== false ? $result : '{}';
 }
 
-// Parse a flag name like "-V --version" into structured form
+// Parse a flag name like "-K, --config <file>" into structured {flag, long, arg}
 function parseFlagJSON(string $name): array {
     $result = array("flag" => "", "long" => null, "arg" => null);
     $parts = preg_split('/\s+/', trim($name));
+    $hasFlag = false;  // track if we've already captured a flag name
 
     foreach ($parts as $part) {
         // Strip trailing comma from short flags like "-K," → "-K"
         $part = rtrim($part, ',');
+
+        // Standalone argument placeholder: <file>, ARCHIVE, [=name], etc.
+        if ($hasFlag && preg_match('/^(<[^>]+>|\[[^\]]+\])$/', $part)) {
+            // Angle-bracket or square-bracket placeholder: <file>, [=password]
+            $result["arg"] = $part;
+            continue;
+        }
+        if ($hasFlag && preg_match('/^[A-Z][A-Z0-9_]{1,}$/', $part)) {
+            // ALL CAPS placeholder after a flag: ARCHIVE, FILE, COMMAND
+            $result["arg"] = $part;
+            continue;
+        }
+
         if (preg_match('/^-[a-zA-Z0-9?]$/', $part)) {
             // Short flag: -X
             $result["flag"] = $part;
+            $hasFlag = true;
         } elseif (preg_match('/^--[a-zA-Z0-9][a-zA-Z0-9._-]*=(.+)$/', $part, $m)) {
             // Long flag with embedded arg: --option=VAL
             $result["long"] = explode("=", $part)[0];
             $result["arg"] = $m[1];
+            $hasFlag = true;
         } elseif (preg_match('/^--[a-zA-Z0-9][a-zA-Z0-9._-]*$/', $part)) {
             // Long flag: --option
             $result["long"] = $part;
+            $hasFlag = true;
         }
     }
 
