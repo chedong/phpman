@@ -296,6 +296,7 @@ function normalizeMode (mixed $mode): string {
         "search" => true,
         "copyright" => true,
         "mcp" => true,
+        "tldr" => true,
     );
 
     return isset($allowed_modes[$mode]) ? $mode : "man";
@@ -382,7 +383,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
         }
     }
     
-    $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp");
+    $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp", "tldr");
     $seg_count = count($segments);
     
     if ($seg_count >= 1) {
@@ -559,14 +560,31 @@ switch ( $mode ) {
             $content = getSearchPage($parameter, $section, $format);
         }
         break;
+    case "tldr":
+        $check['man'] = " checked=\"checked\"";
+        if ( $parameter != "" ) {
+            // Get man page JSON, then convert to TLDR format
+            $jsonContent = getManPage($parameter, $section, "json");
+            if ($jsonContent === "") {
+                $jsonContent = getPerldocPage($parameter, "json");
+            }
+            if ($jsonContent !== "") {
+                $content = formatTldr(json_decode($jsonContent, true));
+            }
+        }
+        break;
 }
 
 // Show Markdown or HTML output
-if ($format === "markdown") {
+if ($format === "markdown" || $mode === "tldr") {
     header("Content-Type: text/markdown; charset=UTF-8");
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
     header("Expires: " . gmdate("D, d M Y H:i:s", time() + 3600 * 24 * 7) . " GMT");
-    echo "# " . $PHP_MAN_TITLE . "\n\n" . $content;
+    if ($mode === "tldr") {
+        echo $content;
+    } else {
+        echo "# " . $PHP_MAN_TITLE . "\n\n" . $content;
+    }
     exit;
 }
 
@@ -1556,13 +1574,315 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
 // $format === "json" → raw JSON as-is
 function formatForOutput (string $jsonStr, string $format): string {
     if ($format === "mcp") {
-        $result = ["content" => [["type" => "text", "text" => $jsonStr]]];
-        return json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $data = json_decode($jsonStr, true);
+        if ($data === null) {
+            // Fallback: wrap raw string in text content
+            $result = ["content" => [["type" => "text", "text" => $jsonStr]]];
+            return json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        }
+        $markdown = formatMcpMarkdown($data);
+        $structured = formatMcpStructured($data);
+        $result = [
+            "content" => [["type" => "text", "text" => $markdown]],
+            "structuredContent" => $structured
+        ];
+        return json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     }
     return $jsonStr;
 }
 
-//convert man perldoc output to json
+/**
+ * Convert man/perldoc JSON data to agent-friendly markdown for MCP output.
+ * Returns a scannable section outline + flags table + full content.
+ */
+function formatMcpMarkdown (array $data): string {
+    $mode = $data["mode"] ?? "man";
+    $param = $data["parameter"] ?? "";
+    $section = $data["section"] ?? "";
+    $label = $param;
+    if ($section !== "" && $section !== "-f" && $section !== "-q") {
+        $label .= "({$section})";
+    }
+
+    $out = "# {$label} ({$mode})\n\n";
+
+    // Summary
+    if (!empty($data["summary"])) {
+        $out .= "**Summary:** {$data["summary"]}\n\n";
+    }
+    if (!empty($data["synopsis"])) {
+        $out .= "**Synopsis:** {$data["synopsis"]}\n\n";
+    }
+
+    // Flags table (from structuredContent)
+    $flags = $data["flags"] ?? [];
+    if (count($flags) > 0) {
+        $out .= "## Flags\n\n";
+        $out .= "| Flag | Long | Arg | Description |\n";
+        $out .= "|------|------|-----|-------------|\n";
+        foreach ($flags as $f) {
+            $desc = mb_substr(preg_replace('/\s+/', ' ', $f["description"] ?? ""), 0, 120);
+            $out .= "| " . ($f["flag"] ?: "—") . " | " . ($f["long"] ?: "—") . " | " . ($f["arg"] ?: "—") . " | {$desc} |\n";
+        }
+        $out .= "\n";
+    }
+
+    // Examples
+    $examples = $data["examples"] ?? [];
+    if (count($examples) > 0) {
+        $out .= "## Examples\n\n";
+        foreach ($examples as $ex) {
+            $out .= "- `{$ex}`\n";
+        }
+        $out .= "\n";
+    }
+
+    // See Also
+    $seeAlso = $data["see_also"] ?? [];
+    if (count($seeAlso) > 0) {
+        $out .= "## See Also\n\n";
+        foreach ($seeAlso as $sa) {
+            $out .= "- {$sa["name"]}({$sa["section"]})\n";
+        }
+        $out .= "\n";
+    }
+
+    // Section outline (scannable menu)
+    $sections = $data["sections"] ?? [];
+    if (count($sections) > 0) {
+        $out .= "## Section Outline\n\n";
+        foreach ($sections as $name => $sec) {
+            $lineCount = substr_count($sec["content"] ?? "", "\n") + 1;
+            $subCount = count($sec["subsections"] ?? []);
+            $extra = $subCount > 0 ? " — {$subCount} subsections" : "";
+            $out .= "- **{$name}** ({$lineCount} lines){$extra}\n";
+            foreach ($sec["subsections"] ?? [] as $sub) {
+                $subLines = substr_count($sub["content"] ?? "", "\n") + 1;
+                $subName = mb_substr($sub["name"] ?? "", 0, 60);
+                $out .= "  - {$subName} ({$subLines} lines)\n";
+            }
+        }
+        $out .= "\n";
+    }
+
+    // Full content
+    $out .= "## Full Content\n\n";
+    foreach ($sections as $name => $sec) {
+        $out .= "### {$name}\n\n";
+        $content = trim($sec["content"] ?? "");
+        if ($content !== "") {
+            $out .= "{$content}\n\n";
+        }
+        foreach ($sec["subsections"] ?? [] as $sub) {
+            $subName = trim($sub["name"] ?? "");
+            $subContent = trim($sub["content"] ?? "");
+            if ($subName !== "") {
+                $out .= "#### {$subName}\n\n";
+            }
+            if ($subContent !== "") {
+                $out .= "{$subContent}\n\n";
+            }
+        }
+    }
+
+    return $out;
+}
+
+/**
+ * Extract structured data for MCP structuredContent field.
+ * Gives agents programmatic access to flags, examples, section outlines.
+ */
+function formatMcpStructured (array $data): array {
+    $outline = [];
+    foreach ($data["sections"] ?? [] as $name => $sec) {
+        $item = [
+            "name" => $name,
+            "lines" => substr_count($sec["content"] ?? "", "\n") + 1,
+        ];
+        $item["subsections"] = [];
+        foreach ($sec["subsections"] ?? [] as $sub) {
+            $subItem = [
+                "name" => $sub["name"] ?? "",
+                "lines" => substr_count($sub["content"] ?? "", "\n") + 1,
+            ];
+            if (!empty($sub["flag"])) $subItem["flag"] = $sub["flag"];
+            if (!empty($sub["long"])) $subItem["long"] = $sub["long"];
+            if (!empty($sub["arg"])) $subItem["arg"] = $sub["arg"];
+            $item["subsections"][] = $subItem;
+        }
+        $outline[] = $item;
+    }
+
+    // Collect all flags from all sections (not just OPTIONS)
+    $allFlags = $data["flags"] ?? [];
+    if (empty($allFlags)) {
+        // Fallback: extract from any section with flag-like subsections
+        foreach ($data["sections"] ?? [] as $sec) {
+            foreach ($sec["subsections"] ?? [] as $sub) {
+                if (!empty($sub["flag"]) || !empty($sub["long"])) {
+                    $flag = [
+                        "flag" => $sub["flag"] ?? "",
+                        "long" => $sub["long"] ?? null,
+                        "arg" => $sub["arg"] ?? null,
+                        "description" => trim(preg_replace('/\s+/', ' ', $sub["content"] ?? "")),
+                    ];
+                    $allFlags[] = $flag;
+                }
+            }
+        }
+    }
+
+    return [
+        "command" => $data["parameter"] ?? "",
+        "section" => $data["section"] ?? "",
+        "mode" => $data["mode"] ?? "man",
+        "summary" => $data["summary"] ?? null,
+        "synopsis" => $data["synopsis"] ?? null,
+        "flags" => $allFlags,
+        "examples" => $data["examples"] ?? [],
+        "see_also" => $data["see_also"] ?? [],
+        "section_outline" => $outline,
+    ];
+}
+
+/**
+ * Convert man page structured JSON to TLDR-style cheatsheet markdown.
+ *
+ * Auto-generates from man pages: extracts description, key examples,
+ * and common flags. Follows tldr-pages format conventions:
+ * - Title matches command name
+ * - Description in > blockquote
+ * - Examples as bullet list with code blocks
+ * - Uses {{placeholder}} for user-supplied values
+ * - 5-8 examples max
+ * - --help and --version at the end
+ */
+function formatTldr (?array $data): string {
+    if ($data === null) return "";
+
+    $command = $data["parameter"] ?? "";
+    $summary = $data["summary"] ?? "";
+    $synopsis = $data["synopsis"] ?? "";
+    $flags = $data["flags"] ?? [];
+    $examples = $data["examples"] ?? [];
+
+    // Fallback: extract flags from all sections if top-level is empty
+    if (empty($flags)) {
+        foreach ($data["sections"] ?? [] as $sec) {
+            foreach ($sec["subsections"] ?? [] as $sub) {
+                if (!empty($sub["flag"]) || !empty($sub["long"])) {
+                    $flags[] = [
+                        "flag" => $sub["flag"] ?? "",
+                        "long" => $sub["long"] ?? null,
+                        "arg" => $sub["arg"] ?? null,
+                        "description" => trim(preg_replace('/\s+/', ' ', $sub["content"] ?? "")),
+                    ];
+                }
+            }
+        }
+    }
+
+    $mode = $data["mode"] ?? "man";
+    $section = $data["section"] ?? "";
+    $base = baseUrl();
+    $canonical = "{$base}/{$mode}/" . urlencode($command);
+    if ($section !== "" && $section !== "-f" && $section !== "-q") {
+        $canonical .= "/" . urlencode($section);
+    }
+
+    // Title
+    $out = "# {$command}\n\n";
+
+    // Description from NAME section
+    if ($summary !== "") {
+        $out .= "> {$summary}.\n";
+    } elseif ($synopsis !== "") {
+        $out .= "> {$synopsis}\n";
+    }
+    $out .= "> More information: {$canonical}.\n\n";
+
+    $exampleCount = 0;
+    $maxExamples = 8;
+
+    // If man page has explicit EXAMPLES section, use those first
+    if (!empty($examples)) {
+        foreach ($examples as $ex) {
+            if ($exampleCount >= $maxExamples - 2) break;
+            $ex = trim($ex);
+            if ($ex === "" || strlen($ex) < 3) continue;
+            // Skip lines that are section headers or descriptions
+            if (preg_match('/^[A-Z][A-Z\s]{5,}$/', $ex)) continue;
+            // Wrap in backticks if it looks like a command
+            $cleaned = preg_replace('/\s+/', ' ', $ex);
+            $out .= "- Example:\n  `{$cleaned}`\n";
+            $exampleCount++;
+        }
+    }
+
+    // Generate examples from flag descriptions
+
+    $usedFlags = []; // track which flags we've already generated examples for
+    foreach ($flags as $f) {
+        if ($exampleCount >= $maxExamples - 2) break;
+        $shortFlag = $f["flag"] ?? "";
+        $longFlag = $f["long"] ?? "";
+        $desc = $f["description"] ?? "";
+
+        // Skip flags we've already shown
+        $flagKey = $shortFlag ?: $longFlag;
+        if ($flagKey === "" || isset($usedFlags[$flagKey])) continue;
+        $usedFlags[$flagKey] = true;
+
+        // Skip help/version flags (we handle them at the end)
+        if ($shortFlag === "-h" && !$longFlag) continue;
+        if ($longFlag === "--help") continue;
+        if ($shortFlag === "-V" && !$longFlag) continue;
+        if ($longFlag === "--version") continue;
+
+        // Build the TLDR example
+        $flagStr = $longFlag ?: $shortFlag;
+        $argStr = "";
+        if (!empty($f["arg"])) {
+            $argStr = " " . str_replace(["<", ">", "[", "]"], ["{{", "}}", "{{", "}}"], $f["arg"]);
+        }
+
+        // Determine description quality — use actual man page descriptions only
+        $shortDesc = "";
+        if ($desc !== "") {
+            // Filter out low-quality descriptions (sentence fragments, too long)
+            if (strlen($desc) > 80) continue; // skip multi-line prose
+            if (preg_match('/^[a-z].*\.\.\.$/', $desc)) continue; // skip fragments ending with ...
+            if (preg_match('/^[);,.]/', $desc)) continue; // skip continuation fragments
+            $shortDesc = $desc;
+        } else {
+            continue; // no description at all
+        }
+
+        $out .= "- {$shortDesc}:\n  `{$command} {$flagStr}{$argStr}`\n";
+        $exampleCount++;
+    }
+
+    // Always add help and version as last two
+    $hasHelpFlag = false;
+    $hasVersionFlag = false;
+    foreach ($flags as $f) {
+        if (($f["flag"] ?? "") === "-h" || ($f["long"] ?? "") === "--help") $hasHelpFlag = true;
+        if (($f["flag"] ?? "") === "-V" || ($f["long"] ?? "") === "--version") $hasVersionFlag = true;
+    }
+
+    if ($exampleCount < $maxExamples) {
+        $helpFlag = $hasHelpFlag ? "{{[-h|--help]}}" : "--help";
+        $out .= "- Display help:\n  `{$command} {$helpFlag}`\n";
+        $exampleCount++;
+    }
+
+    if ($exampleCount < $maxExamples) {
+        $versionFlag = $hasVersionFlag ? "{{[-V|--version]}}" : "--version";
+        $out .= "- Display version:\n  `{$command} {$versionFlag}`\n";
+    }
+
+    return $out;
+}
 function formatToJSON (array $lines, string $parameter, string $section = "", string $mode = "man"): string {
     // Clean backspaces/overstrike and ANSI escapes
     // CRITICAL: Use [ -~] (ASCII printable) instead of . in overstrike
@@ -1748,23 +2068,26 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
         }
     }
 
-    // 2. Flags from OPTIONS section
+    // 2. Flags from OPTIONS section (or DESCRIPTION as fallback)
     $flags = array();
-    foreach ($sections as $sec) {
-        if ($sec["name"] === "OPTIONS") {
-            if (count($sec["subsections"]) > 0) {
-                foreach ($sec["subsections"] as $sub) {
-                    $cleanName = trim($sub["name"], "[] ");
-                    // Flag subsections start with "-"
-                    if (strlen($cleanName) > 0 && $cleanName[0] === "-") {
-                        $flag = parseFlagJSON($cleanName);
-                        $descStr = is_array($sub["content"]) ? implode(" ", $sub["content"]) : $sub["content"];
-                        $flag["description"] = trim(preg_replace('/\s+/', ' ', $descStr));
-                        $flags[] = $flag;
+    $flagSections = array("OPTIONS", "DESCRIPTION");
+    foreach ($flagSections as $targetSection) {
+        foreach ($sections as $sec) {
+            if ($sec["name"] === $targetSection) {
+                if (count($sec["subsections"]) > 0) {
+                    foreach ($sec["subsections"] as $sub) {
+                        $cleanName = trim($sub["name"], "[] ");
+                        // Flag subsections start with "-"
+                        if (strlen($cleanName) > 0 && $cleanName[0] === "-") {
+                            $flag = parseFlagJSON($cleanName);
+                            $descStr = is_array($sub["content"]) ? implode(" ", $sub["content"]) : $sub["content"];
+                            $flag["description"] = trim(preg_replace('/\s+/', ' ', $descStr));
+                            $flags[] = $flag;
+                        }
                     }
                 }
+                break 2; // Stop after first section with flags
             }
-            break;
         }
     }
     $jsonData["flags"] = $flags;
