@@ -7,3 +7,7 @@
 # release artifacts
 *.gz
 *.bak
+
+# AtomCode local-scope configs (machine-specific)
+.atomcode/
+
