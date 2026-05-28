@@ -116,8 +116,14 @@ function detectHeadingType (string $line): ?array {
     // Also matches at column 0 for e.g. "**Line** **Buffering**"
     if (preg_match('/^ {0,8}((?:\*\*[^*]+\*\*\s*)+)$/', $line, $m)) {
         $text = str_replace('**', '', trim($m[1]));
+        // Multi-segment bold that forms an ALL CAPS section name
+        // (e.g. "**SEE** **ALSO**", "**ENVIRON** **MENT**") should be L1.
+        // Overstrike cleaning can split a bold section heading into
+        // multiple bold segments separated by spaces.
+        $isAllCapsSection = preg_match('/^[A-Z][A-Z0-9_ \/\-]{2,50}$/', $text);
         // Single bold word at column 0 (e.g. "**Overview**") is L1, not L2
-        if (!(strpos($line, '**') === 0 && substr_count($line, '**') === 2)) {
+        if (!$isAllCapsSection
+            && !(strpos($line, '**') === 0 && substr_count($line, '**') === 2)) {
             if (strlen($text) >= 3) {
                 return ['level' => 2, 'text' => $text];
             }
