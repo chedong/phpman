@@ -24,6 +24,8 @@ Read lengthy manual pages in your browser — with syntax highlighting, section 
 - **Apropos Search** — Full-text search across man page summaries
 - **TOC Sidebar** — Two-level floating table of contents for navigation
 - **Markdown Output** — Append `/markdown` to any URL for machine-readable format
+- **JSON API** — Append `/json` for structured JSON output (also via `Accept: application/json`)
+- **MCP Server** — Model Context Protocol endpoint for AI agent integration
 - **SEO Optimized** — Canonical URLs, meta description, robots directives
 - **Clean URLs** — PATH_INFO routing: `/man/ls/1`
 
@@ -77,6 +79,53 @@ phpMan supports three Unix documentation retrieval methods, each corresponding t
 | Typical Content | Command references, syscalls, config formats | GNU project complete manuals (tutorials, concepts) | Perl module API references |
 
 > ℹ️ **About info Subsections:** info mode currently cannot generate a second-level TOC because `info` plain text output only has section numbers (e.g., `3.1 Simple options`), lacking explicit heading markers like man's `.SS` or perldoc's `=head2`. Support can be added by extending the heading recognition logic.
+
+## JSON API & MCP Server
+
+phpMan supports structured output formats for machine consumption and AI agent integration.
+
+### JSON API
+
+Append `/json` to any detail page URL, or send `Accept: application/json` header:
+
+```bash
+# Man page with structured sections/subsections
+curl https://www.chedong.com/phpMan.php/man/ls/1/json
+
+# Apropos search results
+curl https://www.chedong.com/phpMan.php/search/git/json
+
+# Accept header (works on any URL)
+curl -H "Accept: application/json" https://www.chedong.com/phpMan.php/man/bash
+```
+
+Returns: `{ name, mode, parameter, section, synopsis, sections: [{name, level, content, subsections}], ... }`
+
+### MCP Server (Model Context Protocol)
+
+phpMan exposes an MCP endpoint for AI agents (Hermes Agent, Claude Desktop, etc.):
+
+```bash
+# Endpoint
+POST https://www.chedong.com/phpMan.php/mcp
+```
+
+**Available Tools:**
+| Tool | Description |
+|------|-------------|
+| `cli_help(command, section?)` | Structured man/perldoc page with sections and subsections |
+| `cli_search(query, section?)` | apropos keyword search across all man pages |
+
+**Hermes Agent Config:**
+```yaml
+# ~/.hermes/config.yaml
+mcp_servers:
+  phpman:
+    url: "https://www.chedong.com/phpMan.php/mcp"
+    timeout: 30
+```
+
+All HTML pages auto-advertise MCP via `Link: </phpMan.php/mcp>; rel="mcp-server"` header.
 
 ## Check Out Source Code
 

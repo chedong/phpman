@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>phpMan: Unix Man Page / Perldoc / Info Page Web Interface</title>
+<meta name="description" content="phpMan — a PHP-based web interface for Unix man pages, Perl perldoc, and GNU info pages. Read manual pages in your browser with syntax highlighting and table of contents. Now with MCP server support."/>
+<meta name="keywords" content="man page, unix manual, linux command, perldoc, info page, phpMan, web interface, MCP, JSON API"/>
+<link rel="canonical" href="https://phpunixman.sourceforge.io/"/>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #333; background: #f5f5f5; line-height: 1.6;
+}
+a { color: #0366d6; text-decoration: none; }
+a:hover { text-decoration: underline; }
+header {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  color: #fff; padding: 2.5rem 1rem; text-align: center;
+}
+header h1 { font-size: 2rem; margin-bottom: 0.3rem; }
+header h1 code { color: #e94560; }
+header p { opacity: 0.85; font-size: 1.1rem; }
+.container { max-width: 900px; margin: 0 auto; padding: 0 1rem; }
+main { padding: 2rem 0; }
+.card {
+  background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  padding: 2rem; margin-bottom: 1.5rem;
+}
+.card h2 {
+  font-size: 1.4rem; margin-bottom: 1rem; padding-bottom: 0.5rem;
+  border-bottom: 2px solid #e94560; display: inline-block;
+}
+.card p { margin-bottom: 0.8rem; }
+.card ul { padding-left: 1.5rem; margin-bottom: 0.8rem; }
+.card li { margin-bottom: 0.4rem; }
+.demo-box {
+  text-align: center; padding: 2rem; background: #f0f4ff;
+  border-radius: 8px; margin: 1.5rem 0;
+}
+.demo-box .btn {
+  display: inline-block; padding: 0.8rem 2rem; background: #e94560;
+  color: #fff; border-radius: 6px; font-size: 1.1rem; font-weight: 600;
+  transition: background 0.2s;
+}
+.demo-box .btn:hover { background: #c73550; text-decoration: none; }
+.screenshot {
+  text-align: center; margin: 1.5rem 0;
+}
+.screenshot img {
+  max-width: 100%; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  border: 1px solid #ddd;
+}
+.screenshot figcaption {
+  margin-top: 0.5rem; font-size: 0.9rem; color: #666;
+}
+.features-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem; margin-top: 1rem;
+}
+.feature-item {
+  background: #fafafa; border-left: 3px solid #0f3460;
+  padding: 0.8rem 1rem; border-radius: 0 6px 6px 0;
+}
+.feature-item strong { color: #1a1a2e; }
+.tech-badges { margin: 1rem 0; }
+.badge {
+  display: inline-block; padding: 0.25rem 0.6rem; margin: 0.2rem;
+  background: #e8e8e8; border-radius: 4px; font-size: 0.85rem; color: #555;
+}
+.badge-new {
+  display: inline-block; padding: 0.25rem 0.6rem; margin: 0.2rem;
+  background: #e94560; color: #fff; border-radius: 4px; font-size: 0.85rem;
+}
+pre code { font-size: 0.9rem; }
+footer {
+  text-align: center; padding: 1.5rem; color: #888; font-size: 0.85rem;
+  border-top: 1px solid #ddd; margin-top: 1rem;
+}
+footer a { color: #666; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><code>phpMan</code></h1>
+  <p>Unix Man Page / Perldoc / Info Page Web Interface</p>
+</header>
+
+<div class="container">
+<main>
+
+<!-- Intro -->
+<div class="card">
+  <h2>About</h2>
+  <p>
+    <strong>phpMan</strong> is a single-file PHP web interface for Unix
+    <code>man</code>, <code>perldoc</code>, <code>info</code>, and
+    <code>apropos</code> commands. It makes it easier to read lengthy manual
+    pages in your browser — with syntax highlighting, section navigation,
+    and a floating table of contents.
+  </p>
+  <p>
+    Originally created in 2002 by <a href="https://www.chedong.com/">Che Dong</a>,
+    phpMan has been continuously maintained and is compatible with PHP 8.x
+    on GNU/Linux and FreeBSD.
+  </p>
+  <div class="tech-badges">
+    <span class="badge">PHP 8.x</span>
+    <span class="badge">GPLv2</span>
+    <span class="badge">Single-file</span>
+    <span class="badge">XHTML 1.0</span>
+    <span class="badge">Markdown output</span>
+    <span class="badge">JSON API</span>
+    <span class="badge-new">MCP Server</span>
+    <span class="badge">TOC sidebar</span>
+  </div>
+</div>
+
+<!-- Screenshot -->
+<div class="card">
+  <h2>Screenshot</h2>
+  <div class="screenshot">
+    <a href="https://a.fsdn.com/con/app/proj/phpunixman/screenshots/QQ20121226-2.png/max/max/1">
+      <img src="https://a.fsdn.com/con/app/proj/phpunixman/screenshots/QQ20121226-2.png/600/450/1"
+           alt="phpMan: perldoc page rendered with syntax highlighting and TOC sidebar"
+           loading="lazy"/>
+    </a>
+    <figcaption>phpMan displaying a perldoc page with syntax highlighting and TOC sidebar</figcaption>
+  </div>
+</div>
+
+<!-- Live Demo -->
+<div class="card">
+  <h2>Live Demo</h2>
+  <p>
+    The phpMan demo is hosted on <a href="https://www.chedong.com/">chedong.com</a>
+    with full PHP support. Try it now:
+  </p>
+  <div class="demo-box">
+    <a class="btn" href="https://www.chedong.com/phpMan.php">🔍 Open Live Demo</a>
+    <p style="margin-top:1rem; font-size:0.9rem; color:#666;">
+      Direct link: <code>https://www.chedong.com/phpMan.php</code>
+    </p>
+  </div>
+</div>
+
+<!-- Features -->
+<div class="card">
+  <h2>Features</h2>
+  <div class="features-grid">
+    <div class="feature-item"><strong>Man Pages</strong> — Browse any Unix/Linux manual page by section</div>
+    <div class="feature-item"><strong>Perldoc</strong> — Read Perl module documentation in-browser</div>
+    <div class="feature-item"><strong>Info Pages</strong> — View GNU info documentation</div>
+    <div class="feature-item"><strong>Apropos Search</strong> — Full-text search across man page summaries</div>
+    <div class="feature-item"><strong>TOC Sidebar</strong> — Two-level floating table of contents</div>
+    <div class="feature-item"><strong>JSON / Markdown</strong> — Append <code>/json</code> or <code>/markdown</code> for structured output</div>
+    <div class="feature-item" style="border-left-color:#e94560;"><strong>🆕 MCP Server</strong> — Model Context Protocol endpoint for AI agent integration</div>
+    <div class="feature-item"><strong>SEO Optimized</strong> — Canonical URLs, meta description, robots directives</div>
+    <div class="feature-item"><strong>Clean URLs</strong> — PATH_INFO routing: <code>/man/ls/1</code></div>
+  </div>
+</div>
+
+<!-- MCP Server -->
+<div class="card">
+  <h2>🆕 MCP Server — AI Agent Integration</h2>
+  <p>
+    phpMan now exposes a <strong>Model Context Protocol (MCP)</strong> endpoint,
+    enabling AI agents to query Unix manual pages programmatically.
+    Compatible with <a href="https://github.com/nousresearch/hermes-agent">Hermes Agent</a>,
+    Claude Desktop, and any MCP-compatible client.
+  </p>
+  <p><strong>Endpoint:</strong></p>
+  <pre style="background:#1a1a2e; color:#e0e0e0; padding:1rem; border-radius:6px; overflow-x:auto; margin:0.8rem 0;"><code>POST https://www.chedong.com/phpMan.php/mcp</code></pre>
+  <p><strong>Available Tools:</strong></p>
+  <ul>
+    <li><code>cli_help(command, section?)</code> — Structured man/perldoc page with sections, subsections, and synopsis</li>
+    <li><code>cli_search(query, section?)</code> — apropos keyword search across all man pages</li>
+  </ul>
+  <p><strong>Hermes Agent Config:</strong></p>
+  <pre style="background:#1a1a2e; color:#e0e0e0; padding:1rem; border-radius:6px; overflow-x:auto; margin:0.8rem 0;"><code># ~/.hermes/config.yaml
+mcp_servers:
+  phpman:
+    url: "https://www.chedong.com/phpMan.php/mcp"
+    timeout: 30</code></pre>
+  <p style="font-size:0.9rem; color:#666;">
+    All HTML pages include MCP discovery via the <code>Link: &lt;/phpMan.php/mcp&gt;; rel="mcp-server"</code> HTTP header.
+  </p>
+</div>
+
+<!-- JSON API -->
+<div class="card">
+  <h2>JSON API Output</h2>
+  <p>
+    Append <code>/json</code> to any detail page URL for structured JSON output:
+  </p>
+  <pre style="background:#1a1a2e; color:#e0e0e0; padding:1rem; border-radius:6px; overflow-x:auto; margin:0.8rem 0;"><code># Man page with sections and subsections
+curl https://www.chedong.com/phpMan.php/man/ls/1/json
+
+# Apropos search results
+curl https://www.chedong.com/phpMan.php/search/git/json
+
+# Or use Accept header (works on any URL)
+curl -H "Accept: application/json" https://www.chedong.com/phpMan.php/man/bash</code></pre>
+</div>
+
+<!-- Quick Start -->
+<div class="card">
+  <h2>Quick Start</h2>
+  <p>Deploy phpMan on any PHP 8.x server with a single file:</p>
+  <pre style="background:#1a1a2e; color:#e0e0e0; padding:1rem; border-radius:6px; overflow-x:auto; margin:0.8rem 0;"><code># Clone the repository
+git clone https://git.code.sf.net/p/phpunixman/code phpman
+
+# Copy to your web server's document root
+cp phpman/phpMan.php /var/www/html/
+
+# Access in browser
+# https://your-server/phpMan.php</code></pre>
+  <p>
+    For Apache 2.x, ensure <code>AcceptPathInfo On</code> is configured
+    to enable clean URL routing.
+  </p>
+</div>
+
+<!-- Links -->
+<div class="card">
+  <h2>Links</h2>
+  <ul>
+    <li><a href="https://sourceforge.net/projects/phpunixman/">SourceForge Project Page</a> — downloads, reviews, support</li>
+    <li><a href="https://sourceforge.net/p/phpunixman/code.git/">Git Repository</a> — browse source code</li>
+    <li><a href="https://www.chedong.com/phpMan.php">Live Demo</a> — running instance on chedong.com</li>
+    <li><a href="https://www.chedong.com/phpMan.php/source">View Source</a> — highlighted PHP source code</li>
+    <li><a href="https://www.chedong.com/phpMan.php/copyright">License</a> — GNU General Public License v2</li>
+  </ul>
+</div>
+
+</main>
+
+<footer>
+  <p>
+    phpMan &copy; 2002–2026 <a href="https://www.chedong.com/">Che Dong</a>
+    &nbsp;|&nbsp;
+    Licensed under <a href="https://www.gnu.org/licenses/gpl-2.0.html">GPLv2</a>
+    &nbsp;|&nbsp;
+    <a href="https://sourceforge.net/projects/phpunixman/">SourceForge</a>
+  </p>
+</footer>
+</div>
+
+</body>
+</html>
