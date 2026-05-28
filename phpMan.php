@@ -465,7 +465,12 @@ switch ( $mode ) {
         $check['man'] = " checked=\"checked\"";
         //show man pages
         if ( $parameter != "" ) {
-            $content = getManPage($parameter, $section, $format);
+            // Pre-detect perldoc targets: :: prefix or 3pm/3perl
+            if (strpos($parameter, "::") !== false || $section === "3pm" || $section === "3perl") {
+                $content = getPerldocPage($parameter, $format);
+            } else {
+                $content = getManPage($parameter, $section, $format);
+            }
 
             // retry lower case if content is empty
             if ( preg_match("/^[A-Z\\._]+$/",$parameter) && trim($content) == ""){
@@ -999,7 +1004,10 @@ function getManPage (string $parameter, string $section = "", string $format = "
     }
     $command .= escapeshellarg($parameter);
 
-    exec($command, $lines);
+    exec($command, $lines, $return_code);
+    if ($return_code !== 0 || count($lines) === 0) {
+        return "";
+    }
     if ($format === "markdown") {
         return formatManPerlDocToMarkdown($lines);
     }
@@ -1519,10 +1527,13 @@ function formatForOutput (string $jsonStr, string $format): string {
 //convert man perldoc output to json
 function formatToJSON (array $lines, string $parameter, string $section = "", string $mode = "man"): string {
     // Clean backspaces/overstrike and ANSI escapes
+    // CRITICAL: Use [ -~] (ASCII printable) instead of . in overstrike
+    // patterns. The dot matches individual BYTES, which can split multibyte
+    // UTF-8 characters (e.g., bullet) when adjacent to \x08 backspaces.
     $patterns = array(
-        "/.".chr(8).".".chr(8)."(.)".chr(8)."./",  // ?^H?^H?^H? => bold
-        "/_".chr(8)."(.)/",  // _^H? => underline
-        "/.".chr(8)."(.)/",  // ?^H? => bold
+        "/[ -~]".chr(8)."[ -~]".chr(8)."([ -~])".chr(8)."[ -~]/",  // ?^H?^H?^H? => bold
+        "/_".chr(8)."([ -~])/",  // _^H? => underline
+        "/[ -~]".chr(8)."([ -~])/",  // ?^H? => bold
         "/".chr(27)."\[1m(.*?)".chr(27)."\[0m/",  // perldoc ANSI bold
         "/".chr(27)."\[4m(.*?)".chr(27)."\[24m/", // perldoc ANSI underline
     );
@@ -1538,6 +1549,7 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
     $cleaned = array();
     foreach ($lines as $i => $line) {
         $line = preg_replace($patterns, $replace, $line);
+        $line = str_replace("\x08", "", $line); // strip remaining backspaces
         $line = str_replace(array("\x02\x01", "\x04\x03"), "", $line);
         $line = str_replace(array("\x01", "\x02", "\x03", "\x04"), array("**", "**", "_", "_"), $line);
         $cleaned[] = $line;
@@ -1681,9 +1693,9 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
 function formatManPerlDocToMarkdown (array $lines): string {
 
     $patterns = array(
-        "/.".chr(8).".".chr(8)."(.)".chr(8)."./",  // ?^H?^H?^H? => bold
-        "/_".chr(8)."(.)/",  // _^H? => underline
-        "/.".chr(8)."(.)/",  // ?^H? => bold
+        "/[ -~]".chr(8)."[ -~]".chr(8)."([ -~])".chr(8)."[ -~]/",  // ?^H?^H?^H? => bold
+        "/_".chr(8)."([ -~])/",  // _^H? => underline
+        "/[ -~]".chr(8)."([ -~])/",  // ?^H? => bold
         "/".chr(27)."\[1m(.*?)".chr(27)."\[0m/",  // perldoc ANSI bold
         "/".chr(27)."\[4m(.*?)".chr(27)."\[24m/", // perldoc ANSI underline
     );
@@ -1702,6 +1714,7 @@ function formatManPerlDocToMarkdown (array $lines): string {
         
         // Format backspaces and ANSI escapes
         $line = preg_replace($patterns, $replace, $line);
+        $line = str_replace("\x08", "", $line); // strip remaining backspaces
         
         // Merge consecutive bold/underline
         $line = str_replace(array("\x02\x01", "\x04\x03"), "", $line);
