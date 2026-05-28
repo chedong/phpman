@@ -205,6 +205,24 @@ function detectHeadingType (string $line): ?array {
     if (isset($line[0]) && $line[0] !== ' ' && $line[0] !== "\t"
         && preg_match('/^[A-Z][a-z][\w\s:\x27;\-,\.\(\)\/]+$/D', $noBold)
         && !preg_match('/[.!?:]\s*$/', $noBold)) {
+
+        // Reject man page header/footer lines.
+        // Pattern: "RUBY(1)  ...  RUBY(1)" or "Ruby Sass 3.7.4  ...  RUBY(1)"
+        // These have <name>(<section>) appearing at both ends of the line.
+        $noBoldTrimmed = trim($noBold);
+        if (preg_match('/^(\w[\w\s.-]*?)\s{3,}.*\s{3,}\1\(\w+\)\s*$/', $noBoldTrimmed)) {
+            return null;
+        }
+        // Also catch the header form: "COMMAND(sec)  ...  COMMAND(sec)"
+        if (preg_match('/^(\w+)\(\w+\)\s{3,}.*\s{3,}\1\(\w+\)\s*$/', $noBoldTrimmed)) {
+            return null;
+        }
+        // Footer form: "Project Ver  ...  Date  ...  COMMAND(sec)"
+        // Three+ spaced groups ending in <name>(<section>)
+        if (preg_match('/\w+\(\w+\)\s*$/', $noBoldTrimmed)
+            && substr_count($noBoldTrimmed, '  ') >= 4) {
+            return null;
+        }
         $text = trim($noBold);
         $wordCount = substr_count($text, ' ') + 1;
         if ($wordCount === 1 && strlen($text) >= 3) {
