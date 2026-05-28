@@ -1797,8 +1797,15 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
             foreach ($sec["subsections"] as $sub) {
                 $allContent .= "\n" . (is_array($sub["content"]) ? implode("\n", $sub["content"]) : $sub["content"]);
             }
+            // Strip man page footer lines (e.g. "curl 7.81.0  ...  curl(1)")
+            // from SEE ALSO content before extracting references
+            $allContent = preg_replace('/^\S.{2,}\S[ ]{3,}.*[ ]{3,}\w+\(\w+\)\s*$/m', '', $allContent);
             preg_match_all('/([a-zA-Z0-9_.-]+)\((\w+)\)/', $allContent, $matches, PREG_SET_ORDER);
             foreach ($matches as $m) {
+                // Filter out self-references (man page footer lines bleed into content)
+                if ($m[1] === $parameter) {
+                    continue;
+                }
                 $seeAlso[] = array(
                     "name" => $m[1],
                     "section" => $m[2],
