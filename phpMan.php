@@ -357,7 +357,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
             }
             if ($seg_count >= 3) {
                 $third_seg_lower = strtolower($segments[2]);
-                if ($third_seg_lower === "html" || $third_seg_lower === "markdown" || $third_seg_lower === "json") {
+                if ($third_seg_lower === "html" || $third_seg_lower === "markdown" || $third_seg_lower === "json" || $third_seg_lower === "mcp") {
                     $format = $third_seg_lower;
                 } else {
                     $section = $segments[2];
@@ -365,7 +365,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
             }
             if ($seg_count >= 4) {
                 $fourth_seg_lower = strtolower($segments[3]);
-                if ($fourth_seg_lower === "html" || $fourth_seg_lower === "markdown" || $fourth_seg_lower === "json") {
+                if ($fourth_seg_lower === "html" || $fourth_seg_lower === "markdown" || $fourth_seg_lower === "json" || $fourth_seg_lower === "mcp") {
                     $format = $fourth_seg_lower;
                 } else {
                     $section = $segments[3];
@@ -378,7 +378,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
             
             if ($seg_count >= 2) {
                 $second_seg_lower = strtolower($segments[1]);
-                if ($second_seg_lower === "html" || $second_seg_lower === "markdown" || $second_seg_lower === "json") {
+                if ($second_seg_lower === "html" || $second_seg_lower === "markdown" || $second_seg_lower === "json" || $second_seg_lower === "mcp") {
                     $format = $second_seg_lower;
                 } else {
                     $section = $segments[1];
@@ -386,7 +386,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
             }
             if ($seg_count >= 3) {
                 $third_seg_lower = strtolower($segments[2]);
-                if ($third_seg_lower === "html" || $third_seg_lower === "markdown" || $third_seg_lower === "json") {
+                if ($third_seg_lower === "html" || $third_seg_lower === "markdown" || $third_seg_lower === "json" || $third_seg_lower === "mcp") {
                     $format = $third_seg_lower;
                 } else {
                     $section = $segments[2];
@@ -421,7 +421,7 @@ if ( requestValue($_GET, "format") != "" ) {
 } elseif ( requestValue($_GET, "amp;format") != "" ) {
     $format = strtolower(trim(requestValue($_GET, "amp;format")));
 }
-$format = in_array($format, ["html", "markdown", "json"]) ? $format : "html";
+$format = in_array($format, ["html", "markdown", "json", "mcp"]) ? $format : "html";
 
 // set default mode
 $mode = normalizeMode($mode);
@@ -527,8 +527,8 @@ if ($format === "markdown") {
     exit;
 }
 
-// Show JSON output
-if ($format === "json") {
+// Show JSON or MCP output
+if ($format === "json" || $format === "mcp") {
     header("Content-Type: application/json; charset=UTF-8");
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
     header("Expires: " . gmdate("D, d M Y H:i:s", time() + 3600 * 24 * 7) . " GMT");
@@ -935,126 +935,57 @@ function handleMcpToolsCall ($id, array $params): void {
     }
 
     try {
-        $result = executeMcpTool($name, $args);
-        if (isset($result["error"])) {
-            // Tool execution error: wrap as text in MCP content format
-            sendMcpResult($id, [
-                "content" => [
-                    ["type" => "text", "text" => json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)]
-                ],
-                "isError" => true
-            ]);
-        } else {
-            sendMcpResult($id, [
-                "content" => [
-                    ["type" => "text", "text" => json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)]
-                ]
-            ]);
+        $content = executeMcpTool($name, $args);
+        // Content is already MCP-wrapped (format="mcp" produces {"content":[...]})
+        // Send as raw result — the wrapper IS the result
+        $result = json_decode($content, true);
+        if ($result === null) {
+            sendMcpError($id, -32603, "Internal error: invalid MCP output");
+            return;
         }
+        sendMcpResult($id, $result);
     } catch (Exception $e) {
         sendMcpError($id, -32603, "Internal error: " . $e->getMessage());
     }
 }
 
-function executeMcpTool (string $name, array $args): array {
+function executeMcpTool (string $name, array $args): string {
     switch ($name) {
         case "cli_help":
             return executeCliHelp($args);
         case "cli_search":
             return executeCliSearch($args);
         default:
-            return ["error" => "Unknown tool: {$name}"];
+            throw new Exception("Unknown tool: {$name}");
     }
 }
 
-function executeCliHelp (array $args): array {
+function executeCliHelp (array $args): string {
     $command = trim($args["command"] ?? "");
     $section = trim($args["section"] ?? "");
 
     if ($command === "") {
-        return ["error" => "Missing required parameter: command"];
+        throw new Exception("Missing required parameter: command");
     }
 
     // Auto-detect perldoc: :: or section 3pm/3perl
-    if (strpos($command, "::") !== false || $section === "3pm" || $section === "3perl") {
-        $mode = "perldoc";
-    } else {
-        $mode = "man";
+    $is_perl = (strpos($command, "::") !== false || $section === "3pm" || $section === "3perl");
+    
+    if ($is_perl) {
+        return getPerldocPage($command, "mcp");
     }
-
-    $lines = [];
-    if ($mode === "perldoc") {
-        putenv("MANWIDTH=" . $GLOBALS['PHP_MAN_WIDTH']);
-        exec("perldoc " . escapeshellarg($command), $lines, $return_code);
-        if ($return_code !== 0) {
-            // Try perldoc -f for built-in functions
-            $lines = [];
-            exec("perldoc -f " . escapeshellarg($command), $lines, $return_code);
-            if ($return_code !== 0) {
-                return ["error" => "No perldoc found for: {$command}"];
-            }
-        }
-    } else {
-        putenv("MANROFFOPT=-rLL=" . $GLOBALS['PHP_MAN_WIDTH'] . "n");
-        $cmd = "man -Tutf8 ";
-        if ($section !== "") {
-            $cmd .= escapeshellarg($section) . " ";
-        }
-        $cmd .= escapeshellarg($command);
-        exec($cmd, $lines, $return_code);
-        if ($return_code !== 0 || count($lines) === 0) {
-            return ["error" => "No man page found for: {$command}" . ($section !== "" ? " (section {$section})" : "")];
-        }
-    }
-
-    $jsonStr = formatToJSON($lines, $command, $section, $mode);
-    return json_decode($jsonStr, true) ?: ["error" => "Failed to parse man page output"];
+    return getManPage($command, $section, "mcp");
 }
 
-function executeCliSearch (array $args): array {
+function executeCliSearch (array $args): string {
     $query = trim($args["query"] ?? "");
     $section = trim($args["section"] ?? "");
 
     if ($query === "") {
-        return ["error" => "Missing required parameter: query"];
+        throw new Exception("Missing required parameter: query");
     }
 
-    $cmd = "apropos " . escapeshellarg($query);
-    if ($section !== "" && preg_match("/^[0-9n]$/", $section)) {
-        $cmd = "apropos -s " . escapeshellarg($section) . " " . escapeshellarg($query);
-    }
-
-    $lines = [];
-    exec($cmd, $lines, $return_code);
-    if ($return_code !== 0 || count($lines) === 0) {
-        return ["error" => "No results found for: {$query}"];
-    }
-
-    $results = [];
-    $script_name = baseUrl();
-    // apropos returns "name (section) - description" per line
-    foreach ($lines as $line) {
-        if (preg_match('/^(.+?)\s+\(([^)]+)\)\s+-\s+(.+)$/', $line, $m)) {
-            $name = trim($m[1]);
-            $sec = trim($m[2]);
-            $desc = trim($m[3]);
-            // Determine link mode: perl modules use perldoc
-            $linkMode = (strpos($name, "::") !== false || $sec === "3pm" || $sec === "3perl") ? "perldoc" : "man";
-            $results[] = [
-                "name" => $name,
-                "section" => $sec,
-                "description" => $desc,
-                "link" => $script_name . "/" . $linkMode . "/" . urlencode($name) . "/" . urlencode($sec) . "/json"
-            ];
-        }
-    }
-
-    return [
-        "name" => "apropos " . $query,
-        "query" => $query,
-        "results" => $results,
-        "count" => count($results)
-    ];
+    return getSearchPage($query, $section, "mcp");
 }
 
 //get specified command's man page and convert to html format
@@ -1072,8 +1003,8 @@ function getManPage (string $parameter, string $section = "", string $format = "
     if ($format === "markdown") {
         return formatManPerlDocToMarkdown($lines);
     }
-    if ($format === "json") {
-        return formatToJSON($lines, $parameter, $section, "man");
+    if ($format === "json" || $format === "mcp") {
+        return formatForOutput(formatToJSON($lines, $parameter, $section, "man"), $format);
     }
     return formatManPerlDoc($lines, "man");
 }
@@ -1128,7 +1059,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     exec("perldoc ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
         if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
-        if ($format === "json") return formatToJSON($lines, $parameter, "", "perldoc");
+        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "perldoc"), $format);
         return formatManPerlDoc($lines, "perldoc");
     }
 
@@ -1137,7 +1068,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     exec("perldoc -f ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
         if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
-        if ($format === "json") return formatToJSON($lines, $parameter, "-f", "perldoc");
+        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "-f", "perldoc"), $format);
         return formatManPerlDoc($lines, "perldoc");
     }
 
@@ -1146,7 +1077,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     exec("perldoc -q ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
         if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
-        if ($format === "json") return formatToJSON($lines, $parameter, "-q", "perldoc");
+        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "-q", "perldoc"), $format);
         return formatManPerlDoc($lines, "perldoc");
     }
 
@@ -1158,7 +1089,7 @@ function getInfoPage (string $parameter, string $format = "html"): string {
     $lines = array();
     exec("info ".escapeshellarg($parameter), $lines);
     if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
-    if ($format === "json") return formatToJSON($lines, $parameter, "", "info");
+    if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "info"), $format);
     return formatManPerlDoc($lines, "info");
 }
 
@@ -1168,7 +1099,7 @@ function getInfoPage (string $parameter, string $format = "html"): string {
  * /usr/sbin/makewhatis -w
  */
 function getSearchPage (string $parameter, string $section = "", string $format = "html"): string {
-    $script_name = ($format === "markdown" || $format === "json") ? baseUrl() : scriptName();
+    $script_name = ($format === "markdown" || $format === "json" || $format === "mcp") ? baseUrl() : scriptName();
     
     // get last parameter of search string
     // example: "1 GCC" ==> "GCC"
@@ -1191,8 +1122,8 @@ function getSearchPage (string $parameter, string $section = "", string $format 
     $lines = array();
     exec($cmd, $lines);
 
-    // json output
-    if ($format === "json") {
+    // json / mcp output
+    if ($format === "json" || $format === "mcp") {
         $results = array();
         $count = count($lines);
         for ($i = 0; $i < $count; $i++) {
@@ -1256,7 +1187,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
             "results" => $results,
             "count" => count($results),
         );
-        return json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        return formatForOutput(json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), $format);
     }
 
     // determine link mode: perl modules (section 3pm or name with ::) use perldoc, others use man
@@ -1321,7 +1252,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
 
 //link to man page list by searching section tag
 function getManIndex (string $format = "html"): string {
-    $script_name = ($format === "markdown" || $format === "json") ? baseUrl() : scriptName();
+    $script_name = ($format === "markdown" || $format === "json" || $format === "mcp") ? baseUrl() : scriptName();
     if ($format === "markdown") {
         return "[1 - General Commands](".$script_name."/search/(1)/markdown) [intro(1)](".$script_name."/man/intro/1/markdown)\n" .
                "[2 - System Calls](".$script_name."/search/(2)/markdown) [intro(2)](".$script_name."/man/intro/2/markdown)\n" .
@@ -1335,8 +1266,8 @@ function getManIndex (string $format = "html"): string {
                "[n - New Commands](".$script_name."/search/(n)/markdown)\n";
     }
 
-    // json output
-    if ($format === "json") {
+    // json / mcp output
+    if ($format === "json" || $format === "mcp") {
         $sections = array(
             array("name" => "1 - General Commands", "section" => "1"),
             array("name" => "2 - System Calls", "section" => "2"),
@@ -1366,7 +1297,7 @@ function getManIndex (string $format = "html"): string {
             "sections" => $sectionItems,
             "count" => count($sectionItems),
         );
-        return json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        return formatForOutput(json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), $format);
     }
 
     $script_name_html = h($script_name);
@@ -1402,7 +1333,7 @@ function getPerldocIndex (string $format = "html"): string {
 function getInfoIndex (string $format = "html"): string {
     $lines = array();
     exec("info", $lines);
-    $script_name = ($format === "markdown" || $format === "json") ? baseUrl() : scriptName();
+    $script_name = ($format === "markdown" || $format === "json" || $format === "mcp") ? baseUrl() : scriptName();
 
     if ($format === "markdown") {
         $patterns = array(
@@ -1421,8 +1352,8 @@ function getInfoIndex (string $format = "html"): string {
         return $output;
     }
 
-    // json output
-    if ($format === "json") {
+    // json / mcp output
+    if ($format === "json" || $format === "mcp") {
         $items = array();
         $seen = array();
         $count = count($lines);
@@ -1459,7 +1390,7 @@ function getInfoIndex (string $format = "html"): string {
             "items" => $items,
             "count" => count($items),
         );
-        return json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        return formatForOutput(json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), $format);
     }
 
     $patterns = array(
@@ -1572,6 +1503,17 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
         $output .= $line . "\n";
     }
     return $output;
+}
+
+// Wraps JSON string in MCP content format if needed.
+// $format === "mcp" → {"content":[{"type":"text","text":"<json>"}]}
+// $format === "json" → raw JSON as-is
+function formatForOutput (string $jsonStr, string $format): string {
+    if ($format === "mcp") {
+        $result = ["content" => [["type" => "text", "text" => $jsonStr]]];
+        return json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    }
+    return $jsonStr;
 }
 
 //convert man perldoc output to json
