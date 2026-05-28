@@ -25,6 +25,7 @@ Read lengthy manual pages in your browser — with syntax highlighting, section 
 - **TOC Sidebar** — Two-level floating table of contents for navigation
 - **Markdown Output** — Append `/markdown` to any URL for machine-readable format
 - **JSON API** — Append `/json` for structured JSON output (also via `Accept: application/json`)
+- **MCP Format** — Append `/mcp` for MCP-compatible output (`{"content":[{"type":"text","text":"<json>"}]}`)
 - **MCP Server** — Model Context Protocol endpoint for AI agent integration
 - **SEO Optimized** — Canonical URLs, meta description, robots directives
 - **Clean URLs** — PATH_INFO routing: `/man/ls/1`
@@ -100,6 +101,24 @@ curl -H "Accept: application/json" https://www.chedong.com/phpMan.php/man/bash
 ```
 
 Returns: `{ name, mode, parameter, section, synopsis, sections: [{name, level, content, subsections}], ... }`
+
+### MCP Format (REST GET)
+
+The `/mcp` format suffix wraps JSON output in MCP's `content` array — making REST GET and MCP POST responses identical:
+
+```bash
+# Same man page, same output format as MCP POST tools/call
+curl https://www.chedong.com/phpMan.php/man/ls/1/mcp
+# → {"content":[{"type":"text","text":"{\"name\":\"ls(1)\",\"mode\":\"man\",...}"}]}
+
+# Search with MCP format
+curl https://www.chedong.com/phpMan.php/search/cron/mcp
+
+# Perldoc with MCP format
+curl https://www.chedong.com/phpMan.php/perldoc/Digest::MD5/mcp
+```
+
+This means any MCP client can `GET /man/ls/1/mcp` and parse the result identically to `POST /mcp` `tools/call`. The `/json` format remains unchanged for plain JSON consumers.
 
 ### MCP Server (Model Context Protocol)
 

@@ -114,6 +114,7 @@ footer a { color: #666; }
     <span class="badge">Markdown output</span>
     <span class="badge">JSON API</span>
     <span class="badge-new">MCP Server</span>
+    <span class="badge-new">MCP Format</span>
     <span class="badge">TOC sidebar</span>
   </div>
 </div>
@@ -155,7 +156,7 @@ footer a { color: #666; }
     <div class="feature-item"><strong>Info Pages</strong> — View GNU info documentation</div>
     <div class="feature-item"><strong>Apropos Search</strong> — Full-text search across man page summaries</div>
     <div class="feature-item"><strong>TOC Sidebar</strong> — Two-level floating table of contents</div>
-    <div class="feature-item"><strong>JSON / Markdown</strong> — Append <code>/json</code> or <code>/markdown</code> for structured output</div>
+    <div class="feature-item"><strong>JSON / Markdown / MCP</strong> — Append <code>/json</code>, <code>/markdown</code>, or <code>/mcp</code> for structured output</div>
     <div class="feature-item" style="border-left-color:#e94560;"><strong>🆕 MCP Server</strong> — Model Context Protocol endpoint for AI agent integration</div>
     <div class="feature-item"><strong>SEO Optimized</strong> — Canonical URLs, meta description, robots directives</div>
     <div class="feature-item"><strong>Clean URLs</strong> — PATH_INFO routing: <code>/man/ls/1</code></div>
@@ -186,6 +187,31 @@ mcp_servers:
     timeout: 30</code></pre>
   <p style="font-size:0.9rem; color:#666;">
     All HTML pages include MCP discovery via the <code>Link: &lt;/phpMan.php/mcp&gt;; rel="mcp-server"</code> HTTP header.
+  </p>
+</div>
+
+<!-- MCP Format (REST) -->
+<div class="card">
+  <h2>🆕 MCP Format — REST GET</h2>
+  <p>
+    Append <code>/mcp</code> to any detail page URL for MCP-compatible output.
+    The <code>/mcp</code> REST endpoint and <code>POST /mcp</code> <code>tools/call</code>
+    return <strong>identical</strong> content format — one code path, zero redundancy.
+  </p>
+  <pre style="background:#1a1a2e; color:#e0e0e0; padding:1rem; border-radius:6px; overflow-x:auto; margin:0.8rem 0;"><code># REST GET: same output as MCP POST tools/call
+curl https://www.chedong.com/phpMan.php/man/ls/1/mcp
+# → {"content":[{"type":"text","text":"{\"name\":\"ls(1)\",...}"}]}
+
+# Search with MCP format
+curl https://www.chedong.com/phpMan.php/search/cron/mcp
+
+# Perldoc with MCP format
+curl https://www.chedong.com/phpMan.php/perldoc/Digest::MD5/mcp
+
+# Plain JSON still works unchanged:
+curl https://www.chedong.com/phpMan.php/man/ls/1/json</code></pre>
+  <p style="font-size:0.9rem; color:#666;">
+    The <code>/json</code> format is unchanged for backward compatibility. Use <code>/mcp</code> when you need the MCP content wrapper.
   </p>
 </div>
 
