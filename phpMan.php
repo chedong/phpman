@@ -1674,7 +1674,6 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
     $jsonSections = array();
     foreach ($sections as $sec) {
         $cleanSec = array(
-            "name" => $sec["name"],
             "level" => $sec["level"],
         );
         $textParts = array();
@@ -1700,7 +1699,8 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
             );
         }
         $cleanSec["subsections"] = $subsections;
-        $jsonSections[] = $cleanSec;
+        // Use L1 heading name as the key
+        $jsonSections[$sec["name"]] = $cleanSec;
     }
     $jsonData["sections"] = $jsonSections;
 
