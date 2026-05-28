@@ -165,12 +165,26 @@ function detectHeadingType (string $line): ?array {
     // Level 2: perldoc =head2 — "  Methods you should implement" (2-space indent)
     // Handles both plain text and _wrapped_ variants by stripping _ markers
     $testLine = preg_replace('/_/', '', $line);
-    if (preg_match('/^ {2}([A-Z][a-z][\w\s:\x27;\-,\.]+)$/', $testLine, $m)) {
+    if (preg_match('/^ {2}([A-Z][a-z][\w\s:\x27;\-,\\.]+)$/', $testLine, $m)) {
         $text = trim($m[1]);
         // Reject sentence-like text (demonstrative + verb)
         if (!preg_match('/^(This|That|These|Those|It|There)\s+(is|was|has|have|had|are|were)\b/i', $text)) {
             return ['level' => 2, 'text' => $text];
         }
+    }
+
+    // Level 2: indented plain-text option flag (no bold markers)
+    // e.g. curl man page: "       -K, --config <file>"
+    //      "       --abstract-unix-socket <path>"
+    // Matches 4-8 space indent, starts with -/--, option name + optional arg,
+    // line under 80 chars to avoid false positives on body text.
+    if (preg_match('/^ {4,8}(-{1,2}[a-zA-Z][\w\-]*'
+            . '(?:\s*[<\[]\s*[^>\]]*[>\]])?'
+            . '(?:\s*,\s*-{1,2}[a-zA-Z][\w\-]*(?:\s*[<\[]\s*[^>\]]*[>\]])?)*)'
+            . '\s*$/',
+            $line, $m)
+        && strlen(trim($m[1])) <= 80) {
+        return ['level' => 2, 'text' => trim($m[1])];
     }
 
     // ---- Level 1 checks (LAST, after all L2 patterns) ----
@@ -1774,6 +1788,8 @@ function parseFlagJSON(string $name): array {
     $parts = preg_split('/\s+/', trim($name));
 
     foreach ($parts as $part) {
+        // Strip trailing comma from short flags like "-K," → "-K"
+        $part = rtrim($part, ',');
         if (preg_match('/^-[a-zA-Z0-9?]$/', $part)) {
             // Short flag: -X
             $result["flag"] = $part;
