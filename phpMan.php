@@ -1652,7 +1652,6 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
 
     // Build JSON structure
     $jsonData = array(
-        "name" => $parameter . $section_label,
         "mode" => $mode,
         "parameter" => $parameter,
         "section" => $section,
@@ -1706,7 +1705,6 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
     $jsonData["sections"] = $jsonSections;
 
     // === Semantic extraction for agent consumption ===
-    $jsonData["command"] = $parameter;
 
     // 1. Summary from NAME section
     foreach ($sections as $sec) {
@@ -1771,7 +1769,11 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
             }
             preg_match_all('/([a-zA-Z0-9_.-]+)\((\w+)\)/', $allContent, $matches, PREG_SET_ORDER);
             foreach ($matches as $m) {
-                $seeAlso[] = array("name" => $m[1], "section" => $m[2]);
+                $seeAlso[] = array(
+                    "name" => $m[1],
+                    "section" => $m[2],
+                    "url" => "https://www.chedong.com/phpMan.php/man/" . urlencode($m[1]) . "/" . urlencode($m[2]) . "/json"
+                );
             }
             break;
         }
