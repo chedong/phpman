@@ -1708,10 +1708,25 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
                     $subText[] = $cl;
                 }
             }
-            $subsections[] = array(
-                "name" => $sub["name"],
+            $cleanName = trim($sub["name"]);
+            $entry = array(
+                "name" => $cleanName,
                 "content" => implode("\n", $subText),
             );
+            // Add semantic fields for flag-like subsections
+            if (strlen($cleanName) > 0 && $cleanName[0] === "-") {
+                $parsed = parseFlagJSON($cleanName);
+                if ($parsed["flag"] !== "") {
+                    $entry["flag"] = $parsed["flag"];
+                }
+                if ($parsed["long"] !== null) {
+                    $entry["long"] = $parsed["long"];
+                }
+                if ($parsed["arg"] !== null) {
+                    $entry["arg"] = $parsed["arg"];
+                }
+            }
+            $subsections[] = $entry;
         }
         $cleanSec["subsections"] = $subsections;
         // Use L1 heading name as the key
