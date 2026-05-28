@@ -111,23 +111,62 @@ For Apache 2.x, ensure `AcceptPathInfo On` is configured to enable clean URL rou
 
 ## Publish Updates
 
-### 1. Commit and Push to SourceForge Git
+The repository includes a generic `Makefile` for local checks, staging deployment,
+production deployment, and release upload. Site-specific values are loaded from
+`.deploy.mk`, which is intentionally ignored by git.
+
+Create your local deployment config from the example:
 
 ```bash
-git add phpMan.php
+cp .deploy.mk.example .deploy.mk
+```
+
+Then edit `.deploy.mk` for your server:
+
+```make
+REMOTE_USER = your-user
+REMOTE_HOST = example.com
+REMOTE_BASE = /home/your-user/example.com
+
+DEMO_TEST = $(REMOTE_BASE)/test
+DEMO_MAIN = $(REMOTE_BASE)
+
+DEMO_URL = https://example.com/test/phpMan.php
+MAIN_URL = https://example.com/phpMan.php
+```
+
+### 1. Test Locally
+
+```bash
+make test
+```
+
+### 2. Commit and Push to SourceForge Git
+
+```bash
+git add phpMan.php README.md Makefile .deploy.mk.example .gitignore
 git commit -m "description of changes"
 git push origin master
 ```
 
-### 2. Update Live Demo (chedong.com)
+### 3. Update Staging Demo
 
 ```bash
-scp phpMan.php chedong.com:~/chedong.com/phpMan.php
+make deploy
+```
+
+This deploys only `phpMan.php` to the staging path configured by `DEMO_TEST`.
+
+### 4. Update Production Demo
+
+```bash
+make release
+make deploy-verify
 ```
 
 > ⚠️ Do **not** overwrite `index.php` — only update `phpMan.php`.
 
-### 3. Update Static Site (SourceForge project web)
+### 5. Update Static Site (SourceForge project web)
 
 ```bash
 scp index.html chedong@web.sourceforge.net:/home/project-web/phpunixman/htdocs/index.html
@@ -135,13 +174,12 @@ scp index.html chedong@web.sourceforge.net:/home/project-web/phpunixman/htdocs/i
 
 The `index.html` is a static project introduction page with screenshot and a demo link pointing to `chedong.com/phpMan.php`.
 
-### 4. Upload Release
+### 6. Upload Release
 
 Upload the compressed archive and README to SourceForge File Release System:
 
 ```bash
-gzip -k -f phpMan.php
-scp phpMan.php.gz README.md chedong@frs.sourceforge.net:/home/frs/project/phpunixman/
+make upload-release
 ```
 
 README.md will be rendered below the file listing on the Files page.

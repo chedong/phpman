@@ -1,4 +1,9 @@
 # macOS Finder metadata
 .DS_Store
+
+# local deployment config
+.deploy.mk
+
 # release artifacts
 *.gz
+*.bak

@@ -1,0 +1,14 @@
+# Copy this file to .deploy.mk and adjust values for your server.
+# .deploy.mk is intentionally ignored by git.
+
+REMOTE_USER = your-user
+REMOTE_HOST = example.com
+REMOTE_BASE = /home/your-user/example.com
+
+DEMO_TEST = $(REMOTE_BASE)/test
+DEMO_MAIN = $(REMOTE_BASE)
+
+DEMO_URL = https://example.com/test/phpMan.php
+MAIN_URL = https://example.com/phpMan.php
+
+FRS_TARGET = your-user@frs.sourceforge.net:/home/frs/project/phpunixman/
