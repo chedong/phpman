@@ -1685,8 +1685,103 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
     }
     $jsonData["sections"] = $jsonSections;
 
+    // === Semantic extraction for agent consumption ===
+    $jsonData["command"] = $parameter;
+
+    // 1. Summary from NAME section
+    foreach ($sections as $sec) {
+        if ($sec["name"] === "NAME") {
+            $contentStr = is_array($sec["content"]) ? implode(" ", $sec["content"]) : $sec["content"];
+            $nameText = trim($contentStr);
+            if ($nameText !== "") {
+                $jsonData["summary"] = $nameText;
+            }
+            break;
+        }
+    }
+
+    // 2. Flags from OPTIONS section
+    $flags = array();
+    foreach ($sections as $sec) {
+        if ($sec["name"] === "OPTIONS") {
+            if (count($sec["subsections"]) > 0) {
+                foreach ($sec["subsections"] as $sub) {
+                    $cleanName = trim($sub["name"], "[] ");
+                    // Flag subsections start with "-"
+                    if (strlen($cleanName) > 0 && $cleanName[0] === "-") {
+                        $flag = parseFlagJSON($cleanName);
+                        $descStr = is_array($sub["content"]) ? implode(" ", $sub["content"]) : $sub["content"];
+                        $flag["description"] = trim(preg_replace('/\s+/', ' ', $descStr));
+                        $flags[] = $flag;
+                    }
+                }
+            }
+            break;
+        }
+    }
+    $jsonData["flags"] = $flags;
+
+    // 3. Examples from EXAMPLES / EXAMPLE section
+    $examples = array();
+    foreach ($sections as $sec) {
+        if ($sec["name"] === "EXAMPLES" || $sec["name"] === "EXAMPLE") {
+            $allContent = is_array($sec["content"]) ? implode("\n", $sec["content"]) : $sec["content"];
+            foreach ($sec["subsections"] as $sub) {
+                $allContent .= "\n" . (is_array($sub["content"]) ? implode("\n", $sub["content"]) : $sub["content"]);
+            }
+            $lines = explode("\n", $allContent);
+            foreach ($lines as $line) {
+                $line = trim($line);
+                if ($line !== "" && strlen($line) > 1) {
+                    $examples[] = $line;
+                }
+            }
+            break;
+        }
+    }
+    $jsonData["examples"] = $examples;
+
+    // 4. See Also from SEE ALSO section
+    $seeAlso = array();
+    foreach ($sections as $sec) {
+        if ($sec["name"] === "SEE ALSO") {
+            $allContent = is_array($sec["content"]) ? implode("\n", $sec["content"]) : $sec["content"];
+            foreach ($sec["subsections"] as $sub) {
+                $allContent .= "\n" . (is_array($sub["content"]) ? implode("\n", $sub["content"]) : $sub["content"]);
+            }
+            preg_match_all('/([a-zA-Z0-9_.-]+)\((\w+)\)/', $allContent, $matches, PREG_SET_ORDER);
+            foreach ($matches as $m) {
+                $seeAlso[] = array("name" => $m[1], "section" => $m[2]);
+            }
+            break;
+        }
+    }
+    $jsonData["see_also"] = $seeAlso;
+
     $result = json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     return $result !== false ? $result : '{}';
+}
+
+// Parse a flag name like "-V --version" into structured form
+function parseFlagJSON(string $name): array {
+    $result = array("flag" => "", "long" => null, "arg" => null);
+    $parts = preg_split('/\s+/', trim($name));
+
+    foreach ($parts as $part) {
+        if (preg_match('/^-[a-zA-Z0-9?]$/', $part)) {
+            // Short flag: -X
+            $result["flag"] = $part;
+        } elseif (preg_match('/^--[a-zA-Z0-9][a-zA-Z0-9._-]*=(.+)$/', $part, $m)) {
+            // Long flag with embedded arg: --option=VAL
+            $result["long"] = explode("=", $part)[0];
+            $result["arg"] = $m[1];
+        } elseif (preg_match('/^--[a-zA-Z0-9][a-zA-Z0-9._-]*$/', $part)) {
+            // Long flag: --option
+            $result["long"] = $part;
+        }
+    }
+
+    return $result;
 }
 
 //convert man perldoc output to markdown
