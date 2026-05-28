@@ -257,6 +257,7 @@ function normalizeMode (mixed $mode): string {
         "info" => true,
         "search" => true,
         "copyright" => true,
+        "mcp" => true,
     );
 
     return isset($allowed_modes[$mode]) ? $mode : "man";
@@ -343,7 +344,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
         }
     }
     
-    $allowed_modes = array("man", "perldoc", "info", "search", "copyright");
+    $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp");
     $seg_count = count($segments);
     
     if ($seg_count >= 1) {
@@ -441,6 +442,11 @@ else if ( $mode == "copyright" ) {
     showHeader($PHP_MAN_TITLE, "", "", $mode);
     showCopyright();
     echo "</body></html>";
+    exit;
+}
+// MCP (Model Context Protocol) mode: JSON-RPC over HTTP POST
+if ( $mode == "mcp" ) {
+    handleMcp();
     exit;
 }
 /**
@@ -639,6 +645,9 @@ showFooter($VALIDATOR, $markdownUrl, $jsonUrl, $showNav);
 //show html header
 function showHeader (string $title = "", string $parameter = "", string $section = "", string $mode = "", bool $hasRealContent = true, bool $showNav = false): void {
     header("Content-Type: text/html; charset=UTF-8");
+    // MCP service discovery
+    $script_path = isset($_SERVER['SCRIPT_NAME']) ? $_SERVER['SCRIPT_NAME'] : strtok($_SERVER['REQUEST_URI'], '?');
+    header('Link: <' . $script_path . '/mcp>; rel="mcp-server"');
     // always modified now
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
     // Expires one month later
@@ -790,6 +799,262 @@ function showFooter (string $validator = "", string $markdownUrl = "", string $j
         "<br />" . $validator . "</p>" .
         ($showNav ? '<div id="back-to-top"><a href="#top">^_back to top</a></div>' : "") .
         "</body></html>";
+}
+
+//handle Mcp protocol request
+function handleMcp (): void {
+    header("Content-Type: application/json; charset=UTF-8");
+    // MCP uses text/event-stream for SSE transport, but StreamableHTTP uses plain POST
+    // Allow both plain and SSE content types
+    header("Cache-Control: no-store, no-cache, must-revalidate");
+    header("Pragma: no-cache");
+
+    // Read JSON-RPC body
+    $rawBody = file_get_contents("php://input");
+    if ($rawBody === false || trim($rawBody) === "") {
+        sendMcpError(null, -32700, "Parse error: empty body");
+        return;
+    }
+
+    $request = json_decode($rawBody, true);
+    if ($request === null) {
+        sendMcpError(null, -32700, "Parse error: invalid JSON");
+        return;
+    }
+
+    $method = $request["method"] ?? "";
+    $id = $request["id"] ?? null;
+
+    // Also accept "notifications/initialized" as no-op
+    if ($method === "notifications/initialized") {
+        // MCP spec: client sends this after initialize, server can ignore
+        http_response_code(202);
+        echo json_encode(["jsonrpc" => "2.0"]);
+        return;
+    }
+
+    if ($method === "") {
+        sendMcpError($id, -32600, "Invalid Request: missing method");
+        return;
+    }
+
+    switch ($method) {
+        case "initialize":
+            handleMcpInitialize($id);
+            break;
+        case "tools/list":
+            handleMcpToolsList($id);
+            break;
+        case "tools/call":
+            handleMcpToolsCall($id, $request["params"] ?? []);
+            break;
+        default:
+            sendMcpError($id, -32601, "Method not found: {$method}");
+    }
+}
+
+function sendMcpError ($id, int $code, string $message): void {
+    echo json_encode([
+        "jsonrpc" => "2.0",
+        "id" => $id,
+        "error" => ["code" => $code, "message" => $message]
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+}
+
+function sendMcpResult ($id, array $result): void {
+    echo json_encode([
+        "jsonrpc" => "2.0",
+        "id" => $id,
+        "result" => $result
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+}
+
+function handleMcpInitialize ($id): void {
+    sendMcpResult($id, [
+        "protocolVersion" => "2024-11-05",
+        "serverInfo" => [
+            "name" => "phpMan",
+            "version" => "2.0"
+        ],
+        "capabilities" => [
+            "tools" => ["listChanged" => false]
+        ]
+    ]);
+}
+
+function handleMcpToolsList ($id): void {
+    sendMcpResult($id, [
+        "tools" => [
+            [
+                "name" => "cli_help",
+                "description" => "Get structured man / perldoc / info page for a command or module. Returns sections with sub-sections, synopsis, and full content. Supports all Unix/Linux commands, Perl modules (e.g. File::Basename), and GNU info pages.",
+                "inputSchema" => [
+                    "type" => "object",
+                    "properties" => [
+                        "command" => [
+                            "type" => "string",
+                            "description" => "Command or module name (e.g. 'ls', 'git', 'File::Basename', 'bash')"
+                        ],
+                        "section" => [
+                            "type" => "string",
+                            "description" => "Optional manual section number (e.g. '1' for user commands, '3pm' for Perl modules). Omit for best-match behavior."
+                        ]
+                    ],
+                    "required" => ["command"]
+                ]
+            ],
+            [
+                "name" => "cli_search",
+                "description" => "Search Unix/Linux man pages by keyword using apropos. Returns matching command names with sections and detail links.",
+                "inputSchema" => [
+                    "type" => "object",
+                    "properties" => [
+                        "query" => [
+                            "type" => "string",
+                            "description" => "Search keyword (e.g. 'recursive delete', 'network', 'cron')"
+                        ],
+                        "section" => [
+                            "type" => "string",
+                            "description" => "Optional: restrict to a specific manual section (e.g. '1', '8')"
+                        ]
+                    ],
+                    "required" => ["query"]
+                ]
+            ]
+        ]
+    ]);
+}
+
+function handleMcpToolsCall ($id, array $params): void {
+    $name = $params["name"] ?? "";
+    $args = $params["arguments"] ?? [];
+
+    if ($name === "") {
+        sendMcpError($id, -32602, "Invalid params: missing tool name");
+        return;
+    }
+
+    try {
+        $result = executeMcpTool($name, $args);
+        if (isset($result["error"])) {
+            // Tool execution error: wrap as text in MCP content format
+            sendMcpResult($id, [
+                "content" => [
+                    ["type" => "text", "text" => json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)]
+                ],
+                "isError" => true
+            ]);
+        } else {
+            sendMcpResult($id, [
+                "content" => [
+                    ["type" => "text", "text" => json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)]
+                ]
+            ]);
+        }
+    } catch (Exception $e) {
+        sendMcpError($id, -32603, "Internal error: " . $e->getMessage());
+    }
+}
+
+function executeMcpTool (string $name, array $args): array {
+    switch ($name) {
+        case "cli_help":
+            return executeCliHelp($args);
+        case "cli_search":
+            return executeCliSearch($args);
+        default:
+            return ["error" => "Unknown tool: {$name}"];
+    }
+}
+
+function executeCliHelp (array $args): array {
+    $command = trim($args["command"] ?? "");
+    $section = trim($args["section"] ?? "");
+
+    if ($command === "") {
+        return ["error" => "Missing required parameter: command"];
+    }
+
+    // Auto-detect perldoc: :: or section 3pm/3perl
+    if (strpos($command, "::") !== false || $section === "3pm" || $section === "3perl") {
+        $mode = "perldoc";
+    } else {
+        $mode = "man";
+    }
+
+    $lines = [];
+    if ($mode === "perldoc") {
+        putenv("MANWIDTH=" . $GLOBALS['PHP_MAN_WIDTH']);
+        exec("perldoc " . escapeshellarg($command), $lines, $return_code);
+        if ($return_code !== 0) {
+            // Try perldoc -f for built-in functions
+            $lines = [];
+            exec("perldoc -f " . escapeshellarg($command), $lines, $return_code);
+            if ($return_code !== 0) {
+                return ["error" => "No perldoc found for: {$command}"];
+            }
+        }
+    } else {
+        putenv("MANROFFOPT=-rLL=" . $GLOBALS['PHP_MAN_WIDTH'] . "n");
+        $cmd = "man -Tutf8 ";
+        if ($section !== "") {
+            $cmd .= escapeshellarg($section) . " ";
+        }
+        $cmd .= escapeshellarg($command);
+        exec($cmd, $lines, $return_code);
+        if ($return_code !== 0 || count($lines) === 0) {
+            return ["error" => "No man page found for: {$command}" . ($section !== "" ? " (section {$section})" : "")];
+        }
+    }
+
+    $jsonStr = formatToJSON($lines, $command, $section, $mode);
+    return json_decode($jsonStr, true) ?: ["error" => "Failed to parse man page output"];
+}
+
+function executeCliSearch (array $args): array {
+    $query = trim($args["query"] ?? "");
+    $section = trim($args["section"] ?? "");
+
+    if ($query === "") {
+        return ["error" => "Missing required parameter: query"];
+    }
+
+    $cmd = "apropos " . escapeshellarg($query);
+    if ($section !== "" && preg_match("/^[0-9n]$/", $section)) {
+        $cmd = "apropos -s " . escapeshellarg($section) . " " . escapeshellarg($query);
+    }
+
+    $lines = [];
+    exec($cmd, $lines, $return_code);
+    if ($return_code !== 0 || count($lines) === 0) {
+        return ["error" => "No results found for: {$query}"];
+    }
+
+    $results = [];
+    $script_name = baseUrl();
+    // apropos returns "name (section) - description" per line
+    foreach ($lines as $line) {
+        if (preg_match('/^(.+?)\s+\(([^)]+)\)\s+-\s+(.+)$/', $line, $m)) {
+            $name = trim($m[1]);
+            $sec = trim($m[2]);
+            $desc = trim($m[3]);
+            // Determine link mode: perl modules use perldoc
+            $linkMode = (strpos($name, "::") !== false || $sec === "3pm" || $sec === "3perl") ? "perldoc" : "man";
+            $results[] = [
+                "name" => $name,
+                "section" => $sec,
+                "description" => $desc,
+                "link" => $script_name . "/" . $linkMode . "/" . urlencode($name) . "/" . urlencode($sec) . "/json"
+            ];
+        }
+    }
+
+    return [
+        "name" => "apropos " . $query,
+        "query" => $query,
+        "results" => $results,
+        "count" => count($results)
+    ];
 }
 
 //get specified command's man page and convert to html format
