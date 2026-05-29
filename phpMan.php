@@ -24,6 +24,15 @@ declare(strict_types=1);
 // Default terminal width for man/perldoc output (used as MANROFFOPT -rLL=NNNn)
 $PHP_MAN_WIDTH = 100;
 
+// --- LLM-powered TLDR generation ---
+// Set these via environment variables or hardcode here.
+// Supports any OpenAI-compatible API (OpenAI, Anthropic via proxy, Qwen, etc.)
+define('LLM_API_URL',  getenv('LLM_API_URL')  ?: '');   // e.g. https://api.openai.com/v1/chat/completions
+define('LLM_API_KEY',  getenv('LLM_API_KEY')  ?: '');
+define('LLM_MODEL',    getenv('LLM_MODEL')    ?: 'gpt-4o-mini');
+define('LLM_TIMEOUT',  15);  // seconds
+define('TLDR_CACHE_DIR', __DIR__ . '/tldr_cache');
+
 /**
  * phpMan is a web interface of Unix command 'man', 'perldoc', 'info' and 'apropos'.
  * This script makes it easier to read man pages which is lengthy and require you
@@ -582,7 +591,15 @@ switch ( $mode ) {
                 $jsonContent = getPerldocPage($parameter, "json");
             }
             if ($jsonContent !== "") {
-                $content = formatTldr(json_decode($jsonContent, true));
+                $jsonData = json_decode($jsonContent, true);
+                // Try LLM-powered TLDR first, fallback to extraction-based
+                $content = '';
+                if ($jsonData !== null) {
+                    $content = generateTldrWithLLM($jsonData);
+                }
+                if ($content === '' && $jsonData !== null) {
+                    $content = formatTldr($jsonData);
+                }
             }
         }
         break;
@@ -785,7 +802,6 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
         "<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\">\n".
         "<head>\n".
-        "<!-- phpMan — man -Tutf8 for SGR bold/underline support -->\n".
         "<title>".h($title)."</title>\n".
         "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n".
         "<meta name=\"description\" content=\"".h($meta_description)."\"/>\n".
@@ -1885,6 +1901,182 @@ function formatMcpStructured (array $data): array {
  * - 5-8 examples max
  * - --help and --version at the end
  */
+/**
+ * Generate TLDR using LLM API with file-based caching.
+ * Returns markdown string or empty string on failure (caller should fallback).
+ */
+function generateTldrWithLLM(array $data): string {
+    // Bail if LLM not configured
+    if (LLM_API_URL === '' || LLM_API_KEY === '') return '';
+
+    $command = $data["parameter"] ?? "";
+    $section = $data["section"] ?? "";
+    if ($command === "") return '';
+
+    // Check file cache
+    if (!is_dir(TLDR_CACHE_DIR)) {
+        @mkdir(TLDR_CACHE_DIR, 0755, true);
+    }
+    $cacheKey = md5($command . ':' . $section);
+    $cacheFile = TLDR_CACHE_DIR . '/' . $cacheKey . '.md';
+    if (file_exists($cacheFile)) {
+        $cached = file_get_contents($cacheFile);
+        if ($cached !== false && strlen($cached) > 50) {
+            return $cached;
+        }
+    }
+
+    // Build a compact context for the LLM (not the full man page)
+    $context = buildLlmContext($data);
+
+    // Call LLM
+    $prompt = "You are generating a TLDR page for the Unix command '{$command}'. "
+        . "Based on the man page data below, create 8-12 practical usage examples.\n\n"
+        . "FORMAT each example exactly as:\n"
+        . "- Short description (under 60 chars):\n"
+        . "  `{$command} --flag argument`\n\n"
+        . "RULES:\n"
+        . "- Focus on the MOST commonly used flags and real-world scenarios\n"
+        . "- Use placeholder args like {{filename}}, {{url}}, {{pattern}}, {{directory}}\n"
+        . "- Order from basic usage → advanced usage\n"
+        . "- Do NOT include --help or --version\n"
+        . "- Descriptions must be imperative: 'List all files' not 'Lists all files'\n"
+        . "- Output ONLY the examples, no preamble\n\n"
+        . "=== MAN PAGE DATA ===\n{$context}\n";
+
+    $llmResult = callLlmApi($prompt);
+    if ($llmResult === '') return '';
+
+    // Wrap in TLDR header
+    $summary = $data["summary"] ?? "{$command} - Unix command";
+    $base = baseUrl();
+    $canonical = "{$base}/man/" . urlencode($command);
+    if ($section !== "" && $section !== "-f" && $section !== "-q") {
+        $canonical .= "/" . urlencode($section);
+    }
+
+    $out = "# {$command}\n\n";
+    $out .= "> {$summary}\n";
+    $out .= "> More information: {$canonical}\n\n";
+    $out .= $llmResult;
+
+    // Cache the result
+    @file_put_contents($cacheFile, $out);
+
+    return $out;
+}
+
+/**
+ * Build compact context from man page data for LLM input.
+ * Only includes flags, examples, synopsis — not the full man page.
+ */
+function buildLlmContext(array $data): string {
+    $parts = [];
+
+    $parts[] = "Command: " . ($data["parameter"] ?? "");
+    $parts[] = "Summary: " . ($data["summary"] ?? "");
+    $parts[] = "Synopsis: " . ($data["synopsis"] ?? "");
+
+    // Flags (top 30)
+    $flags = $data["flags"] ?? [];
+    if (empty($flags)) {
+        // Fallback: extract from sections
+        foreach ($data["sections"] ?? [] as $sec) {
+            foreach ($sec["subsections"] ?? [] as $sub) {
+                if (!empty($sub["flag"]) || !empty($sub["long"])) {
+                    $flags[] = [
+                        "flag" => $sub["flag"] ?? "",
+                        "long" => $sub["long"] ?? null,
+                        "arg" => $sub["arg"] ?? null,
+                        "description" => trim(preg_replace('/\s+/', ' ', $sub["content"] ?? "")),
+                    ];
+                }
+            }
+        }
+    }
+    if (!empty($flags)) {
+        $flagLines = [];
+        $count = 0;
+        foreach ($flags as $f) {
+            if ($count >= 30) break;
+            $short = $f["flag"] ?? "";
+            $long = $f["long"] ?? "";
+            $arg = $f["arg"] ?? "";
+            $desc = substr($f["description"] ?? "", 0, 100);
+            $flagStr = $short . ($long ? "/{$long}" : "") . ($arg ? " {$arg}" : "");
+            $flagLines[] = "  {$flagStr}: {$desc}";
+            $count++;
+        }
+        $parts[] = "FLAGS:\n" . implode("\n", $flagLines);
+    }
+
+    // Examples from man page
+    $examples = $data["examples"] ?? [];
+    if (!empty($examples)) {
+        $exLines = [];
+        foreach (array_slice($examples, 0, 10) as $ex) {
+            $ex = trim($ex);
+            if (strlen($ex) > 3 && strlen($ex) < 200) {
+                $exLines[] = "  " . preg_replace('/\s+/', ' ', $ex);
+            }
+        }
+        if (!empty($exLines)) {
+            $parts[] = "EXAMPLES:\n" . implode("\n", $exLines);
+        }
+    }
+
+    // Section names (outline only)
+    $sectionNames = [];
+    foreach ($data["sections"] ?? [] as $sec) {
+        $sectionNames[] = $sec["name"] ?? "";
+    }
+    if (!empty($sectionNames)) {
+        $parts[] = "Sections: " . implode(", ", array_filter($sectionNames));
+    }
+
+    return implode("\n\n", $parts);
+}
+
+/**
+ * Call OpenAI-compatible chat completions API.
+ * Returns the assistant's text response, or empty string on failure.
+ */
+function callLlmApi(string $prompt): string {
+    $payload = json_encode([
+        'model' => LLM_MODEL,
+        'messages' => [
+            ['role' => 'system', 'content' => 'You are a technical writer creating concise TLDR pages for Unix commands. Output only the requested examples, no explanations.'],
+            ['role' => 'user', 'content' => $prompt],
+        ],
+        'max_tokens' => 1500,
+        'temperature' => 0.3,
+    ]);
+
+    $ch = curl_init(LLM_API_URL);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $payload,
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . LLM_API_KEY,
+        ],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => LLM_TIMEOUT,
+        CURLOPT_CONNECTTIMEOUT => 5,
+    ]);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($response === false || $httpCode !== 200) {
+        return '';
+    }
+
+    $json = json_decode($response, true);
+    return $json['choices'][0]['message']['content'] ?? '';
+}
+
 function formatTldr (?array $data): string {
     if ($data === null) return "";
 
