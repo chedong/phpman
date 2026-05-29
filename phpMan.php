@@ -593,6 +593,28 @@ if ($format === "json" || $format === "mcp") {
     header("Content-Type: application/json; charset=UTF-8");
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
     header("Expires: " . gmdate("D, d M Y H:i:s", time() + 3600 * 24 * 7) . " GMT");
+    // ETag for conditional GET — repeat requests return 304 instantly
+    // Use stable hash based on request parameters (not content, which includes timestamps)
+    $etagKey = ($mode ?: "man") . ":" . $parameter . ":" . $section . ":" . $format;
+    $etag = '"' . md5($etagKey) . '"';
+    header("ETag: {$etag}");
+    $ifNoneMatch = serverValue("HTTP_IF_NONE_MATCH", "");
+    if ($ifNoneMatch === $etag) {
+        http_response_code(304);
+        exit;
+    }
+    // Gzip compress large JSON responses (bash=351KB → ~97KB)
+    $acceptEncoding = strtolower(serverValue("HTTP_ACCEPT_ENCODING", ""));
+    if (strpos($acceptEncoding, "gzip") !== false && function_exists("gzencode") && strlen($content) > 1000) {
+        $gzipped = gzencode($content, 6);
+        if ($gzipped !== false) {
+            header("Content-Encoding: gzip");
+            header("Vary: Accept-Encoding");
+            header("Content-Length: " . strlen($gzipped));
+            echo $gzipped;
+            exit;
+        }
+    }
     echo $content;
     exit;
 }
