@@ -690,7 +690,7 @@ if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
             }
         }
         echo "</div>\n";
-        echo "<script>document.body.className+=' ext-nav';</script>\n";
+        echo "<script type=\"text/javascript\">document.body.className+=' ext-nav';</script>\n";
     }
 
     echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
@@ -835,8 +835,9 @@ function showHeader (string $title = "", string $parameter = "", string $section
             "border-radius:6px;font-size:13px;font-family:monospace;}\n".
         "#back-to-top a:hover {background:#555;}\n".
         "body.ext-nav #toc-sidebar, body.ext-nav #back-to-top {display:block;}\n".
-        "@media (max-width:768px){\n".
-            "#toc-sidebar{display:none;}\n".
+        "@media (max-width:1024px){\n".
+            "body.ext-nav #toc-sidebar{display:none !important;}\n".
+            "#toc-sidebar{display:none !important;}\n".
             "#content-wrap{margin-right:0;max-width:100%;padding:0 8px;}\n".
             "body{font-size:12px;}\n".
             "#man-content pre{white-space:pre-wrap;word-wrap:break-word;font-size:12px;line-height:1.4;}\n".
@@ -1676,15 +1677,19 @@ function getInfoIndex (string $format = "html"): string {
 function formatManPerlDoc (array $lines, string $mode = "man"): string {
     $script_name = h(scriptName());
     $mode = h($mode);
+    // Overstrike character class: ASCII printable + placeholder bytes for &/</>
+    $ac = '[ -~' . chr(5) . chr(6) . chr(7) . ']';
     $patterns = array(
                     "/&/",  //html special char: '&' => chr(5) => '&gt;';
                     "/</",  //html special char: '>' => chr(6) => '&lt;';
                     "/>/",  //html special char: '<' => chr(7) => '&gt;';
                     //man page special chars
-                    "/.".chr(8).".".chr(8)."(.)".chr(8)."./",	// ?^H?^H?^H? => <b>?</b>
-                    "/_".chr(8)."(.)".chr(8)."./",  //_^H?^H? => <u>?</u>
-                    "/_".chr(8)."(.)/",  //_^H? => <u>?</u>
-                    "/.".chr(8)."(.)/",  //?^H? => <b>?</b>
+                    // CRITICAL: Use $ac instead of . to avoid splitting multibyte UTF-8
+                    "/{$ac}".chr(8)."{$ac}".chr(8)."({$ac})".chr(8)."{$ac}/",  // ?^H?^H?^H? => <b>?</b>
+                    "/_".chr(8)."({$ac})".chr(8)."{$ac}/",  //_^H?^H? => <u>?</u>
+                    "/_".chr(8)."({$ac})/",  //_^H? => <u>?</u>
+                    "/_".chr(8)."/",  // Cleanup: strip orphan _^H (e.g. before non-ASCII UTF-8)
+                    "/{$ac}".chr(8)."({$ac})/",  //?^H? => <b>?</b>
                     //reverse html special chars
                     "/".chr(5)."/",  //reverse '&'
                     "/".chr(6)."/",  //reverse '<'
@@ -1719,6 +1724,7 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                    '<b>$1</b>',
                     '<u>$1</u>',
                     '<u>$1</u>',
+                    '',  // strip orphan _^H
                     '<b>$1</b>',
                    "&amp;",
                    "&lt;",
@@ -1757,6 +1763,9 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
         }
         $output .= $line . "\n";
     }
+    // Safety net: strip any remaining invalid UTF-8 bytes
+    // mb_convert_encoding with substitute removes lone surrogates and bad sequences
+    $output = mb_convert_encoding($output, 'UTF-8', 'UTF-8');
     return $output;
 }
 
