@@ -811,7 +811,8 @@ function showHeader (string $title = "", string $parameter = "", string $section
         // GEO: citation for AI/LLM attribution
         "<meta name=\"citation_title\" content=\"".h($title)."\"/>\n".
         "<meta name=\"citation_online_date\" content=\"".gmdate("Y/m/d")."\"/>\n".
-        "<meta name=\"citation_author\" content=\"Che Dong\"/>\n";
+        "<meta name=\"citation_author\" content=\"Che Dong\"/>\n".
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>\n";
 
     echo "<style type=\"text/css\">\n".
         "html {scroll-behavior:smooth;}\n".
@@ -834,7 +835,19 @@ function showHeader (string $title = "", string $parameter = "", string $section
             "border-radius:6px;font-size:13px;font-family:monospace;}\n".
         "#back-to-top a:hover {background:#555;}\n".
         "body.ext-nav #toc-sidebar, body.ext-nav #back-to-top {display:block;}\n".
-        "@media (max-width:768px) {#toc-sidebar{display:none;}#content-wrap{margin-right:0;max-width:100%;}}\n".
+        "@media (max-width:768px){\n".
+            "#toc-sidebar{display:none;}\n".
+            "#content-wrap{margin-right:0;max-width:100%;padding:0 8px;}\n".
+            "body{font-size:12px;}\n".
+            "#man-content pre{white-space:pre-wrap;word-wrap:break-word;font-size:12px;line-height:1.4;}\n".
+            "input[type='text']{width:100%;font-size:16px;padding:8px;box-sizing:border-box;}\n".
+            "input[type='submit']{font-size:16px;padding:10px 20px;min-height:44px;}\n".
+            "input[type='radio']{transform:scale(1.3);margin-right:4px;}\n".
+            "form p{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}\n".
+            "form a{padding:6px 8px;display:inline-block;}\n".
+            "a{padding:4px 2px;}\n".
+            "p{font-size:12px;line-height:1.6;}\n".
+        "}\n".
         "</style>\n";
 
     // JSON-LD structured data for SEO/GEO
