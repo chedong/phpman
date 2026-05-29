@@ -923,23 +923,12 @@ function showFooter (string $validator = "", string $markdownUrl = "", string $j
     $mcp_href = $isDetailPage ? ($detail_rel . "/mcp") : ($script_path . "/mcp");
     $extra_links[] = '<a href="' . h($mcp_href) . '">MCP</a>';
 
-    // Detail pages get extra links: TLDR, Cheat, Translate
+    // Detail pages get extra links: TLDR, Cheat (section 1 only)
     if ($isDetailPage) {
         // External cheat sheets — only for man section 1 (basic user commands)
         if ($mode === "man" && $section === "1") {
             $extra_links[] = '<a href="https://tldr.inbrowser.app/pages/common/' . urlencode($parameter) . '" target="_blank" rel="noopener">TLDR</a>';
             $extra_links[] = '<a href="https://cheat.sh/' . urlencode($parameter) . '" target="_blank" rel="noopener">Cheat</a>';
-        }
-
-        // Google Translate link: auto-detect user's language from Accept-Language
-        $lang = strtolower(substr(serverValue("HTTP_ACCEPT_LANGUAGE", "en"), 0, 2));
-        // Skip translation if browser language is already English
-        if ($lang !== "" && $lang !== "en") {
-            $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "http";
-            $current_url = $proto . "://" . getSafeHost() . $detail_rel;
-            $translate_url = 'https://translate.google.com/translate?sl=auto&tl='
-                . urlencode($lang) . '&u=' . urlencode($current_url);
-            $extra_links[] = '<a href="' . h($translate_url) . '" target="_blank" rel="noopener">🌏 Translate</a>';
         }
     }
 
