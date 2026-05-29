@@ -800,7 +800,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
 
     echo "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" ".
         "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
-        "<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\">\n".
+        "<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\">\n".
         "<head>\n".
         "<title>".h($title)."</title>\n".
         "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n".
@@ -817,8 +817,8 @@ function showHeader (string $title = "", string $parameter = "", string $section
     echo "<style type=\"text/css\">\n".
         "html {scroll-behavior:smooth;}\n".
         "body {color:#000000;background-color:#EEEEEE;font-family:'Courier New',Courier,monospace;font-size:14px;}\n".
-        "b {color:#996600;background-color:#EEEEEE;}\n".
-        "u {color:#008000;background-color:#EEEEEE;text-decoration:underline;}\n".
+        "b {color:#8B5E00;background-color:#EEEEEE;}\n".
+        "u {color:#006600;background-color:#EEEEEE;text-decoration:underline;}\n".
         "#content-wrap {max-width:90%;margin-right:230px;}\n".
         "#man-content pre {width:100%;overflow-x:auto;white-space:pre;}\n".
         "#toc-sidebar {position:fixed;top:20px;right:10px;width:200px;max-height:90vh;overflow-y:auto;".
@@ -887,17 +887,17 @@ function showForm (string $parameter, array $check): void {
     $parameter_value = h($parameter);
 
     echo "<form action=\"".$script_name."\" method=\"get\">\n".
-        "<p>Command: ".
-        "<input type=\"text\" size=\"20\" name=\"parameter\" value=\"".$parameter_value."\"/>\n".
-        "<input type=\"radio\" name=\"mode\" value=\"man\"".$check['man']."/>".
-        "<a href=\"".$script_name."/man\">man</a>\n".
-        "<input type=\"radio\" name=\"mode\" value=\"perldoc\"".$check['perldoc']."/>".
-        "<a href=\"".$script_name."/search/perl\">perldoc</a>\n".
-        "<input type=\"radio\" name=\"mode\" value=\"info\"".$check['info']."/>".
-        "<a href=\"".$script_name."/info\">info</a>\n".
-        "<input type=\"radio\" name=\"mode\" value=\"search\"".$check['search']."/>".
-        "<a href=\"".$script_name."/man/apropos\">search(apropos)</a>\n".
-        "&nbsp;<input type=\"submit\"/></p>".
+        "<p><label for=\"cmd-input\">Command: </label>".
+        "<input type=\"text\" id=\"cmd-input\" size=\"20\" name=\"parameter\" value=\"".$parameter_value."\"/>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"man\" id=\"mode-man\"".$check['man']."/>".
+        "<label for=\"mode-man\"><a href=\"".$script_name."/man\">man</a></label>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"perldoc\" id=\"mode-perldoc\"".$check['perldoc']."/>".
+        "<label for=\"mode-perldoc\"><a href=\"".$script_name."/search/perl\">perldoc</a></label>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"info\" id=\"mode-info\"".$check['info']."/>".
+        "<label for=\"mode-info\"><a href=\"".$script_name."/info\">info</a></label>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"search\" id=\"mode-search\"".$check['search']."/>".
+        "<label for=\"mode-search\"><a href=\"".$script_name."/man/apropos\">search(apropos)</a></label>\n".
+        "&nbsp;<input type=\"submit\" value=\"Go\"/></p>".
         "</form>\n";
 }
 
