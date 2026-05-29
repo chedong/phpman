@@ -1,0 +1,61 @@
+{
+    "name": "phpMan",
+    "version": "2.0",
+    "description": "Unix/Linux man page, Perldoc, and Info page web interface with MCP support",
+    "url": "{{BASE_URL}}",
+    "mcp": {
+        "endpoint": "{{BASE_URL}}/mcp",
+        "protocolVersion": "2024-11-05",
+        "transport": "streamable-http",
+        "capabilities": {
+            "tools": {
+                "listChanged": false
+            }
+        }
+    },
+    "tools": [
+        {
+            "name": "cli_help",
+            "description": "Get structured man / perldoc / info page for a command or module. Returns sections with sub-sections, synopsis, and full content. Supports all Unix/Linux commands, Perl modules (e.g. File::Basename), and GNU info pages.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "Command or module name (e.g. 'ls', 'git', 'File::Basename', 'bash')"
+                    },
+                    "section": {
+                        "type": "string",
+                        "description": "Optional manual section number (e.g. '1' for user commands, '3pm' for Perl modules). Omit for best-match behavior."
+                    }
+                },
+                "required": ["command"]
+            }
+        },
+        {
+            "name": "cli_search",
+            "description": "Search Unix/Linux man pages by keyword using apropos. Returns matching command names with sections and detail links.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search keyword (e.g. 'recursive delete', 'network', 'cron')"
+                    },
+                    "section": {
+                        "type": "string",
+                        "description": "Optional: restrict to a specific manual section (e.g. '1', '8')"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    ],
+    "endpoints": {
+        "man": "{{BASE_URL}}/man/{command}/{section?}/json",
+        "perldoc": "{{BASE_URL}}/perldoc/{module}/json",
+        "info": "{{BASE_URL}}/info/{page}/json",
+        "search": "{{BASE_URL}}/search/{query}/{section?}/json",
+        "markdown": "{{BASE_URL}}/{mode}/{command}/{section?}/markdown"
+    }
+}

@@ -1,7 +1,27 @@
-# phpMan — Unix Man Page / Perldoc / Info Page Web Interface
+# phpMan — Unix Man Page / Perldoc / Info Page Web Interface & MCP Server
 
-A single-file PHP web interface for Unix `man`, `perldoc`, `info`, and `apropos` commands.
-Read lengthy manual pages in your browser — with syntax highlighting, section navigation, and a floating TOC sidebar.
+A single-file PHP web interface and Model Context Protocol (MCP) server for Unix `man`, `perldoc`, `info`, and `apropos` commands.
+
+**For AI Agents:** This service exposes structured man page data via MCP protocol or REST API. Use the `cli_help` tool to get command documentation with parsed flags, examples, and cross-references. Use `cli_search` to find commands by keyword.
+
+## Quick Start for Agents
+
+### MCP Integration (Recommended)
+```yaml
+# Add to your MCP client config (Claude Desktop, Cursor, etc.)
+mcpServers:
+  phpman:
+    url: "https://www.chedong.com/phpMan.php/mcp"
+```
+
+### REST API (Fallback)
+```bash
+# Get structured man page as JSON
+curl "https://www.chedong.com/phpMan.php/man/ls/1/json"
+
+# Get MCP-wrapped output
+curl "https://www.chedong.com/phpMan.php/man/ls/1/mcp"
+```
 
 ## Project Home
 
@@ -9,24 +29,386 @@ Read lengthy manual pages in your browser — with syntax highlighting, section 
 - **Live Demo:** <https://www.chedong.com/phpMan.php>
 - **Static Site:** <https://phpunixman.sourceforge.io/>
 
-> ⚠️ **SourceForge no longer supports PHP (since 2025-05-20).**
-> The dynamic demo runs on `chedong.com`; the `sourceforge.io` site is a static project introduction page.
+> ⚠️ **SourceForge no longer supports PHP (since 2025-05-20).** The dynamic demo runs on `chedong.com`.
 
 ## Screenshot
 
 ![phpMan: perldoc page with TOC sidebar](https://a.fsdn.com/con/app/proj/phpunixman/screenshots/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A120260525-161915%402x-8c442be2.png/750/400)
 
+---
+
+## MCP Server Protocol
+
+phpMan implements the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) specification version `2024-11-05` via Streamable HTTP transport.
+
+### Endpoint
+
+```
+POST https://www.chedong.com/phpMan.php/mcp
+Content-Type: application/json
+```
+
+### Available Tools
+
+#### 1. `cli_help` — Get Man Page / Perldoc / Info Page
+
+Returns structured documentation for any Unix command, Perl module, or GNU info page.
+
+**Input Schema:**
+```json
+{
+  "command": "string (required) — Command name (e.g. 'ls', 'git', 'File::Basename')",
+  "section": "string (optional) — Manual section (e.g. '1', '3pm'). Omit for best-match."
+}
+```
+
+**Output:**
+- `content[0].text` — Markdown-formatted man page with section outline, flags table, examples, and full content
+- `structuredContent` — Programmatic access to flags, examples, synopsis, and cross-references (see [JSON Schema](#json-schema-for-structured-content))
+
+**Example:**
+```bash
+curl -X POST "https://www.chedong.com/phpMan.php/mcp" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "cli_help",
+      "arguments": {"command": "tar", "section": "1"}
+    }
+  }'
+```
+
+**Auto-detection:**
+- Perl modules: Commands containing `::` or section `3pm`/`3perl` → `perldoc` mode
+- Other commands → `man` mode
+
+#### 2. `cli_search` — Search Man Pages
+
+Search across all man page names and descriptions using `apropos`.
+
+**Input Schema:**
+```json
+{
+  "query": "string (required) — Search keyword (e.g. 'recursive delete', 'network', 'cron')",
+  "section": "string (optional) — Restrict to manual section (e.g. '1', '8')"
+}
+```
+
+**Output:**
+- `content[0].text` — JSON with search results
+- `structuredContent` — Programmatic access to results array
+
+**Example:**
+```bash
+curl -X POST "https://www.chedong.com/phpMan.php/mcp" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "cli_search",
+      "arguments": {"query": "cron"}
+    }
+  }'
+```
+
+### MCP Protocol Flow
+
+1. **Initialize** (handshake):
+   ```json
+   {"jsonrpc":"2.0", "id":1, "method":"initialize", "params":{"protocolVersion":"2024-11-05"}}
+   ```
+   Response includes `serverInfo.name = "phpMan"`, `capabilities.tools.listChanged = false`
+
+2. **List Tools**:
+   ```json
+   {"jsonrpc":"2.0", "id":2, "method":"tools/list"}
+   ```
+   Returns the two tools above with their `inputSchema`
+
+3. **Call Tool**:
+   ```json
+   {"jsonrpc":"2.0", "id":3, "method":"tools/call", "params":{"name":"cli_help", "arguments":{...}}}
+   ```
+
+4. **Notifications** (optional):
+   ```json
+   {"jsonrpc":"2.0", "method":"notifications/initialized"}
+   ```
+   Server returns HTTP 202 (no-op)
+
+### Error Handling
+
+MCP errors follow JSON-RPC 2.0:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "error": {
+    "code": -32603,
+    "message": "Internal error: Unknown tool: nonexistent"
+  }
+}
+```
+
+Common error codes:
+- `-32700` — Parse error (invalid JSON)
+- `-32600` — Invalid request (missing method)
+- `-32601` — Method not found
+- `-32602` — Invalid params
+- `-32603` — Internal error (tool execution failed)
+
+---
+
+## REST API
+
+For clients that don't support MCP, phpMan exposes REST endpoints with identical structured output.
+
+### JSON API
+
+Append `/json` to any detail page URL, or send `Accept: application/json` header:
+
+```bash
+# Man page with structured sections
+curl "https://www.chedong.com/phpMan.php/man/ls/1/json"
+
+# Apropos search results
+curl "https://www.chedong.com/phpMan.php/search/git/json"
+
+# Accept header (works on any URL)
+curl -H "Accept: application/json" "https://www.chedong.com/phpMan.php/man/bash"
+```
+
+### MCP Format (REST GET)
+
+The `/mcp` format suffix wraps JSON output in MCP's `content` array — making REST GET and MCP POST responses identical:
+
+```bash
+# Same man page, same output format as MCP POST tools/call
+curl "https://www.chedong.com/phpMan.php/man/ls/1/mcp"
+# → {"content":[{"type":"text","text":"..."}],"structuredContent":{...}}
+
+# Search with MCP format
+curl "https://www.chedong.com/phpMan.php/search/cron/mcp"
+
+# Perldoc with MCP format
+curl "https://www.chedong.com/phpMan.php/perldoc/Digest::MD5/mcp"
+```
+
+This means any MCP client can `GET /man/ls/1/mcp` and parse the result identically to `POST /mcp` `tools/call`.
+
+### TLDR Endpoint
+
+Generate cheatsheet-style summaries from man pages:
+
+```bash
+curl "https://www.chedong.com/phpMan.php/tldr/tar"
+```
+
+Returns Markdown with:
+- Command summary
+- 5-8 practical examples
+- Common flags with descriptions
+- Auto-generated `--help` and `--version` examples
+
+---
+
+## JSON Schema for Structured Content
+
+Both MCP `structuredContent` and REST `/json` endpoints return the same schema.
+
+### Man Page Response
+
+```json
+{
+  "mode": "man",
+  "parameter": "tar",
+  "section": "1",
+  "url": "https://www.chedong.com/phpMan.php/man/tar/1/json",
+  "generated": "2026-01-15T10:30:00Z",
+  "synopsis": "tar [OPTION...] [FILE]...",
+  "summary": "tar - An archiving utility",
+  
+  "sections": {
+    "NAME": {
+      "content": "tar - An archiving utility",
+      "subsections": []
+    },
+    "SYNOPSIS": {
+      "content": "tar [OPTION...] [FILE]...",
+      "subsections": []
+    },
+    "DESCRIPTION": {
+      "content": "The GNU tar program...",
+      "subsections": []
+    },
+    "OPTIONS": {
+      "content": "",
+      "subsections": [
+        {
+          "name": "-c, --create",
+          "content": "Create a new archive",
+          "flag": "-c",
+          "long": "--create",
+          "arg": null
+        },
+        {
+          "name": "-f, --file=ARCHIVE",
+          "content": "Use archive file or device ARCHIVE",
+          "flag": "-f",
+          "long": "--file",
+          "arg": "ARCHIVE"
+        }
+      ]
+    },
+    "EXAMPLES": {
+      "content": "tar -cvf archive.tar file1 file2\ntar -xvf archive.tar",
+      "subsections": []
+    }
+  },
+  
+  "flags": [
+    {
+      "flag": "-c",
+      "long": "--create",
+      "arg": null,
+      "description": "Create a new archive"
+    },
+    {
+      "flag": "-f",
+      "long": "--file",
+      "arg": "ARCHIVE",
+      "description": "Use archive file or device ARCHIVE"
+    }
+  ],
+  
+  "examples": [
+    "tar -cvf archive.tar file1 file2",
+    "tar -xvf archive.tar"
+  ],
+  
+  "see_also": [
+    {
+      "name": "gzip",
+      "section": "1",
+      "url": "https://www.chedong.com/phpMan.php/man/gzip/1/json"
+    }
+  ]
+}
+```
+
+### Field Descriptions
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `mode` | string | `"man"`, `"perldoc"`, `"info"`, or `"search"` |
+| `parameter` | string | Command or module name |
+| `section` | string | Manual section number (e.g. `"1"`, `"3pm"`) |
+| `url` | string | Canonical JSON API URL for this page |
+| `generated` | string | ISO 8601 timestamp (UTC) |
+| `synopsis` | string | Command synopsis (extracted from SYNOPSIS section) |
+| `summary` | string | One-line description (extracted from NAME section) |
+| `sections` | object | Map of section names → section objects |
+| `sections[name].content` | string | Section body text (newline-separated) |
+| `sections[name].subsections` | array | Level-2 headings within section |
+| `subsections[].name` | string | Subsection heading (e.g. `"-c, --create"`) |
+| `subsections[].content` | string | Subsection body text |
+| `subsections[].flag` | string | Short flag (e.g. `"-c"`) — only for option subsections |
+| `subsections[].long` | string/null | Long flag (e.g. `"--create"`) — only for option subsections |
+| `subsections[].arg` | string/null | Argument placeholder (e.g. `"ARCHIVE"`) — only for option subsections |
+| `flags` | array | Extracted command-line flags with descriptions |
+| `flags[].flag` | string | Short flag (e.g. `"-c"`) |
+| `flags[].long` | string/null | Long flag (e.g. `"--create"`) |
+| `flags[].arg` | string/null | Argument placeholder |
+| `flags[].description` | string | Flag description (single line) |
+| `examples` | array | Command usage examples (from EXAMPLES section) |
+| `see_also` | array | Cross-references to related man pages |
+| `see_also[].name` | string | Related command name |
+| `see_also[].section` | string | Related command section |
+| `see_also[].url` | string | JSON API URL for related command |
+
+### Search Response
+
+```json
+{
+  "mode": "search",
+  "query": "cron",
+  "count": 5,
+  "results": [
+    {
+      "name": "cron",
+      "section": "8",
+      "description": "daemon to execute scheduled commands"
+    },
+    {
+      "name": "crontab",
+      "section": "1",
+      "description": "maintain crontab files for individual users"
+    }
+  ]
+}
+```
+
+### MCP Wrapper Format
+
+When using `/mcp` endpoint or MCP POST, the response is wrapped:
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "<full JSON response as string>"
+    }
+  ],
+  "structuredContent": {
+    "command": "tar",
+    "section": "1",
+    "mode": "man",
+    "summary": "tar - An archiving utility",
+    "synopsis": "tar [OPTION...] [FILE]...",
+    "flags": [...],
+    "examples": [...],
+    "see_also": [...],
+    "section_outline": [
+      {
+        "name": "NAME",
+        "lines": 1,
+        "subsections": []
+      },
+      {
+        "name": "OPTIONS",
+        "lines": 45,
+        "subsections": [
+          {"name": "-c, --create", "lines": 3, "flag": "-c", "long": "--create"},
+          {"name": "-f, --file=ARCHIVE", "lines": 5, "flag": "-f", "long": "--file", "arg": "ARCHIVE"}
+        ]
+      }
+    ]
+  }
+}
+```
+
+The `content[0].text` field contains the full JSON response as a string (for LLM consumption). The `structuredContent` field provides programmatic access to key metadata (for agent tooling).
+
+---
+
 ## Features
 
-- **Man Pages** — Browse any Unix/Linux manual page by section
+- **Man Pages** — Browse any Unix/Linux manual page with `-Tutf8` output (SGR bold/underline support)
 - **Perldoc** — Read Perl module documentation in-browser
 - **Info Pages** — View GNU info documentation
 - **Apropos Search** — Full-text search across man page summaries
 - **TOC Sidebar** — Two-level floating table of contents for navigation
-- **Markdown Output** — Append `/markdown` to any URL for machine-readable format
-- **JSON API** — Append `/json` for structured JSON output (also via `Accept: application/json`)
-- **MCP Format** — Append `/mcp` for MCP-compatible output (`{"content":[{"type":"text","text":"<json>"}]}`)
+- **Markdown Output** — Append `/markdown` for machine-readable format
+- **JSON API** — Append `/json` for structured JSON output with semantic fields
+- **MCP Format** — Append `/mcp` for MCP-compatible output
 - **MCP Server** — Model Context Protocol endpoint for AI agent integration
+- **TLDR Endpoint** — Append `/tldr` for cheatsheet-style summaries
 - **SEO Optimized** — Canonical URLs, meta description, robots directives
 - **Clean URLs** — PATH_INFO routing: `/man/ls/1`
 
@@ -80,71 +462,6 @@ phpMan supports three Unix documentation retrieval methods, each corresponding t
 | Typical Content | Command references, syscalls, config formats | GNU project complete manuals (tutorials, concepts) | Perl module API references |
 
 > ℹ️ **About info Subsections:** info mode currently cannot generate a second-level TOC because `info` plain text output only has section numbers (e.g., `3.1 Simple options`), lacking explicit heading markers like man's `.SS` or perldoc's `=head2`. Support can be added by extending the heading recognition logic.
-
-## JSON API & MCP Server
-
-phpMan supports structured output formats for machine consumption and AI agent integration.
-
-### JSON API
-
-Append `/json` to any detail page URL, or send `Accept: application/json` header:
-
-```bash
-# Man page with structured sections/subsections
-curl https://www.chedong.com/phpMan.php/man/ls/1/json
-
-# Apropos search results
-curl https://www.chedong.com/phpMan.php/search/git/json
-
-# Accept header (works on any URL)
-curl -H "Accept: application/json" https://www.chedong.com/phpMan.php/man/bash
-```
-
-Returns: `{ name, mode, parameter, section, synopsis, sections: [{name, level, content, subsections}], ... }`
-
-### MCP Format (REST GET)
-
-The `/mcp` format suffix wraps JSON output in MCP's `content` array — making REST GET and MCP POST responses identical:
-
-```bash
-# Same man page, same output format as MCP POST tools/call
-curl https://www.chedong.com/phpMan.php/man/ls/1/mcp
-# → {"content":[{"type":"text","text":"{\"name\":\"ls(1)\",\"mode\":\"man\",...}"}]}
-
-# Search with MCP format
-curl https://www.chedong.com/phpMan.php/search/cron/mcp
-
-# Perldoc with MCP format
-curl https://www.chedong.com/phpMan.php/perldoc/Digest::MD5/mcp
-```
-
-This means any MCP client can `GET /man/ls/1/mcp` and parse the result identically to `POST /mcp` `tools/call`. The `/json` format remains unchanged for plain JSON consumers.
-
-### MCP Server (Model Context Protocol)
-
-phpMan exposes an MCP endpoint for AI agents (Hermes Agent, Claude Desktop, etc.):
-
-```bash
-# Endpoint
-POST https://www.chedong.com/phpMan.php/mcp
-```
-
-**Available Tools:**
-| Tool | Description |
-|------|-------------|
-| `cli_help(command, section?)` | Structured man/perldoc page with sections and subsections |
-| `cli_search(query, section?)` | apropos keyword search across all man pages |
-
-**Hermes Agent Config:**
-```yaml
-# ~/.hermes/config.yaml
-mcp_servers:
-  phpman:
-    url: "https://www.chedong.com/phpMan.php/mcp"
-    timeout: 30
-```
-
-All HTML pages auto-advertise MCP via `Link: </phpMan.php/mcp>; rel="mcp-server"` header.
 
 ## Check Out Source Code
 

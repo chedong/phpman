@@ -369,6 +369,13 @@ if (requestValue($_GET, "format") === "json" || requestValue($_GET, "amp;format"
 if ( serverValue("ORIG_PATH_INFO") !== "" ){
     $_SERVER["PATH_INFO"] = serverValue("ORIG_PATH_INFO");
 }
+
+// Handle /.well-known/mcp.json for MCP server discovery (GET only)
+if (serverValue("PATH_INFO") !== "" && strpos(serverValue("PATH_INFO"), "/.well-known/mcp.json") === 0) {
+    handleWellKnown();
+    exit;
+}
+
 /**
  * parse parameters from $_SERVER["PATH_INFO"]: phpMan.php/MODE/COMMAND/SECTION/FORMAT
  * or parse parameters from HTTP/GET
@@ -383,7 +390,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
         }
     }
     
-    $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp", "tldr");
+    $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp", "tldr", ".well-known");
     $seg_count = count($segments);
     
     if ($seg_count >= 1) {
@@ -461,6 +468,12 @@ if ( requestValue($_GET, "format") != "" ) {
     $format = strtolower(trim(requestValue($_GET, "amp;format")));
 }
 $format = in_array($format, ["html", "markdown", "json", "mcp"]) ? $format : "html";
+
+// .well-known discovery endpoint (e.g. /.well-known/mcp.json)
+if ( $mode === ".well-known" ) {
+    handleWellKnown();
+    exit;
+}
 
 // set default mode
 $mode = normalizeMode($mode);
@@ -884,6 +897,91 @@ function showFooter (string $validator = "", string $markdownUrl = "", string $j
         "</body></html>";
 }
 
+/**
+ * Serve MCP server discovery JSON at /.well-known/mcp.json path.
+ * Returns JSON describing the MCP server location, available tools, and how to use them.
+ * Handles GET requests and returns application/json.
+ */
+function handleWellKnown (): void {
+    // Only allow GET requests for well-known discovery
+    if (serverValue("REQUEST_METHOD") !== "GET") {
+        http_response_code(405);
+        header("Content-Type: application/json; charset=UTF-8");
+        header("Allow: GET");
+        echo json_encode(["error" => "Method not allowed. Use GET."], JSON_UNESCAPED_SLASHES);
+        return;
+    }
+
+    header("Content-Type: application/json; charset=UTF-8");
+    header("Cache-Control: public, max-age=3600");
+    header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
+
+    $base = baseUrl();
+    $mcpEndpoint = $base . "/mcp";
+
+    $discovery = [
+        "name" => "phpMan",
+        "version" => "2.0",
+        "description" => "Unix/Linux man page, Perldoc, and Info page web interface with MCP support",
+        "url" => $base,
+        "mcp" => [
+            "endpoint" => $mcpEndpoint,
+            "protocolVersion" => "2024-11-05",
+            "transport" => "streamable-http",
+            "capabilities" => [
+                "tools" => ["listChanged" => false]
+            ]
+        ],
+        "tools" => [
+            [
+                "name" => "cli_help",
+                "description" => "Get structured man / perldoc / info page for a command or module. Returns sections with sub-sections, synopsis, and full content. Supports all Unix/Linux commands, Perl modules (e.g. File::Basename), and GNU info pages.",
+                "inputSchema" => [
+                    "type" => "object",
+                    "properties" => [
+                        "command" => [
+                            "type" => "string",
+                            "description" => "Command or module name (e.g. 'ls', 'git', 'File::Basename', 'bash')"
+                        ],
+                        "section" => [
+                            "type" => "string",
+                            "description" => "Optional manual section number (e.g. '1' for user commands, '3pm' for Perl modules). Omit for best-match behavior."
+                        ]
+                    ],
+                    "required" => ["command"]
+                ]
+            ],
+            [
+                "name" => "cli_search",
+                "description" => "Search Unix/Linux man pages by keyword using apropos. Returns matching command names with sections and detail links.",
+                "inputSchema" => [
+                    "type" => "object",
+                    "properties" => [
+                        "query" => [
+                            "type" => "string",
+                            "description" => "Search keyword (e.g. 'recursive delete', 'network', 'cron')"
+                        ],
+                        "section" => [
+                            "type" => "string",
+                            "description" => "Optional: restrict to a specific manual section (e.g. '1', '8')"
+                        ]
+                    ],
+                    "required" => ["query"]
+                ]
+            ]
+        ],
+        "endpoints" => [
+            "man" => $base . "/man/{command}/{section?}/json",
+            "perldoc" => $base . "/perldoc/{module}/json",
+            "info" => $base . "/info/{page}/json",
+            "search" => $base . "/search/{query}/{section?}/json",
+            "markdown" => $base . "/{mode}/{command}/{section?}/markdown"
+        ]
+    ];
+
+    echo json_encode($discovery, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+}
+
 //handle Mcp protocol request
 function handleMcp (): void {
     header("Content-Type: application/json; charset=UTF-8");
@@ -953,6 +1051,7 @@ function sendMcpResult ($id, array $result): void {
 }
 
 function handleMcpInitialize ($id): void {
+    $base = baseUrl();
     sendMcpResult($id, [
         "protocolVersion" => "2024-11-05",
         "serverInfo" => [
@@ -961,7 +1060,14 @@ function handleMcpInitialize ($id): void {
         ],
         "capabilities" => [
             "tools" => ["listChanged" => false]
-        ]
+        ],
+        "instructions" => "phpMan provides structured access to Unix/Linux man pages, Perl perldoc modules, and GNU info pages. "
+            . "Use cli_help to retrieve the full manual for a command or module (e.g. command='ls', command='git', or command='File::Basename' for Perl; "
+            . "optionally pass section='3pm' for Perl modules or another manual section). "
+            . "Use cli_search to find commands by keyword via apropos (e.g. query='recursive delete', query='network'). "
+            . "Responses include a section outline, synopsis, flag/option table, examples, and see-also references — prefer the section outline to locate "
+            . "specific content before reading full sections. "
+            . "Web endpoint: {$base}/mcp"
     ]);
 }
 

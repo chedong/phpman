@@ -8,7 +8,21 @@ REMOTE_BASE = /home/your-user/example.com
 DEMO_TEST = $(REMOTE_BASE)/test
 DEMO_MAIN = $(REMOTE_BASE)
 
-DEMO_URL = https://example.com/test/phpMan.php
-MAIN_URL = https://example.com/phpMan.php
+# PHP script filename and full URL
+FILE = phpMan.php
+DEMO_URL = https://example.com/test/$(FILE)
+MAIN_URL = https://example.com/$(FILE)
+
+# Site root URL (without script path) - used for .well-known discovery
+SITE_ROOT_URL = https://example.com
 
 FRS_TARGET = your-user@frs.sourceforge.net:/home/frs/project/phpunixman/
+
+# Deploy .well-known/mcp.json for MCP server discovery
+# This file should be placed at the web root (one level above phpMan.php)
+#
+# Deployment commands:
+#   make deploy-well-known    - Deploy only .well-known/mcp.json
+#   make deploy-production    - Deploy both phpMan.php and .well-known/mcp.json
+#
+# Verify: curl -s $(SITE_ROOT_URL)/.well-known/mcp.json
