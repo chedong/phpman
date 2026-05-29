@@ -8,6 +8,9 @@
 *.gz
 *.bak
 
+# deployed MCP discovery (generated from template per-site)
+.well-known/mcp.json
+
 # AtomCode local-scope configs (machine-specific)
 .atomcode/
 
