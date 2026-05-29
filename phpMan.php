@@ -81,6 +81,7 @@ $TOC_ITEMS = array();
 $VALIDATOR = "";
 
 //unmask comments to show xhtml 1.1 and css validator
+if (!defined('PHPMAN_TEST_MODE')) {
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $currentUrl = $scheme . '://' . getSafeHost() . serverValue("REQUEST_URI", scriptName());
 $VALIDATOR = "<a href=\"https://validator.w3.org/check?uri=" . urlencode($currentUrl) . "\">".
@@ -91,6 +92,7 @@ $VALIDATOR = "<a href=\"https://validator.w3.org/check?uri=" . urlencode($curren
 "<img style=\"border:0;width:88px;height:31px\"".
 " src=\"https://jigsaw.w3.org/css-validator/images/vcss-blue\"".
 " alt=\"Valid CSS!\" /></a>";
+} // end PHPMAN_TEST_MODE check for server-dependent vars
 
 ini_set("default_charset", "UTF-8");
 
@@ -331,6 +333,8 @@ function normalizeSection (mixed $section): string {
 // +--------------------------------------------------------------------------------+
 // | parameter checking and format page output                                      |
 // +--------------------------------------------------------------------------------+
+
+if (!defined('PHPMAN_TEST_MODE')) {
 
 //default options
 
@@ -749,6 +753,8 @@ elseif ($mode === "search" && $parameter !== "") {
 }
 
 showFooter($VALIDATOR, $markdownUrl, $jsonUrl, $showNav, $mode, $parameter, $section);
+
+} // end PHPMAN_TEST_MODE check for main execution
 
 
 // +--------------------------------------------------------------------------------+
