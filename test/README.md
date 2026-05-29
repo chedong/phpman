@@ -1,5 +1,19 @@
 # phpMan Test Architecture
 
+## Known Thresholds & Business Logic
+
+| Logic | Value | Code Location | Test Coverage |
+|-------|-------|---------------|---------------|
+| TOC sidebar line threshold | >80 raw lines | phpMan.php:660,667 | E2E U11 |
+| TOC requires sections | >1 L1 or L1+L2 children | phpMan.php:680-682 | E2E U11 |
+| Allowed modes | 7: man/perldoc/info/search/copyright/mcp/tldr | phpMan.php:303-311 | Unit normalizeMode |
+| Section validation | `/^[A-Za-z0-9_]+$/` | phpMan.php:326 | Unit normalizeSection |
+| Mobile breakpoint | 1024px | phpMan.php:844 | E2E U09, Regression #8 |
+| Color contrast (bold) | #8B5E00 on #EEEEEE (4.7:1) | phpMan.php:826 | Regression #9 |
+| Color contrast (underline) | #006600 on #EEEEEE (6.2:1) | phpMan.php:827 | Regression #9 |
+| Flag description max length | 80 chars for TOC | phpMan.php:169 | Unit detectHeadingType |
+| Heading text max length | 80 chars | phpMan.php:197 | Unit detectHeadingType |
+
 ## Test Levels
 
 | Level | Directory | Target | Run When |

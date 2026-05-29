@@ -2,6 +2,20 @@
 /**
  * E2E tests: Human user scenarios (browser)
  * Persona: 👤 User opens phpMan in browser, searches commands, reads pages
+ *
+ * Use cases:
+ *   U01: Man page detail (ls)
+ *   U02: Section routing (tar)
+ *   U03: Markdown format
+ *   U04: Perldoc
+ *   U05: Search (apropos)
+ *   U06: Section listing
+ *   U07: TLDR
+ *   U08: Invalid command graceful fallback
+ *   U09: Mobile responsive CSS
+ *   U10: Form accessibility labels
+ *   U11: TOC sidebar threshold (>80 lines → visible, ≤80 → hidden)
+ *   U12: Copyright page
  */
 require_once __DIR__ . '/../test_helper.php';
 
@@ -18,7 +32,6 @@ function fetch(string $url): array {
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-    curl_close($ch);
     $headers = substr($response, 0, $headerSize);
     $body = substr($response, $headerSize);
     return ["code" => $httpCode, "headers" => $headers, "body" => $body];
@@ -26,7 +39,7 @@ function fetch(string $url): array {
 
 echo "=== E2E: Human User Scenarios ===\n\n";
 
-// U01: Man page
+// U01: Man page detail
 echo "U01: GET /man/ls/1\n";
 $r = fetch("{$BASE}/man/ls/1");
 assert_equals(200, $r["code"], "HTTP 200");
@@ -75,12 +88,29 @@ assert_equals(200, $r["code"], "HTTP 200 (graceful fallback)");
 // U09: Mobile CSS
 echo "\nU09: Mobile responsive CSS\n";
 $r = fetch("{$BASE}/man/ls/1");
-assert_contains("max-width:1024px", $r["body"], "mobile breakpoint");
-assert_contains("!important", $r["body"], "TOC !important");
+assert_contains("max-width:1024px", $r["body"], "mobile breakpoint 1024px");
+assert_contains("!important", $r["body"], "TOC !important override");
 
 // U10: Form has labels
 echo "\nU10: Form accessibility labels\n";
 assert_contains("<label", $r["body"], "has <label> elements");
 assert_contains("for=\"cmd-input\"", $r["body"], "label for text input");
+
+// U11: TOC sidebar threshold [phpMan.php:660,667,680-698]
+// Short commands (≤80 lines raw) should NOT show TOC sidebar
+echo "\nU11: TOC sidebar 80-line threshold\n";
+$short = fetch("{$BASE}/man/true/1");
+assert_not_contains("className", $short["body"], "true (short) has no ext-nav JS");
+assert_not_contains("toc-sidebar\">\n<div", $short["body"], "true has no TOC sidebar div");
+
+// Long commands (>80 lines raw) SHOULD show TOC sidebar
+$long = fetch("{$BASE}/man/ls/1");
+assert_contains("className", $long["body"], "ls (long) has ext-nav JS");
+
+// U12: Copyright page
+echo "\nU12: GET /copyright\n";
+$r = fetch("{$BASE}/copyright");
+assert_equals(200, $r["code"], "HTTP 200");
+assert_contains("GNU", $r["body"], "mentions GNU license");
 
 exit(test_summary());
