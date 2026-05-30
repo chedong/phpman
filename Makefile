@@ -20,7 +20,7 @@ MAIN_URL ?= https://example.com/$(FILE)
 SITE_ROOT_URL ?= https://example.com
 FRS_TARGET ?= your-user@frs.sourceforge.net:/home/frs/project/phpunixman/
 
-.PHONY: test deploy release deploy-verify deploy-well-known package upload-release clean
+.PHONY: test deploy release deploy-verify package upload-release clean
 
 test:
 	php -l $(FILE)
@@ -32,26 +32,15 @@ deploy: test
 	@echo "$(DEMO_URL)"
 	@echo ""
 
-deploy-well-known:
-	sed 's|{{BASE_URL}}|$(MAIN_URL)|g' .well-known/mcp.json.template > .well-known/mcp.json
-	ssh $(REMOTE_USER)@$(REMOTE_HOST) "mkdir -p $(DEMO_MAIN)/.well-known"
-	scp .well-known/mcp.json $(REMOTE_USER)@$(REMOTE_HOST):$(DEMO_MAIN)/.well-known/
-	@echo ""
-	@echo "=== Deployed .well-known/mcp.json ==="
-	@echo "Base URL: $(MAIN_URL)"
-	@echo "Verify: curl -s $(SITE_ROOT_URL)/.well-known/mcp.json"
-	@echo ""
-
 release: test
 	scp $(FILE) $(REMOTE_USER)@$(REMOTE_HOST):$(DEMO_MAIN)/$(FILE)
 	@echo ""
 	@echo "=== Deployed to production ==="
 	@echo "$(MAIN_URL)"
 	@echo ""
-	@echo "Note: Run 'make deploy-production' to also deploy MCP discovery endpoint"
 
-# Deploy both phpMan.php and .well-known/mcp.json to production
-deploy-production: release deploy-well-known
+# Deploy phpMan.php to production (MCP discovery via Link header + handleWellKnown)
+deploy-production: release
 	@echo "=== Full production deployment complete ==="
 	@echo ""
 

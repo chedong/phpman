@@ -251,9 +251,14 @@ curl -X POST https://www.chedong.com/phpMan.php/mcp \
 4. **For related commands**: Use `see_also` for discovery
 5. **Section detection**: Omit section for best-match, or specify (e.g., "1" for user commands, "3pm" for Perl)
 
-## Discovery Endpoint
+## Discovery
 
-For MCP clients that support auto-discovery:
+MCP clients discover the endpoint via HTTP `Link` header:
+```
+Link: </phpMan.php/mcp>; rel="mcp-server"
+```
+
+Or via the dynamic discovery endpoint (same content, self-describing):
 ```bash
 curl https://www.chedong.com/phpMan.php/.well-known/mcp.json
 ```
