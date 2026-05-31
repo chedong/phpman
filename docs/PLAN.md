@@ -57,15 +57,18 @@ ri -l             → 列出所有 Ruby 文档条目（~1989 个）
 
 三种模式的输出宽度统一为 `$PHP_MAN_WIDTH`（默认 100），但控制机制不同：
 
-| 模式 | 机制 | 层级 | 命令 |
-|------|------|------|------|
-| man | `MANROFFOPT=-rLL=100n` → groff `-Tutf8` | roff 排版引擎 | `MANROFFOPT=-rLL=100n man -Tutf8` |
-| perldoc | `pod2text -w 100` | POD 文本格式化器 | `perldoc -l Module \| xargs cat \| pod2text -w 100` |
-| pydoc | 待定 | 待定 | — |
+| 模式 | 机制 | 层级 | Linux | macOS/BSD |
+|------|------|------|-------|-----------|
+| man | `MANROFFOPT=-rLL=100n` + `man -Tutf8` | groff 排版引擎 | ✅ SGR 编码 | ❌ 无 groff |
+| man fallback | `MANWIDTH=100 man` (bare) | BSD man 内置格式 | — | ✅ overstrike 编码 |
+| perldoc | `pod2text -w 100` | POD 文本格式化器 | ✅ | ✅ |
+| pydoc | 待定 | 待定 | — | — |
 
-- man page：groff 的 `-rLL` 寄存器直接控制行宽 —— Linux/macOS 通用
-- perldoc：`MANWIDTH` 环境变量对现代 perldoc 无效。改用 `pod2text -w N` 在 POD 格式化层控制宽度 —— Linux/macOS 通用（都内置 pod2text）
-- pydoc：不能用 groff（无 roff 格式内容），也不能用 pod2text（无 POD 格式）。需在 Python `pydoc.TextDoc` / `textwrap` 层控制
+- **man (GNU/Linux)**: groff 的 `-rLL` 寄存器控制宽度，`-Tutf8` 输出 SGR escape 序列
+- **man (BSD/macOS)**: `MANWIDTH=100` 环境变量控制宽度，默认输出 overstrike（`X^HX`）格式
+- **perldoc**: `MANWIDTH` 对现代 perldoc 无效。改用 `pod2text -w 100` 在 POD 格式化层控制宽度 —— 跨平台通用
+- **pydoc**: 不能用 groff（无 roff 格式内容），也不能用 pod2text（无 POD 格式）。需在 Python `pydoc.TextDoc` / `textwrap` 层控制
+- `formatManPerlDoc()` 同时处理 SGR escape 和 overstrike 两种编码，fallback 透明
 
 ---
 
