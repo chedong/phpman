@@ -2038,11 +2038,19 @@ function generateTldrWithLLM(array $data): string {
     $section = $data["section"] ?? "";
     if ($command === "") return '';
 
-    // Check file cache
+    // Check file cache — key includes model, prompt version, and context hash
+    // to invalidate when model/prompt/content changes
     if (!is_dir(TLDR_CACHE_DIR)) {
         @mkdir(TLDR_CACHE_DIR, 0755, true);
     }
-    $cacheKey = md5($command . ':' . $section);
+    $context = buildLlmContext($data);
+    $cacheKey = md5(json_encode([
+        "command" => $command,
+        "section" => $section,
+        "model" => LLM_MODEL,
+        "prompt_version" => "tldr-v1",
+        "context_hash" => md5($context),
+    ]));
     $cacheFile = TLDR_CACHE_DIR . '/' . $cacheKey . '.md';
     if (file_exists($cacheFile)) {
         $cached = file_get_contents($cacheFile);
@@ -2051,10 +2059,7 @@ function generateTldrWithLLM(array $data): string {
         }
     }
 
-    // Build a compact context for the LLM (not the full man page)
-    $context = buildLlmContext($data);
-
-    // Call LLM
+    // Call LLM (context already built above for cache key)
     $prompt = "You are generating a TLDR page for the Unix command '{$command}'. "
         . "Based on the man page data below, create 8-12 practical usage examples.\n\n"
         . "FORMAT each example exactly as:\n"
