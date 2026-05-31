@@ -23,6 +23,16 @@ FAIL=0
 WARN=0
 RESULTS_FILE=$(mktemp)
 
+# ── Dependency check ──────────────────────────────────────────
+MISSING=0
+for cmd in curl python3; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "ERROR: $cmd not found. Please install it first."
+        MISSING=1
+    fi
+done
+if [ "$MISSING" -eq 1 ]; then exit 1; fi
+
 pass() { echo "  ✅ $1"; echo "PASS" >> "$RESULTS_FILE"; }
 fail() { echo "  ❌ $1"; echo "FAIL" >> "$RESULTS_FILE"; }
 warn() { echo "  ⚠️  $1"; echo "WARN" >> "$RESULTS_FILE"; }
