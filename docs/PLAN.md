@@ -1,5 +1,18 @@
 # phpMan 项目计划
 
+## 版本号规范
+
+- 格式: `v{MAJOR}.{MINOR}` → git tag `v2.1`, `v3.0`
+- 补丁版本: `v2.1.1` — 仅安全修复/bugfix，不新增功能
+- MAJOR 递增: 架构变更或不向后兼容的 API 改动
+- MINOR 递增: 新增功能，保持向后兼容
+- Tag 规则: 每个 release 对应一个 annotated tag
+
+```bash
+git tag -a v2.1 -m "v2.1: cross-platform width control, TLDR endpoint"
+git push origin v2.1
+```
+
 ## 版本路线图
 
 ```
