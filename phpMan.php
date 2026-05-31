@@ -890,7 +890,8 @@ function showForm (string $parameter, array $check): void {
     $script_name = h(scriptName());
     $parameter_value = h($parameter);
 
-    echo "<form action=\"".$script_name."\" method=\"get\">\n".
+    echo "<form action=\"".$script_name."\" method=\"get\" role=\"search\">\n".
+        "<fieldset><legend>Look up a command</legend>\n".
         "<p><label for=\"cmd-input\">Command: </label>".
         "<input type=\"text\" id=\"cmd-input\" size=\"20\" name=\"parameter\" value=\"".$parameter_value."\"/>\n".
         "<input type=\"radio\" name=\"mode\" value=\"man\" id=\"mode-man\"".$check['man']."/>".
@@ -902,6 +903,7 @@ function showForm (string $parameter, array $check): void {
         "<input type=\"radio\" name=\"mode\" value=\"search\" id=\"mode-search\"".$check['search']."/>".
         "<label for=\"mode-search\"><a href=\"".$script_name."/man/apropos\">search(apropos)</a></label>\n".
         "&nbsp;<input type=\"submit\" value=\"Go\"/></p>".
+        "</fieldset>\n".
         "</form>\n";
 }
 
