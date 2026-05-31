@@ -3,6 +3,7 @@
 #   make test
 #   make deploy
 #   make release
+#   make rollback
 #   make deploy-verify
 #
 # Requires .deploy.mk — copy from .deploy.mk.example and configure
@@ -15,7 +16,7 @@ endif
 
 FILE ?= phpMan.php
 
-.PHONY: test deploy release deploy-verify package upload-release clean
+.PHONY: test deploy release rollback deploy-verify package upload-release clean
 
 test:
 	php -l $(FILE)
@@ -28,11 +29,20 @@ deploy: test
 	@echo ""
 
 release: test
+	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
+		"cp $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(FILE).bak 2>/dev/null || true"
 	scp -P $(DEMO_PORT) $(FILE) $(DEMO_USER)@$(DEMO_HOST):$(DEMO_PATH)/
 	@echo ""
 	@echo "=== Deployed to production ==="
 	@echo "$(DEMO_URL)"
+	@echo "Rollback: make rollback"
 	@echo ""
+
+rollback:
+	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
+		"cp $(DEMO_PATH)/$(FILE).bak $(DEMO_PATH)/$(FILE) 2>/dev/null || echo 'No backup found'"
+	@echo "=== Rolled back to previous version ==="
+	@echo "Verify: $(DEMO_URL)"
 
 deploy-verify:
 	@echo "=== Staging ==="
