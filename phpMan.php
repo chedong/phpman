@@ -1252,7 +1252,9 @@ function executeCliSearch (array $args): string {
 function getManPage (string $parameter, string $section = "", string $format = "html"): string {
     $lines = array();
     putenv("MANROFFOPT=-rLL=" . $GLOBALS['PHP_MAN_WIDTH'] . "n");
-    // Use -Tutf8 for SGR-encoded bold/underline output (parsed to <b>/<u> tags)
+    // Prefer -Tutf8 (GNU man) for SGR-encoded bold/underline output.
+    // Falls back to bare man on BSD/macOS, which uses overstrike (X^HX).
+    // Both formats are handled by formatManPerlDoc().
     $command = "man -Tutf8 ";
     if ($section !== "") {
         $command .= escapeshellarg($section)." ";
@@ -1260,8 +1262,21 @@ function getManPage (string $parameter, string $section = "", string $format = "
     $command .= escapeshellarg($parameter);
 
     exec($command, $lines, $return_code);
-    if ($return_code !== 0 || count($lines) === 0) {
-        return "";
+    // Detect BSD man (macOS): -Tutf8 is unsupported but returns exit 0 with
+    // "illegal option" on stderr and zero content on stdout.
+    $first_line = count($lines) > 0 ? trim($lines[0]) : "";
+    if ($return_code !== 0 || count($lines) === 0 || str_starts_with($first_line, "/usr/bin/man:")) {
+        // Fallback: bare man (overstrike output, works on all Unix)
+        $lines = array();
+        $fallback = "man ";
+        if ($section !== "") {
+            $fallback .= escapeshellarg($section)." ";
+        }
+        $fallback .= escapeshellarg($parameter);
+        exec($fallback, $lines, $return_code);
+        if ($return_code !== 0 || count($lines) === 0) {
+            return "";
+        }
     }
     if ($format === "markdown") {
         return formatManPerlDocToMarkdown($lines);
