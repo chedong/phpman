@@ -693,7 +693,6 @@ if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
             }
         }
         echo "</div>\n";
-        echo "<script type=\"text/javascript\">document.body.className+=' ext-nav';</script>\n";
     }
 
     echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
