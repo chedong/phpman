@@ -58,29 +58,18 @@
 ## Running Tests
 
 ```bash
-# Unit tests (no network, instant)
-php test/unit/test_detect.php
-php test/unit/test_normalize.php
-php test/unit/test_parseFlag.php
-php test/unit/test_overstrike.php
+# Unit + Integration (no network, instant)
+# 133 tests
+php test/run_all.php
 
-# Integration tests (no network, loads phpMan.php)
-php test/integration/test_formatter_html.php
-php test/integration/test_formatter_markdown.php
-php test/integration/test_formatter_json.php
-php test/integration/test_formatter_mcp.php
-php test/integration/test_formatter_tldr.php
-
-# E2E tests (requires network, hits production)
+# E2E tests (requires network)
+# ~72 tests across 4 files
 php test/e2e/test_user_scenarios.php
 php test/e2e/test_agent_scenarios.php
 php test/e2e/test_spider_scenarios.php
 php test/e2e/test_security.php
 
-# Run all (unit + integration, no network)
-php test/run_all.php
-
-# Full deploy validation (network required)
+# Full deploy validation (network required, 10 checks)
 bash phpman-regression.sh
 ```
 
