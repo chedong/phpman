@@ -1258,44 +1258,53 @@ function executeCliSearch (array $args): string {
 //get specified command's man page and convert to html format
 function getManPage (string $parameter, string $section = "", string $format = "html"): string {
     $lines = array();
-    putenv("MANROFFOPT=-rLL=" . $GLOBALS['PHP_MAN_WIDTH'] . "n");
-    // Prefer -Tutf8 (GNU man) for SGR-encoded bold/underline output.
-    // Falls back to bare man on BSD/macOS, which uses overstrike (X^HX).
-    // Both formats are handled by formatManPerlDoc().
-    $command = "man -Tutf8 ";
-    if ($section !== "") {
-        $command .= escapeshellarg($section)." ";
-    }
-    $command .= escapeshellarg($parameter);
-
-    exec($command, $lines, $return_code);
-    // Detect BSD man (macOS/FreeBSD/OpenBSD/NetBSD): -Tutf8 is unsupported but
-    // may return exit 0 with an error on stderr and zero/limited content on stdout.
-    $first_line = count($lines) > 0 ? trim($lines[0]) : "";
-    if ($return_code !== 0 || count($lines) === 0 ||
-        preg_match('/\b(illegal|unknown|invalid)\s+option\b/i', $first_line)) {
-        // Fallback: bare man with MANWIDTH (BSD/macOS).
-        // BSD man doesn't support -Tutf8 or groff's -rLL,
-        // but it respects MANWIDTH for line-width control.
-        $lines = array();
-        putenv("MANWIDTH=" . $GLOBALS['PHP_MAN_WIDTH']);
-        $fallback = "man ";
+    // Save and restore env vars to prevent leaks across requests (PHP-FPM/mod_php)
+    $oldManroffopt = getenv('MANROFFOPT');
+    $oldManwidth = getenv('MANWIDTH');
+    try {
+        putenv("MANROFFOPT=-rLL=" . $GLOBALS['PHP_MAN_WIDTH'] . "n");
+        // Prefer -Tutf8 (GNU man) for SGR-encoded bold/underline output.
+        // Falls back to bare man on BSD/macOS, which uses overstrike (X^HX).
+        // Both formats are handled by formatManPerlDoc().
+        $command = "man -Tutf8 ";
         if ($section !== "") {
-            $fallback .= escapeshellarg($section)." ";
+            $command .= escapeshellarg($section)." ";
         }
-        $fallback .= escapeshellarg($parameter);
-        exec($fallback, $lines, $return_code);
-        if ($return_code !== 0 || count($lines) === 0) {
-            return "";
+        $command .= escapeshellarg($parameter);
+
+        exec($command, $lines, $return_code);
+        // Detect BSD man (macOS/FreeBSD/OpenBSD/NetBSD): -Tutf8 is unsupported but
+        // may return exit 0 with an error on stderr and zero/limited content on stdout.
+        $first_line = count($lines) > 0 ? trim($lines[0]) : "";
+        if ($return_code !== 0 || count($lines) === 0 ||
+            preg_match('/\b(illegal|unknown|invalid)\s+option\b/i', $first_line)) {
+            // Fallback: bare man with MANWIDTH (BSD/macOS).
+            // BSD man doesn't support -Tutf8 or groff's -rLL,
+            // but it respects MANWIDTH for line-width control.
+            $lines = array();
+            putenv("MANWIDTH=" . $GLOBALS['PHP_MAN_WIDTH']);
+            $fallback = "man ";
+            if ($section !== "") {
+                $fallback .= escapeshellarg($section)." ";
+            }
+            $fallback .= escapeshellarg($parameter);
+            exec($fallback, $lines, $return_code);
+            if ($return_code !== 0 || count($lines) === 0) {
+                return "";
+            }
         }
+        if ($format === "markdown") {
+            return formatManPerlDocToMarkdown($lines);
+        }
+        if ($format === "json" || $format === "mcp") {
+            return formatForOutput(formatToJSON($lines, $parameter, $section, "man"), $format);
+        }
+        return formatManPerlDoc($lines, "man");
+    } finally {
+        // Restore env vars to prevent leaks to subsequent requests
+        putenv("MANROFFOPT" . ($oldManroffopt !== false ? "=" . $oldManroffopt : ""));
+        putenv("MANWIDTH" . ($oldManwidth !== false ? "=" . $oldManwidth : ""));
     }
-    if ($format === "markdown") {
-        return formatManPerlDocToMarkdown($lines);
-    }
-    if ($format === "json" || $format === "mcp") {
-        return formatForOutput(formatToJSON($lines, $parameter, $section, "man"), $format);
-    }
-    return formatManPerlDoc($lines, "man");
 }
 
 /**
