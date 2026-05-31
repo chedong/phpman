@@ -17,7 +17,6 @@ DEMO_MAIN ?= $(REMOTE_BASE)
 FILE ?= phpMan.php
 DEMO_URL ?= https://example.com/test/$(FILE)
 MAIN_URL ?= https://example.com/$(FILE)
-SITE_ROOT_URL ?= https://example.com
 FRS_TARGET ?= your-user@frs.sourceforge.net:/home/frs/project/phpunixman/
 
 .PHONY: test deploy release deploy-verify package upload-release clean
@@ -39,7 +38,7 @@ release: test
 	@echo "$(MAIN_URL)"
 	@echo ""
 
-# Deploy phpMan.php to production (MCP discovery via Link header + handleWellKnown)
+# Deploy phpMan.php to production
 deploy-production: release
 	@echo "=== Full production deployment complete ==="
 	@echo ""
