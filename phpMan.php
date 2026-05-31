@@ -1098,7 +1098,12 @@ function handleMcp (): void {
             handleMcpToolsList($id);
             break;
         case "tools/call":
-            handleMcpToolsCall($id, $request["params"] ?? []);
+            $params = $request["params"] ?? [];
+            if (!is_array($params)) {
+                sendMcpError($id, -32602, "Invalid params: params must be an object");
+                break;
+            }
+            handleMcpToolsCall($id, $params);
             break;
         default:
             sendMcpError($id, -32601, "Method not found: {$method}");
@@ -1193,6 +1198,10 @@ function handleMcpToolsCall ($id, array $params): void {
         sendMcpError($id, -32602, "Invalid params: missing tool name");
         return;
     }
+    if (!is_array($args)) {
+        sendMcpError($id, -32602, "Invalid params: arguments must be an object");
+        return;
+    }
 
     try {
         $content = executeMcpTool($name, $args);
@@ -1204,7 +1213,7 @@ function handleMcpToolsCall ($id, array $params): void {
             return;
         }
         sendMcpResult($id, $result);
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         sendMcpError($id, -32603, "Internal error: " . $e->getMessage());
     }
 }
