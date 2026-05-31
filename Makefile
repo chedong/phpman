@@ -7,16 +7,22 @@
 
 -include .deploy.mk
 
-REMOTE_USER ?= your-user
-REMOTE_HOST ?= example.com
-REMOTE_BASE ?= /path/to/webroot
+# --- Staging / test deployment ---
+# (can be a different server, user, path, port from demo)
+TEST_USER ?= your-user
+TEST_HOST ?= example.com
+TEST_PORT ?= 22
+TEST_PATH ?= /path/to/webroot/test
+TEST_URL  ?= https://example.com/test/phpMan.php
 
-DEMO_TEST ?= $(REMOTE_BASE)/test
-DEMO_MAIN ?= $(REMOTE_BASE)
+# --- Demo / production deployment ---
+DEMO_USER ?= your-user
+DEMO_HOST ?= example.com
+DEMO_PORT ?= 22
+DEMO_PATH ?= /path/to/webroot
+DEMO_URL  ?= https://example.com/phpMan.php
 
 FILE ?= phpMan.php
-DEMO_URL ?= https://example.com/test/$(FILE)
-MAIN_URL ?= https://example.com/$(FILE)
 FRS_TARGET ?= your-user@frs.sourceforge.net:/home/frs/project/phpunixman/
 
 .PHONY: test deploy release deploy-verify package upload-release clean
@@ -25,33 +31,25 @@ test:
 	php -l $(FILE)
 
 deploy: test
-	scp $(FILE) $(REMOTE_USER)@$(REMOTE_HOST):$(DEMO_TEST)/
+	scp -P $(TEST_PORT) $(FILE) $(TEST_USER)@$(TEST_HOST):$(TEST_PATH)/
 	@echo ""
 	@echo "=== Deployed to staging ==="
-	@echo "$(DEMO_URL)"
+	@echo "$(TEST_URL)"
 	@echo ""
 
 release: test
-	scp $(FILE) $(REMOTE_USER)@$(REMOTE_HOST):$(DEMO_MAIN)/$(FILE)
+	scp -P $(DEMO_PORT) $(FILE) $(DEMO_USER)@$(DEMO_HOST):$(DEMO_PATH)/
 	@echo ""
 	@echo "=== Deployed to production ==="
-	@echo "$(MAIN_URL)"
-	@echo ""
-
-# Deploy phpMan.php to production
-deploy-production: release
-	@echo "=== Full production deployment complete ==="
+	@echo "$(DEMO_URL)"
 	@echo ""
 
 deploy-verify:
-	@echo "=== Staging version ==="
-	ssh $(REMOTE_USER)@$(REMOTE_HOST) "stat -c 'mtime: %y  size: %s' $(DEMO_TEST)/$(FILE)" 2>/dev/null || true
+	@echo "=== Staging ==="
+	@curl -sk -o /dev/null -w "HTTP: %{http_code}  %{url_effective}\n" $(TEST_URL)
 	@echo ""
-	@echo "=== Production version ==="
-	ssh $(REMOTE_USER)@$(REMOTE_HOST) "stat -c 'mtime: %y  size: %s' $(DEMO_MAIN)/$(FILE)" 2>/dev/null || true
-	@echo ""
-	@curl -sk -o /dev/null -w "Production HTTP: %{http_code}\n" $(MAIN_URL)
-	@curl -sk -o /dev/null -w "Staging HTTP: %{http_code}\n" $(DEMO_URL)
+	@echo "=== Production ==="
+	@curl -sk -o /dev/null -w "HTTP: %{http_code}  %{url_effective}\n" $(DEMO_URL)
 
 package: test
 	gzip -k -f $(FILE)
