@@ -1404,10 +1404,14 @@ function getInfoPage (string $parameter, string $format = "html"): string {
 function getSearchPage (string $parameter, string $section = "", string $format = "html"): string {
     $script_name = ($format === "markdown" || $format === "json" || $format === "mcp") ? baseUrl() : scriptName();
     
-    // get last parameter of search string
-    // example: "1 GCC" ==> "GCC"
-    $parameter_parts = preg_split("/\s+/", trim((string)$parameter));
-    $parameter = $parameter_parts === false ? "" : (string)array_pop($parameter_parts);
+    // Parse optional section prefix from search string (e.g. "1 GCC" => section=1, query=GCC)
+    // Otherwise keep full query for multi-word searches (e.g. "recursive delete")
+    if ($section === "" && preg_match("/^([0-9n])\s+(.+)$/", trim((string)$parameter), $m)) {
+        $section = $m[1];
+        $parameter = $m[2];
+    } else {
+        $parameter = trim((string)$parameter);
+    }
 
     if ($parameter === "") {
         return "";
