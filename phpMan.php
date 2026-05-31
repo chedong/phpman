@@ -24,6 +24,10 @@ declare(strict_types=1);
 // Default terminal width for man/perldoc output (used as MANROFFOPT -rLL=NNNn)
 $PHP_MAN_WIDTH = 100;
 
+// Overstrike-safe ASCII character class: printable + placeholder bytes for &/</>
+// Used by formatManPerlDoc() regex patterns — defined globally for reuse
+define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
+
 // Mobile responsive CSS (extracted from showHeader for maintainability)
 $MOBILE_CSS = <<<'CSS'
 @media (max-width:1024px){
@@ -1742,8 +1746,8 @@ function getInfoIndex (string $format = "html"): string {
 function formatManPerlDoc (array $lines, string $mode = "man"): string {
     $script_name = h(scriptName());
     $mode = h($mode);
-    // Overstrike character class: ASCII printable + placeholder bytes for &/</>
-    $ac = '[ -~' . chr(5) . chr(6) . chr(7) . ']';
+    // Use global constant RE_ASCII_SAFE for overstrike pattern matching
+    $ac = RE_ASCII_SAFE;
     $patterns = array(
                     "/&/",  //html special char: '&' => chr(5) => '&gt;';
                     "/</",  //html special char: '>' => chr(6) => '&lt;';
