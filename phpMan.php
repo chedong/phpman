@@ -1317,8 +1317,21 @@ function addManPageToc (string $html): array {
 //get specified perl module's man page and convert to html format
 function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
-    // MANWIDTH controls perldoc output width (perldoc doesn't use groff)
-    putenv("MANWIDTH=" . $GLOBALS['PHP_MAN_WIDTH']);
+    $width = intval($GLOBALS['PHP_MAN_WIDTH']);
+    // pod2text -w controls output width at the POD formatter level (replaces MANWIDTH
+    // which perldoc doesn't actually respect). Cross-platform: works on both Linux and macOS.
+    // Pipeline: perldoc -l locates source → cat reads it → pod2text formats at fixed width.
+    // Falls back to raw perldoc if pod2text pipeline fails (e.g. source not found).
+    $cmd = "perldoc -l ".escapeshellarg($parameter)." 2>/dev/null | xargs cat 2>/dev/null | pod2text -w {$width} 2>/dev/null";
+    exec($cmd, $lines, $return_code);
+    if ($return_code === 0 && count($lines) > 0) {
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
+        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "perldoc"), $format);
+        return formatManPerlDoc($lines, "perldoc");
+    }
+
+    // Fallback: raw perldoc (for entries pod2text can't process, e.g. virtual docs)
+    $lines = array();
     exec("perldoc ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
         if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
