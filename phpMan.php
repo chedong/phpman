@@ -24,6 +24,24 @@ declare(strict_types=1);
 // Default terminal width for man/perldoc output (used as MANROFFOPT -rLL=NNNn)
 $PHP_MAN_WIDTH = 100;
 
+// Mobile responsive CSS (extracted from showHeader for maintainability)
+$MOBILE_CSS = <<<'CSS'
+@media (max-width:1024px){
+    body.ext-nav #toc-sidebar{display:none !important;}
+    #toc-sidebar{display:none !important;}
+    #content-wrap{margin-right:0;max-width:100%;padding:0 8px;}
+    body{font-size:12px;}
+    #man-content pre{white-space:pre-wrap;word-wrap:break-word;font-size:12px;line-height:1.4;}
+    input[type='text']{width:100%;font-size:16px;padding:8px;box-sizing:border-box;}
+    input[type='submit']{font-size:16px;padding:10px 20px;min-height:44px;}
+    input[type='radio']{transform:scale(1.3);margin-right:4px;}
+    form p{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+    form a{padding:6px 8px;display:inline-block;}
+    a{padding:4px 2px;}
+    p{font-size:12px;line-height:1.6;}
+}
+CSS;
+
 // --- LLM-powered TLDR generation ---
 // Set these via environment variables or hardcode here.
 // Supports any OpenAI-compatible API (OpenAI, Anthropic via proxy, Qwen, etc.)
@@ -838,20 +856,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
             "border-radius:6px;font-size:13px;font-family:monospace;}\n".
         "#back-to-top a:hover {background:#555;}\n".
         "body.ext-nav #toc-sidebar, body.ext-nav #back-to-top {display:block;}\n".
-        "@media (max-width:1024px){\n".
-            "body.ext-nav #toc-sidebar{display:none !important;}\n".
-            "#toc-sidebar{display:none !important;}\n".
-            "#content-wrap{margin-right:0;max-width:100%;padding:0 8px;}\n".
-            "body{font-size:12px;}\n".
-            "#man-content pre{white-space:pre-wrap;word-wrap:break-word;font-size:12px;line-height:1.4;}\n".
-            "input[type='text']{width:100%;font-size:16px;padding:8px;box-sizing:border-box;}\n".
-            "input[type='submit']{font-size:16px;padding:10px 20px;min-height:44px;}\n".
-            "input[type='radio']{transform:scale(1.3);margin-right:4px;}\n".
-            "form p{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}\n".
-            "form a{padding:6px 8px;display:inline-block;}\n".
-            "a{padding:4px 2px;}\n".
-            "p{font-size:12px;line-height:1.6;}\n".
-        "}\n".
+        $MOBILE_CSS . "\n".
         "</style>\n";
 
     // JSON-LD structured data for SEO/GEO
