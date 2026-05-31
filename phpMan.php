@@ -1266,8 +1266,11 @@ function getManPage (string $parameter, string $section = "", string $format = "
     // "illegal option" on stderr and zero content on stdout.
     $first_line = count($lines) > 0 ? trim($lines[0]) : "";
     if ($return_code !== 0 || count($lines) === 0 || str_starts_with($first_line, "/usr/bin/man:")) {
-        // Fallback: bare man (overstrike output, works on all Unix)
+        // Fallback: bare man with MANWIDTH (BSD/macOS).
+        // BSD man doesn't support -Tutf8 or groff's -rLL,
+        // but it respects MANWIDTH for line-width control.
         $lines = array();
+        putenv("MANWIDTH=" . $GLOBALS['PHP_MAN_WIDTH']);
         $fallback = "man ";
         if ($section !== "") {
             $fallback .= escapeshellarg($section)." ";
