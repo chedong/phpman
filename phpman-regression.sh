@@ -139,7 +139,7 @@ fi
 
 # ── 8. Mobile Responsive CSS ─────────────────────────────────
 echo "8. Mobile Responsive CSS"
-curl -sf "${MAN_URL}" 2>/dev/null | python3 -c "
+RESULT=$(curl -sf "${MAN_URL}" 2>/dev/null | python3 -c "
 import sys, re
 html = sys.stdin.read()
 m = re.search(r'@media\s*\(max-width:(\d+)px\)', html)
@@ -152,19 +152,17 @@ if m:
         print(f'WARN breakpoint:{bp}px no !important')
 else:
     print('FAIL no media query')
-" 2>/dev/null | while read -r line; do
-    if [[ "$line" == OK* ]]; then
-        pass "${line#OK}"
-    elif [[ "$line" == WARN* ]]; then
-        warn "${line#WARN}"
-    else
-        fail "$line"
-    fi
-done
+" 2>/dev/null || echo "FETCH_ERROR")
+
+case "$RESULT" in
+    OK*)   pass "${RESULT#OK }" ;;
+    WARN*) warn "${RESULT#WARN }" ;;
+    *)     fail "$RESULT" ;;
+esac
 
 # ── 9. Accessibility: Form Labels ────────────────────────────
 echo "9. Accessibility: Form Labels"
-curl -sf "${MAN_URL}" 2>/dev/null | python3 -c "
+RESULT=$(curl -sf "${MAN_URL}" 2>/dev/null | python3 -c "
 import sys, re
 html = sys.stdin.read()
 inputs = re.findall(r'<input[^>]*>', html)
@@ -179,13 +177,12 @@ for inp in inputs:
     if m and m.group(1) in labels:
         labeled += 1
 print(f'OK {labeled}/{needs_label} labeled')
-" 2>/dev/null | while read -r line; do
-    if [[ "$line" == OK* ]]; then
-        pass "${line#OK}"
-    else
-        fail "$line"
-    fi
-done
+" 2>/dev/null || echo "FETCH_ERROR")
+
+case "$RESULT" in
+    OK*)   pass "${RESULT#OK }" ;;
+    *)     fail "$RESULT" ;;
+esac
 
 # ── 10. XHTML lang attribute ─────────────────────────────────
 echo "10. XHTML lang Attribute"
