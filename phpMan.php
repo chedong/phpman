@@ -1269,10 +1269,11 @@ function getManPage (string $parameter, string $section = "", string $format = "
     $command .= escapeshellarg($parameter);
 
     exec($command, $lines, $return_code);
-    // Detect BSD man (macOS): -Tutf8 is unsupported but returns exit 0 with
-    // "illegal option" on stderr and zero content on stdout.
+    // Detect BSD man (macOS/FreeBSD/OpenBSD/NetBSD): -Tutf8 is unsupported but
+    // may return exit 0 with an error on stderr and zero/limited content on stdout.
     $first_line = count($lines) > 0 ? trim($lines[0]) : "";
-    if ($return_code !== 0 || count($lines) === 0 || str_starts_with($first_line, "/usr/bin/man:")) {
+    if ($return_code !== 0 || count($lines) === 0 ||
+        preg_match('/\b(illegal|unknown|invalid)\s+option\b/i', $first_line)) {
         // Fallback: bare man with MANWIDTH (BSD/macOS).
         // BSD man doesn't support -Tutf8 or groff's -rLL,
         // but it respects MANWIDTH for line-width control.
