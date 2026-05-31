@@ -15,7 +15,7 @@
  */
 require_once __DIR__ . '/../test_helper.php';
 
-$BASE = "https://www.chedong.com/phpMan.php";
+$BASE = getenv("PHPMAN_TEST_URL") ?: "https://www.chedong.com/phpMan.php";
 
 function fetch(string $url): array {
     $ch = curl_init($url);
@@ -52,7 +52,7 @@ assert_contains("/man", $r["body"], "links to man pages");
 echo "\nS02: Canonical URL on detail page\n";
 $r = fetch("{$BASE}/man/ls/1");
 assert_contains("<link rel=\"canonical\"", $r["body"], "has canonical link");
-assert_contains("chedong.com/phpMan.php/man/ls/1", $r["body"], "canonical URL correct");
+assert_contains("phpMan.php/man/ls/1", $r["body"], "canonical URL correct");
 
 // S03: robots meta
 echo "\nS03: robots meta (index for real content)\n";

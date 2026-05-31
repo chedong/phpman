@@ -8,7 +8,7 @@
  */
 require_once __DIR__ . '/../test_helper.php';
 
-$BASE = "https://www.chedong.com/phpMan.php";
+$BASE = getenv("PHPMAN_TEST_URL") ?: "https://www.chedong.com/phpMan.php";
 
 function fetch(string $url): array {
     $ch = curl_init($url);
