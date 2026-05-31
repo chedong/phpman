@@ -53,6 +53,20 @@ ri -l             → 列出所有 Ruby 文档条目（~1989 个）
 - `pydoc3` 输出是纯文本，处理更简单
 - URL 路由继承现有模式：`/pydoc/module.name` `/ri/Class/method`
 
+### 1.5 宽度控制（跨平台）
+
+三种模式的输出宽度统一为 `$PHP_MAN_WIDTH`（默认 100），但控制机制不同：
+
+| 模式 | 机制 | 层级 | 命令 |
+|------|------|------|------|
+| man | `MANROFFOPT=-rLL=100n` → groff `-Tutf8` | roff 排版引擎 | `MANROFFOPT=-rLL=100n man -Tutf8` |
+| perldoc | `pod2text -w 100` | POD 文本格式化器 | `perldoc -l Module \| xargs cat \| pod2text -w 100` |
+| pydoc | 待定 | 待定 | — |
+
+- man page：groff 的 `-rLL` 寄存器直接控制行宽 —— Linux/macOS 通用
+- perldoc：`MANWIDTH` 环境变量对现代 perldoc 无效。改用 `pod2text -w N` 在 POD 格式化层控制宽度 —— Linux/macOS 通用（都内置 pod2text）
+- pydoc：不能用 groff（无 roff 格式内容），也不能用 pod2text（无 POD 格式）。需在 Python `pydoc.TextDoc` / `textwrap` 层控制
+
 ---
 
 ## 二、LLM 智能格式化
