@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>phpMan: Unix Man Page / Perldoc / Info Page Web Interface</title>
-<meta name="description" content="phpMan — a PHP-based web interface for Unix man pages, Perl perldoc, and GNU info pages. Read manual pages in your browser with syntax highlighting and table of contents. Now with MCP server support."/>
-<meta name="keywords" content="man page, unix manual, linux command, perldoc, info page, phpMan, web interface, MCP, JSON API"/>
+<title>phpMan: Unix Man Page / Perldoc / Info Page Web Interface &amp; MCP Server</title>
+<meta name="description" content="phpMan v2.1 — a PHP-based web interface for Unix man pages, Perl perldoc, and GNU info pages. MCP server for AI agents, JSON API, Markdown output, TLDR summaries. Cross-platform: Linux &amp; macOS/BSD."/>
+<meta name="keywords" content="man page, unix manual, linux command, perldoc, info page, phpMan, web interface, MCP, JSON API, TLDR"/>
 <link rel="canonical" href="https://phpunixman.sourceforge.io/"/>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -84,8 +84,8 @@ footer a { color: #666; }
 <body>
 
 <header>
-  <h1><code>phpMan</code></h1>
-  <p>Unix Man Page / Perldoc / Info Page Web Interface</p>
+  <h1><code>phpMan</code> <small style="opacity:0.7; font-size:1rem;">v2.1</small></h1>
+  <p>Unix Man Page / Perldoc / Info Page Web Interface &amp; MCP Server</p>
 </header>
 
 <div class="container">
@@ -104,7 +104,7 @@ footer a { color: #666; }
   <p>
     Originally created in 2002 by <a href="https://www.chedong.com/">Che Dong</a>,
     phpMan has been continuously maintained and is compatible with PHP 8.x
-    on GNU/Linux and FreeBSD.
+    on GNU/Linux and macOS/BSD.
   </p>
   <div class="tech-badges">
     <span class="badge">PHP 8.x</span>
@@ -116,6 +116,8 @@ footer a { color: #666; }
     <span class="badge-new">MCP Server</span>
     <span class="badge-new">MCP Format</span>
     <span class="badge">TOC sidebar</span>
+    <span class="badge-new">TLDR endpoint</span>
+    <span class="badge-new">Cross-platform</span>
   </div>
 </div>
 
@@ -123,8 +125,8 @@ footer a { color: #666; }
 <div class="card">
   <h2>Screenshot</h2>
   <div class="screenshot">
-    <a href="https://a.fsdn.com/con/app/proj/phpunixman/screenshots/QQ20121226-2.png/max/max/1">
-      <img src="https://a.fsdn.com/con/app/proj/phpunixman/screenshots/QQ20121226-2.png/600/450/1"
+    <a href="https://a.fsdn.com/con/app/proj/phpunixman/screenshots/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A120260525-161915%402x-8c442be2.png/max/max/1">
+      <img src="https://a.fsdn.com/con/app/proj/phpunixman/screenshots/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A120260525-161915%402x-8c442be2.png/600/450/1"
            alt="phpMan: perldoc page rendered with syntax highlighting and TOC sidebar"
            loading="lazy"/>
     </a>
@@ -140,11 +142,21 @@ footer a { color: #666; }
     with full PHP support. Try it now:
   </p>
   <div class="demo-box">
-    <a class="btn" href="https://www.chedong.com/phpMan.php">🔍 Open Live Demo</a>
+    <a class="btn" href="https://www.chedong.com/phpMan.php">Open Live Demo</a>
     <p style="margin-top:1rem; font-size:0.9rem; color:#666;">
       Direct link: <code>https://www.chedong.com/phpMan.php</code>
     </p>
   </div>
+</div>
+
+<!-- What's New in v2.1 -->
+<div class="card">
+  <h2>What's New in v2.1</h2>
+  <ul>
+    <li><strong>Cross-platform width control</strong> — <code>pod2text -w N</code> for perldoc, <code>MANWIDTH</code> fallback for macOS/BSD man</li>
+    <li><strong>TLDR endpoint</strong> — Append <code>/tldr/{command}</code> for cheatsheet-style summaries</li>
+    <li><strong>Project roadmap</strong> — <a href="https://sourceforge.net/p/phpunixman/code.git/tree/docs/PLAN.md">docs/PLAN.md</a>: pydoc/ri support, LLM-powered translation, cheat sheets, search sidebar</li>
+  </ul>
 </div>
 
 <!-- Features -->
@@ -157,7 +169,9 @@ footer a { color: #666; }
     <div class="feature-item"><strong>Apropos Search</strong> — Full-text search across man page summaries</div>
     <div class="feature-item"><strong>TOC Sidebar</strong> — Two-level floating table of contents</div>
     <div class="feature-item"><strong>JSON / Markdown / MCP</strong> — Append <code>/json</code>, <code>/markdown</code>, or <code>/mcp</code> for structured output</div>
-    <div class="feature-item" style="border-left-color:#e94560;"><strong>🆕 MCP Server</strong> — Model Context Protocol endpoint for AI agent integration</div>
+    <div class="feature-item" style="border-left-color:#e94560;"><strong>MCP Server</strong> — Model Context Protocol endpoint for AI agent integration</div>
+    <div class="feature-item"><strong>TLDR Summaries</strong> — Auto-generated cheatsheets with practical examples</div>
+    <div class="feature-item"><strong>Cross-platform</strong> — Linux (groff) and macOS/BSD (native man) width control</div>
     <div class="feature-item"><strong>SEO Optimized</strong> — Canonical URLs, meta description, robots directives</div>
     <div class="feature-item"><strong>Clean URLs</strong> — PATH_INFO routing: <code>/man/ls/1</code></div>
   </div>
@@ -165,12 +179,11 @@ footer a { color: #666; }
 
 <!-- MCP Server -->
 <div class="card">
-  <h2>🆕 MCP Server — AI Agent Integration</h2>
+  <h2>MCP Server — AI Agent Integration</h2>
   <p>
-    phpMan now exposes a <strong>Model Context Protocol (MCP)</strong> endpoint,
+    phpMan exposes a <strong>Model Context Protocol (MCP)</strong> endpoint,
     enabling AI agents to query Unix manual pages programmatically.
-    Compatible with <a href="https://github.com/nousresearch/hermes-agent">Hermes Agent</a>,
-    Claude Desktop, and any MCP-compatible client.
+    Compatible with Claude Desktop, Hermes Agent, and any MCP-compatible client.
   </p>
   <p><strong>Endpoint:</strong></p>
   <pre style="background:#1a1a2e; color:#e0e0e0; padding:1rem; border-radius:6px; overflow-x:auto; margin:0.8rem 0;"><code>POST https://www.chedong.com/phpMan.php/mcp</code></pre>
@@ -179,8 +192,8 @@ footer a { color: #666; }
     <li><code>cli_help(command, section?)</code> — Structured man/perldoc page with sections, subsections, and synopsis</li>
     <li><code>cli_search(query, section?)</code> — apropos keyword search across all man pages</li>
   </ul>
-  <p><strong>Hermes Agent Config:</strong></p>
-  <pre style="background:#1a1a2e; color:#e0e0e0; padding:1rem; border-radius:6px; overflow-x:auto; margin:0.8rem 0;"><code># ~/.hermes/config.yaml
+  <p><strong>MCP Client Config:</strong></p>
+  <pre style="background:#1a1a2e; color:#e0e0e0; padding:1rem; border-radius:6px; overflow-x:auto; margin:0.8rem 0;"><code># Claude Desktop / Hermes Agent / etc.
 mcp_servers:
   phpman:
     url: "https://www.chedong.com/phpMan.php/mcp"
@@ -192,7 +205,7 @@ mcp_servers:
 
 <!-- MCP Format (REST) -->
 <div class="card">
-  <h2>🆕 MCP Format — REST GET</h2>
+  <h2>MCP Format — REST GET</h2>
   <p>
     Append <code>/mcp</code> to any detail page URL for MCP-compatible output.
     The <code>/mcp</code> REST endpoint and <code>POST /mcp</code> <code>tools/call</code>
@@ -265,7 +278,7 @@ cp phpman/phpMan.php /var/www/html/
 
 <footer>
   <p>
-    phpMan &copy; 2002–2026 <a href="https://www.chedong.com/">Che Dong</a>
+    phpMan v2.1 &copy; 2002–2026 <a href="https://www.chedong.com/">Che Dong</a>
     &nbsp;|&nbsp;
     Licensed under <a href="https://www.gnu.org/licenses/gpl-2.0.html">GPLv2</a>
     &nbsp;|&nbsp;

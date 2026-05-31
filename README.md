@@ -402,6 +402,26 @@ Returns Markdown with:
 
 ---
 
+## What's New in v2.1
+
+### Cross-Platform Width Control
+
+- **perldoc**: Uses `pod2text -w N` pipeline for consistent output width on Linux and macOS
+- **man (macOS/BSD)**: `MANWIDTH` fallback when `groff -Tutf8` is unavailable
+- **man (Linux)**: `MANROFFOPT=-rLL=Nn` + `groff -Tutf8` for precise width
+
+### Roadmap
+
+See [docs/PLAN.md](docs/PLAN.md) for the full project plan:
+
+- **pydoc / ri** — Python and Ruby documentation support (pydoc3 / ri)
+- **LLM-powered** — AI translation (identifier-preserving), cheat sheets, example generation
+- **Search** — Alphabetic sidebar navigation for large index pages (>150 entries)
+- **MCP** — Streaming output, error standardization, dynamic tool discovery
+- **I18N** — LANG-based locale support + AI fallback translation
+
+---
+
 ## Features
 
 - **Man Pages** — Browse any Unix/Linux manual page with `-Tutf8` output (SGR bold/underline support)
@@ -514,15 +534,17 @@ cp .deploy.mk.example .deploy.mk
 Then edit `.deploy.mk` for your server:
 
 ```make
-REMOTE_USER = your-user
-REMOTE_HOST = example.com
-REMOTE_BASE = /home/your-user/example.com
+TEST_USER = your-user
+TEST_HOST = example.com
+TEST_PORT = 22
+TEST_PATH = /home/your-user/example.com/test
+TEST_URL  = https://example.com/test/phpMan.php
 
-DEMO_TEST = $(REMOTE_BASE)/test
-DEMO_MAIN = $(REMOTE_BASE)
-
-DEMO_URL = https://example.com/test/phpMan.php
-MAIN_URL = https://example.com/phpMan.php
+DEMO_USER = your-user
+DEMO_HOST = example.com
+DEMO_PORT = 22
+DEMO_PATH = /home/your-user/example.com
+DEMO_URL  = https://example.com/phpMan.php
 ```
 
 ### 1. Test Locally

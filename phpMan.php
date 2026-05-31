@@ -992,7 +992,7 @@ function handleWellKnown (): void {
 
     $discovery = [
         "name" => "phpMan",
-        "version" => "2.0",
+        "version" => "2.1",
         "description" => "Unix/Linux man page, Perldoc, and Info page web interface with MCP support",
         "url" => $base,
         "mcp" => [
