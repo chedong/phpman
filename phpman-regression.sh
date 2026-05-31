@@ -1,10 +1,20 @@
 #!/bin/bash
 # phpman-regression.sh — External validation & regression tests for phpMan
 # Run after every deploy: bash phpman-regression.sh
+# Pre-deploy test: bash phpman-regression.sh --local http://localhost:8080/phpMan.php
 # Requires: curl, python3, grep
 set -euo pipefail
 
-BASE="https://www.chedong.com/phpMan.php"
+BASE="${PHP_MAN_URL:-https://www.chedong.com/phpMan.php}"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --local) BASE="$2"; shift 2 ;;
+        --help)  echo "Usage: $0 [--local URL]"; echo "  --local URL  Test against a local server instead of production"; exit 0 ;;
+        *)       echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
 MAN_URL="${BASE}/man/gzip/1"
 JSON_URL="${BASE}/man/gzip/1/json"
 MCP_URL="${BASE}/mcp"
