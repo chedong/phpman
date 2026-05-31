@@ -1354,10 +1354,11 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
     $width = intval($GLOBALS['PHP_MAN_WIDTH']);
     // pod2text -w controls output width at the POD formatter level (replaces MANWIDTH
-    // which perldoc doesn't actually respect). Cross-platform: works on both Linux and macOS.
-    // Pipeline: perldoc -l locates source → cat reads it → pod2text formats at fixed width.
+    // pod2text -w controls output width at the POD formatter level (replaces MANWIDTH
+    // Pipeline: perldoc -l locates source → head -1 picks first file → pod2text formats.
+    // head -1 prevents multi-file concatenation when perldoc -l returns multiple paths.
     // Falls back to raw perldoc if pod2text pipeline fails (e.g. source not found).
-    $cmd = "perldoc -l ".escapeshellarg($parameter)." 2>/dev/null | xargs cat 2>/dev/null | pod2text -w {$width} 2>/dev/null";
+    $cmd = "perldoc -l ".escapeshellarg($parameter)." 2>/dev/null | head -1 | xargs pod2text -w {$width} 2>/dev/null";
     exec($cmd, $lines, $return_code);
     if ($return_code === 0 && count($lines) > 0) {
         if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
