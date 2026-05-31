@@ -28,11 +28,11 @@ curl "https://www.chedong.com/phpMan.php/man/ls/1/mcp"
 
 ## Project Home
 
-- **SourceForge:** <https://sourceforge.net/projects/phpunixman>
+- **GitHub:** <https://github.com/chedong/phpman>
 - **Live Demo:** <https://www.chedong.com/phpMan.php>
-- **Static Site:** <https://phpunixman.sourceforge.io/>
+- **Archived at SourceForge:** <https://sourceforge.net/projects/phpunixman>
 
-> ⚠️ **SourceForge no longer supports PHP (since 2025-05-20).** The dynamic demo runs on `chedong.com`.
+> **Development has moved to GitHub.** The SourceForge repository is frozen at v2.1 and will not receive further updates.
 
 ## Screenshot
 
@@ -493,13 +493,13 @@ phpMan supports three Unix documentation retrieval methods, each corresponding t
 ### HTTPS (read-only)
 
 ```bash
-git clone https://git.code.sf.net/p/phpunixman/code phpman
+git clone https://github.com/chedong/phpman.git
 ```
 
 ### SSH (developers)
 
 ```bash
-git clone ssh://chedong@git.code.sf.net/p/phpunixman/code.git phpman
+git clone git@github.com:chedong/phpman.git
 ```
 
 ## Quick Start
@@ -508,7 +508,7 @@ Deploy phpMan on any PHP 8.x server with a single file:
 
 ```bash
 # Clone the repository
-git clone https://git.code.sf.net/p/phpunixman/code phpman
+git clone https://github.com/chedong/phpman.git
 
 # Copy to your web server's document root
 cp phpman/phpMan.php /var/www/html/
@@ -553,7 +553,7 @@ DEMO_URL  = https://example.com/phpMan.php
 make test
 ```
 
-### 2. Commit and Push to SourceForge Git
+### 2. Commit and Push to GitHub
 
 ```bash
 git add phpMan.php README.md Makefile .deploy.mk.example .gitignore
@@ -567,7 +567,7 @@ git push origin master
 make deploy
 ```
 
-This deploys only `phpMan.php` to the staging path configured by `DEMO_TEST`.
+This deploys only `phpMan.php` to the staging path configured by `TEST_PATH`.
 
 ### 4. Update Production Demo
 
@@ -578,24 +578,21 @@ make deploy-verify
 
 > ⚠️ Do **not** overwrite `index.php` — only update `phpMan.php`.
 
-### 5. Update Static Site (SourceForge project web)
+### 5. Create GitHub Release
+
+Tag and create a release on GitHub:
 
 ```bash
-scp index.html chedong@web.sourceforge.net:/home/project-web/phpunixman/htdocs/index.html
+git tag v2.2
+git push origin v2.2
+gh release create v2.2 --title "v2.2" --notes "Release notes here"
 ```
 
-The `index.html` is a static project introduction page with screenshot and a demo link pointing to `chedong.com/phpMan.php`.
-
-### 6. Upload Release
-
-Upload the compressed archive and README to SourceForge File Release System:
+Or upload a release artifact via the Makefile:
 
 ```bash
 make upload-release
 ```
-
-README.md will be rendered below the file listing on the Files page.
-Or upload manually via: <https://sourceforge.net/projects/phpunixman/files/>
 
 ## License
 

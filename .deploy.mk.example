@@ -21,6 +21,3 @@ DEMO_PORT = 22
 DEMO_PATH = /home/your-user/example.com
 # Web URL — include port if not 80/443 (e.g. https://example.com:8443/phpMan.php)
 DEMO_URL  = https://example.com/phpMan.php
-
-# --- SourceForge FRS (release tarball upload) ---
-FRS_TARGET = your-user@frs.sourceforge.net:/home/frs/project/phpunixman/

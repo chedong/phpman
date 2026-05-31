@@ -23,7 +23,7 @@ DEMO_PATH ?= /path/to/webroot
 DEMO_URL  ?= https://example.com/phpMan.php
 
 FILE ?= phpMan.php
-FRS_TARGET ?= your-user@frs.sourceforge.net:/home/frs/project/phpunixman/
+FRS_TARGET ?= 
 
 .PHONY: test deploy release deploy-verify package upload-release clean
 
@@ -55,7 +55,7 @@ package: test
 	gzip -k -f $(FILE)
 
 upload-release: package
-	scp $(FILE).gz README.md $(FRS_TARGET)
+	gh release create $(TAG) $(FILE).gz README.md --title "$(TAG)" --notes "See README.md for details"
 
 clean:
 	rm -f $(FILE).bak $(FILE).gz
