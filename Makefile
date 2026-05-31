@@ -25,6 +25,10 @@ DEMO_URL  ?= https://example.com/phpMan.php
 FILE ?= phpMan.php
 FRS_TARGET ?= 
 
+ifeq ($(DEMO_HOST),example.com)
+$(error Please copy .deploy.mk.example to .deploy.mk and configure your server settings)
+endif
+
 .PHONY: test deploy release deploy-verify package upload-release clean
 
 test:
