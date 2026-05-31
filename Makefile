@@ -4,30 +4,16 @@
 #   make deploy
 #   make release
 #   make deploy-verify
+#
+# Requires .deploy.mk — copy from .deploy.mk.example and configure
 
 -include .deploy.mk
 
-# --- Staging / test deployment ---
-# (can be a different server, user, path, port from demo)
-TEST_USER ?= your-user
-TEST_HOST ?= example.com
-TEST_PORT ?= 22
-TEST_PATH ?= /path/to/webroot/test
-TEST_URL  ?= https://example.com/test/phpMan.php
-
-# --- Demo / production deployment ---
-DEMO_USER ?= your-user
-DEMO_HOST ?= example.com
-DEMO_PORT ?= 22
-DEMO_PATH ?= /path/to/webroot
-DEMO_URL  ?= https://example.com/phpMan.php
+ifeq ($(wildcard .deploy.mk),)
+$(error Missing .deploy.mk — copy from .deploy.mk.example and configure your server settings)
+endif
 
 FILE ?= phpMan.php
-FRS_TARGET ?= 
-
-ifeq ($(DEMO_HOST),example.com)
-$(error Please copy .deploy.mk.example to .deploy.mk and configure your server settings)
-endif
 
 .PHONY: test deploy release deploy-verify package upload-release clean
 
