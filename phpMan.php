@@ -53,9 +53,9 @@ CSS;
 define('LLM_API_URL',  getenv('LLM_API_URL')  ?: '');   // e.g. https://api.openai.com/v1/chat/completions
 define('LLM_API_KEY',  getenv('LLM_API_KEY')  ?: '');
 define('LLM_MODEL',    getenv('LLM_MODEL')    ?: 'gpt-4o-mini');
-define('LLM_TIMEOUT',  15);  // seconds
-define('TLDR_CACHE_DIR', __DIR__ . '/tldr_cache');
-define('TLDR_CACHE_TTL', 7 * 86400);  // #38: 7-day TTL for TLDR cache
+define('LLM_TIMEOUT',  (int)(getenv('LLM_TIMEOUT') ?: 15));  // seconds
+define('TLDR_CACHE_DIR', getenv('TLDR_CACHE_DIR') ?: __DIR__ . '/tldr_cache');
+define('TLDR_CACHE_TTL', (int)(getenv('TLDR_CACHE_TTL') ?: 7 * 86400));  // 7-day TTL for TLDR cache
 
 // #49: Named constants for magic numbers
 define('TOC_LINE_THRESHOLD', 80);      // min lines to show TOC sidebar

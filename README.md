@@ -78,6 +78,57 @@ curl "https://www.chedong.com/phpMan.php/man/ls/1/json"
 curl "https://www.chedong.com/phpMan.php/man/ls/1/mcp"
 ```
 
+---
+
+## Configuration
+
+phpMan uses environment variables for configuration. All variables have sensible defaults and are optional except `LLM_API_KEY` (required for TLDR generation).
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_API_URL` | _(empty)_ | OpenAI-compatible API endpoint (e.g. `https://api.openai.com/v1/chat/completions`) |
+| `LLM_API_KEY` | _(empty)_ | API key for LLM provider. **Required** for `/tldr` endpoint |
+| `LLM_MODEL` | `gpt-4o-mini` | Model name (e.g. `gpt-4o`, `claude-3-haiku`, `qwen-max`) |
+| `LLM_TIMEOUT` | `15` | LLM request timeout in seconds |
+| `TLDR_CACHE_DIR` | `./tldr_cache` | Cache directory for generated TLDR pages |
+| `TLDR_CACHE_TTL` | `604800` | Cache TTL in seconds (default: 7 days) |
+
+### Server Configuration
+
+**Apache (.htaccess or VirtualHost):**
+```apache
+SetEnv LLM_API_KEY sk-ant-xxxxx
+SetEnv LLM_MODEL gpt-4o-mini
+SetEnv TLDR_CACHE_DIR /var/cache/phpman
+```
+
+**Nginx (server block):**
+```nginx
+location ~ \.php$ {
+    fastcgi_param LLM_API_KEY sk-ant-xxxxx;
+    fastcgi_param LLM_MODEL gpt-4o-mini;
+    fastcgi_param TLDR_CACHE_DIR /var/cache/phpman;
+    # ... other fastcgi params
+}
+```
+
+**PHP-FPM (pool configuration):**
+```ini
+env[LLM_API_KEY] = sk-ant-xxxxx
+env[LLM_MODEL] = gpt-4o-mini
+env[TLDR_CACHE_DIR] = /var/cache/phpman
+```
+
+### Security Notes
+
+- **Never commit API keys to git.** Use environment variables or `.env` files (excluded from version control).
+- **Cache directory permissions:** Ensure `TLDR_CACHE_DIR` is writable by the web server user (e.g. `www-data`).
+- **Cache security:** The `tldr_cache/.htaccess` file denies direct web access to cached files.
+
+---
+
 ## Project Home
 
 - **GitHub:** <https://github.com/chedong/phpman>
