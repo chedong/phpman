@@ -823,7 +823,7 @@ if ($format === "json" || $format === "mcp") {
 // | show output                                                                    |
 // +--------------------------------------------------------------------------------+
 // Line threshold: ~80 lines ≈ two screens at 14px monospace
-$lineThreshold = 80;
+$lineThreshold = TOC_LINE_THRESHOLD;
 // Determine if this page has real content (for robots meta)
 $hasRealContent = (trim($content) !== "" && !$isSearchFallback);
 
@@ -2359,7 +2359,7 @@ function formatTldr (?array $data): string {
     $out .= "> More information: {$canonical}.\n\n";
 
     $exampleCount = 0;
-    $maxExamples = 8;
+    $maxExamples = TLDR_MAX_EXAMPLES;
 
     // If man page has explicit EXAMPLES section, use those first
     if (!empty($examples)) {
