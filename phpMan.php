@@ -25,8 +25,11 @@ declare(strict_types=1);
 define('MAN_PAGE_WIDTH', 100);         // #49: character width for man/perldoc output
 $PHP_MAN_WIDTH = MAN_PAGE_WIDTH;
 
-// Overstrike-safe ASCII character class: printable + placeholder bytes for &/</>
-// Used by formatManPerlDoc() regex patterns — defined globally for reuse
+// ASCII character classes for overstrike pattern matching:
+// RE_ASCII — plain printable ASCII, for raw terminal output (cleanTerminalOutput)
+// RE_ASCII_SAFE — printable + placeholder bytes \x05\x06\x07 for &<>, used after
+//                 formatManPerlDoc() replaces &<> with placeholders
+define('RE_ASCII', '[ -~]');
 define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 
 // Mobile responsive CSS (extracted from showHeader for maintainability)
@@ -125,7 +128,8 @@ function getMcpToolDefinitions (): array {
  *   \x01..\x02 = bold boundary,  \x03..\x04 = underline boundary
  */
 function cleanTerminalOutput (array $lines): array {
-    $ac = RE_ASCII_SAFE;
+    // Uses RE_ASCII (plain printable) — raw terminal output has no \x05\x06\x07 placeholders
+    $ac = RE_ASCII;
     $patterns = array(
         "/{$ac}".chr(8)."{$ac}".chr(8)."({$ac})".chr(8)."{$ac}/",  // ?^H?^H?^H? => bold
         "/_".chr(8)."({$ac})/",  // _^H? => underline
