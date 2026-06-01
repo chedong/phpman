@@ -835,41 +835,8 @@ if ($hasRealContent) {
 
 showHeader($PHP_MAN_TITLE, $parameter, $section, $mode, $hasRealContent, $showNav);
 echo "<h1><a href=\"".h(scriptName())."\">".h($PHP_MAN_TITLE)."</a></h1>\n";
-showForm($parameter, $check);
-echo "<hr /><div id=\"content-wrap\">\n";
 
-// For man page content, add section anchors and floating TOC
-if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
-    list($anchoredContent, $tocItems) = addManPageToc($content);
-
-    // Show TOC when we have multiple L1 sections, or a single L1 section with L2 subsections
-    // AND content exceeds line threshold ($showNav from line 665-668)
-    $hasTocContent = $showNav && (count($tocItems) > 1
-        || (count($tocItems) === 1 && !empty($tocItems[0]['children'])));
-    if ($hasTocContent) {
-        echo "<div id=\"toc-sidebar\">\n";
-        $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
-        echo "<div class=\"toc-title\">" . h($pageLabel) . "</div>\n";
-        foreach ($tocItems as $l1) {
-            echo "<a href=\"#" . h($l1['id']) . "\">" . h($l1['label']) . "</a>\n";
-            if (!empty($l1['children'])) {
-                echo "<div class=\"toc-subs\">\n";
-                foreach ($l1['children'] as $l2) {
-                    echo "<a href=\"#" . h($l2['id']) . "\" class=\"toc-sub\">" . h($l2['label']) . "</a>\n";
-                }
-                echo "</div>\n";
-            }
-        }
-        echo "</div>\n";
-    }
-
-    echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
-} else {
-    echo "<pre>" . $content . "</pre>\n";
-}
-echo "</div><hr />";
-
-// Build markdown/JSON URLs for footer links
+// Build markdown/JSON URLs for format links (showForm below)
 $markdownUrl = "";
 $jsonUrl = "";
 $script_name_path = baseUrl();
@@ -918,7 +885,41 @@ elseif ($mode === "search" && $parameter !== "") {
     $jsonUrl = $script_name_path . "?parameter=" . urlencode($parameter) . "&mode=search&format=json";
 }
 
-showFooter($VALIDATOR, $markdownUrl, $jsonUrl, $showNav, $mode, $parameter, $section);
+showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
+echo "<hr /><div id=\"content-wrap\">\n";
+
+// For man page content, add section anchors and floating TOC
+if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
+    list($anchoredContent, $tocItems) = addManPageToc($content);
+
+    // Show TOC when we have multiple L1 sections, or a single L1 section with L2 subsections
+    // AND content exceeds line threshold ($showNav from line 665-668)
+    $hasTocContent = $showNav && (count($tocItems) > 1
+        || (count($tocItems) === 1 && !empty($tocItems[0]['children'])));
+    if ($hasTocContent) {
+        echo "<div id=\"toc-sidebar\">\n";
+        $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
+        echo "<div class=\"toc-title\">" . h($pageLabel) . "</div>\n";
+        foreach ($tocItems as $l1) {
+            echo "<a href=\"#" . h($l1['id']) . "\">" . h($l1['label']) . "</a>\n";
+            if (!empty($l1['children'])) {
+                echo "<div class=\"toc-subs\">\n";
+                foreach ($l1['children'] as $l2) {
+                    echo "<a href=\"#" . h($l2['id']) . "\" class=\"toc-sub\">" . h($l2['label']) . "</a>\n";
+                }
+                echo "</div>\n";
+            }
+        }
+        echo "</div>\n";
+    }
+
+    echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
+} else {
+    echo "<pre>" . $content . "</pre>\n";
+}
+echo "</div><hr />";
+
+showFooter($VALIDATOR, $showNav);
 
 
 // +--------------------------------------------------------------------------------+
@@ -1047,7 +1048,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
 }
 
 //promter and recursive call
-function showForm (string $parameter, array $check): void {
+function showForm (string $parameter, array $check, string $markdownUrl = "", string $jsonUrl = "", string $mode = "", string $section = ""): void {
     $script_name = h(scriptName());
     $parameter_value = h($parameter);
 
@@ -1066,10 +1067,63 @@ function showForm (string $parameter, array $check): void {
         "&nbsp;<input type=\"submit\" value=\"Go\"/></p>".
         "</fieldset>\n".
         "</form>\n";
+
+    // Format links / external references row (below form, above content)
+    $extra_links = [];
+    $isDetailPage = in_array($mode, ["man", "perldoc", "info"]) && $parameter !== "";
+    $hasContent = ($markdownUrl !== "" || $jsonUrl !== "");
+    $cmd_label = h($parameter ?: "command");
+    $script_path = scriptName();
+
+    if ($hasContent) {
+        // --- Links for existing detail pages ---
+        if ($markdownUrl !== "") {
+            $title = "Get " . $cmd_label . " command description in Markdown format";
+            $extra_links[] = '<a href="' . h($markdownUrl) . '" title="' . $title . '">Markdown Format</a>';
+        }
+        if ($jsonUrl !== "") {
+            $title = "Access " . $cmd_label . " command structured JSON API";
+            $extra_links[] = '<a href="' . h($jsonUrl) . '" title="' . $title . '">JSON API</a>';
+        }
+
+        // MCP link (only when content exists)
+        $detail_rel = "";
+        if ($isDetailPage) {
+            $detail_rel = $script_path . "/" . urlencode($mode) . "/" . urlencode($parameter);
+            if ($mode === "man" && $section !== "") {
+                $detail_rel .= "/" . urlencode($section);
+            }
+        }
+        $mcp_href = $isDetailPage ? ($detail_rel . "/mcp") : ($script_path . "/mcp");
+        $mcp_title = "Configure " . $cmd_label . " command as an AI Agent MCP Tool";
+        $extra_links[] = '<a href="' . h($mcp_href) . '" title="' . $mcp_title . '">MCP Server Tool</a>';
+
+        // Detail pages get TLDR, Cheat (man section 1 only)
+        if ($isDetailPage && $mode === "man" && $section === "1") {
+            $extra_links[] = '<a href="https://tldr.inbrowser.app/pages/common/' . urlencode($parameter) . '" target="_blank" rel="noopener" title="View short TLDR cheat sheet for ' . $cmd_label . '">TLDR Docs</a>';
+            $extra_links[] = '<a href="https://cheat.sh/' . urlencode($parameter) . '" target="_blank" rel="noopener" title="Quick Linux cheat sheet for ' . $cmd_label . '">Cheat Sheet</a>';
+        }
+
+        echo "<p>" . implode(" |\n", $extra_links) . "</p>\n";
+    } elseif ($isDetailPage) {
+        // --- Not found: show external search/reference links ---
+        echo "<p>";
+        echo "Not found locally for <b>" . $cmd_label . "</b>. Try " .
+            '<a href="https://www.google.com/search?q=' . urlencode($parameter) . '" target="_blank" rel="noopener">Google search</a>';
+
+        if ($mode === "man") {
+            echo ' | ' .
+                '<a href="https://linuxcommandlibrary.com/man/' . urlencode($parameter) . '" target="_blank" rel="noopener">Linux Command Library</a>';
+        } elseif ($mode === "perldoc") {
+            echo ' | ' .
+                '<a href="https://metacpan.org/pod/' . urlencode($parameter) . '" target="_blank" rel="noopener">MetaCPAN</a>';
+        }
+        echo "</p>\n";
+    }
 }
 
 //show footer
-function showFooter (string $validator = "", string $markdownUrl = "", string $jsonUrl = "", bool $showNav = false, string $mode = "", string $parameter = "", string $section = ""): void {
+function showFooter (string $validator = "", bool $showNav = false): void {
     $script_name = h(scriptName());
     $home_url = h("http://" . getSafeHost());
     $remote_addr = h(serverValue("REMOTE_ADDR", "unknown"));
@@ -1081,45 +1135,10 @@ function showFooter (string $validator = "", string $markdownUrl = "", string $j
         $server_info = " On " . h(serverValue("SERVER_SOFTWARE", "unknown server"));
     }
 
-    // Build footer links row: MarkDown | JSON | MCP [+ TLDR | Cheat | Translate for detail pages]
-    $extra_links = [];
-    if ($markdownUrl !== "") {
-        $extra_links[] = '<a href="' . h($markdownUrl) . '">MarkDown</a>';
-    }
-    if ($jsonUrl !== "") {
-        $extra_links[] = '<a href="' . h($jsonUrl) . '">JSON</a>';
-    }
-    // Build detail page path (relative, e.g. /phpMan.php/man/tar/1)
-    $script_path = scriptName();
-    $detail_rel = "";
-    $isDetailPage = in_array($mode, ["man", "perldoc", "info"]) && $parameter !== "";
-    if ($isDetailPage) {
-        $detail_rel = $script_path . "/" . urlencode($mode) . "/" . urlencode($parameter);
-        if ($mode === "man" && $section !== "") {
-            $detail_rel .= "/" . urlencode($section);
-        }
-    }
-
-    // MCP link: points to current detail page's /mcp endpoint, or generic /mcp for index
-    $mcp_href = $isDetailPage ? ($detail_rel . "/mcp") : ($script_path . "/mcp");
-    $extra_links[] = '<a href="' . h($mcp_href) . '">MCP</a>';
-
-    // Detail pages get extra links: TLDR, Cheat (section 1 only)
-    if ($isDetailPage) {
-        // External cheat sheets — only for man section 1 (basic user commands)
-        if ($mode === "man" && $section === "1") {
-            $extra_links[] = '<a href="https://tldr.inbrowser.app/pages/common/' . urlencode($parameter) . '" target="_blank" rel="noopener">TLDR</a>';
-            $extra_links[] = '<a href="https://cheat.sh/' . urlencode($parameter) . '" target="_blank" rel="noopener">Cheat</a>';
-        }
-    }
-
-    $links_html = count($extra_links) > 0 ? " - " . implode(" | ", $extra_links) : "";
-
     echo "<p>Generated by <a href=\"https://github.com/chedong/phpman\">phpMan</a>" .
         " Author: <a href=\"http://www.chedong.com/\">Che Dong</a>" .
         $server_info .
         " Under <a href=\"".$script_name."/copyright\">GNU General Public License</a>" .
-        $links_html .
         "<br />" .
         "<a href=\"" . $home_url . "\">" . date("Y-m-d H:i") . " @". $remote_addr .
         " CrawledBy " . $user_agent . "</a>" .
