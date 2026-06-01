@@ -210,7 +210,7 @@ function extractFlagsFromSections (array $data): array {
 // +--------------------------------------------------------------------------------+
 
 //app title
-$PHP_MAN_TITLE = "phpMan: Unix Man page/ Perldoc / Info page Web Interface";
+$PHP_MAN_TITLE = "phpman - Linux Command Reference, JSON API & MCP Server for AI Agents";
 
 // TOC entries for floating right sidebar (populated when rendering man page content)
 $TOC_ITEMS = array();
@@ -249,25 +249,32 @@ function h (mixed $value): string {
  *
  * @return array{level:int, text:string}|null
  */
-function detectHeadingType (string $line): ?array {
-    // Normalize: convert HTML bold/underline to markdown-style markers
-    $line = preg_replace(['#</?b>#', '#</?u>#'], ['**', '_'], $line);
+/**
+ * Level 2 heading detection strategies.
+ * Each returns ['level' => 2, 'text' => ...] or null.
+ * Kept as private helpers called only by detectHeadingType().
+ */
 
-    // Level 2: man .SS italic — "_Subheading_" (entire line wrapped in single _)
-    // Must check BEFORE L1 because strip '_' from "_Filename_" → "Filename"
-    // would otherwise hit the L1 mixed-case regex.
+/**
+ * L2: man .SS italic — "_Subheading_" (entire line wrapped in single _)
+ * Must check BEFORE L1 because strip '_' from "_Filename_" → "Filename"
+ * would otherwise hit the L1 mixed-case regex.
+ */
+function detectL2ItalicSubheading (string $line): ?array {
     if (preg_match('/^_([A-Z][a-z][\w\s:\x27;\-,]+)_$/', $line, $m)) {
         return ['level' => 2, 'text' => trim($m[1])];
     }
+    return null;
+}
 
-    // Level 2: man .SS bold — "   **Packages**" or "   **Symbol** **Tables**"
-    // Also matches at column 0 for e.g. "**Line** **Buffering**"
+/**
+ * L2: man .SS bold — "   **Packages**" or "   **Symbol** **Tables**"
+ * Also matches at column 0 for e.g. "**Line** **Buffering**"
+ * Multi-segment ALL CAPS bold (e.g. "**SEE** **ALSO**") is NOT L2 — falls through to L1.
+ */
+function detectL2BoldSubheading (string $line): ?array {
     if (preg_match('/^ {0,8}((?:\*\*[^*]+\*\*\s*)+)$/', $line, $m)) {
         $text = str_replace('**', '', trim($m[1]));
-        // Multi-segment bold that forms an ALL CAPS section name
-        // (e.g. "**SEE** **ALSO**", "**ENVIRON** **MENT**") should be L1.
-        // Overstrike cleaning can split a bold section heading into
-        // multiple bold segments separated by spaces.
         $isAllCapsSection = preg_match('/^[A-Z][A-Z0-9_ \/\-]{2,50}$/', $text);
         // Single bold word at column 0 (e.g. "**Overview**") is L1, not L2
         if (!$isAllCapsSection
@@ -277,12 +284,17 @@ function detectHeadingType (string $line): ?array {
             }
         }
     }
+    return null;
+}
 
-    // Level 2: man .TP tagged paragraphs with bold variable names + optional type
+/**
+ * L2: man .TP tagged paragraphs / option definition lines / perldoc =head2 /
+ *     indented plain-text option flags.
+ * Handles: bold+type pairs, bold option flags, perldoc head2, plain-text options.
+ */
+function detectL2IndentedPatterns (string $line): ?array {
+    // man .TP tagged paragraphs with bold variable names + optional type
     // e.g. "       **CREATE**_**HOME** (boolean)"
-    //      "       **GID**_ **MAX** (number)"
-    //      "       **GID**_**MAX** (number), **GID**_**MIN** (number)"
-    // Capture full line including multiple bold+type groups after comma.
     if (preg_match('/^ {7,}((?:(?:\*\*[^*]+\*\*[_\s]*)+\([a-z]+\)[,\s]*)+)/', $line, $m)) {
         $text = str_replace('**', '', trim($m[1]));
         if (strlen($text) >= 3) {
@@ -290,9 +302,7 @@ function detectHeadingType (string $line): ?array {
         }
     }
 
-    // Level 2: man option definition lines — e.g. "       **-R**, **--root** _CHROOT_DIR_"
-    // Matches indented (3-7 spaces) bold option flags starting with -
-    // Collects all bold segments starting with - as heading text
+    // man option definition lines — e.g. "       **-R**, **--root** _CHROOT_DIR_"
     if (preg_match('/^ {3,7}(\*\*-\w[\w\-]*)/', $line, $m)) {
         if (preg_match_all('/\*\*([^*]+)\*\*/', $line, $allMatches)) {
             $flags = [];
@@ -310,22 +320,17 @@ function detectHeadingType (string $line): ?array {
         }
     }
 
-    // Level 2: perldoc =head2 — "  Methods you should implement" (2-space indent)
-    // Handles both plain text and _wrapped_ variants by stripping _ markers
+    // perldoc =head2 — "  Methods you should implement" (2-space indent)
     $testLine = preg_replace('/_/', '', $line);
     if (preg_match('/^ {2}([A-Z][a-z][\w\s:\x27;\-,\\.]+)$/', $testLine, $m)) {
         $text = trim($m[1]);
-        // Reject sentence-like text (demonstrative + verb)
         if (!preg_match('/^(This|That|These|Those|It|There)\s+(is|was|has|have|had|are|were)\b/i', $text)) {
             return ['level' => 2, 'text' => $text];
         }
     }
 
-    // Level 2: indented plain-text option flag (no bold markers)
-    // e.g. curl man page: "       -K, --config <file>"
-    //      "       --abstract-unix-socket <path>"
-    // Matches 4-8 space indent, starts with -/--, option name + optional arg,
-    // line under 80 chars to avoid false positives on body text.
+    // indented plain-text option flag (no bold markers)
+    // e.g. "       -K, --config <file>"
     if (preg_match('/^ {4,8}(-{1,2}[a-zA-Z][\w\-]*'
             . '(?:\s*[<\[]\s*[^>\]]*[>\]])?'
             . '(?:\s*,\s*-{1,2}[a-zA-Z][\w\-]*(?:\s*[<\[]\s*[^>\]]*[>\]])?)*)'
@@ -335,38 +340,36 @@ function detectHeadingType (string $line): ?array {
         return ['level' => 2, 'text' => trim($m[1])];
     }
 
-    // ---- Level 1 checks (LAST, after all L2 patterns) ----
+    return null;
+}
 
-    // L1 ALL CAPS — strip formatting markers first
+/**
+ * L1: ALL CAPS section headings / perldoc =head1 / man .SH mixed case at column 0.
+ * Includes header/footer rejection logic to avoid false positives.
+ */
+function detectL1Heading (string $line): ?array {
+    // ALL CAPS — strip formatting markers first
     $plain = trim(str_replace(['**', '_'], '', $line));
     if (isset($line[0]) && $line[0] !== ' ' && $line[0] !== "\t"
         && preg_match('/^[A-Z][A-Z0-9_ \/\-]{2,50}$/', $plain)) {
         return ['level' => 1, 'text' => $plain];
     }
 
-    // L1 perldoc =head1 / man .SH at column 0, mixed case
-    // Single-word titles (e.g. "Syntax", "Description") match at 3+ chars.
-    // Two-word titles require 10+ chars.
-    // 3+ word titles require 16+ chars to avoid body text false positives.
-    // Also catches bold headings at column 0 like "**Overview**" after stripping markers.
+    // perldoc =head1 / man .SH at column 0, mixed case
+    // Single-word titles: 3+ chars. Two-word: 10+. Three+: 16+.
     $noBold = str_replace(['**', '_'], '', $line);
     if (isset($line[0]) && $line[0] !== ' ' && $line[0] !== "\t"
         && preg_match('/^[A-Z][a-z][\w\s:\x27;\-,\.\(\)\/]+$/D', $noBold)
         && !preg_match('/[.!?:]\s*$/', $noBold)) {
 
-        // Reject man page header/footer lines.
-        // Pattern: "RUBY(1)  ...  RUBY(1)" or "Ruby Sass 3.7.4  ...  RUBY(1)"
-        // These have <name>(<section>) appearing at both ends of the line.
+        // Reject man page header/footer lines
         $noBoldTrimmed = trim($noBold);
         if (preg_match('/^(\w[\w\s.-]*?)\s{3,}.*\s{3,}\1\(\w+\)\s*$/', $noBoldTrimmed)) {
             return null;
         }
-        // Also catch the header form: "COMMAND(sec)  ...  COMMAND(sec)"
         if (preg_match('/^(\w+)\(\w+\)\s{3,}.*\s{3,}\1\(\w+\)\s*$/', $noBoldTrimmed)) {
             return null;
         }
-        // Footer form: "Project Ver  ...  Date  ...  COMMAND(sec)"
-        // Three+ spaced groups ending in <name>(<section>)
         if (preg_match('/\w+\(\w+\)\s*$/', $noBoldTrimmed)
             && substr_count($noBoldTrimmed, '  ') >= 4) {
             return null;
@@ -383,6 +386,31 @@ function detectHeadingType (string $line): ?array {
             return ['level' => 1, 'text' => $text];
         }
     }
+    return null;
+}
+
+/**
+ * Detect heading level and text from a man/perldoc line.
+ * Returns ['level' => 1|2, 'text' => string] or null.
+ * Dispatches to strategy functions in priority order: L2 patterns first, then L1.
+ */
+function detectHeadingType (string $line): ?array {
+    // Normalize: convert HTML bold/underline to markdown-style markers
+    $line = preg_replace(['#</?b>#', '#</?u>#'], ['**', '_'], $line);
+
+    // L2 strategies (checked first — more specific patterns take priority)
+    $result = detectL2ItalicSubheading($line);
+    if ($result !== null) return $result;
+
+    $result = detectL2BoldSubheading($line);
+    if ($result !== null) return $result;
+
+    $result = detectL2IndentedPatterns($line);
+    if ($result !== null) return $result;
+
+    // L1 strategies (checked last — broader patterns)
+    $result = detectL1Heading($line);
+    if ($result !== null) return $result;
 
     return null;
 }
@@ -635,10 +663,10 @@ $section = normalizeSection($section);
 
 if ( $parameter != "" ) {
     if ( $section == "" ) {
-        $PHP_MAN_TITLE = $parameter . " - " . $mode . " - phpMan";
+        $PHP_MAN_TITLE = $parameter . " - " . $mode . " - phpman";
     }
     else {
-        $PHP_MAN_TITLE = $parameter . "(" . $section . ") - " . $mode . " - phpMan";
+        $PHP_MAN_TITLE = $parameter . "(" . $section . ") - " . $mode . " - phpman";
     }
 }
 
@@ -921,8 +949,8 @@ function showHeader (string $title = "", string $parameter = "", string $section
     $script_path = isset($_SERVER['SCRIPT_NAME']) ? $_SERVER['SCRIPT_NAME'] : strtok($_SERVER['REQUEST_URI'], '?');
     $base_url = $proto . "://" . getSafeHost() . $script_path;
     $canonical_url = $base_url;
-    $meta_description = "phpMan: Web interface for Unix/Linux man pages, Perl perldoc, and GNU info pages";
-    $meta_keywords = "man page, unix manual, linux command, perldoc, info page, phpMan";
+    $meta_description = "phpman: Open-source Linux command reference with JSON API and MCP Server for AI agents. Browse man pages, perldoc, and GNU info.";
+    $meta_keywords = "man page, unix manual, linux command, perldoc, info page, phpman, json api, mcp server, ai agent";
 
     if ($parameter !== "") {
         $section_suffix = $section !== "" ? "({$section})" : "";
@@ -932,17 +960,17 @@ function showHeader (string $title = "", string $parameter = "", string $section
         }
 
         if ($mode === "man") {
-            $meta_description = "Online man page for {$parameter}{$section_suffix}: read the Unix/Linux manual page in your browser";
-            $meta_keywords = "{$parameter} man page, {$parameter} linux, {$parameter} unix, man {$parameter}, {$parameter} command";
+            $meta_description = "{$parameter}{$section_suffix} man page — Linux command reference with options, examples, and JSON API/MCP access via phpman";
+            $meta_keywords = "{$parameter} man page, {$parameter} linux, {$parameter} unix, man {$parameter}, {$parameter} command, json api, mcp";
         } elseif ($mode === "perldoc") {
-            $meta_description = "Online perldoc for {$parameter}: read the Perl documentation in your browser";
-            $meta_keywords = "{$parameter} perldoc, {$parameter} perl, perl {$parameter}, {$parameter} documentation";
+            $meta_description = "{$parameter} perldoc — Perl documentation with JSON API and MCP access via phpman";
+            $meta_keywords = "{$parameter} perldoc, {$parameter} perl, perl {$parameter}, {$parameter} documentation, json api, mcp";
         } elseif ($mode === "info") {
-            $meta_description = "Online info page for {$parameter}: read the GNU info documentation in your browser";
-            $meta_keywords = "{$parameter} info page, {$parameter} gnu, info {$parameter}, {$parameter} documentation";
+            $meta_description = "{$parameter} info page — GNU documentation with JSON API and MCP access via phpman";
+            $meta_keywords = "{$parameter} info page, {$parameter} gnu, info {$parameter}, {$parameter} documentation, json api, mcp";
         } elseif ($mode === "search") {
-            $meta_description = "Search results for '{$parameter}' in Unix/Linux man pages, perldoc, and info pages";
-            $meta_keywords = "{$parameter}, man page search, {$parameter} command, search manual";
+            $meta_description = "Search results for '{$parameter}' in Unix/Linux man pages, perldoc, and info pages via phpman";
+            $meta_keywords = "{$parameter}, man page search, {$parameter} command, search manual, json api, mcp";
         }
     }
 
