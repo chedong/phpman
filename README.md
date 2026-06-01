@@ -1,14 +1,64 @@
 # phpMan — Unix Man Page / Perldoc / Info Page Web Interface & MCP Server
 
-A single-file PHP web interface and Model Context Protocol (MCP) server for Unix `man`, `perldoc`, `info`, and `apropos` commands.
+phpMan is an open-source Linux Command MCP Server and Structured JSON API web interface with HTML and markdown format. It provides comprehensive Unix/Linux man pages, perldoc and texinfo, optimized for human developers and LLM AI Agents.
 
 **For AI Agents:** Query Unix documentation via MCP protocol or REST API. Get structured man pages with parsed flags, examples, and cross-references.
 
 ## Quick Start for Agents
 
-### MCP Integration (Recommended)
+phpMan implements [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) via **Streamable HTTP** transport — no local installation or `npx` wrapper needed. Just point your MCP client at the endpoint URL.
 
-Add to your MCP client configuration:
+### Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "phpman": {
+      "url": "https://www.chedong.com/phpMan.php/mcp"
+    }
+  }
+}
+```
+
+### Cursor
+
+Open **Settings → MCP** and click **Add new MCP server**, or edit `.cursor/mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "phpman": {
+      "url": "https://www.chedong.com/phpMan.php/mcp"
+    }
+  }
+}
+```
+
+### OpenAI Codex CLI
+
+Add to `~/.codex/config.json`:
+
+```json
+{
+  "mcp_servers": {
+    "phpman": {
+      "url": "https://www.chedong.com/phpMan.php/mcp"
+    }
+  }
+}
+```
+
+### Claude Code
+
+```bash
+claude mcp add --transport http phpman https://www.chedong.com/phpMan.php/mcp
+```
+
+### Generic MCP Client (YAML)
+
+Any MCP-compatible client that accepts YAML config:
 
 ```yaml
 mcpServers:
@@ -18,11 +68,13 @@ mcpServers:
 
 ### REST API (Fallback)
 
+For clients that don't support MCP, use the REST endpoints directly:
+
 ```bash
 # Get structured man page as JSON
 curl "https://www.chedong.com/phpMan.php/man/ls/1/json"
 
-# Get MCP-wrapped output
+# Get MCP-wrapped output (same format as MCP tools/call response)
 curl "https://www.chedong.com/phpMan.php/man/ls/1/mcp"
 ```
 
