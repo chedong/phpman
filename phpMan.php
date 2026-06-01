@@ -22,7 +22,8 @@ declare(strict_types=1);
 // $Id$
 
 // Default terminal width for man/perldoc output (used as MANROFFOPT -rLL=NNNn)
-$PHP_MAN_WIDTH = 100;
+define('MAN_PAGE_WIDTH', 100);         // #49: character width for man/perldoc output
+$PHP_MAN_WIDTH = MAN_PAGE_WIDTH;
 
 // Overstrike-safe ASCII character class: printable + placeholder bytes for &/</>
 // Used by formatManPerlDoc() regex patterns — defined globally for reuse
@@ -47,7 +48,7 @@ $MOBILE_CSS = <<<'CSS'
 CSS;
 
 // --- LLM-powered TLDR generation ---
-// Set these via environment variables or hardcode here.
+// Set these via environment variables. (#39: removed "or hardcode here" suggestion)
 // Supports any OpenAI-compatible API (OpenAI, Anthropic via proxy, Qwen, etc.)
 define('LLM_API_URL',  getenv('LLM_API_URL')  ?: '');   // e.g. https://api.openai.com/v1/chat/completions
 define('LLM_API_KEY',  getenv('LLM_API_KEY')  ?: '');
@@ -55,6 +56,121 @@ define('LLM_MODEL',    getenv('LLM_MODEL')    ?: 'gpt-4o-mini');
 define('LLM_TIMEOUT',  15);  // seconds
 define('TLDR_CACHE_DIR', __DIR__ . '/tldr_cache');
 define('TLDR_CACHE_TTL', 7 * 86400);  // #38: 7-day TTL for TLDR cache
+
+// #49: Named constants for magic numbers
+define('TOC_LINE_THRESHOLD', 80);      // min lines to show TOC sidebar
+define('GZIP_MIN_BYTES', 1000);        // min response size for gzip compression
+define('FLAG_DESC_MAX_LEN', 120);      // max length for flag descriptions
+define('LLM_MAX_FLAGS', 30);           // max flags in LLM context
+define('TLDR_MAX_EXAMPLES', 8);        // max examples in TLDR output
+
+// --- Shared helper functions (#44: DRY refactoring) ---
+
+/**
+ * Log a message to the server error log. (#47)
+ * Prefixes with "phpMan:" for easy grep/filter.
+ */
+function phpManLog (string $message): void {
+    error_log("phpMan: " . $message);
+}
+
+/**
+ * Get MCP tool definitions (shared by .well-known and tools/list).  (#48)
+ */
+function getMcpToolDefinitions (): array {
+    return [
+        [
+            "name" => "cli_help",
+            "description" => "Get structured man / perldoc / info page for a command or module. Returns sections with sub-sections, synopsis, and full content. Supports all Unix/Linux commands, Perl modules (e.g. File::Basename), and GNU info pages.",
+            "inputSchema" => [
+                "type" => "object",
+                "properties" => [
+                    "command" => [
+                        "type" => "string",
+                        "description" => "Command or module name (e.g. 'ls', 'git', 'File::Basename', 'bash')"
+                    ],
+                    "section" => [
+                        "type" => "string",
+                        "description" => "Optional manual section number (e.g. '1' for user commands, '3pm' for Perl modules). Omit for best-match behavior."
+                    ]
+                ],
+                "required" => ["command"]
+            ]
+        ],
+        [
+            "name" => "cli_search",
+            "description" => "Search Unix/Linux man pages by keyword using apropos. Returns matching command names with sections and detail links.",
+            "inputSchema" => [
+                "type" => "object",
+                "properties" => [
+                    "query" => [
+                        "type" => "string",
+                        "description" => "Search keyword (e.g. 'recursive delete', 'network', 'cron')"
+                    ],
+                    "section" => [
+                        "type" => "string",
+                        "description" => "Optional: restrict to a specific manual section (e.g. '1', '8')"
+                    ]
+                ],
+                "required" => ["query"]
+            ]
+        ]
+    ];
+}
+
+/**
+ * Clean terminal overstrike and ANSI escape sequences from man/perldoc output.
+ * Shared by formatToJSON() and formatManPerlDocToMarkdown().
+ * Returns array of cleaned lines with placeholder markers for bold/underline.
+ *   \x01..\x02 = bold boundary,  \x03..\x04 = underline boundary
+ */
+function cleanTerminalOutput (array $lines): array {
+    $ac = RE_ASCII_SAFE;
+    $patterns = array(
+        "/{$ac}".chr(8)."{$ac}".chr(8)."({$ac})".chr(8)."{$ac}/",  // ?^H?^H?^H? => bold
+        "/_".chr(8)."({$ac})/",  // _^H? => underline
+        "/{$ac}".chr(8)."({$ac})/",  // ?^H? => bold
+        "/".chr(27)."\[1m(.*?)".chr(27)."\[(?:0|22)m/",  // ANSI bold
+        "/".chr(27)."\[4m(.*?)".chr(27)."\[(?:0|24)m/",  // ANSI underline
+    );
+    $replace = array(
+        "\x01$1\x02",
+        "\x03$1\x04",
+        "\x01$1\x02",
+        "\x01$1\x02",
+        "\x03$1\x04",
+    );
+    $cleaned = array();
+    foreach ($lines as $line) {
+        $line = preg_replace($patterns, $replace, $line);
+        $line = str_replace("\x08", "", $line);  // strip remaining backspaces
+        $line = str_replace(array("\x02\x01", "\x04\x03"), "", $line);
+        $line = str_replace(array("\x01", "\x02", "\x03", "\x04"), array("**", "**", "_", "_"), $line);
+        $cleaned[] = $line;
+    }
+    return $cleaned;
+}
+
+/**
+ * Extract flags from subsections when top-level flags array is empty.
+ * Shared by formatMcpStructured(), buildLlmContext(), and formatTldr().
+ */
+function extractFlagsFromSections (array $data): array {
+    $flags = [];
+    foreach ($data["sections"] ?? [] as $sec) {
+        foreach ($sec["subsections"] ?? [] as $sub) {
+            if (!empty($sub["flag"]) || !empty($sub["long"])) {
+                $flags[] = [
+                    "flag" => $sub["flag"] ?? "",
+                    "long" => $sub["long"] ?? null,
+                    "arg" => $sub["arg"] ?? null,
+                    "description" => trim(preg_replace('/\s+/', ' ', $sub["content"] ?? "")),
+                ];
+            }
+        }
+    }
+    return $flags;
+}
 
 /**
  * phpMan is a web interface of Unix command 'man', 'perldoc', 'info' and 'apropos'.
@@ -661,7 +777,7 @@ if ($format === "json" || $format === "mcp") {
     header("Expires: " . gmdate("D, d M Y H:i:s", time() + 3600 * 24 * 7) . " GMT");
     // Gzip compress large JSON responses (bash=351KB → ~97KB)
     $acceptEncoding = strtolower(serverValue("HTTP_ACCEPT_ENCODING", ""));
-    if (strpos($acceptEncoding, "gzip") !== false && function_exists("gzencode") && strlen($content) > 1000) {
+    if (strpos($acceptEncoding, "gzip") !== false && function_exists("gzencode") && strlen($content) > GZIP_MIN_BYTES) {
         $gzipped = gzencode($content, 6);
         if ($gzipped !== false) {
             header("Content-Encoding: gzip");
@@ -1019,44 +1135,7 @@ function handleWellKnown (): void {
                 "tools" => ["listChanged" => false]
             ]
         ],
-        "tools" => [
-            [
-                "name" => "cli_help",
-                "description" => "Get structured man / perldoc / info page for a command or module. Returns sections with sub-sections, synopsis, and full content. Supports all Unix/Linux commands, Perl modules (e.g. File::Basename), and GNU info pages.",
-                "inputSchema" => [
-                    "type" => "object",
-                    "properties" => [
-                        "command" => [
-                            "type" => "string",
-                            "description" => "Command or module name (e.g. 'ls', 'git', 'File::Basename', 'bash')"
-                        ],
-                        "section" => [
-                            "type" => "string",
-                            "description" => "Optional manual section number (e.g. '1' for user commands, '3pm' for Perl modules). Omit for best-match behavior."
-                        ]
-                    ],
-                    "required" => ["command"]
-                ]
-            ],
-            [
-                "name" => "cli_search",
-                "description" => "Search Unix/Linux man pages by keyword using apropos. Returns matching command names with sections and detail links.",
-                "inputSchema" => [
-                    "type" => "object",
-                    "properties" => [
-                        "query" => [
-                            "type" => "string",
-                            "description" => "Search keyword (e.g. 'recursive delete', 'network', 'cron')"
-                        ],
-                        "section" => [
-                            "type" => "string",
-                            "description" => "Optional: restrict to a specific manual section (e.g. '1', '8')"
-                        ]
-                    ],
-                    "required" => ["query"]
-                ]
-            ]
-        ],
+        "tools" => getMcpToolDefinitions(),  // #48: shared definition
         "endpoints" => [
             "man" => $base . "/man/{command}/{section?}/json",
             "perldoc" => $base . "/perldoc/{module}/json",
@@ -1180,44 +1259,7 @@ function handleMcpInitialize ($id): void {
 
 function handleMcpToolsList ($id): void {
     sendMcpResult($id, [
-        "tools" => [
-            [
-                "name" => "cli_help",
-                "description" => "Get structured man / perldoc / info page for a command or module. Returns sections with sub-sections, synopsis, and full content. Supports all Unix/Linux commands, Perl modules (e.g. File::Basename), and GNU info pages.",
-                "inputSchema" => [
-                    "type" => "object",
-                    "properties" => [
-                        "command" => [
-                            "type" => "string",
-                            "description" => "Command or module name (e.g. 'ls', 'git', 'File::Basename', 'bash')"
-                        ],
-                        "section" => [
-                            "type" => "string",
-                            "description" => "Optional manual section number (e.g. '1' for user commands, '3pm' for Perl modules). Omit for best-match behavior."
-                        ]
-                    ],
-                    "required" => ["command"]
-                ]
-            ],
-            [
-                "name" => "cli_search",
-                "description" => "Search Unix/Linux man pages by keyword using apropos. Returns matching command names with sections and detail links.",
-                "inputSchema" => [
-                    "type" => "object",
-                    "properties" => [
-                        "query" => [
-                            "type" => "string",
-                            "description" => "Search keyword (e.g. 'recursive delete', 'network', 'cron')"
-                        ],
-                        "section" => [
-                            "type" => "string",
-                            "description" => "Optional: restrict to a specific manual section (e.g. '1', '8')"
-                        ]
-                    ],
-                    "required" => ["query"]
-                ]
-            ]
-        ]
+        "tools" => getMcpToolDefinitions()  // #48: shared definition
     ]);
 }
 
@@ -1245,7 +1287,7 @@ function handleMcpToolsCall ($id, array $params): void {
         }
         sendMcpResult($id, $result);
     } catch (Throwable $e) {
-        error_log("phpMan MCP internal error: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine());
+        phpManLog("MCP internal error: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine());
         sendMcpError($id, -32603, "Internal error");
     }
 }
@@ -1307,8 +1349,13 @@ function getManPage (string $parameter, string $section = "", string $format = "
         $command .= escapeshellarg($parameter);
 
         exec($command, $lines, $return_code);
-        // Detect BSD man (macOS/FreeBSD/OpenBSD/NetBSD): -Tutf8 is unsupported but
-        // may return exit 0 with an error on stderr and zero/limited content on stdout.
+        // #26: BSD fallback detection — three conditions trigger the fallback path:
+        //   1. $return_code !== 0         — man exits with error (GNU man: command not found)
+        //   2. count($lines) === 0        — man produces no output (edge case on some BSDs)
+        //   3. illegal/unknown/invalid     — macOS man outputs error to stdout with exit 0
+        // On macOS, `man -Tutf8` outputs "illegal option -- T" on stdout (not stderr),
+        // so we must check the first line for error patterns even when return_code is 0.
+        // This dual-detection handles both GNU and BSD man behavior across platforms.
         $first_line = count($lines) > 0 ? trim($lines[0]) : "";
         if ($return_code !== 0 || count($lines) === 0 ||
             preg_match('/\b(illegal|unknown|invalid)\s+option\b/i', $first_line)) {
@@ -1392,7 +1439,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     // Pipeline: perldoc -l locates source → head -1 picks first file → pod2text formats.
     // head -1 prevents multi-file concatenation when perldoc -l returns multiple paths.
     // Falls back to raw perldoc if pod2text pipeline fails (e.g. source not found).
-    $cmd = "perldoc -l ".escapeshellarg($parameter)." 2>/dev/null | head -1 | xargs pod2text -w {$width} 2>/dev/null";
+    $cmd = "perldoc -l ".escapeshellarg($parameter)." 2>/dev/null | head -1 | tr '\\n' '\\0' | xargs -0 pod2text -w {$width} 2>/dev/null";  // #24: xargs -0 for space-safe paths
     exec($cmd, $lines, $return_code);
     if ($return_code === 0 && count($lines) > 0) {
         if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
@@ -1433,7 +1480,11 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
 //get specified command's info page
 function getInfoPage (string $parameter, string $format = "html"): string {
     $lines = array();
-    exec("info ".escapeshellarg($parameter), $lines);
+    $exitCode = 0;
+    exec("info ".escapeshellarg($parameter), $lines, $exitCode);  // #45: check return code
+    if ($exitCode !== 0 || empty($lines)) {
+        return "";
+    }
     if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
     if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "info"), $format);
     return formatManPerlDoc($lines, "info");
@@ -1682,7 +1733,11 @@ function getPerldocIndex (string $format = "html"): string {
 //get info page index page
 function getInfoIndex (string $format = "html"): string {
     $lines = array();
-    exec("info", $lines);
+    $exitCode = 0;
+    exec("info", $lines, $exitCode);  // #45: check return code
+    if ($exitCode !== 0 || empty($lines)) {
+        return "";
+    }
     $script_name = ($format === "markdown" || $format === "json" || $format === "mcp") ? baseUrl() : scriptName();
 
     if ($format === "markdown") {
@@ -1915,7 +1970,7 @@ function formatMcpMarkdown (array $data): string {
         $out .= "| Flag | Long | Arg | Description |\n";
         $out .= "|------|------|-----|-------------|\n";
         foreach ($flags as $f) {
-            $desc = mb_substr(preg_replace('/\s+/', ' ', $f["description"] ?? ""), 0, 120);
+            $desc = mb_substr(preg_replace('/\s+/', ' ', $f["description"] ?? ""), 0, FLAG_DESC_MAX_LEN);
             $out .= "| " . ($f["flag"] ?: "—") . " | " . ($f["long"] ?: "—") . " | " . ($f["arg"] ?: "—") . " | {$desc} |\n";
         }
         $out .= "\n";
@@ -2010,20 +2065,8 @@ function formatMcpStructured (array $data): array {
     // Collect all flags from all sections (not just OPTIONS)
     $allFlags = $data["flags"] ?? [];
     if (empty($allFlags)) {
-        // Fallback: extract from any section with flag-like subsections
-        foreach ($data["sections"] ?? [] as $sec) {
-            foreach ($sec["subsections"] ?? [] as $sub) {
-                if (!empty($sub["flag"]) || !empty($sub["long"])) {
-                    $flag = [
-                        "flag" => $sub["flag"] ?? "",
-                        "long" => $sub["long"] ?? null,
-                        "arg" => $sub["arg"] ?? null,
-                        "description" => trim(preg_replace('/\s+/', ' ', $sub["content"] ?? "")),
-                    ];
-                    $allFlags[] = $flag;
-                }
-            }
-        }
+        // #44: use shared extractFlagsFromSections()
+        $allFlags = extractFlagsFromSections($data);
     }
 
     return [
@@ -2066,9 +2109,14 @@ function generateTldrWithLLM(array $data): string {
     // Check file cache — key includes model, prompt version, and context hash
     // to invalidate when model/prompt/content changes
     if (!is_dir(TLDR_CACHE_DIR)) {
-        mkdir(TLDR_CACHE_DIR, 0700, true);  // #28: restrict to web server user only
+        if (!mkdir(TLDR_CACHE_DIR, 0700, true)) {  // #28: restrict to web server user only
+            phpManLog("failed to create TLDR cache dir: " . TLDR_CACHE_DIR);  // #30
+            return '';
+        }
         // #43: write .htaccess to deny direct web access to cache directory
-        file_put_contents(TLDR_CACHE_DIR . '/.htaccess', "Deny from all\n");
+        if (!file_put_contents(TLDR_CACHE_DIR . '/.htaccess', "Deny from all\n")) {
+            phpManLog("failed to write .htaccess in TLDR cache dir");  // #30
+        }
     }
     $context = buildLlmContext($data);
     $cacheKey = md5(json_encode([
@@ -2121,8 +2169,10 @@ function generateTldrWithLLM(array $data): string {
     $out .= "> More information: {$canonical}\n\n";
     $out .= $llmResult;
 
-    // Cache the result
-    @file_put_contents($cacheFile, $out);
+    // Cache the result (#30: explicit check instead of @ suppression)
+    if (file_put_contents($cacheFile, $out) === false) {
+        phpManLog("failed to write TLDR cache: " . $cacheFile);
+    }
 
     return $out;
 }
@@ -2141,25 +2191,14 @@ function buildLlmContext(array $data): string {
     // Flags (top 30)
     $flags = $data["flags"] ?? [];
     if (empty($flags)) {
-        // Fallback: extract from sections
-        foreach ($data["sections"] ?? [] as $sec) {
-            foreach ($sec["subsections"] ?? [] as $sub) {
-                if (!empty($sub["flag"]) || !empty($sub["long"])) {
-                    $flags[] = [
-                        "flag" => $sub["flag"] ?? "",
-                        "long" => $sub["long"] ?? null,
-                        "arg" => $sub["arg"] ?? null,
-                        "description" => trim(preg_replace('/\s+/', ' ', $sub["content"] ?? "")),
-                    ];
-                }
-            }
-        }
+        // #44: use shared extractFlagsFromSections()
+        $flags = extractFlagsFromSections($data);
     }
     if (!empty($flags)) {
         $flagLines = [];
         $count = 0;
         foreach ($flags as $f) {
-            if ($count >= 30) break;
+            if ($count >= LLM_MAX_FLAGS) break;
             $short = $f["flag"] ?? "";
             $long = $f["long"] ?? "";
             $arg = $f["arg"] ?? "";
@@ -2248,19 +2287,9 @@ function formatTldr (?array $data): string {
     $examples = $data["examples"] ?? [];
 
     // Fallback: extract flags from all sections if top-level is empty
+    // #44: use shared extractFlagsFromSections()
     if (empty($flags)) {
-        foreach ($data["sections"] ?? [] as $sec) {
-            foreach ($sec["subsections"] ?? [] as $sub) {
-                if (!empty($sub["flag"]) || !empty($sub["long"])) {
-                    $flags[] = [
-                        "flag" => $sub["flag"] ?? "",
-                        "long" => $sub["long"] ?? null,
-                        "arg" => $sub["arg"] ?? null,
-                        "description" => trim(preg_replace('/\s+/', ' ', $sub["content"] ?? "")),
-                    ];
-                }
-            }
-        }
+        $flags = extractFlagsFromSections($data);
     }
 
     $mode = $data["mode"] ?? "man";
@@ -2365,35 +2394,8 @@ function formatTldr (?array $data): string {
     return $out;
 }
 function formatToJSON (array $lines, string $parameter, string $section = "", string $mode = "man"): string {
-    // Clean backspaces/overstrike and ANSI escapes
-    // CRITICAL: Use [ -~] (ASCII printable) instead of . in overstrike
-    // patterns. The dot matches individual BYTES, which can split multibyte
-    // UTF-8 characters (e.g., bullet) when adjacent to \x08 backspaces.
-    $patterns = array(
-        "/[ -~]".chr(8)."[ -~]".chr(8)."([ -~])".chr(8)."[ -~]/",  // ?^H?^H?^H? => bold
-        "/_".chr(8)."([ -~])/",  // _^H? => underline
-        "/[ -~]".chr(8)."([ -~])/",  // ?^H? => bold
-        "/".chr(27)."\[1m(.*?)".chr(27)."\[0m/",  // perldoc ANSI bold
-        "/".chr(27)."\[4m(.*?)".chr(27)."\[24m/", // perldoc ANSI underline
-    );
-    $replace = array(
-        "\x01$1\x02",
-        "\x03$1\x04",
-        "\x01$1\x02",
-        "\x01$1\x02",
-        "\x03$1\x04",
-    );
-
-    // Clean lines
-    $cleaned = array();
-    foreach ($lines as $i => $line) {
-        $line = preg_replace($patterns, $replace, $line);
-        $line = str_replace("\x08", "", $line); // strip remaining backspaces
-        $line = str_replace(array("\x02\x01", "\x04\x03"), "", $line);
-        $line = str_replace(array("\x01", "\x02", "\x03", "\x04"), array("**", "**", "_", "_"), $line);
-        $cleaned[] = $line;
-    }
-    $lines = $cleaned;
+    // #44: use shared cleanTerminalOutput() instead of inline patterns
+    $lines = cleanTerminalOutput($lines);
 
     $section_label = "";
     if ($section !== "" && $section !== "-f" && $section !== "-q") {
@@ -2613,7 +2615,7 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
                 $seeAlso[] = array(
                     "name" => $m[1],
                     "section" => $m[2],
-                    "url" => "https://www.chedong.com/phpMan.php/man/" . urlencode($m[1]) . "/" . urlencode($m[2]) . "/json"
+                    "url" => baseUrl() . "/man/" . urlencode($m[1]) . "/" . urlencode($m[2]) . "/json"  // #46: dynamic URL
                 );
             }
             break;
@@ -2668,34 +2670,13 @@ function parseFlagJSON(string $name): array {
 
 //convert man perldoc output to markdown
 function formatManPerlDocToMarkdown (array $lines): string {
-
-    $patterns = array(
-        "/[ -~]".chr(8)."[ -~]".chr(8)."([ -~])".chr(8)."[ -~]/",  // ?^H?^H?^H? => bold
-        "/_".chr(8)."([ -~])/",  // _^H? => underline
-        "/[ -~]".chr(8)."([ -~])/",  // ?^H? => bold
-        "/".chr(27)."\[1m(.*?)".chr(27)."\[0m/",  // perldoc ANSI bold
-        "/".chr(27)."\[4m(.*?)".chr(27)."\[24m/", // perldoc ANSI underline
-    );
-    $replace = array(
-        "\x01$1\x02",
-        "\x03$1\x04",
-        "\x01$1\x02",
-        "\x01$1\x02",
-        "\x03$1\x04",
-    );
+    // #44: use shared cleanTerminalOutput() instead of inline patterns
+    $lines = cleanTerminalOutput($lines);
 
     $output = "";
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
         $line = $lines[$i];
-        
-        // Format backspaces and ANSI escapes
-        $line = preg_replace($patterns, $replace, $line);
-        $line = str_replace("\x08", "", $line); // strip remaining backspaces
-        
-        // Merge consecutive bold/underline
-        $line = str_replace(array("\x02\x01", "\x04\x03"), "", $line);
-        $line = str_replace(array("\x01", "\x02", "\x03", "\x04"), array("**", "**", "_", "_"), $line);
         
         // Section / Sub-section Headers: detect via shared function
         $heading = detectHeadingType($line);
