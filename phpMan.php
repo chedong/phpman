@@ -2161,7 +2161,8 @@ function generateTldrWithLLM(array $data): string {
             return '';
         }
         // #43: write .htaccess to deny direct web access to cache directory
-        if (!file_put_contents(TLDR_CACHE_DIR . '/.htaccess', "Deny from all\n")) {
+        // Both 2.2 (Deny from all) and 2.4 (Require all denied) for compatibility
+        if (!file_put_contents(TLDR_CACHE_DIR . '/.htaccess', "Require all denied\nDeny from all\n")) {
             phpManLog("failed to write .htaccess in TLDR cache dir");  // #30
         }
     }
