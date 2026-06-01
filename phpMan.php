@@ -54,6 +54,7 @@ define('LLM_API_KEY',  getenv('LLM_API_KEY')  ?: '');
 define('LLM_MODEL',    getenv('LLM_MODEL')    ?: 'gpt-4o-mini');
 define('LLM_TIMEOUT',  15);  // seconds
 define('TLDR_CACHE_DIR', __DIR__ . '/tldr_cache');
+define('TLDR_CACHE_TTL', 7 * 86400);  // #38: 7-day TTL for TLDR cache
 
 /**
  * phpMan is a web interface of Unix command 'man', 'perldoc', 'info' and 'apropos'.
@@ -783,8 +784,14 @@ showFooter($VALIDATOR, $markdownUrl, $jsonUrl, $showNav, $mode, $parameter, $sec
 //show html header
 function showHeader (string $title = "", string $parameter = "", string $section = "", string $mode = "", bool $hasRealContent = true, bool $showNav = false): void {
     header("Content-Type: text/html; charset=UTF-8");
-    // MCP service discovery
+    // Security response headers (#40, #36, #29)
+    header("X-Content-Type-Options: nosniff");
+    header("X-Frame-Options: DENY");
+    header("Referrer-Policy: strict-origin-when-cross-origin");
+    header("Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://www.w3.org https://jigsaw.w3.org data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none';");
+    // MCP service discovery — sanitize $script_path against CRLF injection (#34)
     $script_path = isset($_SERVER['SCRIPT_NAME']) ? $_SERVER['SCRIPT_NAME'] : strtok($_SERVER['REQUEST_URI'], '?');
+    $script_path = preg_replace('/[\r\n].*/', '', $script_path);
     header('Link: <' . $script_path . '/mcp>; rel="mcp-server"');
     // always modified now
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
@@ -886,6 +893,8 @@ function showHeader (string $title = "", string $parameter = "", string $section
             "datePublished" => gmdate("Y-m-d"),
             "inLanguage" => "en"
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        // #37: escape </ to prevent breaking out of <script> context
+        $schema_json = str_replace('</', '<\/', $schema_json);
         echo "<script type=\"application/ld+json\">\n{$schema_json}\n</script>\n";
     }
 
@@ -1068,6 +1077,21 @@ function handleMcp (): void {
     header("Cache-Control: no-store, no-cache, must-revalidate");
     header("Pragma: no-cache");
 
+    // Only accept POST requests (#42)
+    if (serverValue("REQUEST_METHOD") !== "POST") {
+        http_response_code(405);
+        header("Allow: POST");
+        sendMcpError(null, -32600, "Method not allowed. Use POST.");
+        return;
+    }
+
+    // Limit request body size to 64KB (#31, #42)
+    $contentLength = (int)(serverValue("CONTENT_LENGTH", "0"));
+    if ($contentLength > 65536) {
+        sendMcpError(null, -32700, "Payload too large (max 64KB)");
+        return;
+    }
+
     // Read JSON-RPC body
     $rawBody = file_get_contents("php://input");
     if ($rawBody === false || trim($rawBody) === "") {
@@ -1221,7 +1245,8 @@ function handleMcpToolsCall ($id, array $params): void {
         }
         sendMcpResult($id, $result);
     } catch (Throwable $e) {
-        sendMcpError($id, -32603, "Internal error: " . $e->getMessage());
+        error_log("phpMan MCP internal error: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine());
+        sendMcpError($id, -32603, "Internal error");
     }
 }
 
@@ -2041,7 +2066,9 @@ function generateTldrWithLLM(array $data): string {
     // Check file cache — key includes model, prompt version, and context hash
     // to invalidate when model/prompt/content changes
     if (!is_dir(TLDR_CACHE_DIR)) {
-        @mkdir(TLDR_CACHE_DIR, 0755, true);
+        mkdir(TLDR_CACHE_DIR, 0700, true);  // #28: restrict to web server user only
+        // #43: write .htaccess to deny direct web access to cache directory
+        file_put_contents(TLDR_CACHE_DIR . '/.htaccess', "Deny from all\n");
     }
     $context = buildLlmContext($data);
     $cacheKey = md5(json_encode([
@@ -2053,10 +2080,14 @@ function generateTldrWithLLM(array $data): string {
     ]));
     $cacheFile = TLDR_CACHE_DIR . '/' . $cacheKey . '.md';
     if (file_exists($cacheFile)) {
-        $cached = file_get_contents($cacheFile);
-        if ($cached !== false && strlen($cached) > 50) {
-            return $cached;
+        // #38: check cache TTL before returning
+        if (time() - filemtime($cacheFile) < TLDR_CACHE_TTL) {
+            $cached = file_get_contents($cacheFile);
+            if ($cached !== false && strlen($cached) > 50) {
+                return $cached;
+            }
         }
+        // Cache expired — will regenerate below
     }
 
     // Call LLM (context already built above for cache key)

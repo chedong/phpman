@@ -15,3 +15,4 @@
 .atomcode/
 
 tldr_cache/
+*.swp

@@ -30,7 +30,7 @@ deploy: test
 
 release: test
 	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
-		"cp $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(FILE).bak 2>/dev/null || true"
+		"cp $(DEMO_PATH)/$(FILE) $(HOME)/$(FILE).bak 2>/dev/null || true"
 	scp -P $(DEMO_PORT) $(FILE) $(DEMO_USER)@$(DEMO_HOST):$(DEMO_PATH)/
 	@echo ""
 	@echo "=== Deployed to production ==="
@@ -40,7 +40,7 @@ release: test
 
 rollback:
 	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
-		"cp $(DEMO_PATH)/$(FILE).bak $(DEMO_PATH)/$(FILE) 2>/dev/null || echo 'No backup found'"
+		"cp $(HOME)/$(FILE).bak $(DEMO_PATH)/$(FILE) 2>/dev/null || echo 'No backup found'"
 	@echo "=== Rolled back to previous version ==="
 	@echo "Verify: $(DEMO_URL)"
 
