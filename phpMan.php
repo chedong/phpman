@@ -62,7 +62,7 @@ define('TOC_LINE_THRESHOLD', 80);      // min lines to show TOC sidebar
 define('GZIP_MIN_BYTES', 1000);        // min response size for gzip compression
 define('FLAG_DESC_MAX_LEN', 120);      // max length for flag descriptions
 define('LLM_MAX_FLAGS', 30);           // max flags in LLM context
-define('TLDR_MAX_EXAMPLES', 8);        // max examples in TLDR output
+define('TLDR_MAX_EXAMPLES', 16);       // max examples in TLDR output
 
 // --- Shared helper functions (#44: DRY refactoring) ---
 
@@ -2187,7 +2187,7 @@ function generateTldrWithLLM(array $data): string {
 
     // Call LLM (context already built above for cache key)
     $prompt = "You are generating a TLDR page for the Unix command '{$command}'. "
-        . "Based on the man page data below, create 8-12 practical usage examples.\n\n"
+        . "Based on the man page data below, create 12-16 practical usage examples.\n\n"
         . "FORMAT each example exactly as:\n"
         . "- Short description (under 60 chars):\n"
         . "  `{$command} --flag argument`\n\n"
@@ -2261,7 +2261,7 @@ function buildLlmContext(array $data): string {
     $examples = $data["examples"] ?? [];
     if (!empty($examples)) {
         $exLines = [];
-        foreach (array_slice($examples, 0, 10) as $ex) {
+        foreach (array_slice($examples, 0, TLDR_MAX_EXAMPLES) as $ex) {
             $ex = trim($ex);
             if (strlen($ex) > 3 && strlen($ex) < 200) {
                 $exLines[] = "  " . preg_replace('/\s+/', ' ', $ex);
