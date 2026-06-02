@@ -100,13 +100,13 @@ function getMcpToolDefinitions (): array {
     return [
         [
             "name" => "cli_help",
-            "description" => "Get structured man / perldoc / info page for a command or module. Returns sections with sub-sections, synopsis, and full content. Supports all Unix/Linux commands, Perl modules (e.g. File::Basename), and GNU info pages.",
+            "description" => "Get structured man / perldoc / info / pydoc3 / ri page for a command or module. Returns sections with sub-sections, synopsis, and full content. Supports all Unix/Linux commands, Perl modules (e.g. File::Basename), and GNU info pages.",
             "inputSchema" => [
                 "type" => "object",
                 "properties" => [
                     "command" => [
                         "type" => "string",
-                        "description" => "Command or module name (e.g. 'ls', 'git', 'File::Basename', 'bash')"
+                        "description" => "Command or module name (e.g. 'ls', 'git', 'File::Basename', 'bash', 'json', 'Array#map')"
                     ],
                     "section" => [
                         "type" => "string",
@@ -118,7 +118,7 @@ function getMcpToolDefinitions (): array {
         ],
         [
             "name" => "cli_search",
-            "description" => "Search Unix/Linux man pages by keyword using apropos. Returns matching command names with sections and detail links.",
+            "description" => "Search Unix/Linux man pages by keyword using apropos. Also searches Python 3 modules via pydoc3. Returns matching command names with sections and detail links.",
             "inputSchema" => [
                 "type" => "object",
                 "properties" => [
@@ -360,6 +360,18 @@ function detectL2IndentedPatterns (string $line): ?array {
         return ['level' => 2, 'text' => trim($m[1])];
     }
 
+    // pydoc class definitions: "    class Name(Parent)" (Parent may contain HTML link)
+    $testLine = preg_replace('#<a[^>]*>|</a>#', '', $line);
+    if (preg_match('/^ {4}class (\w+)\(/', $testLine, $m)) {
+        return ['level' => 2, 'text' => 'class ' . $m[1]];
+    }
+
+    // pydoc function definitions: "    funcName(args)"
+    if (preg_match('/^ {4}([a-z]\w*)\(/', $testLine, $m)
+        && !preg_match('/^(class|def|if|for|while|with|try|import|from|return|yield|raise|print|assert|del|global|nonlocal|lambda|pass|break|continue|except|finally|elif|else|and|or|not|in|is)\b/', $m[1])) {
+        return ['level' => 2, 'text' => $m[1]];
+    }
+
     return null;
 }
 
@@ -414,9 +426,22 @@ function detectL1Heading (string $line): ?array {
  * Returns ['level' => 1|2, 'text' => string] or null.
  * Dispatches to strategy functions in priority order: L2 patterns first, then L1.
  */
-function detectHeadingType (string $line): ?array {
+function detectHeadingType (string $line, string $mode = "man"): ?array {
     // Normalize: convert HTML bold/underline to markdown-style markers
     $line = preg_replace(['#</?b>#', '#</?u>#'], ['**', '_'], $line);
+
+    // ri mode: only RDoc markup headings ("= L1", "== L2")
+    if ($mode === "ri") {
+        if (preg_match('/^= (.+)/', $line, $m)) {
+            $text = trim(strip_tags(str_replace(['**', '_'], '', $m[1])));
+            if ($text !== '' && $text !== '=') return ['level' => 1, 'text' => $text];
+        }
+        if (preg_match('/^== (.+)/', $line, $m)) {
+            $text = trim(strip_tags(str_replace(['**', '_'], '', $m[1])));
+            if ($text !== '' && $text !== '==') return ['level' => 2, 'text' => $text];
+        }
+        return null;
+    }
 
     // L2 strategies (checked first — more specific patterns take priority)
     $result = detectL2ItalicSubheading($line);
@@ -493,6 +518,8 @@ function normalizeMode (mixed $mode): string {
         "copyright" => true,
         "mcp" => true,
         "tldr" => true,
+        "pydoc" => true,
+        "ri" => true,
     );
 
     return isset($allowed_modes[$mode]) ? $mode : "man";
@@ -538,6 +565,8 @@ $check['man'] = "";
 $check['perldoc'] = "";
 $check['info'] = "";
 $check['search'] = "";
+$check['pydoc'] = "";
+$check['ri'] = "";
 
 // Detect format preference via: 1) GET param, 2) Accept header, 3) PATH_INFO segment, 4) default HTML
 $format = "html";
@@ -591,7 +620,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
         }
     }
     
-    $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp", "tldr", ".well-known");
+    $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp", "tldr", ".well-known", "pydoc", "ri");
     $seg_count = count($segments);
     
     if ($seg_count >= 1) {
@@ -772,6 +801,69 @@ switch ( $mode ) {
         $check['search'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
             $content = getSearchPage($parameter, $section, $format);
+            // Cascade: also search pydoc3 and ri
+            if ($format === "html") {
+                $pydocResults = getPydocSearchPage($parameter, "html");
+                if ($pydocResults !== "") {
+                    $content .= "<hr /><b>Python 3 (pydoc3):</b><br />" . $pydocResults;
+                }
+                $riResults = getRiSearchPage($parameter, "html");
+                if ($riResults !== "") {
+                    $content .= "<hr /><b>Ruby (ri):</b><br />" . $riResults;
+                }
+            } elseif ($format === "markdown") {
+                $pydocResults = getPydocSearchPage($parameter, "markdown");
+                if ($pydocResults !== "") {
+                    $content .= "\n\n## Python 3 (pydoc3)\n\n" . $pydocResults;
+                }
+                $riResults = getRiSearchPage($parameter, "markdown");
+                if ($riResults !== "") {
+                    $content .= "\n\n## Ruby (ri)\n\n" . $riResults;
+                }
+            } elseif ($format === "json" || $format === "mcp") {
+                $current = json_decode($content, true);
+                if ($current === null) $current = [];
+                $pydocJson = getPydocSearchPage($parameter, "json");
+                if ($pydocJson !== "") {
+                    $pydocData = json_decode($pydocJson, true);
+                    if ($pydocData !== null) $current["pydoc_results"] = $pydocData["results"] ?? [];
+                }
+                $riJson = getRiSearchPage($parameter, "json");
+                if ($riJson !== "") {
+                    $riData = json_decode($riJson, true);
+                    if ($riData !== null) $current["ri_results"] = $riData["results"] ?? [];
+                }
+                $content = json_encode($current, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                if ($format === "mcp") {
+                    $content = formatForOutput($content, "mcp");
+                }
+            }
+        }
+        break;
+    case "pydoc":
+        $check['pydoc'] = " checked=\"checked\"";
+        if ( $parameter != "" ) {
+            $content = getPydocPage($parameter, $format);
+            if (trim($content) == "") {
+                $content = getPydocSearchPage($parameter, $format);
+                $isSearchFallback = true;
+            }
+        }
+        else {
+            $content = getPydocIndex($format);
+        }
+        break;
+    case "ri":
+        $check['ri'] = " checked=\"checked\"";
+        if ( $parameter != "" ) {
+            $content = getRiPage($parameter, $format);
+            if (trim($content) == "") {
+                $content = getRiSearchPage($parameter, $format);
+                $isSearchFallback = true;
+            }
+        }
+        else {
+            $content = getRiIndex($format);
         }
         break;
     case "tldr":
@@ -867,9 +959,9 @@ $markdownUrl = "";
 $jsonUrl = "";
 $script_name_path = baseUrl();
 
-// Detail pages (actual man/perldoc/info content): pathinfo URLs
+// Detail pages (actual man/perldoc/info/pydoc/ri content): pathinfo URLs
 if ($content !== ""
-    && in_array($mode, ["man", "perldoc", "info"])
+    && in_array($mode, ["man", "perldoc", "info", "pydoc", "ri"])
     && $parameter !== ""
     && $mode !== "search"
 ) {
@@ -883,6 +975,12 @@ if ($content !== ""
         $isDetailPage = true;
     }
     if ($mode === "info" && $parameter !== "") {
+        $isDetailPage = true;
+    }
+    if ($mode === "pydoc" && trim($content) !== "" && !$isSearchFallback) {
+        $isDetailPage = true;
+    }
+    if ($mode === "ri" && trim($content) !== "" && !$isSearchFallback) {
         $isDetailPage = true;
     }
 
@@ -901,7 +999,7 @@ if ($content !== ""
     }
 }
 // Index pages (man/perldoc/info without parameter): query param URLs
-elseif ($content !== "" && in_array($mode, ["man", "perldoc", "info"]) && $parameter === "") {
+elseif ($content !== "" && in_array($mode, ["man", "perldoc", "info", "pydoc", "ri"]) && $parameter === "") {
     $markdownUrl = $script_name_path . "?mode=" . urlencode($mode) . "&format=markdown";
     $jsonUrl = $script_name_path . "?mode=" . urlencode($mode) . "&format=json";
 }
@@ -1026,6 +1124,12 @@ function showHeader (string $title = "", string $parameter = "", string $section
         } elseif ($mode === "search") {
             $meta_description = "Search results for '{$parameter}' in Unix/Linux man pages, perldoc, and info pages via phpman";
             $meta_keywords = "{$parameter}, man page search, {$parameter} command, search manual, json api, mcp";
+        } elseif ($mode === "pydoc") {
+            $meta_description = "{$parameter} pydoc — Python 3 documentation with JSON API and MCP access via phpman";
+            $meta_keywords = "{$parameter} pydoc, {$parameter} python, python {$parameter}, {$parameter} documentation, json api, mcp";
+        } elseif ($mode === "ri") {
+            $meta_description = "{$parameter} ri — Ruby documentation with JSON API and MCP access via phpman";
+            $meta_keywords = "{$parameter} ri, {$parameter} ruby, ruby {$parameter}, {$parameter} documentation, json api, mcp";
         }
     }
 
@@ -1070,7 +1174,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "</style>\n";
 
     // JSON-LD structured data for SEO/GEO
-    if ($parameter !== "" && in_array($mode, ["man", "perldoc", "info"])) {
+    if ($parameter !== "" && in_array($mode, ["man", "perldoc", "info", "pydoc", "ri"])) {
         $schema_type = "TechArticle";
         $section_label = $section !== "" ? " (section {$section})" : "";
         $schema_json = json_encode([
@@ -1116,6 +1220,10 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
         "<label for=\"mode-perldoc\"><a href=\"".$script_name."/search/perl\">perldoc</a></label>\n".
         "<input type=\"radio\" name=\"mode\" value=\"info\" id=\"mode-info\"".$check['info']."/>".
         "<label for=\"mode-info\"><a href=\"".$script_name."/info\">info</a></label>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"pydoc\" id=\"mode-pydoc\"".$check['pydoc']."/>".
+        "<label for=\"mode-pydoc\"><a href=\"".$script_name."/pydoc\">pydoc3</a></label>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"ri\" id=\"mode-ri\"".$check['ri']."/>".
+        "<label for=\"mode-ri\"><a href=\"".$script_name."/ri\">ri</a></label>\n".
         "<input type=\"radio\" name=\"mode\" value=\"search\" id=\"mode-search\"".$check['search']."/>".
         "<label for=\"mode-search\"><a href=\"".$script_name."/man/apropos\">search(apropos)</a></label>\n".
         "&nbsp;<input type=\"submit\" value=\"Go\"/></p>".
@@ -1124,7 +1232,7 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
 
     // Format links / external references row (below form, above content)
     $extra_links = [];
-    $isDetailPage = in_array($mode, ["man", "perldoc", "info"]) && $parameter !== "";
+    $isDetailPage = in_array($mode, ["man", "perldoc", "info", "pydoc", "ri"]) && $parameter !== "";
     $hasContent = ($markdownUrl !== "" || $jsonUrl !== "");
     $cmd_label = h($parameter ?: "command");
     $script_path = scriptName();
@@ -1170,6 +1278,12 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
         } elseif ($mode === "perldoc") {
             echo ' | ' .
                 '<a href="https://metacpan.org/pod/' . urlencode($parameter) . '" target="_blank" rel="noopener">MetaCPAN</a>';
+        } elseif ($mode === "pydoc") {
+            echo ' | ' .
+                '<a href="https://docs.python.org/3/search.html?q=' . urlencode($parameter) . '" target="_blank" rel="noopener">Python Docs</a>';
+        } elseif ($mode === "ri") {
+            echo ' | ' .
+                '<a href="https://ruby-doc.org/search.html?q=' . urlencode($parameter) . '" target="_blank" rel="noopener">Ruby-Doc</a>';
         }
         echo "</p>\n";
     }
@@ -1411,13 +1525,37 @@ function executeCliHelp (array $args): string {
         throw new Exception("Missing required parameter: command");
     }
 
-    // Auto-detect perldoc: :: or section 3pm/3perl
+    // Auto-detect documentation source
     $is_perl = (strpos($command, "::") !== false || $section === "3pm" || $section === "3perl");
+    // Ruby instance methods use # (e.g. Array#map)
+    $is_ruby = (strpos($command, "#") !== false);
+    // Python qualified names use dotted notation without :: (e.g. os.path, json.loads)
+    $is_python = (!$is_perl && !$is_ruby && strpos($command, ".") !== false);
     
     if ($is_perl) {
         return getPerldocPage($command, "mcp");
     }
-    return getManPage($command, $section, "mcp");
+    if ($is_ruby) {
+        $content = getRiPage($command, "mcp");
+        if ($content !== "") return $content;
+    }
+    if ($is_python) {
+        $content = getPydocPage($command, "mcp");
+        if ($content !== "") return $content;
+    }
+    
+    // Try man first (default)
+    $content = getManPage($command, $section, "mcp");
+    if ($content !== "") return $content;
+    
+    // Fallback cascade: try pydoc, then ri
+    $content = getPydocPage($command, "mcp");
+    if ($content !== "") return $content;
+    
+    $content = getRiPage($command, "mcp");
+    if ($content !== "") return $content;
+    
+    return $content;
 }
 
 function executeCliSearch (array $args): string {
@@ -1510,7 +1648,9 @@ function addManPageToc (string $html): array {
             // formatting tags (<b>, <u>) but NOT <strong> (it's original content that
             // should render as bold in the TOC). Avoid strip_tags() which would treat
             // <sys/socket.h> as an HTML tag and remove it.
-            $label = trim(preg_replace('/<\/?(b|u)>/i', '', html_entity_decode($m[2], ENT_QUOTES, 'UTF-8')));
+            $label = trim(strip_tags(html_entity_decode($m[2], ENT_QUOTES, 'UTF-8')));
+            // Strip RDoc/ri heading prefixes: "= Heading" → "Heading"
+            $label = preg_replace('/^=\s*/', '', $label);
             $tocItems[] = array('id' => $m[1], 'label' => $label, 'children' => array());
             $currentL1Idx = count($tocItems) - 1;
             continue;
@@ -1519,7 +1659,9 @@ function addManPageToc (string $html): array {
         // Level 2 anchor already placed by formatManPerlDoc
         if (preg_match('/<a id="(sub-[^"]+)"><\/a>(.*)/', $line, $m)) {
             if ($currentL1Idx !== null) {
-                $label = trim(preg_replace('/<\/?(b|u)>/i', '', html_entity_decode($m[2], ENT_QUOTES, 'UTF-8')));
+                $label = trim(strip_tags(html_entity_decode($m[2], ENT_QUOTES, 'UTF-8')));
+                // Strip RDoc/ri heading prefixes: "== Heading" → "Heading"
+                $label = preg_replace('/^==\s*/', '', $label);
                 $tocItems[$currentL1Idx]['children'][] = array('id' => $m[1], 'label' => $label);
             }
             continue;
@@ -1570,6 +1712,229 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     }
 
     return "";
+}
+
+//get specified module's pydoc3 page
+function getPydocPage (string $parameter, string $format = "html"): string {
+    $lines = array();
+    exec("pydoc3 ".escapeshellarg($parameter), $lines, $return_code);
+    if ($return_code !== 0 || count($lines) === 0) {
+        return "";
+    }
+    if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);
+    if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "pydoc"), $format);
+    return formatManPerlDoc($lines, "pydoc");
+}
+
+//get specified class/method's ri page
+function getRiPage (string $parameter, string $format = "html"): string {
+    $lines = array();
+    exec("ri ".escapeshellarg($parameter), $lines, $return_code);
+    if ($return_code !== 0 || count($lines) === 0) {
+        return "";
+    }
+    if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);
+    if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "ri"), $format);
+    return formatManPerlDoc($lines, "ri");
+}
+
+//get pydoc3 module index (pydoc3 modules)
+function getPydocIndex (string $format = "html"): string {
+    $lines = array();
+    exec("pydoc3 modules", $lines, $return_code);
+    if ($return_code !== 0 || empty($lines)) {
+        return "";
+    }
+    // pydoc3 modules outputs multi-column format. Split each line on whitespace
+    // to extract individual module names, skipping header/footer lines.
+    $modules = array();
+    $in_body = false;
+    foreach ($lines as $line) {
+        $trimmed = trim($line);
+        if ($trimmed === "") {
+            $in_body = true;  // blank line separates header from module list
+            continue;
+        }
+        if (!$in_body) continue;
+        // Stop at the footer line
+        if (preg_match('/^Enter any module name/i', $trimmed)) break;
+        // Split on 2+ spaces (multi-column layout)
+        $parts = preg_split('/\s{2,}/', $trimmed);
+        foreach ($parts as $part) {
+            $part = trim($part);
+            if ($part !== "" && !preg_match('/^\s*$/', $part)) {
+                $modules[] = $part;
+            }
+        }
+    }
+    if (empty($modules)) return "";
+    sort($modules);
+
+    $script_name = ($format === "markdown" || $format === "json" || $format === "mcp") ? baseUrl() : scriptName();
+    if ($format === "markdown") {
+        $output = "# Python 3 Module Index (pydoc)\n\n";
+        foreach ($modules as $mod) {
+            $output .= "- [{$mod}]({$script_name}/pydoc/".urlencode($mod)."/markdown)\n";
+        }
+        return $output;
+    }
+    if ($format === "json" || $format === "mcp") {
+        $items = array();
+        foreach ($modules as $mod) {
+            $items[] = array(
+                "name" => $mod,
+                "link" => $script_name . "/pydoc/" . urlencode($mod) . "/json"
+            );
+        }
+        $result = json_encode(array(
+            "mode" => "pydoc",
+            "parameter" => "modules",
+            "count" => count($items),
+            "entries" => $items
+        ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($format === "mcp") {
+            $result = json_encode(array(
+                "content" => array(array("type" => "text", "text" => $result)),
+                "structuredContent" => json_decode($result, true)
+            ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        }
+        return $result;
+    }
+    $output = "";
+    foreach ($modules as $mod) {
+        $output .= '<a href="'.$script_name.'/pydoc/'.urlencode($mod).'">'.h($mod).'</a><br />'."\n";
+    }
+    return $output;
+}
+
+//get ri class index (ri -l)
+function getRiIndex (string $format = "html"): string {
+    $lines = array();
+    exec("ri -l", $lines, $return_code);
+    if ($return_code !== 0 || empty($lines)) {
+        return "";
+    }
+    $script_name = ($format === "markdown" || $format === "json" || $format === "mcp") ? baseUrl() : scriptName();
+    if ($format === "markdown") {
+        $output = "# Ruby Class Index (ri)\n\n";
+        foreach ($lines as $line) {
+            $trimmed = trim($line);
+            if ($trimmed !== "") {
+                $output .= "- [{$trimmed}]({$script_name}/ri/".urlencode($trimmed)."/markdown)\n";
+            }
+        }
+        return $output;
+    }
+    if ($format === "json" || $format === "mcp") {
+        $items = array();
+        foreach ($lines as $line) {
+            $trimmed = trim($line);
+            if ($trimmed !== "") {
+                $items[] = array(
+                    "name" => $trimmed,
+                    "link" => $script_name . "/ri/" . urlencode($trimmed) . "/json"
+                );
+            }
+        }
+        $result = json_encode(array(
+            "mode" => "ri",
+            "parameter" => "index",
+            "entries" => $items
+        ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($format === "mcp") {
+            $result = json_encode(array(
+                "content" => array(array("type" => "text", "text" => $result)),
+                "structuredContent" => json_decode($result, true)
+            ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        }
+        return $result;
+    }
+    $output = "";
+    foreach ($lines as $line) {
+        $trimmed = trim($line);
+        if ($trimmed !== "") {
+            $output .= '<a href="'.$script_name.'/ri/'.urlencode($trimmed).'">'.h($trimmed).'</a><br />'."\n";
+        }
+    }
+    return $output;
+}
+
+//get pydoc3 keyword search results
+function getPydocSearchPage (string $parameter, string $format = "html"): string {
+    $lines = array();
+    exec("pydoc3 -k ".escapeshellarg($parameter), $lines, $return_code);
+    if ($return_code !== 0 || empty($lines)) {
+        return "";
+    }
+    $script_name = ($format === "markdown" || $format === "json" || $format === "mcp") ? baseUrl() : scriptName();
+    if ($format === "markdown") {
+        $output = "# pydoc3 search: {$parameter}\n\n";
+        foreach ($lines as $line) {
+            $trimmed = trim($line);
+            if (preg_match('/^(\S+)\s*-\s*(.+)/', $trimmed, $m)) {
+                $output .= "- [{$m[1]}]({$script_name}/pydoc/".urlencode($m[1])."/markdown) — {$m[2]}\n";
+            } elseif ($trimmed !== "") {
+                $output .= "- [{$trimmed}]({$script_name}/pydoc/".urlencode($trimmed)."/markdown)\n";
+            }
+        }
+        return $output;
+    }
+    if ($format === "json" || $format === "mcp") {
+        $items = array();
+        foreach ($lines as $line) {
+            $trimmed = trim($line);
+            if (preg_match('/^(\S+)\s*-\s*(.+)/', $trimmed, $m)) {
+                $items[] = array(
+                    "name" => $m[1],
+                    "description" => $m[2],
+                    "link" => $script_name . "/pydoc/" . urlencode($m[1]) . "/json"
+                );
+            } elseif ($trimmed !== "") {
+                $items[] = array(
+                    "name" => $trimmed,
+                    "link" => $script_name . "/pydoc/" . urlencode($trimmed) . "/json"
+                );
+            }
+        }
+        $result = json_encode(array(
+            "mode" => "pydoc",
+            "parameter" => $parameter,
+            "results" => $items
+        ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($format === "mcp") {
+            $result = json_encode(array(
+                "content" => array(array("type" => "text", "text" => $result)),
+                "structuredContent" => json_decode($result, true)
+            ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        }
+        return $result;
+    }
+    $output = "";
+    foreach ($lines as $line) {
+        $trimmed = trim($line);
+        if (preg_match('/^(\S+)\s*-\s*(.+)/', $trimmed, $m)) {
+            $output .= '<a href="'.$script_name.'/pydoc/'.urlencode($m[1]).'">'.h($m[1]).'</a> — '.h($m[2]).'<br />'."\n";
+        } elseif ($trimmed !== "") {
+            $output .= '<a href="'.$script_name.'/pydoc/'.urlencode($trimmed).'">'.h($trimmed).'</a><br />'."\n";
+        }
+    }
+    return $output;
+}
+
+//get ri search results (ri already does fuzzy matching, try as direct lookup)
+function getRiSearchPage (string $parameter, string $format = "html"): string {
+    $lines = array();
+    exec("ri ".escapeshellarg($parameter), $lines, $return_code);
+    if ($return_code !== 0 || count($lines) === 0) {
+        return "";
+    }
+    $first_line = count($lines) > 0 ? trim($lines[0]) : "";
+    if (preg_match('/^Nothing known about/i', $first_line)) {
+        return "";
+    }
+    if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);
+    if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "ri"), $format);
+    return formatManPerlDoc($lines, "ri");
 }
 
 //get specified command's info page
@@ -1623,7 +1988,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         $count = count($lines);
         for ($i = 0; $i < $count; $i++) {
             $line = $lines[$i];
-            if (preg_match('/^(.+)\s+\[\s*(.+?)\s*\]\s+\(([\dnol]\w*)\)\s*$/', $line, $m)) {
+            if (preg_match('/^(.+)\s+\[\s*(.+?)\s*\]\s+\(((\d\w*|n)\w*)\)\s*$/', $line, $m)) {
                 $name = trim($m[1]);
                 $description = trim($m[2]);
                 $section_num = trim($m[3]);
@@ -1635,7 +2000,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
                     "section" => $section_num,
                     "link" => $script_name . "/" . $link_mode . "/" . urlencode($name) . "/" . urlencode($section_num) . "/json",
                 );
-            } elseif (preg_match('/^(.+)\s+\(([\dnol]\w*)\)\s+—\s+(.+)$/', $line, $m)) {
+            } elseif (preg_match('/^(.+)\s+\(((\d\w*|n)\w*)\)\s+—\s+(.+)$/', $line, $m)) {
                 $name = trim($m[1]);
                 $section_num = trim($m[2]);
                 $description = trim($m[3]);
@@ -1647,7 +2012,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
                     "section" => $section_num,
                     "link" => $script_name . "/" . $link_mode . "/" . urlencode($name) . "/" . urlencode($section_num) . "/json",
                 );
-            } elseif (preg_match('/^([\w\.\:\-\+]+)\s+\(([\dnol]\w*)\)\s+—\s+(.+)$/', $line, $m)) {
+            } elseif (preg_match('/^([\w\.\:\-\+]+)\s+\(((\d\w*|n)\w*)\)\s+—\s+(.+)$/', $line, $m)) {
                 $is_perl = (preg_match('/:/', $m[1]));
                 $link_mode = $is_perl ? "perldoc" : "man";
                 $results[] = array(
@@ -1656,7 +2021,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
                     "section" => trim($m[2]),
                     "link" => $script_name . "/" . $link_mode . "/" . urlencode(trim($m[1])) . "/" . urlencode(trim($m[2])) . "/json",
                 );
-            } elseif (preg_match('/^(.+)\s+\(([\dnol]\w*)\)\s+-\s+(.+)$/', $line, $m)) {
+            } elseif (preg_match('/^(.+)\s+\(((\d\w*|n)\w*)\)\s+-\s+(.+)$/', $line, $m)) {
                 // Linux "apropos" output: command (section) - description (with hyphens, not em dashes)
                 $name = trim($m[1]);
                 $section_num = trim($m[2]);
@@ -1697,8 +2062,8 @@ function getSearchPage (string $parameter, string $section = "", string $format 
 
         if ($format === "markdown") {
             $patterns = array(
-                "/(.*\\/)?([\\w\\-\\.\\+:]+)((\\s+\\[)([\\w\\-\\.:]+)(\\]\\s+))\\(([\\dnol]\\w*)\\)/",
-                "/([\\w+\\.\\-:]+)(\\s+)?(\\(([\\dnol]\\w*)\\))/"
+                "/(.*\\/)?([\\w\\-\\.\\+:]+)((\\s+\\[)([\\w\\-\\.:]+)(\\]\\s+))\\(((\\d\\w*|n)\\w*)\\)/",
+                "/([\\w+\\.\\-:]+)(\\s+)?(\\(((\\d\\w*|n)\\w*)\\))/"
             );
             if ($link_mode === "perldoc") {
                 $replace = array(
@@ -1718,9 +2083,9 @@ function getSearchPage (string $parameter, string $section = "", string $format 
                 "/</",  //html special char: '<' => '&lt;';
                 "/>/",  //html special char: '>' => '&gt;';
                 //for linux format of search output
-                "/(.*\\/)?([\\w\\-\\.\\+:]+)((\\s+\\[)([\\w\\-\\.:]+)(\\]\\s+))\\(([\\dnol]\\w*)\\)/",
+                "/(.*\\/)?([\\w\\-\\.\\+:]+)((\\s+\\[)([\\w\\-\\.:]+)(\\]\\s+))\\(((\\d\\w*|n)\\w*)\\)/",
                 //'(command)' => man page of command;
-                "/([\\w+\\.\\-:]+)(\\s+)?(\\(([\\dnol]\\w*)\\))/"
+                "/([\\w+\\.\\-:]+)(\\s+)?(\\(((\\d\\w*|n)\\w*)\\))/"
             );
             if ($link_mode === "perldoc") {
                 $replace = array(
@@ -1943,21 +2308,6 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                     //perldoc specific: plain text headings (no overstrike sequences in perldoc output)
                     "/^([A-Z][A-Z0-9][A-Z0-9\/\s]{1,50})\s*$/",
                     "/^ {2}([A-Z][a-z][\w\s:\x27;,-]+)\s*$/",
-                    //transfer related command to hyperlinks, but $b->func(#) will not be translate.
-                    //'<b>command</b>(<b>#</b>),</b>' => ' command(#)' => link to command
-                    //Man Page Howto: http://www.schweikhardt.net/man_page_howto.html
-                    "/((<.>)|([\s,]))([\w\-\.\+]+)(<\/.>)?\((<.>)?([\dnol]\w*)(<\/.>)?\)(,)?(<\/.>)?/",
-                    "/([\s,])([\w\-\.\+]+)\(([\dnol]\w*)\)/",
-                    //translate link to related perl modules, but $obj->Module::Name-> will not be translate
-                    //'<u>Module::Name</u>' => ' Module::Name'
-                    "/((<.>)|([\s,]))(\w+(::\w+)+)(<\/.>)?/",
-                    // SGR escape sequences (modern man): handle ESC[1m..ESC[0m and ESC[1m..ESC[22m
-                    "/".chr(27)."\[1m(.*?)".chr(27)."\[(?:0|22)m/",
-                    // SGR underline: handle ESC[4m..ESC[0m and ESC[4m..ESC[24m
-                    "/".chr(27)."\[4m(.*?)".chr(27)."\[(?:0|24)m/",
-                    "/(([\w\-\.]+)@([\w\-]+)(\.[\w\-]+)+)/",  //link to email
-                    "/([\w]+:\/\/[\w%\-\?&;#~=\.\/\@]+[\w\/])/i", //link to url
-                    "/".chr(7)."/",  //reverse '>'
                 );
 
     $replace = array(
@@ -1976,21 +2326,51 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                    "",
                    '<b>$1</b>',
                    '  <u>$1</u>',
-                   '$3$4($7)$9',
-                   '$1<a href="'.$script_name.'/man/$2/$3">$2($3)</a>',
-                   '$3<a href="'.$script_name.'/'.$mode.'/$4">$4</a>$6',
-                   '<b>$1</b>',
-                   '<u>$1</u>',
-                   '<a href="mailto:$2 AT $3$4">$2<u> AT </u>$3$4</a>',
-                   '<a href="$1" rel="noopener noreferrer">$1</a>',
-                   "&gt;",
                );
+
+    // Mode-specific link patterns
+    if ($mode === "pydoc") {
+        // pydoc: class ParentClass links
+        $patterns[] = "/class (\w+)\((\w+(?:\.\w+)*)\)/";
+        $replace[] = 'class $1(<a href="'.$script_name.'/pydoc/$2">$2</a>)';
+    } elseif ($mode === "ri") {
+        // ri: Class or Class#method references
+        $patterns[] = "/class (\w+)\((\w+(?:\.\w+)*)\)/";
+        $replace[] = 'class $1(<a href="'.$script_name.'/ri/$2">$2</a>)';
+        // Ruby constant/module refs with :: notation
+        $patterns[] = "/((<.>)|([\s,]))(\w+(::\w+)+)(<\/.>)?/";
+        $replace[] = '$3<a href="'.$script_name.'/ri/$4">$4</a>$6';
+    } else {
+        // man and perldoc: standard command(section) and module linking
+        $patterns[] = "/((<.>)|([\s,]))([\w\-\.\+]+)(<\/.>)?\((<.>)?(\d\w*|n)(<\/.>)?\)(,)?(<\/.>)?/";
+        $replace[] = '$3$4($7)$9';
+        $patterns[] = "/([\s,])([\w\-\.\+]+)\((\d\w*|n)\)/";
+        $replace[] = '$1<a href="'.$script_name.'/'.$mode.'/$2/$3">$2($3)</a>';
+        //translate link to related perl modules, but $obj->Module::Name-> will not be translate
+        //'<u>Module::Name</u>' => ' Module::Name'
+        $patterns[] = "/((<.>)|([\s,]))(\w+(::\w+)+)(<\/.>)?/";
+        $replace[] = '$3<a href="'.$script_name.'/'.$mode.'/$4">$4</a>$6';
+    }
+
+    // SGR escape sequences (common to all modes)
+    $patterns[] = "/".chr(27)."\[1m(.*?)".chr(27)."\[(?:0|22)m/";
+    $replace[] = '<b>$1</b>';
+    $patterns[] = "/".chr(27)."\[4m(.*?)".chr(27)."\[(?:0|24)m/";
+    $replace[] = '<u>$1</u>';
+
+    // Common patterns: email, URL, closing >
+    $patterns[] = "/(([\w\-\.]+)@([\w\-]+)(\.[\w\-]+)+)/";  //link to email
+    $replace[] = '<a href="mailto:$2 AT $3$4">$2<u> AT </u>$3$4</a>';
+    $patterns[] = "/([\w]+:\/\/[\w%\-\?&;#~=\.\/\@]+[\w\/])/i"; //link to url
+    $replace[] = '<a href="$1" rel="noopener noreferrer">$1</a>';
+    $patterns[] = "/".chr(7)."/";  //reverse '>'
+    $replace[] = "&gt;";
     $seenIds = [];
     $output = "";
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
         $line = preg_replace($patterns, $replace, $lines[$i]);
-        $heading = detectHeadingType($line);
+        $heading = detectHeadingType($line, $mode);
         if ($heading) {
             $id = ($heading['level'] === 1 ? 'section-' : 'sub-')
                 . strtolower(preg_replace('/[^A-Z0-9]+/i', '-', $heading['text']));
@@ -2754,7 +3134,7 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
         }
 
         // Use shared heading detection (same as HTML/Markdown paths)
-        $heading = detectHeadingType($rawLine);
+        $heading = detectHeadingType($rawLine, $mode);
 
         if ($heading !== null) {
             if ($heading['level'] === 1) {
@@ -3025,7 +3405,7 @@ function formatManPerlDocToMarkdown (array $lines, string $parameter = ""): stri
         $line = $lines[$i];
         
         // Section / Sub-section Headers: detect via shared function
-        $heading = detectHeadingType($line);
+        $heading = detectHeadingType($line, "man");
         if ($heading) {
             // L1 → ## (man .SH), L2 → ### (man .SS) to match HTML TOC hierarchy
             $prefix = ($heading['level'] === 1) ? '## ' : '### ';
@@ -3039,7 +3419,7 @@ function formatManPerlDocToMarkdown (array $lines, string $parameter = ""): stri
 
         // Command references: show as absolute markdown links
         $line = preg_replace_callback(
-            '/(?<![\w])(?:\*\*|_)?([\w\-\.\+]+)(?:\*\*|_)?\((?:\*\*|_)?([\dnol]\w*)(?:\*\*|_)?\)/',
+            '/(?<![\w])(?:\*\*|_)?([\w\-\.\+]+)(?:\*\*|_)?\((?:\*\*|_)?((\d\w*|n)\w*)(?:\*\*|_)?\)/',
             function ($matches) {
                 $name = str_replace(['**', '_'], '', $matches[1]);
                 $sec = str_replace(['**', '_'], '', $matches[2]);
