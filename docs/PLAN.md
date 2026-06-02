@@ -18,18 +18,17 @@ git push origin v2.1
 ## 版本路线图
 
 ```
-v2.1 (2026.05 已发布)   →   v2.2 (即时)            →   v3.0 (2026.Q3+)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-man / perldoc / info        TLDR 嵌入全格式              代码拆分
-MCP Server (JSON-RPC)       man+TLDR 实时聚合            配置文件 (phpman.config.php)
-Markdown 输出               官方 tldr-pages 数据源        缓存基础设施 (man/tldr/missing)
-JSON API (语义化)           零配置 零依赖                  LLM 智能生成
-TLDR 端点 (LLM)             保持单文件                   离线数据采集与改写
-跨平台宽度控制              去掉 LLM 密钥依赖             pydoc3 / ri 扩展
-                                                         搜索增强 安全加固
-                                                         本地全文搜索 国际化
+v2.1 (2026.05 已发布)   →   v2.2 (已发布)            →   v2.3 (已发布)            →   v3.0 (2026.Q3+)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+man / perldoc / info        TLDR 嵌入全格式              pydoc3 / ri 模式           代码拆分
+MCP Server (JSON-RPC)       man+TLDR 实时聚合            结构化 JSON/MCP 输出        配置文件
+Markdown 输出               官方 tldr-pages 数据源       搜索级联 (apropos→pydoc→ri)  缓存基础设施
+JSON API (语义化)           零配置 零依赖                 ri RDoc 章节检测           LLM 智能生成
+TLDR 端点 (LLM)             保持单文件                    自动文档源检测              离线数据采集
+跨平台宽度控制              去掉 LLM 密钥依赖                                       搜索增强 安全加固
+                                                                                   本地全文搜索 国际化
 
-v2.1 = 当前生产 | v2.2 = 轻量 TLDR 聚合 | v3.0 = 架构升级 + 缓存 + AI
+v2.3 = 当前生产 (pydoc3 / ri 扩展完成) | v3.0 = 架构升级 + 缓存 + AI
 ```
 
 ---
@@ -231,9 +230,8 @@ src/
 
 ### 2.5 多语言工具扩展
 
-- pydoc3 支持
-- ri (Ruby) 支持
 - 模糊搜索、索引侧栏导航
+- 自动补全提示
 
 ### 2.6 离线数据
 
@@ -243,16 +241,19 @@ src/
 
 ---
 
-## v2.1 → v2.2 → v3.0 对比
+## v2.1 → v2.2 → v2.3 → v3.0 对比
 
 ```
-                v2.1              v2.2               v3.0
-─────────────────────────────────────────────────────────────
-文件数          1                 1                  1 + src/
-配置文件        无                无                  phpman.config.php
-缓存目录        tldr_cache/(LLM)  无                  /var/cache/phpman/
-TLDR 来源       LLM API           官方 tldr-pages     官方 > LLM > 提取
-TLDR 覆盖格式   /tldr 端点        全部 4 种格式        全部 4 种格式
-LLM 密钥        可选              不需要              可选（增强）
-部署            scp 1 文件        scp 1 文件          scp + config 一次
+                v2.1              v2.2               v2.3               v3.0
+────────────────────────────────────────────────────────────────────────────────
+文件数          1                 1                  1                  1 + src/
+配置文件        无                无                  无                  phpman.config.php
+缓存目录        tldr_cache/(LLM)  无                  无                  /var/cache/phpman/
+TLDR 来源       LLM API           官方 tldr-pages     官方 tldr-pages    官方 > LLM > 提取
+TLDR 覆盖格式   /tldr 端点        全部 4 种格式        全部 4 种格式      全部 4 种格式
+LLM 密钥        可选              不需要              不需要              可选（增强）
+文档系统        man/perldoc/info  +TLDR               +pydoc3/ri         （不变）
+输出格式        HTML/MD/JSON/MCP  （不变）             （不变）            （不变）
+MCP 工具        cli_help/search   +search cascade     +auto-detect src   （不变）
+部署            scp 1 文件        scp 1 文件          scp 1 文件         scp + config 一次
 ```

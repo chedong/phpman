@@ -4,6 +4,30 @@ All notable changes to phpMan are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3] — 2026-06-02
+
+### Added
+- **pydoc3 (Python 3) documentation mode** — `/pydoc/{module}/{format}` with HTML/Markdown/JSON/MCP output
+- **ri (Ruby) documentation mode** — `/ri/{Class#method}/{format}` with HTML/Markdown/JSON/MCP output
+- **Search cascade** — `apropos` → `pydoc3 -k` → `ri` search in all formats (HTML, Markdown, JSON, MCP)
+- **pydoc module index** — `pydoc3 modules` parsed and rendered in all 4 formats
+- **ri class index** — `ri -l` listing rendered in all 4 formats
+- **Auto-detection in MCP cli_help** — dotted names (`json.loads`) → pydoc, `#` suffix (`Array#map`) → ri, `::` → perldoc
+- **pydoc class/function heading detection** — indented `class Name(Parent)` and `funcName(args)` as L2 subsections
+- **ri RDoc heading detection** — `= Section` and `== Subsection` markers exclusive to ri mode
+- **Mode-specific link patterns** — parent class links in pydoc, `::` constant links in ri
+- **Not found fallback links** — Python Docs search for pydoc, Ruby-Doc search for ri
+- **TOC label cleaning** — strip RDoc `=` / `==` prefixes from TOC entries
+
+### Changed
+- MCP tool description updated to mention pydoc3 and ri
+- Search radio button order: pydoc and ri placed after info
+
+### Fixed
+- Man page regex `[\dnol]\w*` → `(\d\w*|n)` to avoid false matches with pydoc/ri parameter names
+- "Not found locally" message not showing for pydoc/ri detail pages
+- `PHP_MAN_WIDTH` converted from variable to `define()` constant (shared by man + perldoc)
+
 ## [2.2] — 2026-06-02
 
 ### Added
@@ -165,6 +189,7 @@ Initial checkin to SourceForge CVS. A PHP script to browse Unix man pages over t
 
 ---
 
+[2.3]: https://github.com/chedong/phpman/releases/tag/v2.3
 [2.2]: https://github.com/chedong/phpman/compare/v2.1...v2.2
 [2.1]: https://github.com/chedong/phpman/compare/v2.0...v2.1
 [2.0]: https://github.com/chedong/phpman/releases/tag/v2.0

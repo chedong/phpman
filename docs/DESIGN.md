@@ -7,7 +7,7 @@
 
 ## 一、产品定位
 
-phpMan 是一个单文件 PHP Web 应用，将 Unix `man`/`perldoc`/`info`/`apropos` 命令的输出以 HTML、Markdown、JSON、MCP 四种格式呈现，同时作为 MCP Server 供 AI Agent 调用。
+phpMan 是一个单文件 PHP Web 应用，将 Unix `man`/`perldoc`/`info`/`apropos`/`pydoc3`/`ri` 命令的输出以 HTML、Markdown、JSON、MCP 四种格式呈现，同时作为 MCP Server 供 AI Agent 调用。
 
 **核心价值**：让人类和 AI 都能高效查阅 Unix 文档。
 
@@ -84,8 +84,9 @@ TLDR 缓存文件存储在 webroot 内的 `tldr_cache/` 目录：
 
 1. **先读本文档** — 理解产品定义和有意的设计决策
 2. **查阅 `docs/PLAN.md`** — 了解版本路线图和架构方向
-3. **查阅 GitHub Issues** — 了解已知问题和修复优先级
-4. **再审查代码** — 避免将产品设计误判为缺陷
+3. **查阅 `docs/PYDOC_RI_DESIGN.md`** — pydoc3/ri 格式解析与内容管道设计
+4. **查阅 GitHub Issues** — 了解已知问题和修复优先级
+5. **再审查代码** — 避免将产品设计误判为缺陷
 
 ---
 
@@ -93,4 +94,5 @@ TLDR 缓存文件存储在 webroot 内的 `tldr_cache/` 目录：
 
 | 日期 | 修订内容 |
 |------|----------|
+| 2026-06-02 | v2.3：新增 pydoc3 / ri 模式，详见 `docs/PYDOC_RI_DESIGN.md` |
 | 2026-06-01 | 初始版本：记录页脚 IP/UA 显示为有意设计（关闭 #27） |
