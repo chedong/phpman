@@ -13,400 +13,246 @@ git tag -a v2.1 -m "v2.1: cross-platform width control, TLDR endpoint"
 git push origin v2.1
 ```
 
+---
+
 ## 版本路线图
 
 ```
-v2.1 (2026.05 已发布)    v3.0 MVP (2026.Q3)        v3.1 (2026.Q3末)      v4.0 (2026.Q4+)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-man / perldoc / info  →  pydoc3 支持          →  ri (Ruby)         →    AI 智能文档生成
-MCP Server (JSON-RPC)     代码拆分 Phase 1        模糊搜索               智能翻译 (保留标识符)
-Markdown 输出             MCP 错误标准化           索引侧栏导航           Cheat Sheet 模式
-JSON API (语义化)         安全加固                 Go doc               参数样例自动生成
-TLDR 端点                搜索增强                                      本地缓存 (永久)
-跨平台宽度控制                                                         本地全文搜索
-                                                                       国际化 (LANG+AI)
+v2.1 (2026.05 已发布)   →   v2.2 (即时)            →   v3.0 (2026.Q3+)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+man / perldoc / info        TLDR 嵌入全格式              代码拆分
+MCP Server (JSON-RPC)       man+TLDR 实时聚合            配置文件 (phpman.config.php)
+Markdown 输出               官方 tldr-pages 数据源        缓存基础设施 (man/tldr/missing)
+JSON API (语义化)           零配置 零依赖                  LLM 智能生成
+TLDR 端点 (LLM)             保持单文件                   离线数据采集与改写
+跨平台宽度控制              去掉 LLM 密钥依赖             pydoc3 / ri 扩展
+                                                         搜索增强 安全加固
+                                                         本地全文搜索 国际化
 
-v2.1 = 当前生产 | v3.0 = 核心扩展 | v3.1 = 搜索与导航 | v4.0 = AI 重塑文档体验
+v2.1 = 当前生产 | v2.2 = 轻量 TLDR 聚合 | v3.0 = 架构升级 + 缓存 + AI
 ```
 
 ---
 
-## 一、多语言参考工具支持 `v3.0`
+## Phase 1: v2.2 — 零配置 TLDR 聚合（即时）
 
-将 phpMan 从 Unix man/perldoc/info 扩展到覆盖主流编程语言的本地文档工具。
+### 设计原则
 
-### 1.1 新增模式
+- **单文件部署**，scp 即用
+- **不需要本地设置**：无缓存目录、无 LLM 密钥、无配置文件
+- **实时聚合**：man page（本地 shell）+ TLDR（官方 tldr-pages）→ 同一页面呈现
+- **全格式嵌入**：HTML / JSON / Markdown / MCP 四种输出都包含 TLDR 段落
 
-| 模式 | 工具 | 命令 | URL 路由 | 输出格式 |
-|------|------|------|----------|----------|
-| pydoc | `pydoc3` | `pydoc3 os.path` | `/pydoc/os.path` | 纯文本，结构化 |
-| ri | `ri` | `ri Array#map` | `/ri/Array/map` | 带 overstrike（同 man） |
+### 1.1 TLDR 数据源：官方 tldr-pages
 
-### 1.2 入口索引
+直接消费 [tldr-pages/tldr](https://github.com/tldr-pages/tldr) 仓库的原始 markdown 文件。
 
-```
-pydoc3 modules    → 列出所有 Python 模块（~345 个）
-ri -l             → 列出所有 Ruby 文档条目（~1989 个）
-```
-
-- **>150 条自动启用字母索引侧栏**（按首字母分组，快速跳转）
-- 搜索：`pydoc3 -k keyword` / `ri -i keyword`
-
-### 1.3 远期扩展 (v3.0+)
-
-| 语言 | 工具 | 优先级 | 备注 |
-|------|------|--------|------|
-| Go | `go doc` | 中 | 需在 GOPATH/GOROOT 环境运行 |
-| Rust | `rustdoc` | 低 | 通常预生成 HTML |
-| Node.js | Node.js 内置 `help` | 低 | 格式不统一 |
-| C/C++ | man 已覆盖 | — | — |
-
-### 1.4 实现要点
-
-- 输出走现有 `formatManPerlDoc()` 管道（HTML/Markdown/JSON/MCP 四种格式复用）
-- `ri` 输出和 man page 一样使用 `X^HX` overstrike 格式，直接兼容
-- `pydoc3` 输出是纯文本，处理更简单
-- URL 路由继承现有模式：`/pydoc/module.name` `/ri/Class/method`
-
-### 1.5 宽度控制（跨平台）
-
-三种模式的输出宽度统一为 `$PHP_MAN_WIDTH`（默认 100），但控制机制不同：
-
-| 模式 | 机制 | 层级 | Linux | macOS/BSD |
-|------|------|------|-------|-----------|
-| man | `MANROFFOPT=-rLL=100n` + `man -Tutf8` | groff 排版引擎 | ✅ SGR 编码 | ❌ 无 groff |
-| man fallback | `MANWIDTH=100 man` (bare) | BSD man 内置格式 | — | ✅ overstrike 编码 |
-| perldoc | `pod2text -w 100` | POD 文本格式化器 | ✅ | ✅ |
-| pydoc | 待定 | 待定 | — | — |
-
-- **man (GNU/Linux)**: groff 的 `-rLL` 寄存器控制宽度，`-Tutf8` 输出 SGR escape 序列
-- **man (BSD/macOS)**: `MANWIDTH=100` 环境变量控制宽度，默认输出 overstrike（`X^HX`）格式
-- **perldoc**: `MANWIDTH` 对现代 perldoc 无效。改用 `pod2text -w 100` 在 POD 格式化层控制宽度 —— 跨平台通用
-- **pydoc**: 不能用 groff（无 roff 格式内容），也不能用 pod2text（无 POD 格式）。需在 Python `pydoc.TextDoc` / `textwrap` 层控制
-- `formatManPerlDoc()` 同时处理 SGR escape 和 overstrike 两种编码，fallback 透明
-
----
-
-## 二、LLM 智能格式化 `v4.0`
-
-利用免费/本地 LLM 对 man page 内容进行智能处理，输出工程友好的参考文档。
-
-### 2.1 智能翻译 (`?lang=zh`)
-
-**核心约束：保留所有代码标识符不翻译**
+**获取方式**：运行时从 GitHub Raw 拉取单页
 
 ```
-规则（写入 System Prompt）:
-- 保留: 命令名、函数名、flag、参数、环境变量、文件路径、代码示例
-- 仅翻译: 描述性文字和说明段落
-- 使用工程术语，非通用翻译风格
+https://raw.githubusercontent.com/tldr-pages/tldr/main/pages/common/curl.md
+https://raw.githubusercontent.com/tldr-pages/tldr/main/pages/linux/curl.md
 ```
 
-对比效果：
+**查找顺序**：`common/` → `linux/` → `osx/` → 无（降级到规则提取）
+
+**降级路径**：
 ```
-Google 翻译:  chmod 实用程序修改文件模式位。
-AI 翻译:     chmod 工具修改文件的 mode bits（权限位）。
-
-                     ↑ 保留英文术语         ↑ 补充原词
-```
-
-### 2.2 Cheat Sheet 模式 (`?mode=cheat`)
-
-```markdown
-## curl — Quick Reference
-
-| 场景 | 命令 |
-|------|------|
-| GET 请求 | `curl https://api.example.com` |
-| POST JSON | `curl -X POST -H "Content-Type: application/json" -d '{}' URL` |
-| 下载文件 | `curl -O https://example.com/file.tar.gz` |
-| 查看头信息 | `curl -I https://example.com` |
-| 跟随重定向 | `curl -L https://example.com` |
-
-> 每个命令提取 5–10 个最常见用法
+官方 tldr 页面存在 → 解析展示
+         │
+         不存在
+         │
+         ▼
+formatTldr() 规则提取（已有，从 man page EXAMPLES + FLAGS 生成）
 ```
 
-### 2.3 参数样例生成 (`?examples=1`)
+### 1.2 页面嵌入方式
+
+在 man page 顶部插入 TLDR block，不是另一个页面：
+
+```
+┌─────────────────────────────────────────────┐
+│ ⚡ TLDR                                       │
+│                                               │
+│ Download a file:                              │
+│   curl -O {{url}}                             │
+│ Send JSON POST:                               │
+│   curl -X POST -d '{}' {{url}}                │
+│ Follow redirects:                             │
+│   curl -L {{url}}                              │
+│ [View full TLDR page]                         │
+├─────────────────────────────────────────────┤
+│ NAME                                          │
+│   curl - transfer a URL                       │
+│ SYNOPSIS                                      │
+│   curl [options...] <url>                     │
+│ ...                                           │
+└─────────────────────────────────────────────┘
+```
+
+**交互逻辑**：
+- 大文档（man page > 200 行）：TLDR 默认展开
+- 小文档：TLDR 默认折叠，点击展开
+- 无 TLDR 时（命令不在官方 tldr-pages 中）：不显示 TLDR block
+
+### 1.3 JSON API 增强
+
+当前 `/man/curl/1/json` 返回：
 
 ```json
 {
-  "flag": "-r",
-  "long": "--recursive",
-  "arg": null,
-  "description": "operate recursively on directories",
-  "examples": [
-    "chmod -R 755 /var/www",
-    "chmod -R u+w,g+w ~/project"
-  ]
+  "name": "curl",
+  "sections": {...},
+  "flags": [...]
 }
 ```
 
-### 2.4 TLDR 摘要 (已有基础)
-
-- 当前 `/tldr/{command}` 已实现
-- 强化：自动检测命令最常用 3 个子场景，分别给一行示例
-
-### 2.5 LLM 接入方案
-
-| 模型 | 免费额度 | 延迟 | 适用场景 |
-|------|---------|------|---------|
-| Gemini 2.5 Flash | 1500 req/day | ~1s | 翻译、TLDR 首选 |
-| Groq (Llama-4) | 免费 tier | ~0.5s | 样例生成、cheat sheet |
-| Ollama 本地 | 无限制 | 取决于硬件 | 隐私敏感、批量预处理 |
-| DeepSeek V4 | 已有 API | ~2s | 已有配置零成本接入 |
-
-### 2.6 缓存策略
-
-man page 内容不变 → LLM 结果可**永久缓存**：
-
-```
-tldr_cache/
-├── ls.1/
-│   ├── cheat.zh.md           # 中文 Cheat Sheet
-│   ├── examples.zh.json      # 中文参数样例
-│   ├── lang.zh.json          # 全页中文翻译
-│   └── summary.json          # TLDR 摘要
-├── git-commit.1/
-│   └── ...
-```
-
-- 按 `命令 + 语言 + 功能` 维度缓存
-- 热门命令（Top 100）预热，首次访问即秒回
-- 新增 `?refresh=1` 强制重新生成
-
----
-
-## 三、搜索增强 `v3.0 → v4.0`
-
-### 3.1 索引/搜索结果页字母导航 `v3.0`
-
-**触发条件：条目数 > 150**
-
-```
-┌──────────────────────────────────────┐
-│ A B C D E F G H I J K L M ...        │  ← 字母索引侧栏
-├──────────────────────────────────────┤
-│ A                                    │
-│   ACL   ACL::ACLEntry   ARGF         │
-│   Abbrev   Addrinfo   Array          │
-│                                      │
-│ B                                    │
-│   Base64   BasicObject   Binding     │
-│   BigDecimal   Bundler               │
-│ ...                                  │
-└──────────────────────────────────────┘
-```
-
-- 首字母侧栏固定在页面顶部/侧边
-- 点击字母平滑滚动/跳转到对应分组
-- 小屏（<768px）改为下拉选择器
-
-### 3.2 模糊搜索 `v3.0`
-
-```
-输入: "git cmomit" → 建议: "git commit"
-输入: "nginx"      → 建议: "nginx" (section 8), "nginx.conf" (section 5)
-```
-
-- 基于 Levenshtein 距离 + 音节匹配
-- 优先返回结果，无结果时自动 Fallback 到模糊建议
-
-### 3.3 本地全文搜索 `v4.0`
-
-- 本地索引 man page 正文内容（不仅限于 apropos 的 NAME 行）
-- SQLite FTS5 全文搜索引擎，无需外部依赖
-- 支持 `?q=compress+files&fulltext=1` 全文匹配
-- 搜索结果高亮显示匹配片段
-
----
-
-## 四、MCP & Agent 协议优化 `v3.0`
-
-### 4.1 流式/分页输出
-
-大 man page（`bash` 351KB）JSON 一次性返回开销大：
-
-```
-GET /man/bash/1/json?page=1&limit=50       # Agent 按需翻页
-GET /man/bash/1/json?section=OPTIONS       # 按 section 分段取
-```
-
-### 4.2 错误响应标准化
+v2.2 增加 `tldr` 字段：
 
 ```json
 {
-  "error": {
-    "code": "CMD_NOT_FOUND",
-    "message": "No manual entry for foobar",
-    "fallback": {
-      "action": "search",
-      "url": "/search/foobar/json"
-    }
-  }
+  "name": "curl",
+  "tldr": {
+    "source": "official",
+    "description": "Transfer data from or to a server",
+    "examples": [
+      {"description": "Download a file", "command": "curl -O {{url}}"},
+      {"description": "Send a POST request", "command": "curl -X POST -d '{}' {{url}}"}
+    ]
+  },
+  "sections": {...},
+  "flags": [...]
 }
 ```
 
-`fallback.action` 让 Agent 能自动决策下一步。
+`source` 字段取值：
+- `"official"` — 来自 tldr-pages 官方仓库
+- `"extracted"` — 规则提取降级
+- `null` — 无 TLDR 可用
 
-### 4.3 MCP 动态工具发现
+### 1.4 MCP 输出增强
 
-- `/mcp/tools/list` 返回所有可用命令的模式列表
-- Agent 无需硬编码 phpMan URL 即可发现和调用
+```
+当前（structuredContent）:
+  {sections, flags, examples}
 
-### 4.4 远期：Agent-to-Agent 协议
+v2.2:
+  {tldr_summary, tldr_examples, sections, flags, examples}
+```
 
-- 通过 `see_also` 字段构建命令关系图
-- MCP `resources/list` 暴露命令间引用关系
+Agent 优先读 `tldr_examples`，需要完整文档时才展开 `sections`。
+
+### 1.5 Markdown 输出增强
+
+```
+# curl
+
+> **TLDR:** Transfer data from or to a server
+
+- Download a file:
+  `curl -O {{url}}`
+- Send POST:
+  `curl -X POST -d '{}' {{url}}`
 
 ---
 
-## 五、代码架构拆分 `v3.0`
-
-### 5.1 当前状态
-
-- 单文件 `phpMan.php` ~129KB，混合所有功能
-- 函数 ~80 个，全局变量 ~10 个
-
-### 5.2 目标结构
-
-```
-phpMan/
-├── public/
-│   └── index.php              # 入口 + 路由 (~30 行)
-├── src/
-│   ├── Core/
-│   │   ├── Router.php          # URL 解析 + 模式分发
-│   │   └── Security.php        # h(), getSafeHost(), scriptName()
-│   ├── Source/
-│   │   ├── Man.php             # getManPage()
-│   │   ├── Perldoc.php         # getPerldocPage()
-│   │   ├── Info.php            # getInfoPage()
-│   │   ├── Search.php          # getSearchPage()
-│   │   ├── Pydoc.php           # getPydocPage() (新)
-│   │   └── Ri.php              # getRiPage() (新)
-│   ├── Formatter/
-│   │   ├── Html.php            # formatManPerlDoc → HTML
-│   │   ├── Markdown.php        # Markdown 输出
-│   │   ├── Json.php            # JSON/MCP 输出
-│   │   └── TOC.php             # TOC 侧边栏生成
-│   ├── Renderer/
-│   │   ├── Heading.php         # detectHeadingType()
-│   │   ├── Overstrike.php      # overstrike → <b>/<u>
-│   │   └── Flags.php           # parseFlagJSON()
-│   ├── LLM/
-│   │   ├── Translator.php      # 翻译
-│   │   ├── ExampleGen.php      # 样例生成
-│   │   └── CheatSheet.php      # Cheat Sheet
-│   └── Cache/
-│       └── CacheManager.php    # ETag + 过期管理
-├── tests/                      # 已有
-├── docs/                       # 已有
-└── phpMan.php                  # 传统入口（向后兼容）
+## NAME
+curl - transfer a URL
+...
 ```
 
-### 5.3 迁移策略
+### 1.6 实现要点
 
-- 渐进式：新增模块先放到 `src/`，旧函数保留到下一大版本
-- 测试先行：每拆分一个模块，先补测试覆盖
-- 向后兼容：保留单文件入口至少一个大版本周期
+- **无需缓存**：GitHub Raw 请求，HTTP 天然有 CDN 缓存
+- **无新配置**：不引入任何 env var 或 config 文件
+- **单文件**：改动集中在 `formatTldr()` 增强和一个 `fetchOfficialTldr()` 函数
+- **超时控制**：GitHub 请求设 5s 超时，超时直接降级到规则提取
+- **保持兼容**：现有 LLM 生成路径保留（有 `LLM_API_KEY` 时继续使用），官方 tldr 优先于 LLM
+
+### 1.7 改动范围
+
+| 改动 | 位置 | 说明 |
+|------|------|------|
+| `fetchOfficialTldr($cmd)` | 新增函数 | 从 GitHub Raw 拉 tldr 页面 |
+| `parseTldrMarkdown($md)` | 新增函数 | 解析 tldr markdown → 结构化数据 |
+| `formatTldr()` | 增强 | 官方数据优先，提取降级兜底 |
+| JSON 输出 | `formatToJSON()` | 注入 `tldr` 字段 |
+| MCP 输出 | `formatMcpStructured()` | 注入 `tldr_summary` + `tldr_examples` |
+| HTML 输出 | `formatManPerlDoc()` | 页面顶部插入 TLDR block |
+| Markdown 输出 | `formatManPerlDocToMarkdown()` | 文首插入 TLDR 段落 |
 
 ---
 
-## 六、国际化 (I18N) `v4.0`
+## Phase 2: v3.0 — 架构升级 + 缓存 + 配置（2026.Q3+）
 
-### 6.1 LANG 环境变量支持
+v2.2 的功能逻辑全部保留，在现有基础上做架构性升级。
 
-```php
-$locale = $_GET['lang'] ?? $_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? 'en';
-putenv("LANG={$locale}");
+### 2.1 配置文件
+
+引入 `phpman.config.php`（详见 `docs/CACHE_DESIGN.md` 第七节），统一管理：
+
+- 缓存目录（`PHP_MAN_CACHE_ROOT`）
+- LLM API 密钥（`LLM_API_KEY` 等）
+- 缓存 TTL 覆盖
+
+### 2.2 缓存基础设施
+
+详见 `docs/CACHE_DESIGN.md`，核心：
+
+```
+/var/cache/phpman/
+├── man/          ← man raw text，7 天 TTL，hash bucket
+├── tldr/         ← TLDR 结果，7 天 TTL
+└── missing/      ← 负缓存，1 天 TTL
 ```
 
-- `man -L zh_CN ls` — 中文 man page
-- `man -L ja_JP find` — 日文 man page
-- 无对应语言版本时 fallback 到英文 + AI 翻译
+- 缓存 raw text，不缓存 HTML/JSON/MCP（实时渲染）
+- md5 hash 做文件名，杜绝路径遍历
+- 256 hash bucket 避免单目录文件数爆炸
 
-### 6.2 RTL 语言支持
+### 2.3 LLM 智能生成
 
-- 检测阿拉伯语/希伯来语 → CSS `direction: rtl`
-- TOC 侧栏镜像（右侧 → 左侧）
+- 配置 `LLM_API_KEY` 后，TLDR 可以为官方未覆盖的命令生成内容
+- 优先级：官方 tldr > LLM 生成 > 规则提取
+- 结果写入 tldr 缓存，复用缓存基础设施
+
+### 2.4 代码拆分
+
+```
+phpMan.php (入口 + 路由)
+src/
+├── Source/     ← getManPage, getPerldocPage, fetchOfficialTldr
+├── Formatter/  ← HTML, JSON, Markdown, MCP, TLDR
+├── Cache/      ← cacheGet, cacheSet, cachePath
+└── Config/     ← config 加载
+```
+
+保留单文件入口向后兼容。
+
+### 2.5 多语言工具扩展
+
+- pydoc3 支持
+- ri (Ruby) 支持
+- 模糊搜索、索引侧栏导航
+
+### 2.6 离线数据
+
+- 官方 tldr-pages 仓库本地 clone + cron 更新（替代实时 GitHub Raw 请求）
+- 热门命令 Top 100 预热
+- 本地全文搜索 (SQLite FTS5)
 
 ---
 
-## 七、可观测性 `v3.0`
-
-### 7.1 轻量访问统计
-
-- 热门命令 Top 100（无需外部依赖，SQLite 本地存储）
-- 格式偏好分布（HTML vs JSON vs Markdown）
-- Agent vs 人类用户比例（User-Agent 分析）
-
-### 7.2 调试模式
+## v2.1 → v2.2 → v3.0 对比
 
 ```
-?debug=1 → 输出渲染管线耗时拆解：
-  来源获取: 45ms
-  解析:     12ms
-  格式化:   8ms
-  输出:     3ms
-  ─────────────
-  总计:    68ms
+                v2.1              v2.2               v3.0
+─────────────────────────────────────────────────────────────
+文件数          1                 1                  1 + src/
+配置文件        无                无                  phpman.config.php
+缓存目录        tldr_cache/(LLM)  无                  /var/cache/phpman/
+TLDR 来源       LLM API           官方 tldr-pages     官方 > LLM > 提取
+TLDR 覆盖格式   /tldr 端点        全部 4 种格式        全部 4 种格式
+LLM 密钥        可选              不需要              可选（增强）
+部署            scp 1 文件        scp 1 文件          scp + config 一次
 ```
-
----
-
-## 版本规划总结
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│ v3.0 MVP — 核心扩展 (2026.Q3)                                │
-├──────────────────────────────────────────────────────────────┤
-│ pydoc3 支持              代码架构拆分 Phase 1 (Source/ 模块化)│
-│ MCP 错误响应标准化        安全加固 (input validation)         │
-│ 搜索结果页增强            perldoc/man 跨平台宽度控制完善      │
-└──────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────┐
-│ v3.1 — 搜索与导航 (2026.Q3 末)                               │
-├──────────────────────────────────────────────────────────────┤
-│ ri (Ruby) 支持            索引侧栏导航 (>150 条)              │
-│ 模糊搜索                  Go doc 支持                         │
-└──────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────┐
-│ v3.2 — 性能与可观测性 (2026.Q4)                              │
-├──────────────────────────────────────────────────────────────┤
-│ MCP 流式/分页输出         可观测性 (SQLite 统计)              │
-│ 代码架构拆分 Phase 2      代码架构拆分 Phase 2 (Formatter/)   │
-└──────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────┐
-│ v4.0 — AI 智能文档 (2026.Q4+)                                │
-├──────────────────────────────────────────────────────────────┤
-│ AI 智能翻译 (保留标识符)   Cheat Sheet 模式                   │
-│ 参数样例自动生成            TLDR 摘要增强                     │
-│ 本地 LLM 缓存 (永久)        本地全文搜索 (SQLite FTS5)        │
-│ 国际化 LANG + AI fallback     RTL 语言支持                   │
-└──────────────────────────────────────────────────────────────┘
-```
-
-## 优先级矩阵
-
-```
-                    影响范围
-                高          低
-        ┌──────────────┬──────────────┐
-  高    │ pydoc/ri 扩展 │ 模糊搜索      │  ← v3.0
-        │ 索引侧栏导航  │ MCP 流式输出  │
-  优    │ 代码拆分      │ 可观测性      │
-  先    ├──────────────┼──────────────┤
-  级    │ AI 智能翻译   │ Agent-to-Agent│  ← v4.0
-  低    │ 本地缓存      │ MCP 动态发现  │
-        │ Cheat Sheet  │ 国际化        │
-        │ 本地全文搜索  │ RTL 支持      │
-        └──────────────┴──────────────┘
-```
-
-**v3.0 MVP (2026.Q3):** pydoc3 + 代码拆分 Phase 1 + MCP 错误标准化 + 安全加固
-**v3.1 (2026.Q3 末):** ri + 模糊搜索 + 索引侧栏导航 + Go doc
-**v3.2 (2026.Q4):** MCP 流式/分页 + 可观测性 + 代码拆分 Phase 2
-**v4.0 (2026.Q4+):** AI 翻译 + Cheat Sheet + 参数样例 + 本地缓存 + 本地全文搜索 + 国际化

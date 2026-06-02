@@ -47,7 +47,23 @@ $MOBILE_CSS = <<<'CSS'
     form a{padding:6px 8px;display:inline-block;}
     a{padding:4px 2px;}
     p{font-size:12px;line-height:1.6;}
-}
+    /* v2.2: TLDR block */
+    .tldr-block{background:#f8f8f8;border:1px solid #ddd;border-radius:4px;margin:8px 0 16px 0;overflow:hidden;}
+    .tldr-header{cursor:pointer;padding:8px 12px;font-weight:bold;font-size:14px;color:#333;background:#eee;user-select:none;}
+    .tldr-header:hover{background:#e0e0e0;}
+    .tldr-source{font-weight:normal;font-size:11px;color:#888;margin-left:6px;}
+    .tldr-body{display:none;padding:4px 12px 8px 12px;}
+    .tldr-expanded .tldr-body{display:block;}
+    .tldr-desc{color:#555;font-style:italic;margin:4px 0 6px 0;}
+    .tldr-body dl{margin:0;}
+    .tldr-body dt{font-size:12px;color:#555;margin:6px 0 0 0;}
+    .tldr-body dd{margin:0 0 0 16px;}
+    .tldr-body dd code{font-size:12px;background:#fff;padding:1px 4px;border:1px solid #e0e0e0;border-radius:2px;display:inline-block;margin:2px 0;}
+    .tldr-examples{list-style:none;padding:0;margin:0;}
+    .tldr-examples li{margin:6px 0;font-size:12px;color:#555;}
+    .tldr-examples li code{font-size:12px;background:#fff;padding:1px 4px;border:1px solid #e0e0e0;border-radius:2px;display:inline-block;margin:2px 0;}
+    .tldr-examples li b{color:#333;}
+    }
 CSS;
 
 // --- LLM-powered TLDR generation ---
@@ -761,20 +777,26 @@ switch ( $mode ) {
     case "tldr":
         $check['man'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
-            // Get man page JSON, then convert to TLDR format
-            $jsonContent = getManPage($parameter, $section, "json");
-            if ($jsonContent === "") {
-                $jsonContent = getPerldocPage($parameter, "json");
+            // v2.2: Official tldr-pages first, then cheat.sh, then LLM, then extraction
+            $content = '';
+            $tldrData = fetchOfficialTldr($parameter);
+            if (!empty($tldrData)) {
+                $content = formatTldrFromStructured($tldrData, $parameter);
             }
-            if ($jsonContent !== "") {
-                $jsonData = json_decode($jsonContent, true);
-                // Try LLM-powered TLDR first, fallback to extraction-based
-                $content = '';
-                if ($jsonData !== null) {
-                    $content = generateTldrWithLLM($jsonData);
+            // Fallback: LLM generation (if configured)
+            if ($content === '') {
+                $jsonContent = getManPage($parameter, $section, "json");
+                if ($jsonContent === "") {
+                    $jsonContent = getPerldocPage($parameter, "json");
                 }
-                if ($content === '' && $jsonData !== null) {
-                    $content = formatTldr($jsonData);
+                if ($jsonContent !== "") {
+                    $jsonData = json_decode($jsonContent, true);
+                    if ($jsonData !== null) {
+                        $content = generateTldrWithLLM($jsonData);
+                    }
+                    if ($content === '' && $jsonData !== null) {
+                        $content = formatTldr($jsonData);
+                    }
                 }
             }
         }
@@ -892,7 +914,35 @@ elseif ($mode === "search" && $parameter !== "") {
 showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 echo "<hr /><div id=\"content-wrap\">\n";
 
-// For man page content, add section anchors and floating TOC
+	// v2.2: TLDR block for man/perldoc detail pages
+	if (in_array($mode, ["man", "perldoc"]) && $parameter !== "" && trim($content) !== "") {
+	    $tldrData = fetchOfficialTldr($parameter);
+	    if (!empty($tldrData)) {
+	        $contentLines = substr_count($content, "\n") + 1;
+	        $expanded = $contentLines > 200 ? " tldr-expanded" : "";
+	        echo "<div class=\"tldr-block{$expanded}\">\n";
+	        echo "<div class=\"tldr-header\" onclick=\"this.parentNode.classList.toggle('tldr-expanded')\">";
+	        $src = $tldrData["source"] === "cheatsh" ? "cheat.sh" : "tldr-pages";
+	        $tldrLink = $tldrData["source"] === "cheatsh"
+	            ? "https://cheat.sh/" . urlencode($parameter)
+	            : "https://tldr.inbrowser.app/pages/common/" . urlencode($parameter);
+	        echo "&#9889; <a href=\"{$tldrLink}\" target=\"_blank\" rel=\"noopener\" style=\"color:inherit;text-decoration:none;border-bottom:1px dotted\">TLDR: " . h($parameter) . "</a> <span class=\"tldr-source\">({$src})</span></div>\n";
+	        echo "<div class=\"tldr-body\">\n";
+	        if (!empty($tldrData["description"])) {
+	            echo "<p class=\"tldr-desc\">" . h($tldrData["description"]) . "</p>\n";
+	        }
+	        echo "<ul class=\"tldr-examples\">\n";
+	        foreach (array_slice($tldrData["examples"] ?? [], 0, 10) as $ex) {
+	            $desc = $ex["description"] ?? "";
+	            $desc = preg_replace('/\[(.)\]/', '<b>$1</b>', h($desc));
+	            echo "<li>{$desc}<br><code>" . h($ex["command"] ?? "") . "</code></li>\n";
+	        }
+	        echo "</ul>\n";
+	        echo "</div></div>\n";
+	    }
+	}
+
+	// For man page content, add section anchors and floating TOC
 if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
     list($anchoredContent, $tocItems) = addManPageToc($content);
 
@@ -1056,7 +1106,7 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
     $script_name = h(scriptName());
     $parameter_value = h($parameter);
 
-    echo "<form action=\"".$script_name."\" method=\"get\" role=\"search\">\n".
+    echo "<form action=\"".$script_name."\" method=\"get\">\n".
         "<fieldset><legend>Look up a command</legend>\n".
         "<p><label for=\"cmd-input\">Command: </label>".
         "<input type=\"text\" id=\"cmd-input\" size=\"20\" name=\"parameter\" value=\"".$parameter_value."\"/>\n".
@@ -1104,7 +1154,6 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
 
         // Detail pages get TLDR, Cheat (man section 1 only)
         if ($isDetailPage && $mode === "man" && $section === "1") {
-            $extra_links[] = '<a href="https://tldr.inbrowser.app/pages/common/' . urlencode($parameter) . '" target="_blank" rel="noopener" title="View short TLDR cheat sheet for ' . $cmd_label . '">TLDR Docs</a>';
             $extra_links[] = '<a href="https://cheat.sh/' . urlencode($parameter) . '" target="_blank" rel="noopener" title="Quick Linux cheat sheet for ' . $cmd_label . '">Cheat Sheet</a>';
         }
 
@@ -1117,7 +1166,7 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
 
         if ($mode === "man") {
             echo ' | ' .
-                '<a href="https://linuxcommandlibrary.com/man/' . urlencode($parameter) . '" target="_blank" rel="noopener">Linux Command Library</a>';
+                '<a href="https://cheat.sh/' . urlencode($parameter) . '" target="_blank" rel="noopener">cheat.sh</a>';
         } elseif ($mode === "perldoc") {
             echo ' | ' .
                 '<a href="https://metacpan.org/pod/' . urlencode($parameter) . '" target="_blank" rel="noopener">MetaCPAN</a>';
@@ -1426,8 +1475,7 @@ function getManPage (string $parameter, string $section = "", string $format = "
             }
         }
         if ($format === "markdown") {
-            return formatManPerlDocToMarkdown($lines);
-        }
+            return formatManPerlDocToMarkdown($lines, $parameter);        }
         if ($format === "json" || $format === "mcp") {
             return formatForOutput(formatToJSON($lines, $parameter, $section, "man"), $format);
         }
@@ -1493,8 +1541,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $cmd = "perldoc -l ".escapeshellarg($parameter)." 2>/dev/null | head -1 | tr '\\n' '\\0' | xargs -0 pod2text -w {$width} 2>/dev/null";  // #24: xargs -0 for space-safe paths
     exec($cmd, $lines, $return_code);
     if ($return_code === 0 && count($lines) > 0) {
-        if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
-        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "perldoc"), $format);
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "perldoc"), $format);
         return formatManPerlDoc($lines, "perldoc");
     }
 
@@ -1502,8 +1549,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
     exec("perldoc ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
-        if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
-        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "perldoc"), $format);
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "perldoc"), $format);
         return formatManPerlDoc($lines, "perldoc");
     }
 
@@ -1511,8 +1557,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
     exec("perldoc -f ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
-        if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
-        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "-f", "perldoc"), $format);
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "-f", "perldoc"), $format);
         return formatManPerlDoc($lines, "perldoc");
     }
 
@@ -1520,8 +1565,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
     exec("perldoc -q ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
-        if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
-        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "-q", "perldoc"), $format);
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "-q", "perldoc"), $format);
         return formatManPerlDoc($lines, "perldoc");
     }
 
@@ -1536,8 +1580,7 @@ function getInfoPage (string $parameter, string $format = "html"): string {
     if ($exitCode !== 0 || empty($lines)) {
         return "";
     }
-    if ($format === "markdown") return formatManPerlDocToMarkdown($lines);
-    if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "info"), $format);
+    if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);    if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "info"), $format);
     return formatManPerlDoc($lines, "info");
 }
 
@@ -2006,6 +2049,20 @@ function formatMcpMarkdown (array $data): string {
 
     $out = "# {$label} ({$mode})\n\n";
 
+    // v2.2: TLDR section at top
+    $tldr = fetchOfficialTldr($param);
+    if (!empty($tldr)) {
+        $out .= "## TLDR\n\n";
+        if (!empty($tldr["description"])) {
+            $out .= "> {$tldr["description"]}\n\n";
+        }
+        foreach (array_slice($tldr["examples"] ?? [], 0, 8) as $ex) {
+            $out .= "- {$ex["description"]}:\n  `{$ex["command"]}`\n";
+        }
+        $src = ($tldr["source"] ?? "") === "cheatsh" ? "cheat.sh" : "tldr-pages";
+        $out .= "\n*Source: {$src}*\n\n---\n\n";
+    }
+
     // Summary
     if (!empty($data["summary"])) {
         $out .= "**Summary:** {$data["summary"]}\n\n";
@@ -2120,12 +2177,22 @@ function formatMcpStructured (array $data): array {
         $allFlags = extractFlagsFromSections($data);
     }
 
+    // v2.2: Fetch TLDR for agent consumption
+    $param = $data["parameter"] ?? "";
+    $tldrData = $param !== "" ? fetchOfficialTldr($param) : [];
+    $tldrSummary = !empty($tldrData) ? ($tldrData["description"] ?? null) : null;
+    $tldrExamples = !empty($tldrData) ? array_slice($tldrData["examples"] ?? [], 0, 12) : [];
+    $tldrSource = !empty($tldrData) ? ($tldrData["source"] ?? null) : null;
+
     return [
         "command" => $data["parameter"] ?? "",
         "section" => $data["section"] ?? "",
         "mode" => $data["mode"] ?? "man",
         "summary" => $data["summary"] ?? null,
         "synopsis" => $data["synopsis"] ?? null,
+        "tldr_summary" => $tldrSummary,
+        "tldr_examples" => $tldrExamples,
+        "tldr_source" => $tldrSource,
         "flags" => $allFlags,
         "examples" => $data["examples"] ?? [],
         "see_also" => $data["see_also"] ?? [],
@@ -2145,6 +2212,186 @@ function formatMcpStructured (array $data): array {
  * - 5-8 examples max
  * - --help and --version at the end
  */
+// ────────────────────────────────────────────
+//  v2.2: Official tldr-pages + cheat.sh fetcher
+// ────────────────────────────────────────────
+
+/**
+ * Fetch TLDR from official tldr-pages (primary) or cheat.sh (fallback).
+ * Returns structured TLDR data or empty array on failure.
+ */
+function fetchOfficialTldr(string $command): array {
+    static $cache = [];
+    if (array_key_exists($command, $cache)) return $cache[$command];
+    $result = fetchTldrPages($command);
+    if (empty($result)) $result = fetchCheatShTldr($command);
+    $cache[$command] = $result;
+    return $result;
+}
+
+/**
+ * Fetch from tldr-pages GitHub raw.
+ * Lookup order: common/ → linux/ → osx/
+ */
+function fetchTldrPages(string $command): array {
+    $pages = ["common", "linux", "osx"];
+    foreach ($pages as $page) {
+        $url = "https://raw.githubusercontent.com/tldr-pages/tldr/main/pages/{$page}/" . urlencode($command) . ".md";
+        $ctx = stream_context_create([
+            "http" => [
+                "timeout" => 5,
+                "header" => "User-Agent: phpMan/2.2\r\n",
+            ],
+        ]);
+        $md = @file_get_contents($url, false, $ctx);
+        if ($md !== false && strlen($md) > 20) {
+            return parseTldrMarkdown($md, $command, "official");
+        }
+    }
+    return [];
+}
+
+/**
+ * Fetch from cheat.sh as fallback.
+ */
+function fetchCheatShTldr(string $command): array {
+    $url = "https://cheat.sh/" . urlencode($command) . "?T";
+    $ctx = stream_context_create([
+        "http" => [
+            "timeout" => 5,
+            "header" => "User-Agent: phpMan/2.2\r\n",
+        ],
+    ]);
+    $raw = @file_get_contents($url, false, $ctx);
+    if ($raw === false || strlen($raw) < 20) return [];
+    return parseCheatShOutput($raw, $command);
+}
+
+/**
+ * Parse tldr-pages markdown format to structured array.
+ */
+function parseTldrMarkdown(string $md, string $command, string $source): array {
+    $lines = explode("\n", $md);
+    $description = "";
+    $examples = [];
+    $currentDesc = "";
+    $inDescription = true;
+    $collectingExample = false;
+
+    foreach ($lines as $line) {
+        $trimmed = trim($line);
+
+        // Skip title line (# command) and empty lines
+        if ($trimmed === "" || $trimmed === "# " . $command || preg_match('/^# /', $trimmed)) continue;
+
+        // Description: lines starting with >
+        if (preg_match('/^>\s*(.*)/', $trimmed, $m)) {
+            $text = trim($m[1]);
+            if (stripos($text, "More information") === 0) continue;
+            if ($text === "") continue;
+            if ($description === "") {
+                $description = $text;
+            }
+            $inDescription = true;
+            continue;
+        }
+
+        // Example: "- Description:" followed by `command`
+        if (preg_match('/^-\s*(.+):\s*$/', $trimmed, $m)) {
+            $currentDesc = trim($m[1]);
+            $collectingExample = true;
+            $inDescription = false;
+            continue;
+        }
+
+        // Backtick-wrapped command
+        if ($collectingExample && preg_match('/^`(.+)`$/', $trimmed, $m)) {
+            $cmd = trim($m[1]);
+            // Clean up tldr-pages syntax: {{...}} → keep, [-X|--long] → --long
+            $cmd = preg_replace('/\{\{[-\[\]\|]/', '{{', $cmd);
+            $cmd = preg_replace('/[-\[\]\|]\}\}/', '}}', $cmd);
+            $examples[] = [
+                "description" => $currentDesc,
+                "command" => $cmd,
+            ];
+            $collectingExample = false;
+            $currentDesc = "";
+            continue;
+        }
+
+        // Bare command line (non-backtick example)
+        if ($collectingExample && strlen($trimmed) > 1 && $trimmed[0] !== "#" && $trimmed[0] !== ">") {
+            $cmd = preg_replace('/^`|`$/', '', $trimmed);
+            $examples[] = [
+                "description" => $currentDesc,
+                "command" => $cmd,
+            ];
+            $collectingExample = false;
+            $currentDesc = "";
+            continue;
+        }
+    }
+
+    if (empty($examples)) return [];
+
+    return [
+        "source" => $source,
+        "description" => $description,
+        "examples" => array_slice($examples, 0, 16),
+    ];
+}
+
+/**
+ * Parse cheat.sh plain-text output (?T flag).
+ */
+function parseCheatShOutput(string $raw, string $command): array {
+    $lines = explode("\n", $raw);
+    $description = "";
+    $examples = [];
+    $currentDesc = "";
+
+    foreach ($lines as $line) {
+        $trimmed = trim($line);
+
+        // Skip source header, blank lines
+        if ($trimmed === "" || preg_match('/^#\[.+\]/', $trimmed)) continue;
+
+        // Description line: # text (but not just #)
+        if (preg_match('/^#\s+(.+)\.?\s*$/', $trimmed, $m)) {
+            $text = trim($m[1]);
+            if ($text === "" || stripos($text, "see also") === 0) continue;
+            // First non-empty # line is the description
+            if ($description === "" && !preg_match('/^[a-z]/i', $text)) {
+                $description = rtrim($text, ".");
+                continue;
+            }
+            // Subsequent # lines are example descriptions
+            $currentDesc = rtrim($text, ".");
+            continue;
+        }
+
+        // Command line
+        if ($currentDesc !== "" && strlen($trimmed) > 2) {
+            // Replace concrete args with placeholders
+            $cmd = preg_replace('/ (\/[\w\/.-]+)/', ' {{path}}', $trimmed);
+            $cmd = preg_replace('/ ([\w.-]+\.(txt|gz|tgz|tar|zip|json|xml|pem))/i', ' {{file}}', $cmd);
+            $examples[] = [
+                "description" => $currentDesc,
+                "command" => $cmd,
+            ];
+            $currentDesc = "";
+        }
+    }
+
+    if (empty($examples)) return [];
+
+    return [
+        "source" => "cheatsh",
+        "description" => $description,
+        "examples" => array_slice($examples, 0, 16),
+    ];
+}
+
 /**
  * Generate TLDR using LLM API with file-based caching.
  * Returns markdown string or empty string on failure (caller should fallback).
@@ -2327,6 +2574,31 @@ function callLlmApi(string $prompt): string {
 
     $json = json_decode($response, true);
     return $json['choices'][0]['message']['content'] ?? '';
+}
+
+/**
+ * Format structured TLDR data (from official tldr-pages or cheat.sh) to markdown.
+ * v2.2: Used when official data sources are available.
+ */
+function formatTldrFromStructured(array $tldr, string $command): string {
+    $base = baseUrl();
+    $canonical = "{$base}/man/" . urlencode($command);
+    $out = "# {$command}\n\n";
+    if (!empty($tldr["description"])) {
+        $out .= "> {$tldr["description"]}.\n";
+    }
+    $source = $tldr["source"] ?? "";
+    $sourceLabel = $source === "cheatsh" ? "cheat.sh" : "tldr-pages";
+    $out .= "> More information: {$canonical}  \n";
+    $out .= "> Source: {$sourceLabel}\n\n";
+    foreach ($tldr["examples"] as $ex) {
+        $desc = $ex["description"] ?? "";
+        $cmd = $ex["command"] ?? "";
+        if ($desc !== "" && $cmd !== "") {
+            $out .= "- {$desc}:\n  `{$cmd}`\n";
+        }
+    }
+    return $out;
 }
 
 function formatTldr (?array $data): string {
@@ -2675,6 +2947,12 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
     }
     $jsonData["see_also"] = $seeAlso;
 
+    // v2.2: Inject TLDR from official sources
+    $tldr = fetchOfficialTldr($parameter);
+    if (!empty($tldr)) {
+        $jsonData["tldr"] = $tldr;
+    }
+
     $result = json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     return $result !== false ? $result : '{}';
 }
@@ -2721,11 +2999,27 @@ function parseFlagJSON(string $name): array {
 }
 
 //convert man perldoc output to markdown
-function formatManPerlDocToMarkdown (array $lines): string {
+function formatManPerlDocToMarkdown (array $lines, string $parameter = ""): string {
     // #44: use shared cleanTerminalOutput() instead of inline patterns
     $lines = cleanTerminalOutput($lines);
 
     $output = "";
+
+    // v2.2: Inject TLDR from official sources at top of markdown
+    if ($parameter !== "") {
+        $tldr = fetchOfficialTldr($parameter);
+        if (!empty($tldr)) {
+            if (!empty($tldr["description"])) {
+                $output .= "> **TLDR:** {$tldr["description"]}\n>\n";
+            }
+            foreach (array_slice($tldr["examples"] ?? [], 0, 8) as $ex) {
+                $output .= "- {$ex["description"]}:\n  `{$ex["command"]}`\n";
+            }
+            $src = ($tldr["source"] ?? "") === "cheatsh" ? "cheat.sh" : "tldr-pages";
+            $output .= "\n*Source: {$src}*\n\n---\n\n";
+        }
+    }
+
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
         $line = $lines[$i];
