@@ -4,14 +4,25 @@ All notable changes to phpMan are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [2.2] — 2026-06-02
+
+### Added
+- **Official tldr-pages embedding** — TLDR cheatsheets from [tldr-pages/tldr](https://github.com/tldr-pages/tldr) GitHub raw, embedded at top of man/perldoc detail pages in all 4 output formats (HTML, JSON, Markdown, MCP)
+- **cheat.sh fallback** — commands not covered by tldr-pages fallback to [cheat.sh](https://cheat.sh) plain-text API, with automatic parsing
+- **TLDR source attribution** — `tldr-pages` or `cheat.sh` source label shown in HTML TLDR block header, JSON `tldr.source` field, MCP `tldr_source` field, and Markdown `*Source:*` line
+- **Clickable TLDR header** — TLDR block title links to full page on tldr.inbrowser.app (official) or cheat.sh
+- **Bracket-to-bold conversion** — tldr-pages `[x]` shortcut notation rendered as `<b>x</b>` in HTML TLDR examples
 
 ### Changed
-- Repository migrated from SourceForge to GitHub (https://github.com/chedong/phpman)
-- Roadmap reorganized into v3.0 / v4.0 version milestones
+- TLDR endpoint: official tldr-pages → cheat.sh → LLM → extraction, zero-config by default
+- Fallback link on man detail pages: Linux Command Library → cheat.sh
+- Removed "TLDR Docs" nav link (TLDR content now embedded inline)
+- Repository migrated from SourceForge to GitHub ([chedong/phpman](https://github.com/chedong/phpman))
+- Roadmap reorganized into v2.2 / v3.0 version milestones (PLAN.md, CACHE_DESIGN.md)
+- Removed `index.html` (SF static site now deployed independently)
 
-### Removed
-- `index.html` — SF static site now deployed independently
+### Security
+- `role="search"` removed from `<form>` — invalid in XHTML 1.0 Transitional
 
 ## [2.1] — 2026-05-31
 
@@ -154,6 +165,6 @@ Initial checkin to SourceForge CVS. A PHP script to browse Unix man pages over t
 
 ---
 
-[Unreleased]: https://github.com/chedong/phpman/compare/v2.1...HEAD
+[2.2]: https://github.com/chedong/phpman/compare/v2.1...v2.2
 [2.1]: https://github.com/chedong/phpman/compare/v2.0...v2.1
 [2.0]: https://github.com/chedong/phpman/releases/tag/v2.0
