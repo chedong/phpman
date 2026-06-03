@@ -47,27 +47,18 @@ $MOBILE_CSS = <<<'CSS'
     form a{padding:6px 8px;display:inline-block;}
     a{padding:4px 2px;}
     p{font-size:12px;line-height:1.6;}
-    /* v2.2: TLDR block */
-    .tldr-block{background:#f8f8f8;border:1px solid #ddd;border-radius:4px;margin:8px 0 16px 0;overflow:hidden;}
-    .tldr-header{cursor:pointer;padding:8px 12px;font-weight:bold;font-size:14px;color:#333;background:#eee;user-select:none;}
-    .tldr-header:hover{background:#e0e0e0;}
-    .tldr-source{font-weight:normal;font-size:11px;color:#888;margin-left:6px;}
-    .tldr-body{display:none;padding:4px 12px 8px 12px;}
-    .tldr-expanded .tldr-body{display:block;}
-    .tldr-desc{color:#555;font-style:italic;margin:4px 0 6px 0;}
-    .tldr-body dl{margin:0;}
-    .tldr-body dt{font-size:12px;color:#555;margin:6px 0 0 0;}
-    .tldr-body dd{margin:0 0 0 16px;}
-    .tldr-body dd code{font-size:12px;background:#fff;padding:1px 4px;border:1px solid #e0e0e0;border-radius:2px;display:inline-block;margin:2px 0;}
-    .tldr-examples{list-style:none;padding:0;margin:0;}
-    .tldr-examples li{margin:6px 0;font-size:12px;color:#555;}
-    .tldr-examples li code{font-size:12px;background:#fff;padding:1px 4px;border:1px solid #e0e0e0;border-radius:2px;display:inline-block;margin:2px 0;}
-    .tldr-examples li b{color:#333;}
+    .tldr-block{margin:8px 0 16px 0;}
+    .tldr-header{font-size:13px;}
+    .tldr-body dt{font-size:12px;}
+    .tldr-body dd code{font-size:12px;}
+    .tldr-examples li{font-size:12px;}
+    .tldr-examples li code{font-size:12px;}
     }
 CSS;
 
 
 // #49: Named constants for magic numbers
+define('PHPMAN_VERSION', '2.3');        // current version (#67)
 define('TOC_LINE_THRESHOLD', 80);      // min lines to show TOC sidebar
 define('GZIP_MIN_BYTES', 1000);        // min response size for gzip compression
 define('FLAG_DESC_MAX_LEN', 120);      // max length for flag descriptions
@@ -416,7 +407,7 @@ function detectL1Heading (string $line): ?array {
  * Returns ['level' => 1|2, 'text' => string] or null.
  * Dispatches to strategy functions in priority order: L2 patterns first, then L1.
  */
-function detectHeadingType (string $line, string $mode = "man"): ?array {
+function detectHeadingType (string $line, string $mode = "man", ?string $nextLine = null): ?array {
     // Normalize: convert HTML bold/underline to markdown-style markers
     $line = preg_replace(['#</?b>#', '#</?u>#'], ['**', '_'], $line);
 
@@ -429,6 +420,24 @@ function detectHeadingType (string $line, string $mode = "man"): ?array {
         if (preg_match('/^== (.+)/', $line, $m)) {
             $text = trim(strip_tags(str_replace(['**', '_'], '', $m[1])));
             if ($text !== '' && $text !== '==') return ['level' => 2, 'text' => $text];
+        }
+        return null;
+    }
+
+    // info mode: Setext-style underline headings (text on current line, underline on next)
+    // H1: *****  H2: =====  H3: -----
+    if ($mode === "info" && $nextLine !== null) {
+        $trimmedNext = trim($nextLine);
+        $len = strlen($trimmedNext);
+        if ($len >= 3) {
+            $char = $trimmedNext[0];
+            if (in_array($char, ['*', '=', '-'], true) && $trimmedNext === str_repeat($char, $len)) {
+                $text = trim(strip_tags(str_replace(['**', '_'], '', $line)));
+                if ($text !== '') {
+                    $level = ($char === '*') ? 1 : (($char === '=') ? 2 : 3);
+                    return ['level' => $level, 'text' => $text, 'skipNext' => true];
+                }
+            }
         }
         return null;
     }
@@ -487,7 +496,10 @@ function baseUrl(): string {
  */
 function isLocalRequest (): bool {
     $remoteAddr = serverValue("REMOTE_ADDR", "");
-    return in_array($remoteAddr, ["127.0.0.1", "::1", ""], true);
+    if (in_array($remoteAddr, ["127.0.0.1", "::1", ""], true)) return true;
+    // Private network ranges: 10.x, 172.16-31.x, 192.168.x
+    if (preg_match('/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/', $remoteAddr)) return true;
+    return false;
 }
 
 function requestValue (array $source, string $key): string {
@@ -530,6 +542,62 @@ function normalizeSection (mixed $section): string {
     }
 
     return $section;
+}
+
+// #69: IP-based rate limiting to protect exec-heavy endpoints from DoS
+function checkRateLimit (): void {
+    $enabled = getenv('RATE_LIMIT_ENABLE');
+    if ($enabled === 'false' || $enabled === '0') return;
+
+    $maxRequests = intval(getenv('RATE_LIMIT_PER_IP') ?: 30);
+    $window = intval(getenv('RATE_LIMIT_WINDOW') ?: 60);
+
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+    $cacheFile = sys_get_temp_dir() . '/phpman_ratelimit.json';
+
+    $now = time();
+    $cutoff = $now - $window;
+
+    // Read current state with advisory lock
+    $fp = @fopen($cacheFile, 'c+');
+    if (!$fp) return; // can't enforce, allow request
+    @flock($fp, LOCK_EX);
+
+    $raw = stream_get_contents($fp);
+    $data = ($raw !== false && $raw !== '') ? @json_decode($raw, true) : [];
+    if (!is_array($data)) $data = [];
+
+    // Clean expired entries for all IPs
+    foreach ($data as $storedIp => &$timestamps) {
+        $timestamps = array_values(array_filter($timestamps, function($t) use ($cutoff) {
+            return $t > $cutoff;
+        }));
+        if (empty($timestamps)) unset($data[$storedIp]);
+    }
+    unset($timestamps);
+
+    // Check this IP
+    $ipTimestamps = $data[$ip] ?? [];
+    if (count($ipTimestamps) >= $maxRequests) {
+        $retryAfter = min($ipTimestamps) + $window - $now;
+        @flock($fp, LOCK_UN);
+        @fclose($fp);
+        http_response_code(429);
+        header("Retry-After: " . max(1, $retryAfter));
+        header("Content-Type: application/json; charset=UTF-8");
+        header("X-Content-Type-Options: nosniff");
+        echo json_encode(["error" => "Too Many Requests", "retry_after" => max(1, $retryAfter)], JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    $data[$ip] = array_merge($ipTimestamps, [$now]);
+
+    // Write back
+    ftruncate($fp, 0);
+    rewind($fp);
+    fwrite($fp, json_encode($data));
+    @flock($fp, LOCK_UN);
+    @fclose($fp);
 }
 
 // +--------------------------------------------------------------------------------+
@@ -700,12 +768,15 @@ $mode = normalizeMode($mode);
 $parameter = normalizeParameter($parameter);
 $section = normalizeSection($section);
 
+// #69: rate limit check before any exec-heavy dispatch
+checkRateLimit();
+
 if ( $parameter != "" ) {
     if ( $section == "" ) {
-        $PHP_MAN_TITLE = $parameter . " - " . $mode . " - phpman";
+        $PHP_MAN_TITLE = "phpman > " . $mode . " > " . $parameter;
     }
     else {
-        $PHP_MAN_TITLE = $parameter . "(" . $section . ") - " . $mode . " - phpman";
+        $PHP_MAN_TITLE = "phpman > " . $mode . " > " . $parameter . "(" . $section . ")";
     }
 }
 
@@ -761,6 +832,7 @@ switch ( $mode ) {
             if (trim($content) == "") {
                 $content = getSearchPage($parameter, $section, $format);
                 $isSearchFallback = true;
+                http_response_code(404);
             }
         }
         //redirect to search sections
@@ -837,6 +909,7 @@ switch ( $mode ) {
             if (trim($content) == "") {
                 $content = getPydocSearchPage($parameter, $format);
                 $isSearchFallback = true;
+                http_response_code(404);
             }
         }
         else {
@@ -850,6 +923,7 @@ switch ( $mode ) {
             if (trim($content) == "") {
                 $content = getRiSearchPage($parameter, $format);
                 $isSearchFallback = true;
+                http_response_code(404);
             }
         }
         else {
@@ -884,6 +958,8 @@ switch ( $mode ) {
 // Show Markdown or HTML output
 if ($format === "markdown" || $mode === "tldr") {
     header("Content-Type: text/markdown; charset=UTF-8");
+    header("X-Content-Type-Options: nosniff");
+    header("X-Frame-Options: DENY");
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
     header("Expires: " . gmdate("D, d M Y H:i:s", time() + 3600 * 24 * 7) . " GMT");
     if ($mode === "tldr") {
@@ -897,6 +973,8 @@ if ($format === "markdown" || $mode === "tldr") {
 // Show JSON or MCP output
 if ($format === "json" || $format === "mcp") {
     header("Content-Type: application/json; charset=UTF-8");
+    header("X-Content-Type-Options: nosniff");
+    header("X-Frame-Options: DENY");
     // ETag based on actual content hash — ensures 304 only when body is identical
     $etag = '"' . md5($content) . '"';
     header("ETag: {$etag}");
@@ -937,8 +1015,31 @@ if ($hasRealContent) {
     $showNav = (substr_count($content, "\n") + 1 > $lineThreshold);
 }
 
-showHeader($PHP_MAN_TITLE, $parameter, $section, $mode, $hasRealContent, $showNav);
-echo "<h1><a href=\"".h(scriptName())."\">".h($PHP_MAN_TITLE)."</a></h1>\n";
+// ETag/304 check before any HTML output (#60)
+$etag = '"' . md5($content . $mode . $parameter . $section . PHPMAN_VERSION) . '"';
+$ifNoneMatch = serverValue("HTTP_IF_NONE_MATCH", "");
+if ($ifNoneMatch === $etag) {
+    http_response_code(304);
+    exit;
+}
+
+showHeader($PHP_MAN_TITLE, $parameter, $section, $mode, $hasRealContent, $showNav, $etag);
+
+// H1 breadcrumb: phpMan > mode > command(section)
+if ($parameter !== "" && $mode !== "" && $mode !== "search") {
+    $bc_parts = [];
+    $bc_parts[] = "<a href=\"".h(scriptName())."\">".h($PHP_MAN_TITLE)."</a>";
+    $mode_labels = ["man" => "man", "perldoc" => "perldoc", "info" => "info", "pydoc" => "pydoc", "ri" => "ri"];
+    $mode_urls = ["man" => "/man", "perldoc" => "/search/perl", "info" => "/info", "pydoc" => "/pydoc", "ri" => "/ri"];
+    if (isset($mode_labels[$mode])) {
+        $bc_parts[] = "<a href=\"".h(scriptName() . $mode_urls[$mode])."\">".h($mode_labels[$mode])."</a>";
+    }
+    $section_label = $section !== "" ? "({$section})" : "";
+    $bc_parts[] = h($parameter . $section_label);
+    echo "<h1>" . implode(" &gt; ", $bc_parts) . "</h1>\n";
+} else {
+    echo "<h1><a href=\"".h(scriptName())."\">".h($PHP_MAN_TITLE)."</a></h1>\n";
+}
 
 // Build markdown/JSON URLs for format links (showForm below)
 $markdownUrl = "";
@@ -995,8 +1096,8 @@ elseif ($mode === "search" && $parameter !== "") {
     $jsonUrl = $script_name_path . "?parameter=" . urlencode($parameter) . "&mode=search&format=json";
 }
 
+echo "<div id=\"content-wrap\">\n";
 showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
-echo "<hr /><div id=\"content-wrap\">\n";
 
 	// v2.2: TLDR block for man/perldoc detail pages
 	if (in_array($mode, ["man", "perldoc"]) && $parameter !== "" && trim($content) !== "") {
@@ -1019,7 +1120,7 @@ echo "<hr /><div id=\"content-wrap\">\n";
 	        foreach (array_slice($tldrData["examples"] ?? [], 0, 10) as $ex) {
 	            $desc = $ex["description"] ?? "";
 	            $desc = preg_replace('/\[(.)\]/', '<b>$1</b>', h($desc));
-	            echo "<li>{$desc}<br><code>" . h($ex["command"] ?? "") . "</code></li>\n";
+	            echo "<li>{$desc}<br /><code>" . h($ex["command"] ?? "") . "</code></li>\n";
 	        }
 	        echo "</ul>\n";
 	        echo "</div></div>\n";
@@ -1055,7 +1156,7 @@ if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
 } else {
     echo "<pre>" . $content . "</pre>\n";
 }
-echo "</div><hr />";
+echo "</div>";
 
 showFooter($VALIDATOR, $showNav);
 
@@ -1065,21 +1166,33 @@ showFooter($VALIDATOR, $showNav);
 // +--------------------------------------------------------------------------------+
 
 //show html header
-function showHeader (string $title = "", string $parameter = "", string $section = "", string $mode = "", bool $hasRealContent = true, bool $showNav = false): void {
+function showHeader (string $title = "", string $parameter = "", string $section = "", string $mode = "", bool $hasRealContent = true, bool $showNav = false, string $etag = ""): void {
     header("Content-Type: text/html; charset=UTF-8");
     // Security response headers (#40, #36, #29)
     header("X-Content-Type-Options: nosniff");
     header("X-Frame-Options: DENY");
     header("Referrer-Policy: strict-origin-when-cross-origin");
     header("Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://www.w3.org https://jigsaw.w3.org data:; script-src 'self' 'unsafe-inline'; frame-ancestors 'none';");
+    if (!isLocalRequest()) {
+        header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
+    }
     // MCP service discovery — sanitize $script_path against CRLF injection (#34)
     $script_path = isset($_SERVER['SCRIPT_NAME']) ? $_SERVER['SCRIPT_NAME'] : strtok($_SERVER['REQUEST_URI'], '?');
     $script_path = preg_replace('/[\r\n].*/', '', $script_path);
     header('Link: <' . $script_path . '/mcp>; rel="mcp-server"');
-    // always modified now
+    // ETag + caching (#60)
+    if ($etag !== "") {
+        header("ETag: {$etag}");
+        header("Cache-Control: public, max-age=86400, stale-while-revalidate=604800");
+    }
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
     // Expires one month later
     header("Expires: " .gmdate ("D, d M Y H:i:s", time() + 3600 * 24 * 7). " GMT");
+    // Gzip compression for HTML output (#60)
+    $acceptEncoding = strtolower(serverValue("HTTP_ACCEPT_ENCODING", ""));
+    if (strpos($acceptEncoding, "gzip") !== false) {
+        ob_start('ob_gzhandler');
+    }
 
     // Build SEO meta values
     $site_name = "phpMan";
@@ -1133,56 +1246,100 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "<meta name=\"citation_title\" content=\"".h($title)."\"/>\n".
         "<meta name=\"citation_online_date\" content=\"".gmdate("Y/m/d")."\"/>\n".
         "<meta name=\"citation_author\" content=\"Che Dong\"/>\n".
-        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>\n";
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>\n".
+        "<link rel=\"icon\" type=\"image/png\" href=\"/favicon.png\"/>\n";
 
     echo "<style type=\"text/css\">\n".
         "html {scroll-behavior:smooth;}\n".
-        "body {color:#000000;background-color:#EEEEEE;font-family:'Courier New',Courier,monospace;font-size:14px;}\n".
-        "b {color:#8B5E00;background-color:#EEEEEE;}\n".
-        "u {color:#006600;background-color:#EEEEEE;text-decoration:underline;}\n".
+        // Tokyo Night color scheme
+        "body {color:#c0caf5;background:#1a1b26;font-family:monospace;font-size:14px;line-height:1.5;}\n".
+        "pre {font-family:inherit;font-size:inherit;}\n".
+        "b {color:#e0af68;background:#1a1b26;}\n".
+        "u {color:#9ece6a;background:#1a1b26;text-decoration:underline;}\n".
+        "a {color:#7aa2f7;}\n".
         "#content-wrap {max-width:90%;margin-right:230px;}\n".
         "#man-content pre {width:100%;overflow-x:auto;white-space:pre;}\n".
         "#toc-sidebar {position:fixed;top:20px;right:10px;width:200px;max-height:90vh;overflow-y:auto;".
-            "background:#F8F8F8;border:1px solid #CCC;padding:8px;font-size:14px;z-index:100;".
+            "background:#24283b;border:1px solid #3b4261;padding:8px;font-size:13px;z-index:100;".
             "display:none;}\n".
         "#toc-sidebar a {display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;".
-            "color:#333;text-decoration:none;padding:2px 4px;border-radius:2px;}\n".
-        "#toc-sidebar a:hover {background:#DDD;color:#000;}\n".
-        "#toc-sidebar a.toc-sub {padding-left:18px;color:#555;}\n".
-        "#toc-sidebar a.toc-sub:hover {color:#000;}\n".
-        "#toc-sidebar .toc-title {font-weight:bold;border-bottom:1px solid #CCC;margin-bottom:4px;padding-bottom:2px;}\n".
+            "color:#a9b1d6;text-decoration:none;padding:2px 4px;border-radius:2px;}\n".
+        "#toc-sidebar a:hover {background:#3b4261;color:#c0caf5;}\n".
+        "#toc-sidebar a.toc-sub {padding-left:18px;color:#787c99;}\n".
+        "#toc-sidebar a.toc-sub:hover {color:#c0caf5;}\n".
+        "#toc-sidebar .toc-title {font-weight:bold;border-bottom:1px solid #3b4261;margin-bottom:4px;padding-bottom:2px;color:#c0caf5;}\n".
         "#back-to-top {position:fixed;bottom:20px;right:20px;z-index:100;display:none;}\n".
-        "#back-to-top a {display:block;padding:8px 14px;background:#333;color:#FFF;text-decoration:none;".
+        "#back-to-top a {display:block;padding:8px 14px;background:#7aa2f7;color:#1a1b26;text-decoration:none;".
             "border-radius:6px;font-size:13px;font-family:monospace;}\n".
-        "#back-to-top a:hover {background:#555;}\n".
+        "#back-to-top a:hover {background:#89b4fa;}\n".
         "body.ext-nav #toc-sidebar, body.ext-nav #back-to-top {display:block;}\n".
+        "form fieldset {border:1px solid #3b4261;}\n".
+        "form legend {color:#a9b1d6;}\n".
+        "input[type='text'] {background:#24283b;color:#c0caf5;border:1px solid #3b4261;padding:4px 6px;font-family:inherit;font-size:14px;}\n".
+        "input[type='submit'] {background:#7aa2f7;color:#1a1b26;border:none;padding:4px 12px;font-family:inherit;font-size:14px;cursor:pointer;border-radius:3px;}\n".
+        "input[type='submit']:hover {background:#89b4fa;}\n".
+        "input[type='radio'] {accent-color:#7aa2f7;}\n".
+        ".tldr-block {background:#24283b;border:1px solid #3b4261;border-radius:4px;margin:8px 0 16px 0;overflow:hidden;}\n".
+        ".tldr-header {cursor:pointer;padding:8px 12px;font-weight:bold;font-size:14px;color:#c0caf5;background:#1f2335;user-select:none;}\n".
+        ".tldr-header:hover {background:#3b4261;}\n".
+        ".tldr-source {font-weight:normal;font-size:12px;color:#787c99;margin-left:6px;}\n".
+        ".tldr-body {display:none;padding:4px 12px 8px 12px;}\n".
+        ".tldr-expanded .tldr-body {display:block;}\n".
+        ".tldr-desc {color:#a9b1d6;font-style:italic;margin:4px 0 6px 0;}\n".
+        ".tldr-examples {list-style:none;padding:0;margin:0;}\n".
+        ".tldr-examples li {margin:6px 0;font-size:13px;color:#a9b1d6;}\n".
+        ".tldr-examples li code {font-size:13px;background:#1a1b26;color:#9ece6a;padding:1px 4px;border:1px solid #3b4261;border-radius:2px;display:inline-block;margin:2px 0;}\n".
+        ".tldr-examples li b {color:#e0af68;}\n".
         $MOBILE_CSS . "\n".
         "</style>\n";
 
-    // JSON-LD structured data for SEO/GEO
+    // JSON-LD structured data for SEO/GEO (#64)
     if ($parameter !== "" && in_array($mode, ["man", "perldoc", "info", "pydoc", "ri"])) {
-        $schema_type = "TechArticle";
         $section_label = $section !== "" ? " (section {$section})" : "";
         $schema_json = json_encode([
             "@context" => "https://schema.org",
-            "@type" => $schema_type,
+            "@type" => "TechArticle",
             "name" => $parameter . $section_label,
             "description" => $meta_description,
             "url" => $canonical_url,
             "author" => [
+                "@type" => "Person",
+                "name" => "Che Dong",
+                "url" => $base_url
+            ],
+            "publisher" => [
                 "@type" => "Organization",
                 "name" => $site_name,
                 "url" => $base_url
             ],
-            "publisher" => [
-                "@type" => "Person",
-                "name" => "Che Dong",
-                "url" => $base_url
+            "about" => [
+                "@type" => "SoftwareApplication",
+                "name" => $parameter,
+                "applicationCategory" => "DeveloperApplication",
+                "operatingSystem" => "Linux, Unix"
             ],
             "datePublished" => gmdate("Y-m-d"),
             "inLanguage" => "en"
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         // #37: escape </ to prevent breaking out of <script> context
+        $schema_json = str_replace('</', '<\/', $schema_json);
+        echo "<script type=\"application/ld+json\">\n{$schema_json}\n</script>\n";
+    } else {
+        // Homepage/index: WebApplication schema
+        $schema_json = json_encode([
+            "@context" => "https://schema.org",
+            "@type" => "WebApplication",
+            "name" => $site_name,
+            "description" => $meta_description,
+            "url" => $canonical_url,
+            "author" => [
+                "@type" => "Person",
+                "name" => "Che Dong",
+                "url" => $base_url
+            ],
+            "applicationCategory" => "DeveloperApplication",
+            "operatingSystem" => "Linux, Unix"
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         $schema_json = str_replace('</', '<\/', $schema_json);
         echo "<script type=\"application/ld+json\">\n{$schema_json}\n</script>\n";
     }
@@ -1197,9 +1354,26 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
     $parameter_value = h($parameter);
 
     echo "<form action=\"".$script_name."\" method=\"get\">\n".
-        "<fieldset><legend>Look up a command</legend>\n".
-        "<p><label for=\"cmd-input\">Command: </label>".
-        "<input type=\"text\" id=\"cmd-input\" size=\"20\" name=\"parameter\" value=\"".$parameter_value."\"/>\n".
+        "<fieldset>\n";
+
+    // Format links (Markdown | JSON | MCP) — only on detail pages (parameter set, not search mode)
+    $fmtLinks = [];
+    $cmd_label = h($parameter ?: "command");
+    $isDetail = $parameter !== "" && in_array($mode, ["man", "perldoc", "info", "pydoc", "ri"]);
+    if ($isDetail) {
+        if ($markdownUrl !== "") {
+            $fmtLinks[] = '<a href="' . h($markdownUrl) . '" title="' . $cmd_label . ' in Markdown format">Markdown</a>';
+        }
+        if ($jsonUrl !== "") {
+            $fmtLinks[] = '<a href="' . h($jsonUrl) . '" title="' . $cmd_label . ' structured JSON API">JSON</a>';
+        }
+        $mcp_href = scriptName() . "/" . urlencode($mode) . "/" . urlencode($parameter) . "/mcp";
+        $fmtLinks[] = '<a href="' . h($mcp_href) . '" title="MCP Server integration">MCP</a>';
+    }
+
+    $fmtStr = !empty($fmtLinks) ? implode(" |\n", $fmtLinks) . " &nbsp;" : "";
+
+    echo "<p>" . $fmtStr . "<input type=\"text\" id=\"cmd-input\" size=\"20\" name=\"parameter\" value=\"".$parameter_value."\"/>\n".
         "<input type=\"radio\" name=\"mode\" value=\"man\" id=\"mode-man\"".$check['man']."/>".
         "<label for=\"mode-man\"><a href=\"".$script_name."/man\">man</a></label>\n".
         "<input type=\"radio\" name=\"mode\" value=\"perldoc\" id=\"mode-perldoc\"".$check['perldoc']."/>".
@@ -1211,48 +1385,15 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
         "<input type=\"radio\" name=\"mode\" value=\"ri\" id=\"mode-ri\"".$check['ri']."/>".
         "<label for=\"mode-ri\"><a href=\"".$script_name."/ri\">ri</a></label>\n".
         "<input type=\"radio\" name=\"mode\" value=\"search\" id=\"mode-search\"".$check['search']."/>".
-        "<label for=\"mode-search\"><a href=\"".$script_name."/man/apropos\">search(apropos)</a></label>\n".
+        "<label for=\"mode-search\"><a href=\"".$script_name."/man/apropos\">search</a></label>\n".
         "&nbsp;<input type=\"submit\" value=\"Go\"/></p>".
         "</fieldset>\n".
         "</form>\n";
 
-    // Format links / external references row (below form, above content)
-    $extra_links = [];
     $isDetailPage = in_array($mode, ["man", "perldoc", "info", "pydoc", "ri"]) && $parameter !== "";
     $hasContent = ($markdownUrl !== "" || $jsonUrl !== "");
     $cmd_label = h($parameter ?: "command");
-    $script_path = scriptName();
-
-    if ($hasContent) {
-        // --- Links for existing detail pages ---
-        if ($markdownUrl !== "") {
-            $title = "Get " . $cmd_label . " command description in Markdown format";
-            $extra_links[] = '<a href="' . h($markdownUrl) . '" title="' . $title . '">Markdown Format</a>';
-        }
-        if ($jsonUrl !== "") {
-            $title = "Access " . $cmd_label . " command structured JSON API";
-            $extra_links[] = '<a href="' . h($jsonUrl) . '" title="' . $title . '">JSON API</a>';
-        }
-
-        // MCP link (only when content exists)
-        $detail_rel = "";
-        if ($isDetailPage) {
-            $detail_rel = $script_path . "/" . urlencode($mode) . "/" . urlencode($parameter);
-            if ($mode === "man" && $section !== "") {
-                $detail_rel .= "/" . urlencode($section);
-            }
-        }
-        $mcp_href = $isDetailPage ? ($detail_rel . "/mcp") : ($script_path . "/mcp");
-        $mcp_title = "Configure " . $cmd_label . " command as an AI Agent MCP Tool";
-        $extra_links[] = '<a href="' . h($mcp_href) . '" title="' . $mcp_title . '">MCP Server Tool</a>';
-
-        // Detail pages get TLDR, Cheat (man section 1 only)
-        if ($isDetailPage && $mode === "man" && $section === "1") {
-            $extra_links[] = '<a href="https://cheat.sh/' . urlencode($parameter) . '" target="_blank" rel="noopener" title="Quick Linux cheat sheet for ' . $cmd_label . '">Cheat Sheet</a>';
-        }
-
-        echo "<p>" . implode(" |\n", $extra_links) . "</p>\n";
-    } elseif ($isDetailPage) {
+    if ($isDetailPage && !$hasContent) {
         // --- Not found: show external search/reference links ---
         echo "<p>";
         echo "Not found locally for <b>" . $cmd_label . "</b>. Try " .
@@ -1278,7 +1419,6 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
 //show footer
 function showFooter (string $validator = "", bool $showNav = false): void {
     $script_name = h(scriptName());
-    $home_url = h("http://" . getSafeHost());
     $remote_addr = h(serverValue("REMOTE_ADDR", "unknown"));
     $user_agent = h(serverValue("HTTP_USER_AGENT", "unknown"));
 
@@ -1289,12 +1429,12 @@ function showFooter (string $validator = "", bool $showNav = false): void {
     }
 
     echo "<p>Generated by <a href=\"https://github.com/chedong/phpman\">phpMan</a>" .
-        " Author: <a href=\"http://www.chedong.com/\">Che Dong</a>" .
+        " Author: <a href=\"https://www.chedong.com/\">Che Dong</a>" .
         $server_info .
         " Under <a href=\"".$script_name."/copyright\">GNU General Public License</a>" .
         "<br />" .
-        "<a href=\"" . $home_url . "\">" . date("Y-m-d H:i") . " @". $remote_addr .
-        " CrawledBy " . $user_agent . "</a>" .
+        date("Y-m-d H:i") . " @" . $remote_addr .
+        "<br />CrawledBy " . $user_agent .
         "<br />" . $validator . "</p>" .
         ($showNav ? '<div id="back-to-top"><a href="#top">^_back to top</a></div>' : "") .
         "</body></html>";
@@ -1310,12 +1450,14 @@ function handleWellKnown (): void {
     if (serverValue("REQUEST_METHOD") !== "GET") {
         http_response_code(405);
         header("Content-Type: application/json; charset=UTF-8");
+        header("X-Content-Type-Options: nosniff");
         header("Allow: GET");
         echo json_encode(["error" => "Method not allowed. Use GET."], JSON_UNESCAPED_SLASHES);
         return;
     }
 
     header("Content-Type: application/json; charset=UTF-8");
+    header("X-Content-Type-Options: nosniff");
     header("Cache-Control: public, max-age=3600");
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
 
@@ -1324,7 +1466,7 @@ function handleWellKnown (): void {
 
     $discovery = [
         "name" => "phpMan",
-        "version" => "2.1",
+        "version" => PHPMAN_VERSION,
         "description" => "Unix/Linux man page, Perldoc, and Info page web interface with MCP support",
         "url" => $base,
         "mcp" => [
@@ -1351,6 +1493,7 @@ function handleWellKnown (): void {
 //handle Mcp protocol request
 function handleMcp (): void {
     header("Content-Type: application/json; charset=UTF-8");
+    header("X-Content-Type-Options: nosniff");
     // MCP uses text/event-stream for SSE transport, but StreamableHTTP uses plain POST
     // Allow both plain and SSE content types
     header("Cache-Control: no-store, no-cache, must-revalidate");
@@ -1416,7 +1559,7 @@ function handleMcp (): void {
             handleMcpToolsCall($id, $params);
             break;
         default:
-            sendMcpError($id, -32601, "Method not found: {$method}");
+            sendMcpError($id, -32601, "Method not found");
     }
 }
 
@@ -1442,7 +1585,7 @@ function handleMcpInitialize ($id): void {
         "protocolVersion" => "2024-11-05",
         "serverInfo" => [
             "name" => "phpMan",
-            "version" => "2.0"
+            "version" => PHPMAN_VERSION
         ],
         "capabilities" => [
             "tools" => ["listChanged" => false]
@@ -2064,33 +2207,24 @@ function getSearchPage (string $parameter, string $section = "", string $format 
             }
             $output .= preg_replace($patterns, $replace, $line) . "\n";
         } else {
-            $patterns = array(
-                "/&/",  //html special char: '&' => '&amp;';
-                "/</",  //html special char: '<' => '&lt;';
-                "/>/",  //html special char: '>' => '&gt;';
-                //for linux format of search output
+            $escaped = h($line);
+            // Link patterns for apropos output
+            $link_patterns = array(
                 "/(.*\\/)?([\\w\\-\\.\\+:]+)((\\s+\\[)([\\w\\-\\.:]+)(\\]\\s+))\\(((\\d\\w*|n)\\w*)\\)/",
-                //'(command)' => man page of command;
                 "/([\\w+\\.\\-:]+)(\\s+)?(\\(((\\d\\w*|n)\\w*)\\))/"
             );
             if ($link_mode === "perldoc") {
-                $replace = array(
-                    "&amp;",
-                    "&lt;",
-                    "&gt;",
+                $link_replace = array(
                     '$1$2$4<a href="'.$script_name.'/perldoc/$5">$5</a>$6($7)',
                     '<a href="'.$script_name.'/perldoc/$1">$1</a>$2$3'
                 );
             } else {
-                $replace = array(
-                    "&amp;",
-                    "&lt;",
-                    "&gt;",
+                $link_replace = array(
                     '$1$2$4<a href="'.$script_name.'/man/$5/$7">$5</a>$6($7)',
                     '<a href="'.$script_name.'/man/$1/$4">$1</a>$2$3'
                 );
             }
-            $output .= preg_replace($patterns, $replace, $line) . "\n";
+            $output .= preg_replace($link_patterns, $link_replace, $escaped) . "\n";
         }
     }
     return $output;
@@ -2356,7 +2490,8 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
         $line = preg_replace($patterns, $replace, $lines[$i]);
-        $heading = detectHeadingType($line, $mode);
+        $nextLine = ($i + 1 < $count) ? $lines[$i + 1] : null;
+        $heading = detectHeadingType($line, $mode, $nextLine);
         if ($heading) {
             $id = ($heading['level'] === 1 ? 'section-' : 'sub-')
                 . strtolower(preg_replace('/[^A-Z0-9]+/i', '-', $heading['text']));
@@ -2369,6 +2504,12 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                 $seenIds[$id] = 0;
             }
             $line = '<a id="' . h($id) . '"></a>' . $line;
+            // Skip the underline line in info mode (Setext-style heading)
+            if (!empty($heading['skipNext'])) {
+                $output .= $line . "\n";
+                $i++;  // skip the underline
+                continue;
+            }
         }
         $output .= $line . "\n";
     }
@@ -2563,6 +2704,7 @@ function formatMcpStructured (array $data): array {
         "examples" => $data["examples"] ?? [],
         "see_also" => $data["see_also"] ?? [],
         "section_outline" => $outline,
+        "sections" => $data["sections"] ?? [],  // full section content for agent consumption
     ];
 }
 
@@ -2609,8 +2751,12 @@ function fetchTldrPages(string $command): array {
                 "header" => "User-Agent: phpMan/2.2\r\n",
             ],
         ]);
-        $md = @file_get_contents($url, false, $ctx);
-        if ($md !== false && strlen($md) > 20) {
+        $md = file_get_contents($url, false, $ctx);
+        if ($md === false) {
+            phpManLog("Failed to fetch TLDR from $url: " . (error_get_last()['message'] ?? 'unknown error'));
+            continue;
+        }
+        if (strlen($md) > 20) {
             return parseTldrMarkdown($md, $command, "official");
         }
     }
@@ -2628,8 +2774,12 @@ function fetchCheatShTldr(string $command): array {
             "header" => "User-Agent: phpMan/2.2\r\n",
         ],
     ]);
-    $raw = @file_get_contents($url, false, $ctx);
-    if ($raw === false || strlen($raw) < 20) return [];
+    $raw = file_get_contents($url, false, $ctx);
+    if ($raw === false) {
+        phpManLog("Failed to fetch cheat.sh TLDR from $url: " . (error_get_last()['message'] ?? 'unknown error'));
+        return [];
+    }
+    if (strlen($raw) < 20) return [];
     return parseCheatShOutput($raw, $command);
 }
 
@@ -2937,7 +3087,8 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
         }
 
         // Use shared heading detection (same as HTML/Markdown paths)
-        $heading = detectHeadingType($rawLine, $mode);
+        $nextRawLine = ($i + 1 < $count) ? $lines[$i + 1] : null;
+        $heading = detectHeadingType($rawLine, $mode, $nextRawLine);
 
         if ($heading !== null) {
             if ($heading['level'] === 1) {
@@ -2965,6 +3116,10 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
                 // Switch content accumulation to the new subsection
                 unset($currentSection);
                 $currentSection = &$subsection;
+            }
+            // Skip the underline line in info mode (Setext-style heading)
+            if (!empty($heading['skipNext'])) {
+                $i++;
             }
             continue;
         }
@@ -3206,13 +3361,20 @@ function formatManPerlDocToMarkdown (array $lines, string $parameter = ""): stri
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
         $line = $lines[$i];
-        
+
         // Section / Sub-section Headers: detect via shared function
-        $heading = detectHeadingType($line, "man");
+        $nextLine = ($i + 1 < $count) ? $lines[$i + 1] : null;
+        $heading = detectHeadingType($line, "man", $nextLine);
         if ($heading) {
             // L1 → ## (man .SH), L2 → ### (man .SS) to match HTML TOC hierarchy
             $prefix = ($heading['level'] === 1) ? '## ' : '### ';
             $line = $prefix . $heading['text'];
+            // Skip the underline line in info mode (Setext-style heading)
+            if (!empty($heading['skipNext'])) {
+                $output .= $line . "\n";
+                $i++;
+                continue;
+            }
         }
 
         // Email
