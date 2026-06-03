@@ -106,6 +106,22 @@ phpMan > man > ls(1)
 
 **相关 Issue**：#65
 
+### 2.9 搜索结果统一列表格式 ✅
+
+搜索（apropos）和 pydoc3 关键词搜索结果统一用 `<ul><li>` 列表格式，替换 `<pre>` + `<br />` 分行：
+
+| 模块 | 格式 | 容器 |
+|------|------|------|
+| apropos | `<li><a>` 链接列表 | `<h2>apropos</h2>` + `<ul>` |
+| pydoc3 | `<li><a>mod — desc</a></li>` | `<h2>Python 3 (pydoc3)</h2>` + `<ul>` |
+| ri | 完整文档内容 | `<h2>Ruby (ri)</h2>` + `<pre>` |
+
+ri index（`/ri`）同步改为 `<ul>` 列表。搜索/搜回退页面用 `<div id="man-content">` 而非 `<pre>` 包裹。
+
+### 2.10 Footer Git 版本号 ✅
+
+`make deploy`/`make release` 通过 `sed` + ssh pipe 将 `git describe --tags --always --dirty` 注入 `GIT_DESCRIBE` 常量，footer 显示 `phpMan v2.3-5-g1cea00a`。本地开发默认为 `local`。
+
 ---
 
 ## 三、安全边界定义
@@ -155,7 +171,7 @@ phpMan > man > ls(1)
 
 | 日期 | 修订内容 |
 |------|----------|
-| 2026-06-03 | v2.3 移除独立 `/tldr` 路由，TLDR 已集成到 4 种格式输出中（HTML inline block、Markdown 顶部注入、JSON/MCP 结构化字段） |
+| 2026-06-03 | v2.3 搜索结果统一列表格式、ri index 列表化、footer git 版本号（`git describe`）、移除独立 `/tldr` 路由 |
 | 2026-06-03 | v2.3 安全加固：速率限制（#69）、HSTS（#70）、nosniff 头（#63）、MCP 错误泛化（#71）、H1 面包屑（#65）、JSON-LD 修正（#64），关闭 #62 |
 | 2026-06-03 | v2.3：Tokyo Night 暗色主题、info 模式 Setext 标题检测、CSS 全局统一、格式链接仅详情页显示、footer 优化（#55 #60 #61 #67 #73 #74 #75 关闭） |
 | 2026-06-02 | v2.3：新增 pydoc3 / ri 模式，详见 `docs/PYDOC_RI_DESIGN.md` |
