@@ -20,24 +20,31 @@ BACKUP_KEEP ?= 5
 
 .PHONY: test deploy release rollback deploy-verify package upload-release clean
 
+GIT_TAG := $(shell git describe --tags --always --dirty 2>/dev/null || echo "local")
+
 test:
 	php -l $(FILE)
 
 deploy: test
-	scp -P $(TEST_PORT) $(FILE) $(TEST_USER)@$(TEST_HOST):$(TEST_PATH)/
+	sed "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" $(FILE) | \
+	ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) "cat > $(TEST_PATH)/$(FILE)"; \
+	ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE)"
 	@echo ""
-	@echo "=== Deployed to staging ==="
+	@echo "=== Deployed to staging ($(GIT_TAG)) ==="
 	@echo "$(TEST_URL)"
 	@echo ""
 
 release: test
+	@echo "=== Deploying $(GIT_TAG) ==="
 	@TIMESTAMP=$$(date +%Y%m%d-%H%M%S); \
 	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
 		"mkdir -p \"\$$HOME/$(BACKUP_DIR)\" && cp $(DEMO_PATH)/$(FILE) \"\$$HOME/$(BACKUP_DIR)/$(FILE).$${TIMESTAMP}.bak\" 2>/dev/null || true"; \
 	echo "=== Pruning old backups (keeping last $(BACKUP_KEEP)) ==="; \
 	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
 		"ls -1t \"\$$HOME/$(BACKUP_DIR)/$(FILE).\"*.bak 2>/dev/null | tail -n +$$(( $(BACKUP_KEEP) + 1 )) | xargs rm -f 2>/dev/null || true"; \
-	scp -P $(DEMO_PORT) $(FILE) $(DEMO_USER)@$(DEMO_HOST):$(DEMO_PATH)/; \
+	sed "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" $(FILE) | \
+	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) "cat > $(DEMO_PATH)/$(FILE)"; \
+	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE)"; \
 	echo ""; \
 	echo "=== Deployed to production ==="; \
 	echo "$(DEMO_URL)"; \

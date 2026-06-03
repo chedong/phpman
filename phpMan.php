@@ -40,6 +40,10 @@ $MOBILE_CSS = <<<'CSS'
     #content-wrap{margin-right:0;max-width:100%;padding:0 8px;}
     body{font-size:12px;}
     #man-content pre{white-space:pre-wrap;word-wrap:break-word;font-size:12px;line-height:1.4;}
+    #man-content ul{list-style:none;padding:0;margin:0 0 12px 0;}
+    #man-content li{padding:3px 0;border-bottom:1px solid #24283b;font-size:13px;line-height:1.5;}
+    #man-content li:last-child{border-bottom:none;}
+    #man-content h2{font-size:14px;color:#7aa2f7;margin:16px 0 6px 0;border-bottom:1px solid #3b4261;padding-bottom:4px;}
     input[type='text']{width:100%;font-size:16px;padding:8px;box-sizing:border-box;}
     input[type='submit']{font-size:16px;padding:10px 20px;min-height:44px;}
     input[type='radio']{transform:scale(1.3);margin-right:4px;}
@@ -59,6 +63,7 @@ CSS;
 
 // #49: Named constants for magic numbers
 define('PHPMAN_VERSION', '2.3');        // current version (#67)
+define('GIT_DESCRIBE', 'local');         // replaced by make deploy/release with git describe --tags
 define('TOC_LINE_THRESHOLD', 80);      // min lines to show TOC sidebar
 define('GZIP_MIN_BYTES', 1000);        // min response size for gzip compression
 define('FLAG_DESC_MAX_LEN', 120);      // max length for flag descriptions
@@ -617,6 +622,7 @@ $mode = "";
 $parameter = "";
 $section = "";
 $isSearchFallback = false;
+$isListContent = false;
 
 $check['man'] = "";
 $check['perldoc'] = "";
@@ -777,6 +783,8 @@ if ( $parameter != "" ) {
     else {
         $PHP_MAN_TITLE = "phpman > " . $mode . " > " . $parameter . "(" . $section . ")";
     }
+} elseif ($mode !== "" && $mode !== "search" && in_array($mode, ["man", "perldoc", "info", "pydoc", "ri"])) {
+    $PHP_MAN_TITLE = "phpman > " . $mode;
 }
 
 //show GPL
@@ -829,7 +837,7 @@ switch ( $mode ) {
 
             //still not found then redirect to search sections
             if (trim($content) == "") {
-                $content = getSearchPage($parameter, $section, $format);
+                $content = "<ul>" . getSearchPage($parameter, $section, $format) . "</ul>";
                 $isSearchFallback = true;
                 http_response_code(404);
             }
@@ -864,13 +872,14 @@ switch ( $mode ) {
             $content = getSearchPage($parameter, $section, $format);
             // Cascade: also search pydoc3 and ri
             if ($format === "html") {
+                $content = "<h2>apropos</h2>\n<ul>" . $content . "</ul>\n";
                 $pydocResults = getPydocSearchPage($parameter, "html");
                 if ($pydocResults !== "") {
-                    $content .= "<hr /><b>Python 3 (pydoc3):</b><br />" . $pydocResults;
+                    $content .= "<h2>Python 3 (pydoc3)</h2>\n<ul>" . $pydocResults . "</ul>\n";
                 }
                 $riResults = getRiSearchPage($parameter, "html");
                 if ($riResults !== "") {
-                    $content .= "<hr /><b>Ruby (ri):</b><br />" . $riResults;
+                    $content .= "<h2>Ruby (ri)</h2>\n<pre>" . $riResults . "</pre>\n";
                 }
             } elseif ($format === "markdown") {
                 $pydocResults = getPydocSearchPage($parameter, "markdown");
@@ -926,7 +935,8 @@ switch ( $mode ) {
             }
         }
         else {
-            $content = getRiIndex($format);
+            $content = "<ul>" . getRiIndex($format) . "</ul>";
+            $isListContent = true;
         }
         break;
 }
@@ -998,17 +1008,19 @@ if ($ifNoneMatch === $etag) {
 showHeader($PHP_MAN_TITLE, $parameter, $section, $mode, $hasRealContent, $showNav, $etag);
 
 // H1 breadcrumb: phpMan > mode > command(section)
+$mode_labels = ["man" => "man", "perldoc" => "perldoc", "info" => "info", "pydoc" => "pydoc", "ri" => "ri"];
+$mode_urls = ["man" => "/man", "perldoc" => "/search/perl", "info" => "/info", "pydoc" => "/pydoc", "ri" => "/ri"];
 if ($parameter !== "" && $mode !== "" && $mode !== "search") {
     $bc_parts = [];
     $bc_parts[] = "<a href=\"".h(scriptName())."\">phpMan</a>";
-    $mode_labels = ["man" => "man", "perldoc" => "perldoc", "info" => "info", "pydoc" => "pydoc", "ri" => "ri"];
-    $mode_urls = ["man" => "/man", "perldoc" => "/search/perl", "info" => "/info", "pydoc" => "/pydoc", "ri" => "/ri"];
     if (isset($mode_labels[$mode])) {
         $bc_parts[] = "<a href=\"".h(scriptName() . $mode_urls[$mode])."\">".h($mode_labels[$mode])."</a>";
     }
     $section_label = $section !== "" ? "({$section})" : "";
     $bc_parts[] = h($parameter . $section_label);
     echo "<h1>" . implode(" &gt; ", $bc_parts) . "</h1>\n";
+} elseif ($mode !== "" && $mode !== "search" && isset($mode_labels[$mode])) {
+    echo "<h1><a href=\"".h(scriptName())."\">phpMan</a> &gt; " . h($mode_labels[$mode]) . "</h1>\n";
 } else {
     echo "<h1><a href=\"".h(scriptName())."\">".h($PHP_MAN_TITLE)."</a></h1>\n";
 }
@@ -1100,7 +1112,7 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	}
 
 	// For man page content, add section anchors and floating TOC
-if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
+if ($mode !== "markdown" && $mode !== "search" && !$isSearchFallback && $parameter !== "" && trim($content) !== "") {
     list($anchoredContent, $tocItems) = addManPageToc($content);
 
     // Show TOC when we have multiple L1 sections, or a single L1 section with L2 subsections
@@ -1125,6 +1137,8 @@ if ($mode !== "markdown" && $parameter !== "" && trim($content) !== "") {
     }
 
     echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
+} elseif ($isSearchFallback || $mode === "search" || $isListContent) {
+    echo "<div id=\"man-content\">" . $content . "</div>\n";
 } else {
     echo "<pre>" . $content . "</pre>\n";
 }
@@ -1401,6 +1415,7 @@ function showFooter (string $validator = "", bool $showNav = false): void {
     }
 
     echo "<p>Generated by <a href=\"https://github.com/chedong/phpman\">phpMan</a>" .
+        " " . h(GIT_DESCRIBE) .
         " Author: <a href=\"https://www.chedong.com/\">Che Dong</a>" .
         $server_info .
         " Under <a href=\"".$script_name."/copyright\">GNU General Public License</a>" .
@@ -1954,7 +1969,7 @@ function getRiIndex (string $format = "html"): string {
     foreach ($lines as $line) {
         $trimmed = trim($line);
         if ($trimmed !== "") {
-            $output .= '<a href="'.$script_name.'/ri/'.urlencode($trimmed).'">'.h($trimmed).'</a><br />'."\n";
+            $output .= '<li><a href="'.$script_name.'/ri/'.urlencode($trimmed).'">'.h($trimmed).'</a></li>'."\n";
         }
     }
     return $output;
@@ -2014,9 +2029,9 @@ function getPydocSearchPage (string $parameter, string $format = "html"): string
     foreach ($lines as $line) {
         $trimmed = trim($line);
         if (preg_match('/^(\S+)\s*-\s*(.+)/', $trimmed, $m)) {
-            $output .= '<a href="'.$script_name.'/pydoc/'.urlencode($m[1]).'">'.h($m[1]).'</a> — '.h($m[2]).'<br />'."\n";
+            $output .= '<li><a href="'.$script_name.'/pydoc/'.urlencode($m[1]).'">'.h($m[1]).'</a> — '.h($m[2]).'</li>'."\n";
         } elseif ($trimmed !== "") {
-            $output .= '<a href="'.$script_name.'/pydoc/'.urlencode($trimmed).'">'.h($trimmed).'</a><br />'."\n";
+            $output .= '<li><a href="'.$script_name.'/pydoc/'.urlencode($trimmed).'">'.h($trimmed).'</a></li>'."\n";
         }
     }
     return $output;
@@ -2196,7 +2211,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
                     '<a href="'.$script_name.'/man/$1/$4">$1</a>$2$3'
                 );
             }
-            $output .= preg_replace($link_patterns, $link_replace, $escaped) . "\n";
+            $output .= '<li>' . preg_replace($link_patterns, $link_replace, $escaped) . '</li>' . "\n";
         }
     }
     return $output;
