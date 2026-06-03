@@ -35,8 +35,17 @@ define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 // Mobile responsive CSS (extracted from showHeader for maintainability)
 $MOBILE_CSS = <<<'CSS'
 @media (max-width:1024px){
-    body.ext-nav #toc-sidebar{display:none !important;}
-    #toc-sidebar{display:none !important;}
+    body.ext-nav #toc-sidebar{display:block !important;position:fixed;top:4px;right:4px;width:220px;max-height:calc(100vh - 12px);overflow-y:auto;z-index:200;border:1px solid #3b4261;box-shadow:-2px 2px 8px rgba(0,0,0,.4);background:#24283b;padding:6px 8px;font-size:13px;}
+    body.ext-nav #toc-sidebar a{display:none;}
+    body.toc-open #toc-sidebar a{display:block;}
+    body.toc-open #toc-sidebar .toc-subs{display:block;}
+    #toc-toggle{cursor:pointer;color:#c0caf5;font-size:13px;}
+    #toc-toggle:hover{color:#7aa2f7;}
+    #toc-toggle .toc-open-icon{display:inline;float:right;}
+    #toc-toggle .toc-close-icon{display:none;float:right;}
+    body.toc-open #toc-toggle .toc-open-icon{display:none;}
+    body.toc-open #toc-toggle .toc-close-icon{display:inline;float:right;}
+    #back-to-top{z-index:210;}
     #content-wrap{margin-right:0;max-width:100%;padding:0 8px;}
     body{font-size:12px;}
     #man-content pre{white-space:pre-wrap;word-wrap:break-word;font-size:12px;line-height:1.4;}
@@ -1122,7 +1131,7 @@ if ($mode !== "markdown" && $mode !== "search" && !$isSearchFallback && $paramet
     if ($hasTocContent) {
         echo "<div id=\"toc-sidebar\">\n";
         $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
-        echo "<div class=\"toc-title\">" . h($pageLabel) . "</div>\n";
+        echo "<div class=\"toc-title\" id=\"toc-toggle\" onclick=\"document.body.classList.toggle('toc-open');\">" . h($pageLabel) . " <span class=\"toc-open-icon\">&#9633;</span><span class=\"toc-close-icon\">&#10005;</span></div>\n";
         foreach ($tocItems as $l1) {
             echo "<a href=\"#" . h($l1['id']) . "\">" . h($l1['label']) . "</a>\n";
             if (!empty($l1['children'])) {
@@ -1153,6 +1162,7 @@ showFooter($VALIDATOR, $showNav);
 
 //show html header
 function showHeader (string $title = "", string $parameter = "", string $section = "", string $mode = "", bool $hasRealContent = true, bool $showNav = false, string $etag = ""): void {
+    global $MOBILE_CSS;
     header("Content-Type: text/html; charset=UTF-8");
     // Security response headers (#40, #36, #29)
     header("X-Content-Type-Options: nosniff");
@@ -1254,6 +1264,8 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "#toc-sidebar a.toc-sub {padding-left:18px;color:#787c99;}\n".
         "#toc-sidebar a.toc-sub:hover {color:#c0caf5;}\n".
         "#toc-sidebar .toc-title {font-weight:bold;border-bottom:1px solid #3b4261;margin-bottom:4px;padding-bottom:2px;color:#c0caf5;}\n".
+        "#toc-toggle {cursor:default;}\n".
+        "#toc-toggle .toc-open-icon, #toc-toggle .toc-close-icon {display:none;}\n".
         "#back-to-top {position:fixed;bottom:20px;right:20px;z-index:100;display:none;}\n".
         "#back-to-top a {display:block;padding:8px 14px;background:#7aa2f7;color:#1a1b26;text-decoration:none;".
             "border-radius:6px;font-size:13px;font-family:monospace;}\n".

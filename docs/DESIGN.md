@@ -120,6 +120,18 @@ ri index（`/ri`）同步改为 `<ul>` 列表。搜索/搜回退页面用 `<div 
 
 ### 2.10 Footer Git 版本号 ✅
 
+### 2.11 移动端 TOC 折叠 ✅
+
+**TOC（目录）在移动端的显示策略**：
+
+- **宽屏（>1024px）**：TOC 侧栏固定右侧，默认展开，不显示切换按钮
+- **窄屏（≤1024px）**：TOC 默认收起，仅显示标题行（如 `tar(1) □`），点击标题行展开/收起下方链接
+- **切换按钮**：`□`（展开）/ `✕`（收起）图标 `float:right` 与标题同行，整个标题行可点击
+- **back-to-top**：移动端 z-index 高于 TOC sidebar，展开时不会被遮挡
+- **实现**：`body.toc-open` class 切换，纯 CSS 控制，onclick 内联 JS 无外部依赖
+
+**相关代码位置**：`$MOBILE_CSS` heredoc（~line 37）、`showHeader()` 内 `global $MOBILE_CSS`（~line 1163）、`$hasTocContent` 块（~line 1128）
+
 `make deploy`/`make release` 通过 `sed` + ssh pipe 将 `git describe --tags --always --dirty` 注入 `GIT_DESCRIBE` 常量，footer 显示 `phpMan v2.3-5-g1cea00a`。本地开发默认为 `local`。
 
 ---
@@ -171,6 +183,7 @@ ri index（`/ri`）同步改为 `<ul>` 列表。搜索/搜回退页面用 `<div 
 
 | 日期 | 修订内容 |
 |------|----------|
+| 2026-06-03 | v2.3 移动端 TOC 折叠：窄屏默认收起，标题行可点击展开/收起，修复 `$MOBILE_CSS` global 声明缺失 |
 | 2026-06-03 | v2.3 搜索结果统一列表格式、ri index 列表化、footer git 版本号（`git describe`）、移除独立 `/tldr` 路由 |
 | 2026-06-03 | v2.3 安全加固：速率限制（#69）、HSTS（#70）、nosniff 头（#63）、MCP 错误泛化（#71）、H1 面包屑（#65）、JSON-LD 修正（#64），关闭 #62 |
 | 2026-06-03 | v2.3：Tokyo Night 暗色主题、info 模式 Setext 标题检测、CSS 全局统一、格式链接仅详情页显示、footer 优化（#55 #60 #61 #67 #73 #74 #75 关闭） |
