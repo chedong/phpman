@@ -155,6 +155,7 @@ phpMan > man > ls(1)
 
 | 日期 | 修订内容 |
 |------|----------|
+| 2026-06-03 | v2.3 移除独立 `/tldr` 路由，TLDR 已集成到 4 种格式输出中（HTML inline block、Markdown 顶部注入、JSON/MCP 结构化字段） |
 | 2026-06-03 | v2.3 安全加固：速率限制（#69）、HSTS（#70）、nosniff 头（#63）、MCP 错误泛化（#71）、H1 面包屑（#65）、JSON-LD 修正（#64），关闭 #62 |
 | 2026-06-03 | v2.3：Tokyo Night 暗色主题、info 模式 Setext 标题检测、CSS 全局统一、格式链接仅详情页显示、footer 优化（#55 #60 #61 #67 #73 #74 #75 关闭） |
 | 2026-06-02 | v2.3：新增 pydoc3 / ri 模式，详见 `docs/PYDOC_RI_DESIGN.md` |

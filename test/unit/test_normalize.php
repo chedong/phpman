@@ -7,7 +7,7 @@
  * - normalizeParameter strips path traversal (/) and control chars only.
  *   Shell injection is prevented by escapeshellarg() at exec time (defense in depth).
  * - normalizeSection uses strict alphanumeric regex: /^[A-Za-z0-9_]+$/
- * - normalizeMode has 7 allowed modes: man, perldoc, info, search, copyright, mcp, tldr
+ * - normalizeMode has 8 allowed modes: man, perldoc, info, search, copyright, mcp, pydoc, ri
  */
 declare(strict_types=1);
 define('PHPMAN_TEST_MODE', true);
@@ -27,7 +27,8 @@ assert_equals("info", normalizeMode("info"), "info → info");
 assert_equals("search", normalizeMode("search"), "search → search");
 assert_equals("copyright", normalizeMode("copyright"), "copyright → copyright");
 assert_equals("mcp", normalizeMode("mcp"), "mcp → mcp");
-assert_equals("tldr", normalizeMode("tldr"), "tldr → tldr");
+assert_equals("pydoc", normalizeMode("pydoc"), "pydoc → pydoc");
+assert_equals("ri", normalizeMode("ri"), "ri → ri");
 // Default fallback
 assert_equals("man", normalizeMode(""), "empty → man (default)");
 assert_equals("man", normalizeMode("invalid"), "invalid → man (default)");

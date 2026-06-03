@@ -519,7 +519,6 @@ function normalizeMode (mixed $mode): string {
         "search" => true,
         "copyright" => true,
         "mcp" => true,
-        "tldr" => true,
         "pydoc" => true,
         "ri" => true,
     );
@@ -678,7 +677,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
         }
     }
     
-    $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp", "tldr", ".well-known", "pydoc", "ri");
+    $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp", ".well-known", "pydoc", "ri");
     $seg_count = count($segments);
     
     if ($seg_count >= 1) {
@@ -930,43 +929,16 @@ switch ( $mode ) {
             $content = getRiIndex($format);
         }
         break;
-    case "tldr":
-        $check['man'] = " checked=\"checked\"";
-        if ( $parameter != "" ) {
-            $content = '';
-            $tldrData = fetchOfficialTldr($parameter);
-            if (!empty($tldrData)) {
-                $content = formatTldrFromStructured($tldrData, $parameter);
-            }
-            // Fallback: extract examples from man page (LLM deferred to v3.0)
-            if ($content === '') {
-                $jsonContent = getManPage($parameter, $section, "json");
-                if ($jsonContent === "") {
-                    $jsonContent = getPerldocPage($parameter, "json");
-                }
-                if ($jsonContent !== "") {
-                    $jsonData = json_decode($jsonContent, true);
-                    if ($jsonData !== null) {
-                        $content = formatTldr($jsonData);
-                    }
-                }
-            }
-        }
-        break;
 }
 
 // Show Markdown or HTML output
-if ($format === "markdown" || $mode === "tldr") {
+if ($format === "markdown") {
     header("Content-Type: text/markdown; charset=UTF-8");
     header("X-Content-Type-Options: nosniff");
     header("X-Frame-Options: DENY");
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
     header("Expires: " . gmdate("D, d M Y H:i:s", time() + 3600 * 24 * 7) . " GMT");
-    if ($mode === "tldr") {
-        echo $content;
-    } else {
-        echo "# " . $PHP_MAN_TITLE . "\n\n" . $content;
-    }
+    echo "# " . $PHP_MAN_TITLE . "\n\n" . $content;
     exit;
 }
 
@@ -1028,7 +1000,7 @@ showHeader($PHP_MAN_TITLE, $parameter, $section, $mode, $hasRealContent, $showNa
 // H1 breadcrumb: phpMan > mode > command(section)
 if ($parameter !== "" && $mode !== "" && $mode !== "search") {
     $bc_parts = [];
-    $bc_parts[] = "<a href=\"".h(scriptName())."\">".h($PHP_MAN_TITLE)."</a>";
+    $bc_parts[] = "<a href=\"".h(scriptName())."\">phpMan</a>";
     $mode_labels = ["man" => "man", "perldoc" => "perldoc", "info" => "info", "pydoc" => "pydoc", "ri" => "ri"];
     $mode_urls = ["man" => "/man", "perldoc" => "/search/perl", "info" => "/info", "pydoc" => "/pydoc", "ri" => "/ri"];
     if (isset($mode_labels[$mode])) {
@@ -1102,7 +1074,7 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	// v2.2: TLDR block for man/perldoc detail pages
 	if (in_array($mode, ["man", "perldoc"]) && $parameter !== "" && trim($content) !== "") {
 	    $tldrData = fetchOfficialTldr($parameter);
-	    if (!empty($tldrData)) {
+	    if (!empty($tldrData) && !empty($tldrData["examples"])) {
 	        $contentLines = substr_count($content, "\n") + 1;
 	        $expanded = $contentLines > 200 ? " tldr-expanded" : "";
 	        echo "<div class=\"tldr-block{$expanded}\">\n";
