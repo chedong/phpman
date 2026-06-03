@@ -153,7 +153,7 @@ ri index（`/ri`）同步改为 `<ul>` 列表。搜索/搜回退页面用 `<div 
 | Gzip 压缩 | Nginx `gzip on` / Cloudflare 自动压缩 | `ob_gzhandler` | 服务器层压缩更高效，不阻塞 PHP 进程 |
 | 安全响应头 | Nginx `add_header` / Cloudflare | `showHeader()` 内逐路径设置 | 服务器层统一配置更可靠，避免遗漏（#78） |
 
-**设计原则**：phpMan 是单文件应用，限流/压缩/安全头等基础设施应交给部署层（Nginx/Apache/Cloudflare/CDN）处理，PHP 层不做过度工程。
+**设计原则**：phpMan 是单文件应用，限流/压缩/安全头等基础设施应交给部署层（Nginx/Apache/Cloudflare/CDN）处理，PHP 层不做过度工程。phpMan 不一定部署在网站根目录下，因此不生成 robots.txt、sitemap.xml、llms.txt 等根路径文件，这些应由站点管理员在服务器层统一配置。
 
 以下行为属于**v2.3 已完成的安全加固**：
 
@@ -190,7 +190,7 @@ ri index（`/ri`）同步改为 `<ul>` 列表。搜索/搜回退页面用 `<div 
 
 | 日期 | 修订内容 |
 |------|----------|
-| 2026-06-03 | 安全边界定义更新：限流/压缩/安全头定位为服务器层职责，PHP 层仅兜底；关闭 #76 #77 |
+| 2026-06-03 | 安全边界定义更新：限流/压缩/安全头定位为服务器层职责，PHP 层仅兜底；不生成根路径文件（robots.txt/sitemap/llms.txt）；关闭 #66 #72 #76 #77 |
 | 2026-06-03 | v2.3 移动端 TOC 折叠：窄屏默认收起，标题行可点击展开/收起，修复 `$MOBILE_CSS` global 声明缺失 |
 | 2026-06-03 | v2.3 搜索结果统一列表格式、ri index 列表化、footer git 版本号（`git describe`）、移除独立 `/tldr` 路由 |
 | 2026-06-03 | v2.3 安全加固：速率限制（#69）、HSTS（#70）、nosniff 头（#63）、MCP 错误泛化（#71）、H1 面包屑（#65）、JSON-LD 修正（#64），关闭 #62 |
