@@ -78,6 +78,30 @@ define('GZIP_MIN_BYTES', 1000);        // min response size for gzip compression
 define('FLAG_DESC_MAX_LEN', 120);      // max length for flag descriptions
 define('TLDR_MAX_EXAMPLES', 16);       // max examples in TLDR output
 
+// --- Load site-specific config (phpman.config.php) ---
+$_phpman_config = [];
+$_config_file = dirname(__FILE__) . '/phpman.config.php';
+if (file_exists($_config_file)) {
+    $_phpman_config = require $_config_file;
+    if (!is_array($_phpman_config)) $_phpman_config = [];
+}
+
+// Cache constants: config file > default
+define('CACHE_DIR', $_phpman_config['CACHE_DIR'] ?? dirname(__FILE__) . '/cache');
+define('CACHE_DB', CACHE_DIR . '/phpm_cache.db');
+define('CACHE_SCHEMA_VERSION', '1');
+
+// Debug mode: config file > env var > default false
+define('PHPMAN_DEBUG', $_phpman_config['DEBUG'] ?? (getenv('PHPMAN_DEBUG') === 'true'));
+
+// LLM config (v3.0 reserved, not yet used)
+define('LLM_API_KEY', $_phpman_config['LLM_API_KEY'] ?? '');
+define('LLM_API_URL', $_phpman_config['LLM_API_URL'] ?? '');
+define('LLM_MODEL', $_phpman_config['LLM_MODEL'] ?? '');
+define('LLM_MAX_TOKENS', $_phpman_config['LLM_MAX_TOKENS'] ?? 4096);
+
+unset($_phpman_config, $_config_file);
+
 // --- Shared helper functions (#44: DRY refactoring) ---
 
 /**
@@ -557,6 +581,248 @@ function normalizeSection ($section): string {
     return $section;
 }
 
+/**
+ * Get or create the SQLite cache database connection.
+ * Uses static $db for connection reuse within a single request.
+ */
+function cacheDb(): SQLite3 {
+    static $db = null;
+    if ($db !== null) return $db;
+
+    $dir = CACHE_DIR;
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+
+    $dbPath = CACHE_DB;
+    $isNew = !file_exists($dbPath);
+
+    $db = new SQLite3($dbPath);
+    $db->enableExceptions(true);
+    $db->exec('PRAGMA journal_mode=WAL');
+    $db->exec('PRAGMA synchronous=NORMAL');
+    $db->busyTimeout(5000);
+
+    if ($isNew) {
+        $db->exec("CREATE TABLE IF NOT EXISTS cache (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            mode        TEXT NOT NULL,
+            name        TEXT NOT NULL,
+            section     TEXT NOT NULL DEFAULT '',
+            format      TEXT NOT NULL DEFAULT 'raw',
+            content     BLOB,
+            content_len INTEGER DEFAULT 0,
+            status      TEXT NOT NULL DEFAULT 'found'
+                        CHECK(status IN ('found','not_found')),
+            ttl         INTEGER NOT NULL DEFAULT 0,
+            hits        INTEGER NOT NULL DEFAULT 0,
+            created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+            updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+            UNIQUE(mode, name, section, format)
+        )");
+
+        $db->exec("CREATE TABLE IF NOT EXISTS meta (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        )");
+        $db->exec("INSERT OR IGNORE INTO meta (key, value)
+                   VALUES ('schema_version', '" . CACHE_SCHEMA_VERSION . "')");
+
+        try {
+            $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS cache_fts
+                       USING fts5(mode, name, section, title,
+                                  tokenize='unicode61',
+                                  content='cache',
+                                  content_rowid='id')");
+        } catch (\Exception $e) {
+            // FTS5 not available — search index is optional
+        }
+
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_lookup
+                   ON cache(mode, name, section, format)");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_status
+                   ON cache(status, updated_at)");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_hits
+                   ON cache(hits DESC)");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_expiry
+                   ON cache(updated_at) WHERE ttl > 0");
+    } else {
+        // Check schema version — clear cache if mismatch
+        $row = $db->querySingle("SELECT value FROM meta WHERE key='schema_version'", false);
+        if ($row !== CACHE_SCHEMA_VERSION) {
+            $db->exec("DELETE FROM cache");
+            $db->exec("UPDATE meta SET value = '" . CACHE_SCHEMA_VERSION . "' WHERE key = 'schema_version'");
+        }
+    }
+
+    return $db;
+}
+
+/**
+ * PageCache — SQLite-based cache for rendered man/perldoc/info/pydoc/ri pages.
+ */
+class PageCache {
+    private SQLite3 $db;
+
+    public function __construct() {
+        $this->db = cacheDb();
+    }
+
+    public function get(string $mode, string $name, string $section, string $format): ?string {
+        $stmt = $this->db->prepare(
+            "SELECT content, status, ttl, updated_at FROM cache
+             WHERE mode = :mode AND name = :name AND section = :section AND format = :format"
+        );
+        $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
+        $stmt->bindValue(':name', $name, SQLITE3_TEXT);
+        $stmt->bindValue(':section', $section, SQLITE3_TEXT);
+        $stmt->bindValue(':format', $format, SQLITE3_TEXT);
+        $result = $stmt->execute();
+        $row = $result->fetchArray(SQLITE3_ASSOC);
+        $result->finalize();
+
+        if (!$row) return null;
+
+        // Check TTL expiry for not_found entries
+        if ($row['ttl'] > 0 && (time() > $row['updated_at'] + $row['ttl'])) {
+            $this->deleteEntry($mode, $name, $section, $format);
+            return null;
+        }
+
+        // Increment hit count (async, ignore failure)
+        $this->db->exec("UPDATE cache SET hits = hits + 1, updated_at = updated_at
+                         WHERE mode = '{$mode}' AND name = '{$name}'
+                         AND section = '{$section}' AND format = '{$format}'");
+
+        if ($row['status'] === 'not_found') {
+            return '###NOT_FOUND###';
+        }
+
+        $data = $row['content'];
+        if ($data === null) return null;
+
+        $decompressed = @gzuncompress($data);
+        return $decompressed !== false ? $decompressed : null;
+    }
+
+    public function set(string $mode, string $name, string $section, string $format, ?string $content, string $status = 'found'): bool {
+        $compressed = ($content !== null && $content !== '') ? gzcompress($content) : null;
+        $contentLen = ($content !== null) ? strlen($content) : 0;
+        $ttl = ($status === 'not_found') ? 86400 : 0;
+
+        $stmt = $this->db->prepare(
+            "INSERT OR REPLACE INTO cache (mode, name, section, format, content, content_len, status, ttl, hits, created_at, updated_at)
+             VALUES (:mode, :name, :section, :format, :content, :content_len, :status, :ttl, 0, strftime('%s','now'), strftime('%s','now'))"
+        );
+        $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
+        $stmt->bindValue(':name', $name, SQLITE3_TEXT);
+        $stmt->bindValue(':section', $section, SQLITE3_TEXT);
+        $stmt->bindValue(':format', $format, SQLITE3_TEXT);
+        $stmt->bindValue(':content', $compressed, SQLITE3_BLOB);
+        $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
+        $stmt->bindValue(':status', $status, SQLITE3_TEXT);
+        $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
+
+        $ok = $stmt->execute() !== false;
+
+        // Sync FTS5 index for found entries
+        if ($ok && $status === 'found') {
+            $cacheId = $this->db->lastInsertRowID();
+            $this->syncFts($cacheId, $mode, $name, $section, $content);
+        }
+
+        return $ok;
+    }
+
+    public function delete(string $mode, string $name, string $section): bool {
+        $this->deleteEntry($mode, $name, $section, '%');
+        return true;
+    }
+
+    public function clear(): bool {
+        $this->db->exec("DELETE FROM cache");
+        return true;
+    }
+
+    public function stats(): array {
+        $total = $this->db->querySingle("SELECT COUNT(*) FROM cache");
+        $found = $this->db->querySingle("SELECT COUNT(*) FROM cache WHERE status='found'");
+        $notFound = $this->db->querySingle("SELECT COUNT(*) FROM cache WHERE status='not_found'");
+        $totalHits = $this->db->querySingle("SELECT SUM(hits) FROM cache") ?: 0;
+        $dbSize = file_exists(CACHE_DB) ? filesize(CACHE_DB) : 0;
+
+        return [
+            'total' => (int)$total,
+            'found' => (int)$found,
+            'not_found' => (int)$notFound,
+            'total_hits' => (int)$totalHits,
+            'db_size' => $dbSize,
+        ];
+    }
+
+    private function deleteEntry(string $mode, string $name, string $section, string $format): void {
+        if ($format === '%') {
+            $stmt = $this->db->prepare(
+                "DELETE FROM cache WHERE mode = :mode AND name = :name AND section = :section"
+            );
+        } else {
+            $stmt = $this->db->prepare(
+                "DELETE FROM cache WHERE mode = :mode AND name = :name AND section = :section AND format = :format"
+            );
+            $stmt->bindValue(':format', $format, SQLITE3_TEXT);
+        }
+        $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
+        $stmt->bindValue(':name', $name, SQLITE3_TEXT);
+        $stmt->bindValue(':section', $section, SQLITE3_TEXT);
+        $stmt->execute();
+    }
+
+    private function syncFts(int $cacheId, string $mode, string $name, string $section, ?string $content): void {
+        $title = '';
+        if ($content !== null && $content !== '') {
+            // Extract first meaningful line as title for FTS
+            $lines = explode("\n", $content);
+            foreach ($lines as $line) {
+                $line = trim($line);
+                if ($line !== '' && strlen($line) < 200) {
+                    $title = mb_substr($line, 0, 120);
+                    break;
+                }
+            }
+        }
+        try {
+            $stmt = $this->db->prepare(
+                "INSERT OR REPLACE INTO cache_fts (rowid, mode, name, section, title)
+                 VALUES (:id, :mode, :name, :section, :title)"
+            );
+            $stmt->bindValue(':id', $cacheId, SQLITE3_INTEGER);
+            $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
+            $stmt->bindValue(':name', $name, SQLITE3_TEXT);
+            $stmt->bindValue(':section', $section, SQLITE3_TEXT);
+            $stmt->bindValue(':title', $title, SQLITE3_TEXT);
+            $stmt->execute();
+        } catch (\Exception $e) {
+            // FTS5 not available — ignore
+        }
+    }
+}
+
+/**
+ * Cache-aware wrapper: return cached content or execute generator and cache result.
+ */
+function cacheOrExecute(string $mode, string $name, string $section, string $format, callable $generator): string {
+    $cache = new PageCache();
+    $cached = $cache->get($mode, $name, $section, $format);
+    if ($cached !== null) {
+        return ($cached === '###NOT_FOUND###') ? '' : $cached;
+    }
+    $content = $generator();
+    if (trim($content) !== "") {
+        $cache->set($mode, $name, $section, $format, $content, 'found');
+    }
+    return $content;
+}
+
 // +--------------------------------------------------------------------------------+
 // | parameter checking and format page output                                      |
 // +--------------------------------------------------------------------------------+
@@ -780,21 +1046,25 @@ switch ( $mode ) {
         if ( $parameter != "" ) {
             // Pre-detect perldoc targets: :: prefix or 3pm/3perl
             if (strpos($parameter, "::") !== false || $section === "3pm" || $section === "3perl") {
-                $content = getPerldocPage($parameter, $format);
+                $content = cacheOrExecute('perldoc', $parameter, $section, $format,
+                    function() use ($parameter, $format) { return getPerldocPage($parameter, $format); });
             } else {
-                $content = getManPage($parameter, $section, $format);
+                $content = cacheOrExecute('man', $parameter, $section, $format,
+                    function() use ($parameter, $section, $format) { return getManPage($parameter, $section, $format); });
             }
 
             // retry lower case if content is empty
             if ( preg_match("/^[A-Z\\._]+$/",$parameter) && trim($content) == ""){
-                $content = getManPage(strtolower($parameter), $section, $format);
+                $content = cacheOrExecute('man', strtolower($parameter), $section, $format,
+                    function() use ($parameter, $section, $format) { return getManPage(strtolower($parameter), $section, $format); });
             }
 
             //not find command then try perldoc (for perl modules with :: or section 3pm/3perl)
             //before falling back to search
             if (trim($content) == "") {
                 if (strpos($parameter, "::") !== false || $section === "3pm" || $section === "3perl") {
-                    $content = getPerldocPage($parameter, $format);
+                    $content = cacheOrExecute('perldoc', $parameter, $section, $format,
+                        function() use ($parameter, $format) { return getPerldocPage($parameter, $format); });
                 }
             }
 
@@ -803,6 +1073,9 @@ switch ( $mode ) {
                 $content = getSearchPage($parameter, $section, $format);
                 $isSearchFallback = true;
                 http_response_code(404);
+                // Cache 404 result
+                $cache = new PageCache();
+                $cache->set('man', $parameter, $section, $format, null, 'not_found');
             }
         }
         //redirect to search sections
@@ -813,7 +1086,13 @@ switch ( $mode ) {
     case "perldoc":
         $check['perldoc'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
-            $content = getPerldocPage($parameter, $format);
+            $content = cacheOrExecute('perldoc', $parameter, '', $format,
+                function() use ($parameter, $format) { return getPerldocPage($parameter, $format); });
+            // Cache 404 if empty
+            if (trim($content) == "") {
+                $cache = new PageCache();
+                $cache->set('perldoc', $parameter, '', $format, null, 'not_found');
+            }
         }
         else {
             //show all possable perl entrance by search keywords: 'perl'
@@ -823,7 +1102,13 @@ switch ( $mode ) {
     case "info":
         $check['info'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
-            $content = getInfoPage($parameter, $format);
+            $content = cacheOrExecute('info', $parameter, '', $format,
+                function() use ($parameter, $format) { return getInfoPage($parameter, $format); });
+            // Cache 404 if empty
+            if (trim($content) == "") {
+                $cache = new PageCache();
+                $cache->set('info', $parameter, '', $format, null, 'not_found');
+            }
         }
         else {
             $content = getInfoIndex($format);
@@ -876,11 +1161,15 @@ switch ( $mode ) {
     case "pydoc":
         $check['pydoc'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
-            $content = getPydocPage($parameter, $format);
+            $content = cacheOrExecute('pydoc', $parameter, '', $format,
+                function() use ($parameter, $format) { return getPydocPage($parameter, $format); });
             if (trim($content) == "") {
                 $content = getPydocSearchPage($parameter, $format);
                 $isSearchFallback = true;
                 http_response_code(404);
+                // Cache 404
+                $cache = new PageCache();
+                $cache->set('pydoc', $parameter, '', $format, null, 'not_found');
             }
         }
         else {
@@ -891,11 +1180,15 @@ switch ( $mode ) {
     case "ri":
         $check['ri'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
-            $content = getRiPage($parameter, $format);
+            $content = cacheOrExecute('ri', $parameter, '', $format,
+                function() use ($parameter, $format) { return getRiPage($parameter, $format); });
             if (trim($content) == "") {
                 $content = getRiSearchPage($parameter, $format);
                 $isSearchFallback = true;
                 http_response_code(404);
+                // Cache 404
+                $cache = new PageCache();
+                $cache->set('ri', $parameter, '', $format, null, 'not_found');
             }
         }
         else {

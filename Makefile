@@ -6,6 +6,9 @@
 #   make rollback
 #   make deploy-verify
 #   make release-logcheck
+#   make cache-flush
+#   make cache-flush-staging
+#   make cache-stats
 #
 # Requires .deploy.mk — copy from .deploy.mk.example and configure
 
@@ -19,14 +22,26 @@ FILE ?= phpMan.php
 BACKUP_DIR ?= backups/phpman
 BACKUP_KEEP ?= 5
 
-.PHONY: test deploy release rollback deploy-verify release-logcheck package upload-release clean
+.PHONY: test deploy release rollback deploy-verify release-logcheck package upload-release clean cache-flush cache-flush-staging cache-stats
 
 GIT_TAG := $(shell git describe --tags --always --dirty 2>/dev/null || echo "local")
 
 test:
 	php -l $(FILE)
+	php -l phpman.config.php.example
 
 deploy: test
+	@echo "=== Preparing staging server ==="
+	ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) \
+		"mkdir -p $(TEST_CACHE_DIR) && chmod 755 $(TEST_CACHE_DIR)"
+	scp -P $(TEST_PORT) phpman.config.php.example $(TEST_USER)@$(TEST_HOST):$(TEST_PATH)/
+	ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) \
+		"test -f $(TEST_PATH)/phpman.config.php || \
+		(sed 's|/home/your-user/cache/demo|$(TEST_CACHE_DIR)|' \
+		$(TEST_PATH)/phpman.config.php.example > \
+		$(TEST_PATH)/phpman.config.php && \
+		chmod 644 $(TEST_PATH)/phpman.config.php && \
+		echo 'Created phpman.config.php from example')"
 	sed "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" $(FILE) | \
 	ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) "cat > $(TEST_PATH)/$(FILE)"; \
 	ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE)"
@@ -37,6 +52,17 @@ deploy: test
 
 release: test
 	@echo "=== Deploying $(GIT_TAG) ==="
+	@echo "=== Preparing production server ==="
+	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
+		"mkdir -p $(DEMO_CACHE_DIR) && chmod 755 $(DEMO_CACHE_DIR)"
+	scp -P $(DEMO_PORT) phpman.config.php.example $(DEMO_USER)@$(DEMO_HOST):$(DEMO_PATH)/
+	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
+		"test -f $(DEMO_PATH)/phpman.config.php || \
+		(sed 's|/home/your-user/cache/demo|$(DEMO_CACHE_DIR)|' \
+		$(DEMO_PATH)/phpman.config.php.example > \
+		$(DEMO_PATH)/phpman.config.php && \
+		chmod 644 $(DEMO_PATH)/phpman.config.php && \
+		echo 'Created phpman.config.php from example')"
 	@TIMESTAMP=$$(date +%Y%m%d-%H%M%S); \
 	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
 		"mkdir -p \"\$$HOME/$(BACKUP_DIR)\" && cp $(DEMO_PATH)/$(FILE) \"\$$HOME/$(BACKUP_DIR)/$(FILE).$${TIMESTAMP}.bak\" 2>/dev/null || true"; \
@@ -86,6 +112,23 @@ release-logcheck:
 		"test -f '$(DEMO_ACCESS_LOG)' && echo '$(DEMO_ACCESS_LOG):' && (tail -100 '$(DEMO_ACCESS_LOG)' | grep -E '\" (5[0-9][0-9]) ' || echo '(no 5xx in recent requests)') || echo '(access log not configured or not found)'"
 	@echo ""
 	@echo "=== Log check complete ==="
+
+cache-flush:
+	@echo "=== Flushing production cache ==="
+	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
+		"rm -f $(DEMO_CACHE_DIR)/phpm_cache.db*"
+	@echo "Done. Cache will rebuild on next request."
+
+cache-flush-staging:
+	@echo "=== Flushing staging cache ==="
+	ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) \
+		"rm -f $(TEST_CACHE_DIR)/phpm_cache.db*"
+	@echo "Done. Cache will rebuild on next request."
+
+cache-stats:
+	@echo "=== Production cache stats ==="
+	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
+		"ls -lh $(DEMO_CACHE_DIR)/phpm_cache.db 2>/dev/null || echo '(cache DB not yet created)'"
 
 package: test
 	gzip -k -f $(FILE)

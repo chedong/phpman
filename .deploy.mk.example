@@ -22,6 +22,11 @@ DEMO_PATH = /home/your-user/example.com
 # Web URL — include port if not 80/443 (e.g. https://example.com:8443/phpMan.php)
 DEMO_URL  = https://example.com/phpMan.php
 
+# --- Cache directories (outside webroot) ---
+# Cache is stored outside webroot for security — no .htaccess needed.
+TEST_CACHE_DIR = /home/your-user/cache/staging
+DEMO_CACHE_DIR = /home/your-user/cache/demo
+
 # --- Server logs (for post-deploy log check via `make release-logcheck`) ---
 # Paths to access and error logs on the demo/production server.
 # `make release-logcheck` checks these after release to catch new issues.

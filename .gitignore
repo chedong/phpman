@@ -17,4 +17,7 @@
 # cache directories (generated, environment-specific)
 tldr_cache/
 cache/
+
+# site-specific config (contains API keys, paths)
+phpman.config.php
 *.swp
