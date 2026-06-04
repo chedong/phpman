@@ -183,32 +183,44 @@ phpMan.php/man/RUBY/1
 | 注入漏洞 | CRLF 注入、命令注入、XSS | 立即修复 |
 | 信息泄漏（非设计意图的） | MCP 错误暴露内部路径、异常详情 | 修复 |
 
-以下行为属于**防御纵深**，建议由服务器层（Nginx/Cloudflare/CDN）统一处理，PHP 层仅作最低限度兜底：
+以下行为属于**防御纵深**，应由服务器层（Nginx/Cloudflare/CDN）统一处理，PHP 层代码待清理：
 
-| 防御项 | 服务器层方案 | PHP 层当前状态 | 说明 |
-|--------|-------------|---------------|------|
-| 速率限制 | Nginx `limit_req` / Cloudflare WAF | `checkRateLimit()` 文件锁方案 | PHP 限流在代理场景下无效（#76 已关闭），建议服务器层处理 |
-| Gzip 压缩 | Nginx `gzip on` / Cloudflare 自动压缩 | `ob_gzhandler` | 服务器层压缩更高效，不阻塞 PHP 进程 |
-| 安全响应头 | Nginx `add_header` / Cloudflare | `showHeader()` 内逐路径设置 | 服务器层统一配置更可靠，避免遗漏（#78） |
+| 防御项 | 服务器层方案 | PHP 层当前状态（待清理） | Issue | 说明 |
+|--------|-------------|------------------------|-------|------|
+| 速率限制 | Nginx `limit_req` / Cloudflare WAF | `checkRateLimit()` 文件锁方案 | #84 | PHP 限流在代理场景下无效（`REMOTE_ADDR` 是代理 IP），文件锁高并发下竞争严重（#76 已关闭） |
+| Gzip 压缩 | Nginx `gzip on` / Cloudflare 自动压缩 | `ob_gzhandler` | #84 | 可能与服务器 gzip 双重压缩；阻塞 PHP 进程 |
+| 安全响应头（HSTS） | Nginx `add_header Strict-Transport-Security ... always;` | `showHeader()` 内 `if (!isLocalRequest())` 条件输出 | #89 | 代理后 `REMOTE_ADDR` 是内网 IP → 生产环境反而不发 HSTS；本地开发用 HTTP 不存在 HSTS 问题 |
 
 **设计原则**：phpMan 是单文件应用，限流/压缩/安全头等基础设施应交给部署层（Nginx/Apache/Cloudflare/CDN）处理，PHP 层不做过度工程。phpMan 不一定部署在网站根目录下，因此不生成 robots.txt、sitemap.xml、llms.txt 等根路径文件，这些应由站点管理员在服务器层统一配置。
 
+### 3.1 `isLocalRequest()` 废弃
+
+`isLocalRequest()` 通过 `$_SERVER['REMOTE_ADDR']` 判断请求来源，在反向代理后 `REMOTE_ADDR` 是代理 IP 而非客户端 IP，导致判断失效。该函数将被整体移除，3 处调用分别由正确方案替代：
+
+| 调用处 | 当前行为 | 问题 | 替代方案 | Issue |
+|--------|----------|------|----------|-------|
+| line 1172: HSTS header | `if (!isLocalRequest())` → 发送 HSTS | 代理后 `REMOTE_ADDR` 是内网 IP → 生产环境反而不发 HSTS | **Nginx 配置**：生产 HTTPS 虚拟主机 `add_header Strict-Transport-Security ... always;`；本地开发用 HTTP 不存在 HSTS | #89 |
+| line 1423: 服务器版本 | `if (isLocalRequest())` → 显示 `SERVER_SOFTWARE` | 代理后所有请求来自内网 IP → 任何人都能看到版本信息 | **Nginx `server_tokens off`** + **php.ini `expose_php=Off`**；PHP 代码中删除版本显示 | #89 |
+| `?debug=1` 调试模式 | `isLocalRequest()` → 允许查看敏感细节 | 同上，代理后所有人都能触发调试 | **PHP 环境变量** `PHPMAN_DEBUG=true`，显式配置而非 IP 推断 | #89 |
+
+**设计原则**：安全策略（HSTS、版本隐藏）属于传输层/基础设施层，应由 Web 服务器在 TLS 终端处理，不应由 PHP 应用逻辑决定。应用层功能（调试模式）用显式环境变量控制，而非运行时 IP 推断——`REMOTE_ADDR` 在代理架构下不可信。
+
 以下行为属于**v2.3 已完成的安全加固**：
 
-| 加固项 | Issue | 实现 |
-|--------|-------|------|
-| 非 HTML 响应安全头 | #63 | JSON/Markdown/MCP 响应添加 `X-Content-Type-Options: nosniff` + `X-Frame-Options: DENY` |
-| HSTS 强制 HTTPS | #70 | `Strict-Transport-Security` 头，内网/localhost 请求跳过 |
-| IP 级速率限制 | #69 | `checkRateLimit()` 基于文件锁 + JSON 存储，默认 30 req/60s，通过 `RATE_LIMIT_PER_IP`/`RATE_LIMIT_WINDOW` 环境变量配置 |
-| MCP 错误信息泛化 | #71 | `sendMcpError()` 返回 `Method not found` 不暴露内部方法名 |
-| Shell 参数防御 | #62 | `$width` 已 `intval()` 后再拼入 shell 命令 |
+| 加固项 | Issue | 实现 | 状态 |
+|--------|-------|------|------|
+| 非 HTML 响应安全头 | #63 | JSON/Markdown/MCP 响应添加 `X-Content-Type-Options: nosniff` + `X-Frame-Options: DENY` | ✅ 保留 |
+| HSTS 强制 HTTPS | #70 → #89 | `Strict-Transport-Security` 头，原 `if (!isLocalRequest())` 条件输出 | 🔄 待清理：改由 Nginx 配置，删除 PHP 层 `isLocalRequest()` 判断（#89） |
+| IP 级速率限制 | #69 → #84 | `checkRateLimit()` 基于文件锁 + JSON 存储，默认 30 req/60s | 🔄 待清理：改由 Nginx `limit_req`，删除 PHP 层实现（#84） |
+| MCP 错误信息泛化 | #71 | `sendMcpError()` 返回 `Method not found` 不暴露内部方法名 | ✅ 保留 |
+| Shell 参数防御 | #62 | `$width` 已 `intval()` 后再拼入 shell 命令 | ✅ 保留 |
 
 以下行为属于**产品功能**，不应删除：
 
 | 功能 | 位置 | 理由 |
 |------|------|------|
 | 页脚 IP + UA 显示 | `showFooter()` | 蜘蛛/爬虫跟踪 |
-| `?debug=1` 诊断信息 | 开发辅助 | 仅在 `isLocalRequest()` 时显示敏感细节 |
+| `?debug=1` 诊断信息 | 开发辅助 | 改用 `PHPMAN_DEBUG=true` 环境变量控制，替代 `isLocalRequest()` IP 推断（#89） |
 
 ---
 
@@ -228,6 +240,7 @@ phpMan.php/man/RUBY/1
 
 | 日期 | 修订内容 |
 |------|----------|
+| 2026-06-04 | `isLocalRequest()` 废弃：HSTS/版本隐藏改由 Nginx 配置，debug 改用 `PHPMAN_DEBUG` 环境变量；ob_gzhandler + checkRateLimit() 标记为待清理（#84 #89）；安全加固表增加状态列 |
 | 2026-06-03 | 安全边界定义更新：限流/压缩/安全头定位为服务器层职责，PHP 层仅兜底；不生成根路径文件（robots.txt/sitemap/llms.txt）；关闭 #66 #72 #76 #77 |
 | 2026-06-03 | v2.3 移动端 TOC 折叠：窄屏默认收起，标题行可点击展开/收起，修复 `$MOBILE_CSS` global 声明缺失 |
 | 2026-06-03 | v2.3 搜索结果统一列表格式、ri index 列表化、footer git 版本号（`git describe`）、移除独立 `/tldr` 路由 |
