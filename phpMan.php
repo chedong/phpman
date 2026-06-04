@@ -930,7 +930,8 @@ switch ( $mode ) {
             }
         }
         else {
-            $content = getPydocIndex($format);
+            $content = "<ul>" . getPydocIndex($format) . "</ul>";
+            $isListContent = true;
         }
         break;
     case "ri":
@@ -1930,7 +1931,7 @@ function getPydocIndex (string $format = "html"): string {
     }
     $output = "";
     foreach ($modules as $mod) {
-        $output .= '<a href="'.$script_name.'/pydoc/'.urlencode($mod).'">'.h($mod).'</a><br />'."\n";
+        $output .= '<li><a href="'.$script_name.'/pydoc/'.urlencode($mod).'">'.h($mod).'</a></li>'."\n";
     }
     return $output;
 }
