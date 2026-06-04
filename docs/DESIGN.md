@@ -120,7 +120,45 @@ ri index（`/ri`）同步改为 `<ul>` 列表。搜索/搜回退页面用 `<div 
 
 ### 2.10 Footer Git 版本号 ✅
 
-### 2.11 移动端 TOC 折叠 ✅
+### 2.12 命令名大小写与平台差异（Linux vs BSD）✅
+
+phpMan 的路由 `normalizeParameter()` 保留路径中命令名的原始大小写（不做 `strtolower`），依赖下游系统各自处理。
+
+**系统 man 命令对大小写的处理因平台而异（实测确认）：**
+
+| 平台 | `man RUBY` | 原因 |
+|------|-----------|------|
+| Linux (GNU man-db) | ✅ 找到 `ruby(1)` | mandb 数据库 + 文件系统 glob 双路归一化 |
+| macOS (BSD man) | ❌ No manual entry | 直接 `stat()` 文件，大小写敏感 |
+
+**GNU man 的归一化过程**（通过 `man -d RUBY` 确认）：
+1. 打开 `/var/cache/man/index.db`
+2. `multi key lookup (Ruby\t1)` 和 `multi key lookup (ruby\t1)` — 同时查询 title-case 和 lowercase
+3. `globbing pattern RUBY.1*` 也能匹配到 `ruby.1.gz`
+4. 最终找到物理文件 `ruby3.0.1.gz`
+
+**BSD man**：直接按文件名查找，`man RUBY` 失败。
+
+**对 phpMan 路由设计的影响：**
+
+```
+phpMan.php/man/RUBY/1
+  → exec("man -Tutf8 1 'RUBY'")
+    → GNU man 通过 mandb 找到 ruby(1) ✅（Linux）
+    → BSD man 找不到 ❌（macOS，除非文件系统大小写不敏感）
+
+  → fetchOfficialTldr("RUBY")
+    → GitHub RAW: RUBY.md 404 ❌（URL 大小写敏感）
+    → cheat.sh/RUBY: Unknown topic ❌
+```
+
+**核心不对称**：系统命令（man/perldoc/info）依赖系统自身行为，而外部 API（GitHub RAW / cheat.sh / LLM API）是大小写敏感的 URL。这意味着：
+
+- man 命令找到页面 ≠ fetchOfficialTldr 能找到 TLDR（修复前）
+- TLDR 缓存 key 必须归一化（`strtolower`）后再用（已在 #XX 修复）
+- 其他外部 API 调用（LLM `/tldr` 端点）同样需要在入口层处理大小写
+
+**设计原则**：phpMan 的"系统调用信任，外部 API 防御"不对称是路由设计的核心理解点。系统命令的兼容性由各平台保证；外部 API 调用必须由 phpMan 做显式归一化。
 
 **TOC（目录）在移动端的显示策略**：
 

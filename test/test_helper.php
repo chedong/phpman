@@ -23,7 +23,7 @@ function assert_equals($expected, $actual, string $msg = ""): void {
 
 function assert_contains(string $needle, string $haystack, string $msg = ""): void {
     global $_test_pass, $_test_fail, $_test_errors;
-    if (str_contains($haystack, $needle)) {
+    if (strpos($haystack, $needle) !== false) {
         $_test_pass++;
         echo "  ✅ {$msg}\n";
     } else {
@@ -36,7 +36,7 @@ function assert_contains(string $needle, string $haystack, string $msg = ""): vo
 
 function assert_not_contains(string $needle, string $haystack, string $msg = ""): void {
     global $_test_pass, $_test_fail, $_test_errors;
-    if (!str_contains($haystack, $needle)) {
+    if (strpos($haystack, $needle) === false) {
         $_test_pass++;
         echo "  ✅ {$msg}\n";
     } else {

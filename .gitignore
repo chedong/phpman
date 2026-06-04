@@ -14,5 +14,7 @@
 # AtomCode local-scope configs (machine-specific)
 .atomcode/
 
+# cache directories (generated, environment-specific)
 tldr_cache/
+cache/
 *.swp

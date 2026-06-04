@@ -1102,8 +1102,8 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	        echo "<div class=\"tldr-header\" onclick=\"this.parentNode.classList.toggle('tldr-expanded')\">";
 	        $src = $tldrData["source"] === "cheatsh" ? "cheat.sh" : "tldr-pages";
 	        $tldrLink = $tldrData["source"] === "cheatsh"
-	            ? "https://cheat.sh/" . urlencode($parameter)
-	            : "https://tldr.inbrowser.app/pages/common/" . urlencode($parameter);
+	            ? "https://cheat.sh/" . urlencode(strtolower($parameter))
+	            : "https://tldr.inbrowser.app/pages/common/" . urlencode(strtolower($parameter));
 	        echo "&#9889; <a href=\"{$tldrLink}\" target=\"_blank\" rel=\"noopener\" style=\"color:inherit;text-decoration:none;border-bottom:1px dotted\">TLDR: " . h($parameter) . "</a> <span class=\"tldr-source\">({$src})</span></div>\n";
 	        echo "<div class=\"tldr-body\">\n";
 	        if (!empty($tldrData["description"])) {
@@ -2739,6 +2739,9 @@ function fetchOfficialTldr(string $command, string $mode = "man", string $sectio
     if (strpos($command, '::') !== false) return [];
     // Skip commands with non-simple names (dots, special chars beyond [-_.])
     if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]*$/', $command)) return [];
+
+    // Lowercase for tldr-pages / cheat.sh lookup — both use lowercase filenames/keys
+    $command = strtolower($command);
 
     static $cache = [];
     $cacheKey = $command;

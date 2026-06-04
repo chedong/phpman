@@ -61,7 +61,7 @@ foreach ($suites as $suite => $files) {
             $failed[] = $name;
             // Show failure details
             foreach ($output as $line) {
-                if (str_contains($line, "❌")) {
+                if (strpos($line, "❌") !== false) {
                     echo "     {$line}\n";
                 }
             }

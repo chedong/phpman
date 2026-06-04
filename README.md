@@ -607,7 +607,7 @@ git clone git@github.com:chedong/phpman.git
 
 ## Quick Start
 
-Deploy phpMan on any PHP 8.x server with a single file:
+Deploy phpMan on any PHP 7.2+ server with a single file:
 
 ```bash
 # Clone the repository
