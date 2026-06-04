@@ -78,31 +78,31 @@ define('GZIP_MIN_BYTES', 1000);        // min response size for gzip compression
 define('FLAG_DESC_MAX_LEN', 120);      // max length for flag descriptions
 define('TLDR_MAX_EXAMPLES', 16);       // max examples in TLDR output
 
+
+// --- Shared helper functions (#44: DRY refactoring) ---
 // --- Load site-specific config (phpman.config.php) ---
-$_phpman_config = [];
+// Uses define() pattern like WordPress wp-config.php — constants defined
+// in phpman.config.php override the defaults below.
 $_config_file = dirname(__FILE__) . '/phpman.config.php';
 if (file_exists($_config_file)) {
-    $_phpman_config = require $_config_file;
-    if (!is_array($_phpman_config)) $_phpman_config = [];
+    require $_config_file;
 }
 
-// Cache constants: config file > default
-define('CACHE_DIR', $_phpman_config['CACHE_DIR'] ?? dirname(__FILE__) . '/cache');
+// Cache constants: phpman.config.php > defaults
+if (!defined('CACHE_DIR')) define('CACHE_DIR', dirname(__FILE__) . '/cache');
 define('CACHE_DB', CACHE_DIR . '/phpm_cache.db');
 define('CACHE_SCHEMA_VERSION', '1');
 
-// Debug mode: config file > env var > default false
-define('PHPMAN_DEBUG', $_phpman_config['DEBUG'] ?? (getenv('PHPMAN_DEBUG') === 'true'));
+// Debug mode: phpman.config.php > env var > default false
+if (!defined('PHPMAN_DEBUG')) define('PHPMAN_DEBUG', getenv('PHPMAN_DEBUG') === 'true');
 
 // LLM config (v3.0 reserved, not yet used)
-define('LLM_API_KEY', $_phpman_config['LLM_API_KEY'] ?? '');
-define('LLM_API_URL', $_phpman_config['LLM_API_URL'] ?? '');
-define('LLM_MODEL', $_phpman_config['LLM_MODEL'] ?? '');
-define('LLM_MAX_TOKENS', $_phpman_config['LLM_MAX_TOKENS'] ?? 4096);
+if (!defined('LLM_API_KEY'))    define('LLM_API_KEY', '');
+if (!defined('LLM_API_URL'))    define('LLM_API_URL', '');
+if (!defined('LLM_MODEL'))      define('LLM_MODEL', '');
+if (!defined('LLM_MAX_TOKENS')) define('LLM_MAX_TOKENS', 4096);
 
-unset($_phpman_config, $_config_file);
-
-// --- Shared helper functions (#44: DRY refactoring) ---
+unset($_config_file);
 
 /**
  * Log a message to the server error log. (#47)

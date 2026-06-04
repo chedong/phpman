@@ -34,14 +34,10 @@ deploy: test
 	@echo "=== Preparing staging server ==="
 	ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) \
 		"mkdir -p $(TEST_CACHE_DIR) && chmod 755 $(TEST_CACHE_DIR)"
-	scp -P $(TEST_PORT) phpman.config.php.example $(TEST_USER)@$(TEST_HOST):$(TEST_PATH)/
+	sed "s|// define('CACHE_DIR'.*|define('CACHE_DIR', '$(TEST_CACHE_DIR)');|" \
+		phpman.config.php.example | \
 	ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) \
-		"test -f $(TEST_PATH)/phpman.config.php || \
-		(sed 's|/home/your-user/cache/demo|$(TEST_CACHE_DIR)|' \
-		$(TEST_PATH)/phpman.config.php.example > \
-		$(TEST_PATH)/phpman.config.php && \
-		chmod 644 $(TEST_PATH)/phpman.config.php && \
-		echo 'Created phpman.config.php from example')"
+		"test -f $(TEST_PATH)/phpman.config.php && cat > /dev/null || cat > $(TEST_PATH)/phpman.config.php && chmod 644 $(TEST_PATH)/phpman.config.php && echo 'Created phpman.config.php'"
 	sed "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" $(FILE) | \
 	ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) "cat > $(TEST_PATH)/$(FILE)"; \
 	ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE)"
@@ -55,14 +51,10 @@ release: test
 	@echo "=== Preparing production server ==="
 	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
 		"mkdir -p $(DEMO_CACHE_DIR) && chmod 755 $(DEMO_CACHE_DIR)"
-	scp -P $(DEMO_PORT) phpman.config.php.example $(DEMO_USER)@$(DEMO_HOST):$(DEMO_PATH)/
+	sed "s|// define('CACHE_DIR'.*|define('CACHE_DIR', '$(DEMO_CACHE_DIR)');|" \
+		phpman.config.php.example | \
 	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
-		"test -f $(DEMO_PATH)/phpman.config.php || \
-		(sed 's|/home/your-user/cache/demo|$(DEMO_CACHE_DIR)|' \
-		$(DEMO_PATH)/phpman.config.php.example > \
-		$(DEMO_PATH)/phpman.config.php && \
-		chmod 644 $(DEMO_PATH)/phpman.config.php && \
-		echo 'Created phpman.config.php from example')"
+		"test -f $(DEMO_PATH)/phpman.config.php && cat > /dev/null || cat > $(DEMO_PATH)/phpman.config.php && chmod 644 $(DEMO_PATH)/phpman.config.php && echo 'Created phpman.config.php'"
 	@TIMESTAMP=$$(date +%Y%m%d-%H%M%S); \
 	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
 		"mkdir -p \"\$$HOME/$(BACKUP_DIR)\" && cp $(DEMO_PATH)/$(FILE) \"\$$HOME/$(BACKUP_DIR)/$(FILE).$${TIMESTAMP}.bak\" 2>/dev/null || true"; \

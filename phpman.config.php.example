@@ -1,20 +1,19 @@
 <?php
-// phpMan 配置文件 — 从 phpman.config.php.example 复制后按需修改
-// 部署时由 Makefile 自动创建（如不存在）
+// phpMan site configuration — copy to phpman.config.php and adjust.
+// Created automatically by `make deploy` / `make release` if not present.
+// Leave values empty/uncommented to use defaults in phpMan.php.
 
-return [
-    // --- 缓存配置 ---
-    // 生产环境：指向 webroot 外的目录（安全，不可 URL 访问）
-    // 本地开发：留空则默认 phpMan.php 同级 cache/ 目录
-    // 'CACHE_DIR' => '/home/your-user/cache/demo',
+// --- Cache ---
+// Point to a directory outside webroot (inaccessible via URL).
+// Leave empty to use the default cache/ dir next to phpMan.php.
+// define('CACHE_DIR', '/home/your-user/cache/demo');
 
-    // --- LLM 配置（v3.0 TLDR 生成功能预留） ---
-    // 'LLM_API_KEY'    => '',           // API Key
-    // 'LLM_API_URL'    => '',           // API Endpoint URL
-    // 'LLM_MODEL'      => '',           // 模型名称（如 deepseek-chat）
-    // 'LLM_MAX_TOKENS' => 4096,         // 最大输出 token 数
+// --- LLM (v3.0 TLDR, reserved) ---
+// define('LLM_API_KEY', '');
+// define('LLM_API_URL', '');
+// define('LLM_MODEL', '');
+// define('LLM_MAX_TOKENS', 4096);
 
-    // --- 调试模式 ---
-    // 生产环境设为 false，开发/排查时可临时设为 true
-    // 'DEBUG' => false,
-];
+// --- Debug ---
+// Set true for development/troubleshooting; false for production.
+// define('PHPMAN_DEBUG', false);
