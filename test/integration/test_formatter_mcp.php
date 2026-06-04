@@ -46,13 +46,14 @@ assert_equals(true, isset($mcpData["content"]), "has content field");
 assert_equals("text", $mcpData["content"][0]["type"], "content type = text");
 assert_equals(true, isset($mcpData["structuredContent"]), "has structuredContent");
 
-// Markdown content checks
+// Markdown content checks (#88: simplified to NAME + SYNOPSIS + DESCRIPTION + TLDR + Sections)
 $markdown = $mcpData["content"][0]["text"];
 assert_contains("# ls", $markdown, "markdown has title");
-assert_contains("Summary", $markdown, "markdown has summary label");
-assert_contains("Flags", $markdown, "markdown has flags section");
-assert_contains("--all", $markdown, "markdown includes --all flag");
-assert_contains("Section Outline", $markdown, "markdown has section outline");
+assert_contains("NAME", $markdown, "markdown has NAME section");
+assert_contains("SYNOPSIS", $markdown, "markdown has SYNOPSIS section");
+assert_contains("DESCRIPTION", $markdown, "markdown has DESCRIPTION section");
+assert_contains("Sections", $markdown, "markdown has sections outline");
+assert_contains("structuredContent.sections", $markdown, "markdown references structuredContent");
 
 // StructuredContent checks
 $sc = $mcpData["structuredContent"];

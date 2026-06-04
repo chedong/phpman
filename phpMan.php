@@ -557,62 +557,6 @@ function normalizeSection ($section): string {
     return $section;
 }
 
-// #69: IP-based rate limiting to protect exec-heavy endpoints from DoS
-function checkRateLimit (): void {
-    $enabled = getenv('RATE_LIMIT_ENABLE');
-    if ($enabled === 'false' || $enabled === '0') return;
-
-    $maxRequests = intval(getenv('RATE_LIMIT_PER_IP') ?: 30);
-    $window = intval(getenv('RATE_LIMIT_WINDOW') ?: 60);
-
-    $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
-    $cacheFile = sys_get_temp_dir() . '/phpman_ratelimit.json';
-
-    $now = time();
-    $cutoff = $now - $window;
-
-    // Read current state with advisory lock
-    $fp = @fopen($cacheFile, 'c+');
-    if (!$fp) return; // can't enforce, allow request
-    @flock($fp, LOCK_EX);
-
-    $raw = stream_get_contents($fp);
-    $data = ($raw !== false && $raw !== '') ? @json_decode($raw, true) : [];
-    if (!is_array($data)) $data = [];
-
-    // Clean expired entries for all IPs
-    foreach ($data as $storedIp => &$timestamps) {
-        $timestamps = array_values(array_filter($timestamps, function($t) use ($cutoff) {
-            return $t > $cutoff;
-        }));
-        if (empty($timestamps)) unset($data[$storedIp]);
-    }
-    unset($timestamps);
-
-    // Check this IP
-    $ipTimestamps = $data[$ip] ?? [];
-    if (count($ipTimestamps) >= $maxRequests) {
-        $retryAfter = min($ipTimestamps) + $window - $now;
-        @flock($fp, LOCK_UN);
-        @fclose($fp);
-        http_response_code(429);
-        header("Retry-After: " . max(1, $retryAfter));
-        header("Content-Type: application/json; charset=UTF-8");
-        header("X-Content-Type-Options: nosniff");
-        echo json_encode(["error" => "Too Many Requests", "retry_after" => max(1, $retryAfter)], JSON_UNESCAPED_SLASHES);
-        exit;
-    }
-
-    $data[$ip] = array_merge($ipTimestamps, [$now]);
-
-    // Write back
-    ftruncate($fp, 0);
-    rewind($fp);
-    fwrite($fp, json_encode($data));
-    @flock($fp, LOCK_UN);
-    @fclose($fp);
-}
-
 // +--------------------------------------------------------------------------------+
 // | parameter checking and format page output                                      |
 // +--------------------------------------------------------------------------------+
@@ -782,8 +726,18 @@ $mode = normalizeMode($mode);
 $parameter = normalizeParameter($parameter);
 $section = normalizeSection($section);
 
-// #69: rate limit check before any exec-heavy dispatch
-checkRateLimit();
+// ETag/304 check before exec-heavy dispatch (#83)
+// Key-based ETag: content is stable for same mode/parameter/section until system update
+if ($format === "html" && $mode !== "mcp" && $mode !== "copyright" && $mode !== "search" && $parameter !== "") {
+    $etag = '"' . md5($mode . '/' . $parameter . '/' . $section . '/' . PHPMAN_VERSION) . '"';
+    $ifNoneMatch = serverValue("HTTP_IF_NONE_MATCH", "");
+    if ($ifNoneMatch === $etag) {
+        http_response_code(304);
+        exit;
+    }
+} else {
+    $etag = "";
+}
 
 if ( $parameter != "" ) {
     if ( $section == "" ) {
@@ -846,7 +800,7 @@ switch ( $mode ) {
 
             //still not found then redirect to search sections
             if (trim($content) == "") {
-                $content = "<ul>" . getSearchPage($parameter, $section, $format) . "</ul>";
+                $content = getSearchPage($parameter, $section, $format);
                 $isSearchFallback = true;
                 http_response_code(404);
             }
@@ -881,10 +835,10 @@ switch ( $mode ) {
             $content = getSearchPage($parameter, $section, $format);
             // Cascade: also search pydoc3 and ri
             if ($format === "html") {
-                $content = "<h2>apropos</h2>\n<ul>" . $content . "</ul>\n";
+                $content = "<h2>apropos</h2>\n" . $content . "\n";
                 $pydocResults = getPydocSearchPage($parameter, "html");
                 if ($pydocResults !== "") {
-                    $content .= "<h2>Python 3 (pydoc3)</h2>\n<ul>" . $pydocResults . "</ul>\n";
+                    $content .= "<h2>Python 3 (pydoc3)</h2>\n" . $pydocResults . "\n";
                 }
                 $riResults = getRiSearchPage($parameter, "html");
                 if ($riResults !== "") {
@@ -945,7 +899,7 @@ switch ( $mode ) {
             }
         }
         else {
-            $content = "<ul>" . getRiIndex($format) . "</ul>";
+            $content = getRiIndex($format);
             $isListContent = true;
         }
         break;
@@ -1007,30 +961,23 @@ if ($hasRealContent) {
     $showNav = (substr_count($content, "\n") + 1 > $lineThreshold);
 }
 
-// ETag/304 check before any HTML output (#60)
-$etag = '"' . md5($content . $mode . $parameter . $section . PHPMAN_VERSION) . '"';
-$ifNoneMatch = serverValue("HTTP_IF_NONE_MATCH", "");
-if ($ifNoneMatch === $etag) {
-    http_response_code(304);
-    exit;
-}
+// ETag already computed before exec() dispatch (#83)
 
 showHeader($PHP_MAN_TITLE, $parameter, $section, $mode, $hasRealContent, $showNav, $etag);
 
 // H1 breadcrumb: phpMan > mode > command(section)
-$mode_labels = ["man" => "man", "perldoc" => "perldoc", "info" => "info", "pydoc" => "pydoc", "ri" => "ri"];
-$mode_urls = ["man" => "/man", "perldoc" => "/search/perl", "info" => "/info", "pydoc" => "/pydoc", "ri" => "/ri"];
+$modes = ["man" => ["label" => "man", "url" => "/man"], "perldoc" => ["label" => "perldoc", "url" => "/search/perl"], "info" => ["label" => "info", "url" => "/info"], "pydoc" => ["label" => "pydoc", "url" => "/pydoc"], "ri" => ["label" => "ri", "url" => "/ri"]];
 if ($parameter !== "" && $mode !== "" && $mode !== "search") {
     $bc_parts = [];
     $bc_parts[] = "<a href=\"".h(scriptName())."\">phpMan</a>";
-    if (isset($mode_labels[$mode])) {
-        $bc_parts[] = "<a href=\"".h(scriptName() . $mode_urls[$mode])."\">".h($mode_labels[$mode])."</a>";
+    if (isset($modes[$mode])) {
+        $bc_parts[] = "<a href=\"".h(scriptName() . $modes[$mode]["url"])."\">".h($modes[$mode]["label"])."</a>";
     }
     $section_label = $section !== "" ? "({$section})" : "";
     $bc_parts[] = h($parameter . $section_label);
     echo "<h1>" . implode(" &gt; ", $bc_parts) . "</h1>\n";
-} elseif ($mode !== "" && $mode !== "search" && isset($mode_labels[$mode])) {
-    echo "<h1><a href=\"".h(scriptName())."\">phpMan</a> &gt; " . h($mode_labels[$mode]) . "</h1>\n";
+} elseif ($mode !== "" && $mode !== "search" && isset($modes[$mode])) {
+    echo "<h1><a href=\"".h(scriptName())."\">phpMan</a> &gt; " . h($modes[$mode]["label"]) . "</h1>\n";
 } else {
     echo "<h1><a href=\"".h(scriptName())."\">".h($PHP_MAN_TITLE)."</a></h1>\n";
 }
@@ -1185,11 +1132,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
     // Expires one month later
     header("Expires: " .gmdate ("D, d M Y H:i:s", time() + 3600 * 24 * 7). " GMT");
-    // Gzip compression for HTML output (#60)
-    $acceptEncoding = strtolower(serverValue("HTTP_ACCEPT_ENCODING", ""));
-    if (strpos($acceptEncoding, "gzip") !== false) {
-        ob_start('ob_gzhandler');
-    }
+    // Gzip handled by Nginx/Cloudflare (#84)
 
     // Build SEO meta values
     $site_name = "phpMan";
@@ -1978,13 +1921,14 @@ function getRiIndex (string $format = "html"): string {
         }
         return $result;
     }
-    $output = "";
+    $output = "<ul>\n";
     foreach ($lines as $line) {
         $trimmed = trim($line);
         if ($trimmed !== "") {
             $output .= '<li><a href="'.$script_name.'/ri/'.urlencode($trimmed).'">'.h($trimmed).'</a></li>'."\n";
         }
     }
+    $output .= "</ul>\n";
     return $output;
 }
 
@@ -2038,7 +1982,7 @@ function getPydocSearchPage (string $parameter, string $format = "html"): string
         }
         return $result;
     }
-    $output = "";
+    $output = "<ul>\n";
     foreach ($lines as $line) {
         $trimmed = trim($line);
         if (preg_match('/^(\S+)\s*-\s*(.+)/', $trimmed, $m)) {
@@ -2047,6 +1991,7 @@ function getPydocSearchPage (string $parameter, string $format = "html"): string
             $output .= '<li><a href="'.$script_name.'/pydoc/'.urlencode($trimmed).'">'.h($trimmed).'</a></li>'."\n";
         }
     }
+    $output .= "</ul>\n";
     return $output;
 }
 
@@ -2180,7 +2125,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
     }
 
     // determine link mode: perl modules (section 3pm or name with ::) use perldoc, others use man
-    $output = "";
+    $output = "<ul>\n";
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
         $line = $lines[$i];
@@ -2227,6 +2172,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
             $output .= '<li>' . preg_replace($link_patterns, $link_replace, $escaped) . '</li>' . "\n";
         }
     }
+    $output .= "</ul>\n";
     return $output;
 }
 
@@ -2556,7 +2502,32 @@ function formatMcpMarkdown (array $data): string {
 
     $out = "# {$label} ({$mode})\n\n";
 
-    // v2.2: TLDR section at top (only for man section 1)
+    // NAME / Summary
+    if (!empty($data["summary"])) {
+        $out .= "## NAME\n\n{$data["summary"]}\n\n";
+    }
+
+    // SYNOPSIS
+    if (!empty($data["synopsis"])) {
+        $out .= "## SYNOPSIS\n\n{$data["synopsis"]}\n\n";
+    }
+
+    // DESCRIPTION — first paragraph only (#88)
+    $sections = $data["sections"] ?? [];
+    foreach ($sections as $name => $sec) {
+        if (strtoupper($name) === "DESCRIPTION") {
+            $content = trim($sec["content"] ?? "");
+            // Extract first paragraph (up to first blank line)
+            $paragraphs = preg_split('/\n\s*\n/', $content, 2);
+            $firstPara = trim($paragraphs[0] ?? "");
+            if ($firstPara !== "") {
+                $out .= "## DESCRIPTION\n\n{$firstPara}\n\n";
+            }
+            break;
+        }
+    }
+
+    // TLDR (only for man section 1)
     $tldr = fetchOfficialTldr($param, $mode, $section);
     if (!empty($tldr)) {
         $out .= "## TLDR\n\n";
@@ -2567,86 +2538,18 @@ function formatMcpMarkdown (array $data): string {
             $out .= "- {$ex["description"]}:\n  `{$ex["command"]}`\n";
         }
         $src = ($tldr["source"] ?? "") === "cheatsh" ? "cheat.sh" : "tldr-pages";
-        $out .= "\n*Source: {$src}*\n\n---\n\n";
+        $out .= "\n*Source: {$src}*\n\n";
     }
 
-    // Summary
-    if (!empty($data["summary"])) {
-        $out .= "**Summary:** {$data["summary"]}\n\n";
-    }
-    if (!empty($data["synopsis"])) {
-        $out .= "**Synopsis:** {$data["synopsis"]}\n\n";
-    }
-
-    // Flags table (from structuredContent)
-    $flags = $data["flags"] ?? [];
-    if (count($flags) > 0) {
-        $out .= "## Flags\n\n";
-        $out .= "| Flag | Long | Arg | Description |\n";
-        $out .= "|------|------|-----|-------------|\n";
-        foreach ($flags as $f) {
-            $desc = mb_substr(preg_replace('/\s+/', ' ', $f["description"] ?? ""), 0, FLAG_DESC_MAX_LEN);
-            $out .= "| " . ($f["flag"] ?: "—") . " | " . ($f["long"] ?: "—") . " | " . ($f["arg"] ?: "—") . " | {$desc} |\n";
-        }
-        $out .= "\n";
-    }
-
-    // Examples
-    $examples = $data["examples"] ?? [];
-    if (count($examples) > 0) {
-        $out .= "## Examples\n\n";
-        foreach ($examples as $ex) {
-            $out .= "- `{$ex}`\n";
-        }
-        $out .= "\n";
-    }
-
-    // See Also
-    $seeAlso = $data["see_also"] ?? [];
-    if (count($seeAlso) > 0) {
-        $out .= "## See Also\n\n";
-        foreach ($seeAlso as $sa) {
-            $out .= "- {$sa["name"]}({$sa["section"]})\n";
-        }
-        $out .= "\n";
-    }
-
-    // Section outline (scannable menu)
-    $sections = $data["sections"] ?? [];
+    // Section outline — navigation guide for agent
     if (count($sections) > 0) {
-        $out .= "## Section Outline\n\n";
+        $out .= "## Sections\n\n";
         foreach ($sections as $name => $sec) {
-            $lineCount = substr_count($sec["content"] ?? "", "\n") + 1;
             $subCount = count($sec["subsections"] ?? []);
-            $extra = $subCount > 0 ? " — {$subCount} subsections" : "";
-            $out .= "- **{$name}** ({$lineCount} lines){$extra}\n";
-            foreach ($sec["subsections"] ?? [] as $sub) {
-                $subLines = substr_count($sub["content"] ?? "", "\n") + 1;
-                $subName = mb_substr($sub["name"] ?? "", 0, 60);
-                $out .= "  - {$subName} ({$subLines} lines)\n";
-            }
+            $extra = $subCount > 0 ? " ({$subCount} subsections)" : "";
+            $out .= "- **{$name}**{$extra}\n";
         }
-        $out .= "\n";
-    }
-
-    // Full content
-    $out .= "## Full Content\n\n";
-    foreach ($sections as $name => $sec) {
-        $out .= "### {$name}\n\n";
-        $content = trim($sec["content"] ?? "");
-        if ($content !== "") {
-            $out .= "{$content}\n\n";
-        }
-        foreach ($sec["subsections"] ?? [] as $sub) {
-            $subName = trim($sub["name"] ?? "");
-            $subContent = trim($sub["content"] ?? "");
-            if ($subName !== "") {
-                $out .= "#### {$subName}\n\n";
-            }
-            if ($subContent !== "") {
-                $out .= "{$subContent}\n\n";
-            }
-        }
+        $out .= "\nUse structuredContent.sections for detailed options, examples, and full documentation.\n";
     }
 
     return $out;
@@ -2731,6 +2634,14 @@ function formatMcpStructured (array $data): array {
  * Returns structured TLDR data or empty array on failure.
  */
 function fetchOfficialTldr(string $command, string $mode = "man", string $section = ""): array {
+    // Lowercase for cache key and tldr-pages / cheat.sh lookup
+    $command = strtolower($command);
+    $cacheKey = $command;
+
+    // Static cache first — avoids repeated validation checks (#87)
+    static $cache = [];
+    if (array_key_exists($cacheKey, $cache)) return $cache[$cacheKey];
+
     // Only fetch TLDR for man section 1 commands — tldr-pages only covers
     // common CLI tools, not Perl modules (perldoc), info nodes, or man pages
     // in sections 2-8 (syscalls, library functions, file formats, etc.)
@@ -2741,12 +2652,6 @@ function fetchOfficialTldr(string $command, string $mode = "man", string $sectio
     // Skip commands with non-simple names (dots, special chars beyond [-_.])
     if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]*$/', $command)) return [];
 
-    // Lowercase for tldr-pages / cheat.sh lookup — both use lowercase filenames/keys
-    $command = strtolower($command);
-
-    static $cache = [];
-    $cacheKey = $command;
-    if (array_key_exists($cacheKey, $cache)) return $cache[$cacheKey];
     $result = fetchTldrPages($command);
     if (empty($result)) $result = fetchCheatShTldr($command);
     $cache[$cacheKey] = $result;
@@ -3381,7 +3286,7 @@ function formatManPerlDocToMarkdown (array $lines, string $parameter = "", strin
 
         // Section / Sub-section Headers: detect via shared function
         $nextLine = ($i + 1 < $count) ? $lines[$i + 1] : null;
-        $heading = detectHeadingType($line, "man", $nextLine);
+        $heading = detectHeadingType($line, $mode, $nextLine);
         if ($heading) {
             // L1 → ## (man .SH), L2 → ### (man .SS) to match HTML TOC hierarchy
             $prefix = ($heading['level'] === 1) ? '## ' : '### ';
