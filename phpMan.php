@@ -192,7 +192,7 @@ function extractFlagsFromSections (array $data): array {
  * This script makes it easier to read man pages which is lengthy and require you
  * to use 'more' or 'pg' filters. Just try it if you feel hard to remember the command
  * for page back or need to dump man page into text/html format.
- * Compatible with GNU/Linux and FreeBSD under PHP 8.x.
+ * Compatible with GNU/Linux and FreeBSD under PHP 7.2+.
  *
  * !!! Note: on Apache 2.0.x need configure: AcceptPathInfo On !!!
  *
@@ -248,7 +248,7 @@ $VALIDATOR = "<a href=\"https://validator.w3.org/check?uri=" . urlencode($curren
 
 ini_set("default_charset", "UTF-8");
 
-function h (mixed $value): string {
+function h ($value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8");
 }
 
@@ -524,7 +524,7 @@ function requestValue (array $source, string $key): string {
     return trim((string)$source[$key]);
 }
 
-function normalizeMode (mixed $mode): string {
+function normalizeMode ($mode): string {
     $mode = strtolower(trim((string)$mode));
     $allowed_modes = array(
         "man" => true,
@@ -540,7 +540,7 @@ function normalizeMode (mixed $mode): string {
     return isset($allowed_modes[$mode]) ? $mode : "man";
 }
 
-function normalizeParameter (mixed $parameter): string {
+function normalizeParameter ($parameter): string {
     $parameter = trim((string)$parameter);
     $parameter = str_replace(array("/", "\0"), array(" ", ""), $parameter);
     $parameter = preg_replace("/[\x00-\x1F\x7F]+/", " ", $parameter);
@@ -548,7 +548,7 @@ function normalizeParameter (mixed $parameter): string {
     return trim((string)$parameter);
 }
 
-function normalizeSection (mixed $section): string {
+function normalizeSection ($section): string {
     $section = trim((string)$section);
     if (preg_match("/^[A-Za-z0-9_]+$/", $section) !== 1) {
         return "";
@@ -654,10 +654,10 @@ if (requestValue($_GET, "format") === "json" || requestValue($_GET, "amp;format"
 } else {
     // 2) Accept header negotiation
     $accept = strtolower(serverValue("HTTP_ACCEPT", ""));
-    if (str_contains($accept, "application/json")) {
+    if (strpos($accept, "application/json") !== false) {
         $format = "json";
         $formatSource = "accept_header";
-    } elseif (str_contains($accept, "text/markdown") || str_contains($accept, "text/x-markdown")) {
+    } elseif (strpos($accept, "text/markdown") !== false || strpos($accept, "text/x-markdown") !== false) {
         $format = "markdown";
         $formatSource = "accept_header";
     }
@@ -1243,7 +1243,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "<meta name=\"citation_online_date\" content=\"".gmdate("Y/m/d")."\"/>\n".
         "<meta name=\"citation_author\" content=\"Che Dong\"/>\n".
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>\n".
-        "<link rel=\"icon\" type=\"image/png\" href=\"/favicon.png\"/>\n";
+        "<link rel=\"icon\" type=\"image/x-icon\" href=\"/favicon.ico\"/>\n";
 
     echo "<style type=\"text/css\">\n".
         "html {scroll-behavior:smooth;}\n".
