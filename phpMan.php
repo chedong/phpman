@@ -1092,9 +1092,9 @@ elseif ($mode === "search" && $parameter !== "") {
 echo "<div id=\"content-wrap\">\n";
 showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 
-	// v2.2: TLDR block for man/perldoc detail pages
-	if (in_array($mode, ["man", "perldoc"]) && $parameter !== "" && trim($content) !== "") {
-	    $tldrData = fetchOfficialTldr($parameter);
+	// v2.2: TLDR block for man section 1 detail pages
+	if ($mode === "man" && $parameter !== "" && trim($content) !== "") {
+	    $tldrData = fetchOfficialTldr($parameter, $mode, $section);
 	    if (!empty($tldrData) && !empty($tldrData["examples"])) {
 	        $contentLines = substr_count($content, "\n") + 1;
 	        $expanded = $contentLines > 200 ? " tldr-expanded" : "";
@@ -1741,7 +1741,7 @@ function getManPage (string $parameter, string $section = "", string $format = "
             }
         }
         if ($format === "markdown") {
-            return formatManPerlDocToMarkdown($lines, $parameter);        }
+            return formatManPerlDocToMarkdown($lines, $parameter, "man", $section);        }
         if ($format === "json" || $format === "mcp") {
             return formatForOutput(formatToJSON($lines, $parameter, $section, "man"), $format);
         }
@@ -1811,7 +1811,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $cmd = "perldoc -l ".escapeshellarg($parameter)." 2>/dev/null | head -1 | tr '\\n' '\\0' | xargs -0 pod2text -w {$width} 2>/dev/null";  // #24: xargs -0 for space-safe paths
     exec($cmd, $lines, $return_code);
     if ($return_code === 0 && count($lines) > 0) {
-        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "perldoc"), $format);
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "perldoc");        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "perldoc"), $format);
         return formatManPerlDoc($lines, "perldoc");
     }
 
@@ -1819,7 +1819,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
     exec("perldoc ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
-        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "perldoc"), $format);
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "perldoc");        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "perldoc"), $format);
         return formatManPerlDoc($lines, "perldoc");
     }
 
@@ -1827,7 +1827,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
     exec("perldoc -f ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
-        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "-f", "perldoc"), $format);
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "perldoc", "-f");        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "-f", "perldoc"), $format);
         return formatManPerlDoc($lines, "perldoc");
     }
 
@@ -1835,7 +1835,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
     exec("perldoc -q ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
-        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "-q", "perldoc"), $format);
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "perldoc", "-q");        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "-q", "perldoc"), $format);
         return formatManPerlDoc($lines, "perldoc");
     }
 
@@ -1849,7 +1849,7 @@ function getPydocPage (string $parameter, string $format = "html"): string {
     if ($return_code !== 0 || count($lines) === 0) {
         return "";
     }
-    if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);
+    if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "pydoc");
     if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "pydoc"), $format);
     return formatManPerlDoc($lines, "pydoc");
 }
@@ -1861,7 +1861,7 @@ function getRiPage (string $parameter, string $format = "html"): string {
     if ($return_code !== 0 || count($lines) === 0) {
         return "";
     }
-    if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);
+    if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "ri");
     if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "ri"), $format);
     return formatManPerlDoc($lines, "ri");
 }
@@ -2060,7 +2060,7 @@ function getRiSearchPage (string $parameter, string $format = "html"): string {
     if (preg_match('/^Nothing known about/i', $first_line)) {
         return "";
     }
-    if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);
+    if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "ri");
     if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "ri"), $format);
     return formatManPerlDoc($lines, "ri");
 }
@@ -2073,7 +2073,7 @@ function getInfoPage (string $parameter, string $format = "html"): string {
     if ($exitCode !== 0 || empty($lines)) {
         return "";
     }
-    if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter);    if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "info"), $format);
+    if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "info");    if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "info"), $format);
     return formatManPerlDoc($lines, "info");
 }
 
@@ -2555,8 +2555,8 @@ function formatMcpMarkdown (array $data): string {
 
     $out = "# {$label} ({$mode})\n\n";
 
-    // v2.2: TLDR section at top
-    $tldr = fetchOfficialTldr($param);
+    // v2.2: TLDR section at top (only for man section 1)
+    $tldr = fetchOfficialTldr($param, $mode, $section);
     if (!empty($tldr)) {
         $out .= "## TLDR\n\n";
         if (!empty($tldr["description"])) {
@@ -2683,9 +2683,11 @@ function formatMcpStructured (array $data): array {
         $allFlags = extractFlagsFromSections($data);
     }
 
-    // v2.2: Fetch TLDR for agent consumption
+    // v2.2: Fetch TLDR for agent consumption (only for man section 1)
     $param = $data["parameter"] ?? "";
-    $tldrData = $param !== "" ? fetchOfficialTldr($param) : [];
+    $tldrMode = $data["mode"] ?? "man";
+    $tldrSection = $data["section"] ?? "";
+    $tldrData = $param !== "" ? fetchOfficialTldr($param, $tldrMode, $tldrSection) : [];
     $tldrSummary = !empty($tldrData) ? ($tldrData["description"] ?? null) : null;
     $tldrExamples = !empty($tldrData) ? array_slice($tldrData["examples"] ?? [], 0, 12) : [];
     $tldrSource = !empty($tldrData) ? ($tldrData["source"] ?? null) : null;
@@ -2727,12 +2729,23 @@ function formatMcpStructured (array $data): array {
  * Fetch TLDR from official tldr-pages (primary) or cheat.sh (fallback).
  * Returns structured TLDR data or empty array on failure.
  */
-function fetchOfficialTldr(string $command): array {
+function fetchOfficialTldr(string $command, string $mode = "man", string $section = ""): array {
+    // Only fetch TLDR for man section 1 commands — tldr-pages only covers
+    // common CLI tools, not Perl modules (perldoc), info nodes, or man pages
+    // in sections 2-8 (syscalls, library functions, file formats, etc.)
+    if ($mode !== "man") return [];
+    if ($section !== "" && !preg_match('/^1[a-z]*$/', $section)) return [];
+    // Skip commands with :: (Perl/Ruby module names) — tldr-pages never covers these
+    if (strpos($command, '::') !== false) return [];
+    // Skip commands with non-simple names (dots, special chars beyond [-_.])
+    if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]*$/', $command)) return [];
+
     static $cache = [];
-    if (array_key_exists($command, $cache)) return $cache[$command];
+    $cacheKey = $command;
+    if (array_key_exists($cacheKey, $cache)) return $cache[$cacheKey];
     $result = fetchTldrPages($command);
     if (empty($result)) $result = fetchCheatShTldr($command);
-    $cache[$command] = $result;
+    $cache[$cacheKey] = $result;
     return $result;
 }
 
@@ -2752,7 +2765,8 @@ function fetchTldrPages(string $command): array {
         ]);
         $md = file_get_contents($url, false, $ctx);
         if ($md === false) {
-            phpManLog("Failed to fetch TLDR from $url: " . (error_get_last()['message'] ?? 'unknown error'));
+            // 404 is normal — most man pages don't have tldr-pages entries.
+            // No need to log; the static cache above prevents repeated lookups.
             continue;
         }
         if (strlen($md) > 20) {
@@ -2775,7 +2789,7 @@ function fetchCheatShTldr(string $command): array {
     ]);
     $raw = file_get_contents($url, false, $ctx);
     if ($raw === false) {
-        phpManLog("Failed to fetch cheat.sh TLDR from $url: " . (error_get_last()['message'] ?? 'unknown error'));
+        // cheat.sh miss is normal — no need to log.
         return [];
     }
     if (strlen($raw) < 20) return [];
@@ -3284,8 +3298,8 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
     }
     $jsonData["see_also"] = $seeAlso;
 
-    // v2.2: Inject TLDR from official sources
-    $tldr = fetchOfficialTldr($parameter);
+    // v2.2: Inject TLDR from official sources (only for man section 1)
+    $tldr = fetchOfficialTldr($parameter, $mode, $section);
     if (!empty($tldr)) {
         $jsonData["tldr"] = $tldr;
     }
@@ -3336,15 +3350,15 @@ function parseFlagJSON(string $name): array {
 }
 
 //convert man perldoc output to markdown
-function formatManPerlDocToMarkdown (array $lines, string $parameter = ""): string {
+function formatManPerlDocToMarkdown (array $lines, string $parameter = "", string $mode = "man", string $section = ""): string {
     // #44: use shared cleanTerminalOutput() instead of inline patterns
     $lines = cleanTerminalOutput($lines);
 
     $output = "";
 
-    // v2.2: Inject TLDR from official sources at top of markdown
+    // v2.2: Inject TLDR from official sources at top of markdown (only for man section 1)
     if ($parameter !== "") {
-        $tldr = fetchOfficialTldr($parameter);
+        $tldr = fetchOfficialTldr($parameter, $mode, $section);
         if (!empty($tldr)) {
             if (!empty($tldr["description"])) {
                 $output .= "> **TLDR:** {$tldr["description"]}\n>\n";

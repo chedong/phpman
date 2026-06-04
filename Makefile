@@ -5,6 +5,7 @@
 #   make release
 #   make rollback
 #   make deploy-verify
+#   make release-logcheck
 #
 # Requires .deploy.mk — copy from .deploy.mk.example and configure
 
@@ -18,7 +19,7 @@ FILE ?= phpMan.php
 BACKUP_DIR ?= backups/phpman
 BACKUP_KEEP ?= 5
 
-.PHONY: test deploy release rollback deploy-verify package upload-release clean
+.PHONY: test deploy release rollback deploy-verify release-logcheck package upload-release clean
 
 GIT_TAG := $(shell git describe --tags --always --dirty 2>/dev/null || echo "local")
 
@@ -49,7 +50,8 @@ release: test
 	echo "=== Deployed to production ==="; \
 	echo "$(DEMO_URL)"; \
 	echo "Rollback: make rollback"; \
-	echo ""
+	echo ""; \
+	$(MAKE) release-logcheck
 
 rollback:
 	@LATEST_BACKUP=$$(ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
@@ -70,6 +72,20 @@ deploy-verify:
 	@echo ""
 	@echo "=== Production ==="
 	@curl -sk -o /dev/null -w "HTTP: %{http_code}  %{url_effective}\n" $(DEMO_URL)
+
+# Check server logs for errors after a production release.
+# Requires DEMO_ERROR_LOG and DEMO_ACCESS_LOG to be set in .deploy.mk.
+release-logcheck:
+	@echo "=== Post-deploy log check ==="
+	@echo "--- Error log (last 10 lines) ---"
+	@ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
+		"test -f '$(DEMO_ERROR_LOG)' && echo '$(DEMO_ERROR_LOG):' && tail -10 '$(DEMO_ERROR_LOG)' || echo '(error log not configured or not found)'"
+	@echo ""
+	@echo "--- Access log (recent 5xx errors) ---"
+	@ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
+		"test -f '$(DEMO_ACCESS_LOG)' && echo '$(DEMO_ACCESS_LOG):' && (tail -100 '$(DEMO_ACCESS_LOG)' | grep -E '\" (5[0-9][0-9]) ' || echo '(no 5xx in recent requests)') || echo '(access log not configured or not found)'"
+	@echo ""
+	@echo "=== Log check complete ==="
 
 package: test
 	gzip -k -f $(FILE)

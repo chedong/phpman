@@ -21,3 +21,9 @@ DEMO_PORT = 22
 DEMO_PATH = /home/your-user/example.com
 # Web URL — include port if not 80/443 (e.g. https://example.com:8443/phpMan.php)
 DEMO_URL  = https://example.com/phpMan.php
+
+# --- Server logs (for post-deploy log check via `make release-logcheck`) ---
+# Paths to access and error logs on the demo/production server.
+# `make release-logcheck` checks these after release to catch new issues.
+DEMO_ACCESS_LOG = /var/log/nginx/access.log
+DEMO_ERROR_LOG  = /var/log/nginx/error.log
