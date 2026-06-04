@@ -1602,8 +1602,11 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
         if ($jsonUrl !== "") {
             $fmtLinks[] = '<a href="' . h($jsonUrl) . '" title="' . $cmd_label . ' structured JSON API">JSON</a>';
         }
-        $mcp_href = scriptName() . "/" . urlencode($mode) . "/" . urlencode($parameter) . "/mcp";
-        $fmtLinks[] = '<a href="' . h($mcp_href) . '" title="MCP Server integration">MCP</a>';
+        // MCP link only when page has real content (not 404/search fallback)
+        if ($markdownUrl !== "" || $jsonUrl !== "") {
+            $mcp_href = scriptName() . "/" . urlencode($mode) . "/" . urlencode($parameter) . "/mcp";
+            $fmtLinks[] = '<a href="' . h($mcp_href) . '" title="MCP Server integration">MCP</a>';
+        }
     }
 
     $fmtStr = !empty($fmtLinks) ? implode(" |\n", $fmtLinks) . " &nbsp;" : "";
