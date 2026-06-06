@@ -46,6 +46,19 @@ function assert_not_contains(string $needle, string $haystack, string $msg = "")
     }
 }
 
+function assert_not_equals($notExpected, $actual, string $msg = ""): void {
+    global $_test_pass, $_test_fail, $_test_errors;
+    if ($notExpected !== $actual) {
+        $_test_pass++;
+        echo "  ✅ {$msg}\n";
+    } else {
+        $_test_fail++;
+        $detail = "  ❌ {$msg}\n     expected NOT: " . var_export($notExpected, true) . "\n     actual:       " . var_export($actual, true);
+        echo $detail . "\n";
+        $_test_errors[] = $msg;
+    }
+}
+
 function assert_match(string $pattern, string $string, string $msg = ""): void {
     global $_test_pass, $_test_fail, $_test_errors;
     if (preg_match($pattern, $string)) {

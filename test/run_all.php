@@ -11,6 +11,8 @@ $suites = [
         "{$testDir}/unit/test_normalize.php",
         "{$testDir}/unit/test_parseFlag.php",
         "{$testDir}/unit/test_overstrike.php",
+        "{$testDir}/unit/test_search_fts.php",
+        "{$testDir}/unit/test_search_fts_db.php",
     ],
     "Integration" => [
         "{$testDir}/integration/test_formatter_html.php",

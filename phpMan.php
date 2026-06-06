@@ -91,10 +91,11 @@ if (file_exists($_config_file)) {
 // Cache constants: phpman.config.php > defaults
 if (!defined('CACHE_DIR')) define('CACHE_DIR', dirname(__FILE__) . '/cache');
 define('CACHE_DB', CACHE_DIR . '/phpm_cache.db');
-define('CACHE_SCHEMA_VERSION', '1');
+define('CACHE_SCHEMA_VERSION', '3');
 
 // Debug mode: phpman.config.php > env var > default false
 if (!defined('PHPMAN_DEBUG')) define('PHPMAN_DEBUG', getenv('PHPMAN_DEBUG') === 'true');
+Profiler::init();
 
 // LLM config (v3.0 reserved, not yet used)
 if (!defined('LLM_API_KEY'))    define('LLM_API_KEY', '');
@@ -103,6 +104,76 @@ if (!defined('LLM_MODEL'))      define('LLM_MODEL', '');
 if (!defined('LLM_MAX_TOKENS')) define('LLM_MAX_TOKENS', 4096);
 
 unset($_config_file);
+
+/**
+ * Lightweight request profiler — records timing marks at key lifecycle points.
+ * Active only when PHPMAN_DEBUG is true. Results injected into output per format:
+ *   HTML: visible footer block; Markdown: HTML comment; JSON/MCP: _profiling key
+ */
+class Profiler {
+    private static array $marks = [];
+    private static float $startTime = 0.0;
+    private static bool $enabled = false;
+
+    public static function init(): void {
+        self::$enabled = defined('PHPMAN_DEBUG') && PHPMAN_DEBUG;
+        if (self::$enabled) {
+            self::$startTime = microtime(true);
+            self::$marks = [['init', 0.0]];
+        }
+    }
+
+    public static function mark(string $label): void {
+        if (!self::$enabled) return;
+        self::$marks[] = [$label, microtime(true) - self::$startTime];
+    }
+
+    public static function getReport(): array {
+        if (!self::$enabled || count(self::$marks) < 2) return [];
+        $report = [];
+        $prevTime = 0.0;
+        foreach (self::$marks as [$label, $time]) {
+            $report[] = [
+                'label' => $label,
+                'elapsed_ms' => round($time * 1000, 2),
+                'delta_ms' => round(($time - $prevTime) * 1000, 2),
+            ];
+            $prevTime = $time;
+        }
+        $report['_total_ms'] = round((microtime(true) - self::$startTime) * 1000, 2);
+        $report['_version'] = '1';
+        return $report;
+    }
+
+    public static function getEnabled(): bool {
+        return self::$enabled;
+    }
+}
+
+/**
+ * Render profiling data as an HTML block for debug mode in showFooter().
+ */
+function profilerHtmlBlock (): string {
+    $report = Profiler::getReport();
+    if (empty($report)) return '';
+    $total = $report['_total_ms'] ?? 0;
+    unset($report['_total_ms'], $report['_version']);
+    $rows = '';
+    foreach ($report as $r) {
+        $label = h($r['label']);
+        $rows .= '<tr>'
+               . '<td>' . $label . '</td>'
+               . '<td style="text-align:right;padding:0 6px">' . $r['delta_ms'] . 'ms</td>'
+               . '<td style="text-align:right;padding:0 6px">' . $r['elapsed_ms'] . 'ms</td>'
+               . '</tr>';
+    }
+    return '<div id="profiling" style="margin:16px 0;padding:8px;border:1px solid #e0e0e0;background:#f5f5f5;font-size:12px;color:#333;font-family:monospace;">'
+         . '<strong>Profiling (' . $total . 'ms total)</strong>'
+         . '<table style="width:auto;border-collapse:collapse;">'
+         . '<tr style="border-bottom:1px solid #ccc;"><th style="text-align:left">Phase</th><th style="text-align:right;padding:0 6px">Delta</th><th style="text-align:right;padding:0 6px">Elapsed</th></tr>'
+         . $rows
+         . '</table></div>';
+}
 
 /**
  * Log a message to the server error log. (#47)
@@ -638,6 +709,31 @@ function cacheDb(): SQLite3 {
             // FTS5 not available — search index is optional
         }
 
+        // FTS5 search engine: independent full-text search table (v2)
+        try {
+            $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS search_fts
+                       USING fts5(
+                           name,         -- expanded name for dual matching
+                           section,      -- section number
+                           description,  -- apropos one-line summary
+                           body,         -- full page text (cleaned)
+                           tokenize='unicode61 tokenchars ''-:''',
+                           prefix='1,2,3'
+                       )");
+        } catch (\Exception $e) {
+            // FTS5 not available — search falls back to apropos
+        }
+
+        $db->exec("CREATE TABLE IF NOT EXISTS search_index_meta (
+            name        TEXT NOT NULL,
+            section     TEXT NOT NULL DEFAULT '',
+            source      TEXT NOT NULL DEFAULT 'man',
+            body_len    INTEGER NOT NULL DEFAULT 0,
+            hits        INTEGER NOT NULL DEFAULT 0,
+            last_indexed INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+            UNIQUE(name, section, source)
+        )");
+
         $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_lookup
                    ON cache(mode, name, section, format)");
         $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_status
@@ -650,7 +746,39 @@ function cacheDb(): SQLite3 {
         // Check schema version — clear cache if mismatch
         $row = $db->querySingle("SELECT value FROM meta WHERE key='schema_version'", false);
         if ($row !== CACHE_SCHEMA_VERSION) {
-            $db->exec("DELETE FROM cache");
+            if ($row === '1') {
+                // v1 → v2: add search_fts and search_index_meta, clear search cache
+                $db->exec("DELETE FROM cache WHERE mode='search'");
+                try {
+                    $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS search_fts
+                               USING fts5(
+                                   name, section, description, body,
+                                   tokenize='unicode61 tokenchars ''-:''',
+                                   prefix='1,2,3'
+                               )");
+                } catch (\Exception $e) {
+                    // FTS5 not available — falls back to apropos
+                }
+                $db->exec("CREATE TABLE IF NOT EXISTS search_index_meta (
+                    name TEXT NOT NULL,
+                    section TEXT NOT NULL DEFAULT '',
+                    source TEXT NOT NULL DEFAULT 'man',
+                    body_len INTEGER NOT NULL DEFAULT 0,
+                    hits INTEGER NOT NULL DEFAULT 0,
+                    last_indexed INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+                    UNIQUE(name, section, source)
+                )");
+            } elseif ($row === '2') {
+                // v2 → v3: search_fts.name now stores expanded name; rebuild needed
+                try {
+                    $db->exec("DELETE FROM search_fts");
+                } catch (\Exception $e) {
+                    // FTS5 not available — ignore
+                }
+                $db->exec("DELETE FROM search_index_meta");
+            } else {
+                $db->exec("DELETE FROM cache");
+            }
             $db->exec("UPDATE meta SET value = '" . CACHE_SCHEMA_VERSION . "' WHERE key = 'schema_version'");
         }
     }
@@ -690,9 +818,14 @@ class PageCache {
         }
 
         // Increment hit count (async, ignore failure)
-        $this->db->exec("UPDATE cache SET hits = hits + 1, updated_at = updated_at
-                         WHERE mode = '{$mode}' AND name = '{$name}'
-                         AND section = '{$section}' AND format = '{$format}'");
+        $hitStmt = $this->db->prepare("UPDATE cache SET hits = hits + 1, updated_at = updated_at
+                         WHERE mode = :mode AND name = :name
+                         AND section = :section AND format = :format");
+        $hitStmt->bindValue(':mode', $mode, SQLITE3_TEXT);
+        $hitStmt->bindValue(':name', $name, SQLITE3_TEXT);
+        $hitStmt->bindValue(':section', $section, SQLITE3_TEXT);
+        $hitStmt->bindValue(':format', $format, SQLITE3_TEXT);
+        $hitStmt->execute();
 
         if ($row['status'] === 'not_found') {
             return '###NOT_FOUND###';
@@ -725,8 +858,8 @@ class PageCache {
 
         $ok = $stmt->execute() !== false;
 
-        // Sync FTS5 index for found entries
-        if ($ok && $status === 'found') {
+        // Sync FTS5 index for found entries (skip search mode — search results aren't indexed)
+        if ($ok && $status === 'found' && $mode !== 'search') {
             $cacheId = $this->db->lastInsertRowID();
             $this->syncFts($cacheId, $mode, $name, $section, $content);
         }
@@ -824,12 +957,535 @@ function cacheOrExecute(string $mode, string $name, string $section, string $for
 }
 
 // +--------------------------------------------------------------------------------+
+// | FTS5 Search Engine                                                              |
+// +--------------------------------------------------------------------------------+
+
+/**
+ * Expand a command name for FTS5 dual matching.
+ * "git-commit"   → "git-commit git commit"
+ * "File::Find"   → "File::Find File Find"
+ * "ls"           → "ls" (unchanged)
+ */
+function expandNameForFts(string $name): string {
+    $expanded = $name;
+
+    // Hyphen expansion: "git-commit" → append "git commit"
+    if (str_contains($name, '-')) {
+        $expanded .= ' ' . str_replace('-', ' ', $name);
+    }
+
+    // Double-colon expansion: "File::Find" → append "File Find"
+    if (str_contains($name, '::')) {
+        $expanded .= ' ' . str_replace('::', ' ', $name);
+    }
+
+    return $expanded;
+}
+
+/**
+ * Build an FTS5 MATCH query from raw user input.
+ * Preserves hyphens (-) and colons (:) — critical for command names and Perl modules.
+ * Returns empty string if query is empty/invalid.
+ */
+function buildFtsQuery(string $raw): string {
+    $raw = trim($raw);
+    if ($raw === '') return '';
+
+    // Replace Chinese/Unicode separator punctuation with spaces so terms split correctly.
+    // Handles: enumeration comma (、), Chinese comma (，), Chinese semicolon (；).
+    // Only Unicoded-specific punctuation is handled here; ASCII , and ; are
+    // already stripped by the [^\p{L}\p{N}\.\-_:] regex below.
+    $raw = preg_replace('/[、，；]/u', ' ', $raw);
+
+    // Detect explicit FTS5 operators — pass through as-is
+    if (preg_match('/\b(AND|OR|NOT|NEAR)\b/i', $raw)) {
+        return $raw;
+    }
+
+    // Exact phrase (quoted) — pass through
+    if (preg_match('/^".*"$/', $raw)) {
+        return $raw;
+    }
+
+    // Default: prefix-match each term with AND
+    $terms = preg_split('/\s+/', $raw);
+    $parts = [];
+    foreach ($terms as $t) {
+        $t = trim($t);
+        if ($t !== '') {
+            // Preserve hyphens, colons, underscores, dots — critical for commands
+            $t = preg_replace('/[^\p{L}\p{N}\.\-_:]/u', '', $t);
+            if ($t !== '') {
+                $parts[] = '"' . $t . '"*';
+            }
+        }
+    }
+
+    return $parts === [] ? '' : implode(' AND ', $parts);
+}
+
+/**
+ * Merge search results from multiple sources by (name, section).
+ * Same (name, section) from different sources are combined into one entry.
+ */
+function mergeSearchResults(array $rows): array {
+    $merged = [];
+
+    foreach ($rows as $row) {
+        $displayName = $row['display_name'] ?? $row['name'];
+        $key = $displayName . "\0" . $row['section'];
+
+        if (!isset($merged[$key])) {
+            $merged[$key] = [
+                'name'        => $displayName,
+                'section'     => $row['section'],
+                'description' => $row['description'],
+                'sources'     => [$row['source']],
+                'hits'        => (int)($row['hits'] ?? 0),
+            ];
+        } else {
+            if (!in_array($row['source'], $merged[$key]['sources'])) {
+                $merged[$key]['sources'][] = $row['source'];
+            }
+            $merged[$key]['hits'] += (int)($row['hits'] ?? 0);
+        }
+    }
+
+    return array_values($merged);
+}
+
+/**
+ * Perform FTS5 full-text search.
+ * Returns array of result rows, or empty array on failure/FTS5 unavailability.
+ *
+ * @param string $parameter  Search query
+ * @param string $section    Optional section filter (e.g. '1', '8')
+ * @param int    $limit      Max results (default 50)
+ * @return array
+ */
+function searchFts(string $parameter, string $section = '', int $limit = 50): array {
+    try {
+        $db = cacheDb();
+
+        // Check if search_fts exists
+        $tables = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='search_fts'");
+        if (!$tables->fetchArray()) {
+            return []; // FTS5 not available — caller will fall back
+        }
+
+        $ftsQuery = buildFtsQuery($parameter);
+        if ($ftsQuery === '') {
+            return [];
+        }
+
+        // Try AND query first (default for multi-word: all terms required)
+        $results = searchFtsQuery($db, $ftsQuery, $parameter, $section, $limit);
+
+        // Multi-word fallback: if AND returned nothing, try OR so that
+        // "wget request" still matches entries containing just "wget" or "request".
+        // This avoids falling to expensive apropos for partial matches.
+        // Note: buildFtsQuery outputs {"term1"* AND "term2"*} — "* AND " not " AND ".
+        // Check if the FTS query has multiple terms (contains AND), meaning
+        // there's an OR fallback opportunity regardless of the original parameter's
+        // punctuation. buildFtsQuery normalizes Chinese punctuation internally,
+        // so "URL、curl" also produces "term1"* AND "term2"*.
+        if (empty($results) && strpos($ftsQuery, ' AND ') !== false) {
+            $orQuery = str_replace('"* AND "', '"* OR "', $ftsQuery);
+            if ($orQuery !== $ftsQuery) {
+                $results = searchFtsQuery($db, $orQuery, $parameter, $section, $limit);
+            }
+        }
+
+        return $results;
+    } catch (\Exception $e) {
+        phpManLog("FTS5 search error: " . $e->getMessage());
+        return []; // Graceful fallback
+    }
+}
+
+/**
+ * Execute a single FTS5 query and return merged results.
+ *
+ * Extracted so searchFts() can try multiple query strategies (AND, OR)
+ * without duplicating the SQL setup.
+ */
+function searchFtsQuery(SQLite3 $db, string $ftsQuery, string $parameter, string $section, int $limit): array {
+    // COALESCE(m.name, s.name) AS display_name: prefer original name from meta
+    // (unexpanded), fall back to FTS expanded name. JOIN on section + name
+    // prefix match because search_fts.name stores expandNameForFts() output.
+    $baseFrom = "FROM search_fts s
+             LEFT JOIN search_index_meta m ON m.section = s.section
+                 AND (s.name = m.name OR s.name LIKE m.name || ' %')";
+    $baseSelect = "SELECT COALESCE(m.name, s.name) AS display_name, s.name, s.section, s.description, m.hits, m.source";
+    $baseOrder = "ORDER BY
+                 CASE WHEN COALESCE(m.name, s.name) = :exact THEN 0 ELSE 1 END,
+                 CASE WHEN COALESCE(m.name, s.name) LIKE :prefix THEN 0 ELSE 1 END,
+                 rank,
+                 CASE s.section
+                     WHEN '1' THEN 1 WHEN '8' THEN 2 WHEN '3' THEN 3
+                     WHEN '5' THEN 4 WHEN '7' THEN 5 WHEN '4' THEN 6
+                     WHEN '6' THEN 7 WHEN '9' THEN 8 ELSE 9
+                 END,
+                 m.hits DESC";
+
+    if ($section !== '') {
+        $stmt = $db->prepare(
+            "$baseSelect
+             $baseFrom
+             WHERE search_fts MATCH :query AND s.section = :section
+             $baseOrder
+             LIMIT :limit"
+        );
+        $stmt->bindValue(':section', $section, SQLITE3_TEXT);
+    } else {
+        $stmt = $db->prepare(
+            "$baseSelect
+             $baseFrom
+             WHERE search_fts MATCH :query
+             $baseOrder
+             LIMIT :limit"
+        );
+    }
+
+    $stmt->bindValue(':query', $ftsQuery, SQLITE3_TEXT);
+    $stmt->bindValue(':exact', $parameter, SQLITE3_TEXT);
+    $stmt->bindValue(':prefix', $parameter . '%', SQLITE3_TEXT);
+    $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
+
+    $result = $stmt->execute();
+    $rows = [];
+    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+        $rows[] = $row;
+    }
+    $result->finalize();
+
+    return mergeSearchResults($rows);
+}
+
+/**
+ * Render search results to the requested format.
+ */
+function formatSearchResults(array $results, string $parameter, string $section, string $format): string {
+    $scriptName = ($format === 'markdown' || $format === 'json' || $format === 'mcp')
+        ? baseUrl() : scriptName();
+
+    // JSON / MCP output
+    if ($format === 'json' || $format === 'mcp') {
+        $formatted = [];
+        foreach ($results as $r) {
+            $is_perl = str_contains($r['name'], '::');
+            $link_mode = $is_perl ? 'perldoc' : 'man';
+            $formatted[] = [
+                'name'        => $r['name'],
+                'description' => $r['description'] ?? '',
+                'section'     => $r['section'],
+                'sources'     => $r['sources'] ?? [],
+                'link' => $scriptName . '/' . $link_mode . '/' . urlencode($r['name']) . '/' . urlencode($r['section']) . '/json',
+            ];
+        }
+        $jsonData = [
+            'name'       => 'search ' . $parameter . ($section !== '' ? " (section {$section})" : ''),
+            'mode'       => 'search',
+            'parameter'  => $parameter,
+            'section'    => $section,
+            'url'        => $scriptName . '/search/' . urlencode($parameter) . ($section !== '' ? '/' . urlencode($section) : '') . '/json',
+            'generated'  => gmdate('Y-m-d\TH:i:s\Z'),
+            'query'      => $parameter,
+            'results'    => $formatted,
+            'count'      => count($formatted),
+            'engine'     => 'fts5',
+        ];
+        return formatForOutput(json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), $format);
+    }
+
+    // HTML output
+    if ($format === 'html') {
+        $output = "<ul>\n";
+        foreach ($results as $r) {
+            $is_perl = str_contains($r['name'], '::');
+            $link_mode = $is_perl ? 'perldoc' : 'man';
+            $desc = h($r['description'] ?? '');
+            $sources = !empty($r['sources']) ? ' <span class="sources">[' . implode(', ', $r['sources']) . ']</span>' : '';
+            $output .= '<li><a href="' . $scriptName . '/' . $link_mode . '/' . urlencode($r['name']);
+            if ($r['section'] !== '') {
+                $output .= '/' . urlencode($r['section']);
+            }
+            $output .= '">' . h($r['name']) . '</a> <span class="section">(' . h($r['section']) . ')</span>';
+            if ($desc !== '') {
+                $output .= ' — ' . $desc;
+            }
+            $output .= $sources . "</li>\n";
+        }
+        $output .= "</ul>\n";
+        return $output;
+    }
+
+    // Markdown output
+    $output = '';
+    foreach ($results as $r) {
+        $is_perl = str_contains($r['name'], '::');
+        $link_mode = $is_perl ? 'perldoc' : 'man';
+        $desc = $r['description'] ?? '';
+        $sources = !empty($r['sources']) ? ' [' . implode(', ', $r['sources']) . ']' : '';
+        $output .= '- [' . $r['name'] . '(' . $r['section'] . ')](' . $scriptName . '/' . $link_mode . '/' . urlencode($r['name']) . '/' . urlencode($r['section']) . '/' . $format . ')';
+        if ($desc !== '') {
+            $output .= ' — ' . $desc;
+        }
+        $output .= $sources . "\n";
+    }
+    return $output;
+}
+
+/**
+ * Parse an apropos-formatted output line into [name, section, description].
+ *
+ * Handles both BSD format (name [description] (section)) and
+ * Linux format (name (section) — description).
+ *
+ * @return array|null  [name, section, description] or null if unparseable
+ */
+function parseAproposLine (string $line): ?array {
+    // BSD: "name [description] (section)"
+    if (preg_match('/^(.+)\s+\[\s*(.+?)\s*\]\s+\(((?:\d\w*|n)\w*)\)\s*$/', $line, $m)) {
+        return [trim($m[1]), trim($m[3]), trim($m[2])];
+    }
+    // Linux em-dash: "name (section) — description"
+    if (preg_match('/^(.+)\s+\(((?:\d\w*|n)\w*)\)\s+—\s+(.+)$/', $line, $m)) {
+        return [trim($m[1]), trim($m[2]), trim($m[3])];
+    }
+    // Linux dash: "name (section) - description"
+    if (preg_match('/^(.+)\s+\(((?:\d\w*|n)\w*)\)\s+-\s+(.+)$/', $line, $m)) {
+        return [trim($m[1]), trim($m[2]), trim($m[3])];
+    }
+    return null;
+}
+
+/**
+ * Dynamically index apropos results into the FTS5 search index.
+ *
+ * Called after every apropos fallback in getSearchPage(). Inserted entries
+ * make future searches for the same term fast without a full pre-build.
+ * Uses INSERT OR IGNORE so already-indexed entries are safe to re-visit.
+ *
+ * @param array $lines  apropos output lines
+ * @return int          number of newly indexed entries
+ */
+function indexAproposLines (array $lines): int {
+    if (empty($lines)) return 0;
+
+    try {
+        $db = cacheDb();
+
+        // Verify FTS5 table exists (SQLite may lack FTS5 support)
+        $check = $db->querySingle("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='search_fts'");
+        if (!$check) return 0;
+
+        $count = 0;
+        $insertFts = $db->prepare(
+            "INSERT OR IGNORE INTO search_fts(name, section, description, body) VALUES(:name, :section, :description, '')"
+        );
+        $insertMeta = $db->prepare(
+            "INSERT OR IGNORE INTO search_index_meta(name, section, source, body_len, hits, last_indexed) VALUES(:name, :section, 'man', 0, 0, datetime('now'))"
+        );
+        $updateHits = $db->prepare(
+            "UPDATE search_index_meta SET hits = hits + 1, last_indexed = datetime('now') WHERE name = :name AND section = :section AND source = 'man'"
+        );
+
+        foreach ($lines as $line) {
+            $parsed = parseAproposLine($line);
+            if ($parsed === null) continue;
+
+            [$name, $section] = $parsed;
+
+            // Expand name for FTS5 tokenization (hyphens → dual matching)
+            $expandedName = expandNameForFts($name);
+
+            $insertFts->bindValue(':name', $expandedName, SQLITE3_TEXT);
+            $insertFts->bindValue(':section', $section, SQLITE3_TEXT);
+            $insertFts->bindValue(':description', $parsed[2], SQLITE3_TEXT);
+            $insertFts->execute();
+            $insertFts->reset();
+
+            $insertMeta->bindValue(':name', $name, SQLITE3_TEXT);
+            $insertMeta->bindValue(':section', $section, SQLITE3_TEXT);
+            $insertMeta->execute();
+            $insertMeta->reset();
+
+            // If already existed, bump hit count
+            if ($db->changes() === 0) {
+                $updateHits->bindValue(':name', $name, SQLITE3_TEXT);
+                $updateHits->bindValue(':section', $section, SQLITE3_TEXT);
+                $updateHits->execute();
+                $updateHits->reset();
+            }
+
+            $count++;
+        }
+
+        return $count;
+    } catch (Exception $e) {
+        return 0;
+    }
+}
+
+/**
+ * Rebuild the FTS5 search index from system man pages.
+ * Traverses all man sections, extracts names/descriptions via apropos,
+ * and populates search_fts + search_index_meta.
+ *
+ * Returns a summary string for CLI/HTTP response.
+ */
+function rebuildSearchIndex(): string {
+    $startTime = microtime(true);
+    $sections = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'n'];
+    $total = 0;
+    $errors = 0;
+    $output = [];
+
+    try {
+        $db = cacheDb();
+
+        // Check if search_fts exists
+        $tables = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='search_fts'");
+        if (!$tables->fetchArray()) {
+            return "ERROR: FTS5 not available (search_fts table does not exist).\n";
+        }
+
+        // Clear existing search index
+        $db->exec("DELETE FROM search_fts");
+        $db->exec("DELETE FROM search_index_meta");
+        $output[] = "Cleared existing search index.\n";
+
+        foreach ($sections as $sec) {
+            $cmd = 'apropos -s ' . escapeshellarg($sec) . ' . 2>/dev/null';
+            $lines = [];
+            exec($cmd, $lines, $exitCode);
+
+            if ($exitCode !== 0 || empty($lines)) {
+                continue;
+            }
+
+            $sectionCount = 0;
+            foreach ($lines as $line) {
+                // Parse apropos output: "name (section) - description"
+                // or "name [description] (section)" (BSD style)
+                if (preg_match('/^(.+?)\s+\(((\d\w*|n)\w*)\)\s+[–-]\s+(.+)$/', $line, $m)) {
+                    $name = trim($m[1]);
+                    $sectionNum = trim($m[2]);
+                    $description = trim($m[4]);
+                } elseif (preg_match('/^(.+?)\s+\[(.+?)\]\s+\(((\d\w*|n)\w*)\)\s*$/', $line, $m)) {
+                    $name = trim($m[1]);
+                    $description = trim($m[2]);
+                    $sectionNum = trim($m[3]);
+                } else {
+                    continue;
+                }
+
+                // Skip entries with invalid characters
+                if ($name === '' || $description === '') {
+                    continue;
+                }
+
+                $name = substr($name, 0, 200);
+
+                // Extract body text from man page
+                $body = '';
+                $manCmd = 'man ' . escapeshellarg($sectionNum) . ' ' . escapeshellarg($name) . ' 2>/dev/null | col -b 2>/dev/null';
+                $manLines = [];
+                exec($manCmd, $manLines, $manExit);
+                if ($manExit === 0 && !empty($manLines)) {
+                    $allText = implode("\n", $manLines);
+                    // Skip header before NAME section
+                    $namePos = strpos($allText, "NAME");
+                    if ($namePos !== false) {
+                        $body = substr($allText, $namePos);
+                    } else {
+                        $body = $allText;
+                    }
+                    // Remove excess blank lines, truncate at 100KB
+                    $body = preg_replace('/\n{3,}/', "\n\n", $body);
+                    $body = mb_substr($body, 0, 102400);
+                }
+
+                $expandedName = expandNameForFts($name);
+
+                try {
+                    $stmt = $db->prepare(
+                        "INSERT INTO search_fts (name, section, description, body)
+                         VALUES (:name, :section, :description, :body)"
+                    );
+                    $stmt->bindValue(':name', $expandedName, SQLITE3_TEXT);
+                    $stmt->bindValue(':section', $sectionNum, SQLITE3_TEXT);
+                    $stmt->bindValue(':description', $description, SQLITE3_TEXT);
+                    $stmt->bindValue(':body', $body, SQLITE3_TEXT);
+                    $stmt->execute();
+
+                    // Also insert meta
+                    $stmt2 = $db->prepare(
+                        "INSERT OR IGNORE INTO search_index_meta (name, section, source, body_len)
+                         VALUES (:name, :section, 'man', :body_len)"
+                    );
+                    $stmt2->bindValue(':name', $name, SQLITE3_TEXT);
+                    $stmt2->bindValue(':section', $sectionNum, SQLITE3_TEXT);
+                    $stmt2->bindValue(':body_len', strlen($body), SQLITE3_INTEGER);
+                    $stmt2->execute();
+
+                    $sectionCount++;
+                    $total++;
+                } catch (\Exception $e) {
+                    $errors++;
+                }
+            }
+
+            $output[] = "  Section {$sec}: {$sectionCount} entries indexed.\n";
+        }
+
+        $elapsed = round(microtime(true) - $startTime, 2);
+        $output[] = "\nDone. {$total} entries indexed, {$errors} errors in {$elapsed}s.\n";
+
+        // Update meta
+        $db->exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('search_index_count', '{$total}')");
+        $db->exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('search_index_updated', '" . gmdate('Y-m-d\TH:i:s\Z') . "')");
+
+        return implode('', $output);
+    } catch (\Exception $e) {
+        return "ERROR: " . $e->getMessage() . "\n";
+    }
+}
+
+// +--------------------------------------------------------------------------------+
 // | parameter checking and format page output                                      |
 // +--------------------------------------------------------------------------------+
 
 // Test mode: define functions only, skip execution
 if (defined('PHPMAN_TEST_MODE')) {
     return;
+}
+
+// CLI Mode: handle command-line invocation (e.g. --build-index)
+if (PHP_SAPI === 'cli') {
+    $options = getopt('', ['build-index', 'build-index-cron']);
+    if (isset($options['build-index'])) {
+        echo rebuildSearchIndex();
+        exit;
+    }
+    if (isset($options['build-index-cron'])) {
+        $result = rebuildSearchIndex();
+        // Cron output: prefix with timestamp, avoid duplicated log lines
+        echo '[' . gmdate('Y-m-d H:i:s') . "]\n" . $result;
+        exit;
+    }
+}
+
+// Web handler: ?build-index triggers search index rebuild (admin use, local only)
+$buildIndexRequested = requestValue($_GET, 'build-index') !== '';
+if ($buildIndexRequested) {
+    if (!isLocalRequest()) {
+        http_response_code(403);
+        echo '<p>Forbidden: ?build-index is only available from local requests.</p>';
+        exit;
+    }
+    $content = rebuildSearchIndex();
 }
 
 //default options
@@ -991,6 +1647,7 @@ if ( $mode === ".well-known" ) {
 $mode = normalizeMode($mode);
 $parameter = normalizeParameter($parameter);
 $section = normalizeSection($section);
+Profiler::mark('parse');
 
 // ETag/304 check before exec-heavy dispatch (#83)
 // Key-based ETag: content is stable for same mode/parameter/section until system update
@@ -1118,42 +1775,67 @@ switch ( $mode ) {
         $check['search'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
             $content = getSearchPage($parameter, $section, $format);
-            // Cascade: also search pydoc3 and ri
-            if ($format === "html") {
-                $content = "<h2>apropos</h2>\n" . $content . "\n";
-                $pydocResults = getPydocSearchPage($parameter, "html");
-                if ($pydocResults !== "") {
-                    $content .= "<h2>Python 3 (pydoc3)</h2>\n" . $pydocResults . "\n";
-                }
-                $riResults = getRiSearchPage($parameter, "html");
-                if ($riResults !== "") {
-                    $content .= "<h2>Ruby (ri)</h2>\n<pre>" . $riResults . "</pre>\n";
-                }
-            } elseif ($format === "markdown") {
-                $pydocResults = getPydocSearchPage($parameter, "markdown");
-                if ($pydocResults !== "") {
-                    $content .= "\n\n## Python 3 (pydoc3)\n\n" . $pydocResults;
-                }
-                $riResults = getRiSearchPage($parameter, "markdown");
-                if ($riResults !== "") {
-                    $content .= "\n\n## Ruby (ri)\n\n" . $riResults;
-                }
-            } elseif ($format === "json" || $format === "mcp") {
-                $current = json_decode($content, true);
-                if ($current === null) $current = [];
-                $pydocJson = getPydocSearchPage($parameter, "json");
-                if ($pydocJson !== "") {
-                    $pydocData = json_decode($pydocJson, true);
-                    if ($pydocData !== null) $current["pydoc_results"] = $pydocData["results"] ?? [];
-                }
-                $riJson = getRiSearchPage($parameter, "json");
-                if ($riJson !== "") {
-                    $riData = json_decode($riJson, true);
-                    if ($riData !== null) $current["ri_results"] = $riData["results"] ?? [];
-                }
-                $content = json_encode($current, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-                if ($format === "mcp") {
-                    $content = formatForOutput($content, "mcp");
+            Profiler::mark('fts:done');
+
+            // Check if FTS5 (or apropos fallback) returned results.
+            // If we already have results from the man-page index, skip the
+            // expensive pydoc3/ri cascade — those forks are slow on shared
+            // hosts and add no value when the primary source has hits.
+            $hasResults = false;
+            if ($format === "json" || $format === "mcp") {
+                $jsonData = json_decode($content, true);
+                $hasResults = is_array($jsonData) && !empty($jsonData['results']);
+            } else {
+                // HTML: formatted results contain <li>; empty fallback is "<ul>\n</ul>\n"
+                // Markdown: FTS5 results start with "- ["; empty fallback is also "<ul>\n</ul>\n"
+                $hasResults = (strpos($content, '<li>') !== false)
+                           || (strpos(trim($content), '- [') === 0);
+            }
+
+            // Cascade to pydoc3 and ri only when man-page search had no hits
+            if (!$hasResults) {
+                if ($format === "html") {
+                    $content = "<h2>apropos</h2>\n" . $content . "\n";
+                    $pydocResults = getPydocSearchPage($parameter, "html");
+                    Profiler::mark('pydoc:done');
+                    if ($pydocResults !== "") {
+                        $content .= "<h2>Python 3 (pydoc3)</h2>\n" . $pydocResults . "\n";
+                    }
+                    $riResults = getRiSearchPage($parameter, "html");
+                    Profiler::mark('ri:done');
+                    if ($riResults !== "") {
+                        $content .= "<h2>Ruby (ri)</h2>\n<pre>" . $riResults . "</pre>\n";
+                    }
+                } elseif ($format === "markdown") {
+                    $pydocResults = getPydocSearchPage($parameter, "markdown");
+                    Profiler::mark('pydoc:done');
+                    if ($pydocResults !== "") {
+                        $content .= "\n\n## Python 3 (pydoc3)\n\n" . $pydocResults;
+                    }
+                    $riResults = getRiSearchPage($parameter, "markdown");
+                    Profiler::mark('ri:done');
+                    if ($riResults !== "") {
+                        $content .= "\n\n## Ruby (ri)\n\n" . $riResults;
+                    }
+                } elseif ($format === "json" || $format === "mcp") {
+                    $current = json_decode($content, true);
+                    if ($current === null) $current = [];
+                    $pydocJson = getPydocSearchPage($parameter, "json");
+                    Profiler::mark('pydoc:done');
+                    if ($pydocJson !== "") {
+                        $pydocData = json_decode($pydocJson, true);
+                        if ($pydocData !== null) $current["pydoc_results"] = $pydocData["results"] ?? [];
+                    }
+                    $riJson = getRiSearchPage($parameter, "json");
+                    Profiler::mark('ri:done');
+                    if ($riJson !== "") {
+                        $riData = json_decode($riJson, true);
+                        if ($riData !== null) $current["ri_results"] = $riData["results"] ?? [];
+                    }
+                    $content = json_encode($current, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                    if ($format === "mcp") {
+                        $content = formatForOutput($content, "mcp");
+                    }
                 }
             }
         }
@@ -1198,6 +1880,9 @@ switch ( $mode ) {
         break;
 }
 
+// Profiler: content generation complete
+Profiler::mark('content');
+
 // Show Markdown or HTML output
 if ($format === "markdown") {
     header("Content-Type: text/markdown; charset=UTF-8");
@@ -1205,12 +1890,32 @@ if ($format === "markdown") {
     header("X-Frame-Options: DENY");
     header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
     header("Expires: " . gmdate("D, d M Y H:i:s", time() + 3600 * 24 * 7) . " GMT");
+    // Append profiling data as HTML comment
+    if (Profiler::getEnabled()) {
+        $report = Profiler::getReport();
+        $total = $report['_total_ms'] ?? 0;
+        unset($report['_total_ms'], $report['_version']);
+        $lines = [];
+        foreach ($report as $r) {
+            $lines[] = sprintf("  %-20s %6.2fms  (+%6.2fms)", $r['label'], $r['elapsed_ms'], $r['delta_ms']);
+        }
+        $content .= "\n\n<!-- profile:\n" . implode("\n", $lines) . "\n  total: {$total}ms\n-->\n";
+    }
     echo "# " . $PHP_MAN_TITLE . "\n\n" . $content;
     exit;
 }
 
 // Show JSON or MCP output
 if ($format === "json" || $format === "mcp") {
+    // Append profiling data as _profiling key
+    if (Profiler::getEnabled()) {
+        $data = json_decode($content, true);
+        if ($data !== null && is_array($data)) {
+            $profiling = Profiler::getReport();
+            $data['_profiling'] = $profiling;
+            $content = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        }
+    }
     header("Content-Type: application/json; charset=UTF-8");
     header("X-Content-Type-Options: nosniff");
     header("X-Frame-Options: DENY");
@@ -1246,7 +1951,8 @@ if ($format === "json" || $format === "mcp") {
 // Line threshold: ~80 lines ≈ two screens at 14px monospace
 $lineThreshold = TOC_LINE_THRESHOLD;
 // Determine if this page has real content (for robots meta)
-$hasRealContent = (trim($content) !== "" && !$isSearchFallback);
+// Search results and build-index pages should be noindex
+$hasRealContent = (trim($content) !== "" && !$isSearchFallback && $mode !== "search" && !$buildIndexRequested);
 
 // Count content lines and set body class for CSS-based show/hide
 $showNav = false;
@@ -1255,6 +1961,7 @@ if ($hasRealContent) {
 }
 
 // ETag already computed before exec() dispatch (#83)
+Profiler::mark('render');
 
 showHeader($PHP_MAN_TITLE, $parameter, $section, $mode, $hasRealContent, $showNav, $etag);
 
@@ -1674,7 +2381,10 @@ function showFooter (string $validator = "", bool $showNav = false): void {
         "<br />" .
         date("Y-m-d H:i") . " @" . $remote_addr .
         "<br />CrawledBy " . $user_agent .
-        "<br />" . $validator . "</p>" .
+        "<br />" . $validator .
+        // Profiling data for debug mode
+        (Profiler::getEnabled() ? profilerHtmlBlock() : "") .
+        "</p>" .
         ($showNav ? '<div id="back-to-top"><a href="#top">^_back to top</a></div>' : "") .
         "</body></html>";
 }
@@ -2336,21 +3046,50 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         $parameter = trim((string)$parameter);
     }
 
+    // Normalize Chinese / Unicode separator punctuation to spaces so that
+    // e.g. "URL、curl" works as a two-word search for both FTS5 and apropos.
+    // Only handles Chinese-specific punctuation; ASCII , and ; are already
+    // stripped by the regex in buildFtsQuery() and cause no issues in apropos.
+    $parameter = preg_replace('/[、，；]/u', ' ', $parameter);
+
     if ($parameter === "") {
         return "";
     }
 
+    // Detect section listing pattern like "(1)", "(2)" — these are not real
+    // search queries. Skip FTS5 (which would produce a very broad prefix match
+    // like '"1"*' against 15K+ rows, hanging for 100+ seconds) and go directly
+    // to apropos for a complete section listing.
+    $sectionOnly = preg_match("/^\(([0-9n]+)\)$/", $parameter, $m);
+
+    // Try FTS5 full-text search first (skip for section-only listings)
+    if (!$sectionOnly) {
+        $ftsResults = searchFts($parameter, $section, 50);
+    } else {
+        $ftsResults = [];
+    }
+
+    // If FTS5 returned results, use them
+    if (!empty($ftsResults)) {
+        return formatSearchResults($ftsResults, $parameter, $section, $format);
+    }
+
+    // Fallback: use apropos for section listings or when FTS5 returns nothing
     // detect section search pattern like "(1)", "(2)", etc.
     // use "apropos -s N ." for section listing instead of "apropos '(N)'"
     if ($section !== "" && preg_match("/^[0-9n]$/", $section)) {
         $cmd = "apropos -s " . escapeshellarg($section) . " .";
-    } elseif (preg_match("/^\(([0-9n]+)\)$/", $parameter, $m)) {
+    } elseif ($sectionOnly) {
         $cmd = "apropos -s " . escapeshellarg($m[1]) . " .";
     } else {
         $cmd = "apropos " . escapeshellarg($parameter);
     }
     $lines = array();
     exec($cmd, $lines);
+
+    // Dynamically index apropos results into FTS5 so future searches
+    // for the same term use the fast index instead of shelling out again.
+    indexAproposLines($lines);
 
     // json / mcp output
     if ($format === "json" || $format === "mcp") {
@@ -2427,13 +3166,13 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         $line = $lines[$i];
 
         // detect perl module: section 3pm/3perl or name contains ::
-        $is_perl = (preg_match("/\\((3pm|3perl)\\)/", $line) || preg_match("/\\w+::\\w+/", $line));
+        $is_perl = (preg_match("/\((3pm|3perl)\)/", $line) || preg_match("/\w+::\w+/", $line));
         $link_mode = $is_perl ? "perldoc" : "man";
 
         if ($format === "markdown") {
             $patterns = array(
-                "/(.*\\/)?([\\w\\-\\.\\+:]+)((\\s+\\[)([\\w\\-\\.:]+)(\\]\\s+))\\(((\\d\\w*|n)\\w*)\\)/",
-                "/([\\w+\\.\\-:]+)(\\s+)?(\\(((\\d\\w*|n)\\w*)\\))/"
+                "/(.*\/)?([\w\-\.\+:]+)((\s+\[)([\w\-\.:]+)(\]\s+))\(((\d\w*|n)\w*)\)/",
+                "/([\w+\.\-:]+)(\s+)?(\(((\d\w*|n)\w*)\))/"
             );
             if ($link_mode === "perldoc") {
                 $replace = array(
@@ -2451,8 +3190,8 @@ function getSearchPage (string $parameter, string $section = "", string $format 
             $escaped = h($line);
             // Link patterns for apropos output
             $link_patterns = array(
-                "/(.*\\/)?([\\w\\-\\.\\+:]+)((\\s+\\[)([\\w\\-\\.:]+)(\\]\\s+))\\(((\\d\\w*|n)\\w*)\\)/",
-                "/([\\w+\\.\\-:]+)(\\s+)?(\\(((\\d\\w*|n)\\w*)\\))/"
+                "/(.*\/)?([\w\-\.\+:]+)((\s+\[)([\w\-\.:]+)(\]\s+))\(((\d\w*|n)\w*)\)/",
+                "/([\w+\.\-:]+)(\s+)?(\(((\d\w*|n)\w*)\))/"
             );
             if ($link_mode === "perldoc") {
                 $link_replace = array(
