@@ -2139,7 +2139,15 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	// v2.2: TLDR block for man section 1 detail pages
 	if ($mode === "man" && $parameter !== "" && trim($content) !== "") {
 	    $tldrData = fetchOfficialTldr($parameter, $mode, $section);
+	    // Filter out empty commands from malformed data before checking
+	    $tldrExamples = [];
 	    if (!empty($tldrData) && !empty($tldrData["examples"])) {
+	        $tldrExamples = array_filter($tldrData["examples"], function ($ex) {
+	            return !empty(trim($ex["command"] ?? ""));
+	        });
+	    }
+	    // Only render when we have at least one real example with a command
+	    if (!empty($tldrExamples)) {
 	        $contentLines = substr_count($content, "\n") + 1;
 	        $expanded = $contentLines > 200 ? " tldr-expanded" : "";
 	        echo "<div class=\"tldr-block{$expanded}\">\n";
@@ -2154,7 +2162,7 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	            echo "<p class=\"tldr-desc\">" . h($tldrData["description"]) . "</p>\n";
 	        }
 	        echo "<ul class=\"tldr-examples\">\n";
-	        foreach (array_slice($tldrData["examples"] ?? [], 0, 10) as $ex) {
+	        foreach (array_slice($tldrExamples, 0, 10) as $ex) {
 	            $desc = $ex["description"] ?? "";
 	            $desc = preg_replace('/\[(.)\]/', '<b>$1</b>', h($desc));
 	            echo "<li>{$desc}<br /><code>" . h($ex["command"] ?? "") . "</code></li>\n";
