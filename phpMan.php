@@ -66,6 +66,20 @@ $MOBILE_CSS = <<<'CSS'
     .tldr-body dd code{font-size:12px;}
     .tldr-examples li{font-size:12px;}
     .tldr-examples li code{font-size:12px;}
+    /* alphabet index sidebar — mobile: collapsible toggle like TOC */
+    #alpha-sidebar{position:fixed;top:4px;right:4px;width:220px;z-index:200;
+        background:#24283b;border:1px solid #3b4261;padding:6px 8px;font-size:13px;
+        box-shadow:-2px 2px 8px rgba(0,0,0,.4);}
+    #alpha-toggle{display:block;cursor:pointer;color:#c0caf5;font-size:13px;font-weight:bold;
+        border-bottom:1px solid #3b4261;margin-bottom:4px;padding-bottom:2px;}
+    #alpha-toggle:hover{color:#7aa2f7;}
+    #alpha-toggle .alpha-open-icon{display:inline;float:right;}
+    #alpha-toggle .alpha-close-icon{display:none;float:right;}
+    body.alpha-open #alpha-toggle .alpha-open-icon{display:none;}
+    body.alpha-open #alpha-toggle .alpha-close-icon{display:inline;float:right;}
+    #alpha-sidebar .alpha-index a{display:none;}
+    body.alpha-open #alpha-sidebar .alpha-index a{display:block;}
+    body.alpha-open #alpha-sidebar .alpha-index{display:flex;flex-wrap:wrap;flex-direction:row;gap:2px;}
     }
 CSS;
 
@@ -1163,6 +1177,101 @@ function searchFtsQuery(SQLite3 $db, string $ftsQuery, string $parameter, string
 }
 
 /**
+ * Group search results by first character and render HTML with optional
+ * alphabet sidebar when result count exceeds threshold.
+ *
+ * @return array ['html' => string, 'sidebar' => string (may be empty)]
+ */
+function renderGroupedResults(array $results, string $scriptName): array {
+    $total = count($results);
+    $ALPHA_THRESHOLD = 80;
+
+    // Group by first character
+    $groups = [];
+    foreach ($results as $r) {
+        $first = mb_substr($r['name'], 0, 1);
+        if (ctype_digit($first)) {
+            $key = '0-9';
+        } elseif (preg_match('/^[a-zA-Z]/', $first)) {
+            $key = strtoupper($first);
+        } else {
+            $key = '#';
+        }
+        $groups[$key][] = $r;
+    }
+    ksort($groups, SORT_STRING);
+
+    // Build alphabet sidebar when count exceeds threshold
+    $sidebar = '';
+    if ($total > $ALPHA_THRESHOLD) {
+        $allKeys = array_merge(['0-9'], range('A', 'Z'), ['#']);
+        $existingKeys = array_keys($groups);
+        $sb = '<div class="alpha-index">' . "\n";
+        foreach ($allKeys as $k) {
+            $label = ($k === '#') ? '#' : $k;
+            if (in_array($k, $existingKeys, true)) {
+                $sb .= '<a href="#alpha-' . $k . '">' . $label . '</a>' . "\n";
+            } else {
+                $sb .= '<a href="#alpha-' . $k . '" class="alpha-empty">' . $label . '</a>' . "\n";
+            }
+        }
+        $sb .= '</div>';
+        $sidebar = '<div id="alpha-sidebar">' . "\n"
+                 . '<div class="alpha-title" id="alpha-toggle"'
+                 . ' onclick="document.body.classList.toggle(\'alpha-open\');">'
+                 . 'A-Z Index <span class="alpha-open-icon">&#9633;</span>'
+                 . '<span class="alpha-close-icon">&#10005;</span></div>' . "\n"
+                 . $sb . "\n"
+                 . '</div>';
+    }
+
+    // Build grouped HTML
+    $html = '';
+    if ($total > $ALPHA_THRESHOLD) {
+        foreach ($groups as $key => $items) {
+            $html .= '<div class="alpha-group" id="alpha-' . $key . '"><h2>' . h($key) . '</h2>' . "\n<ul>\n";
+            foreach ($items as $r) {
+                $is_perl = str_contains($r['name'], '::');
+                $link_mode = $is_perl ? 'perldoc' : 'man';
+                $desc = h($r['description'] ?? '');
+                $sources = !empty($r['sources']) ? ' <span class="sources">[' . implode(', ', $r['sources']) . ']</span>' : '';
+                $html .= '<li><a href="' . $scriptName . '/' . $link_mode . '/' . urlencode($r['name']);
+                if ($r['section'] !== '') {
+                    $html .= '/' . urlencode($r['section']);
+                }
+                $html .= '">' . h($r['name']) . '</a> <span class="section">(' . h($r['section']) . ')</span>';
+                if ($desc !== '') {
+                    $html .= ' — ' . $desc;
+                }
+                $html .= $sources . "</li>\n";
+            }
+            $html .= "</ul></div>\n";
+        }
+    } else {
+        // Below threshold: flat list, no grouping
+        $html = "<ul>\n";
+        foreach ($results as $r) {
+            $is_perl = str_contains($r['name'], '::');
+            $link_mode = $is_perl ? 'perldoc' : 'man';
+            $desc = h($r['description'] ?? '');
+            $sources = !empty($r['sources']) ? ' <span class="sources">[' . implode(', ', $r['sources']) . ']</span>' : '';
+            $html .= '<li><a href="' . $scriptName . '/' . $link_mode . '/' . urlencode($r['name']);
+            if ($r['section'] !== '') {
+                $html .= '/' . urlencode($r['section']);
+            }
+            $html .= '">' . h($r['name']) . '</a> <span class="section">(' . h($r['section']) . ')</span>';
+            if ($desc !== '') {
+                $html .= ' — ' . $desc;
+            }
+            $html .= $sources . "</li>\n";
+        }
+        $html .= "</ul>\n";
+    }
+
+    return ['html' => $html, 'sidebar' => $sidebar];
+}
+
+/**
  * Render search results to the requested format.
  */
 function formatSearchResults(array $results, string $parameter, string $section, string $format): string {
@@ -1200,24 +1309,11 @@ function formatSearchResults(array $results, string $parameter, string $section,
 
     // HTML output
     if ($format === 'html') {
-        $output = "<ul>\n";
-        foreach ($results as $r) {
-            $is_perl = str_contains($r['name'], '::');
-            $link_mode = $is_perl ? 'perldoc' : 'man';
-            $desc = h($r['description'] ?? '');
-            $sources = !empty($r['sources']) ? ' <span class="sources">[' . implode(', ', $r['sources']) . ']</span>' : '';
-            $output .= '<li><a href="' . $scriptName . '/' . $link_mode . '/' . urlencode($r['name']);
-            if ($r['section'] !== '') {
-                $output .= '/' . urlencode($r['section']);
-            }
-            $output .= '">' . h($r['name']) . '</a> <span class="section">(' . h($r['section']) . ')</span>';
-            if ($desc !== '') {
-                $output .= ' — ' . $desc;
-            }
-            $output .= $sources . "</li>\n";
+        $rendered = renderGroupedResults($results, $scriptName);
+        if ($rendered['sidebar'] !== '') {
+            $GLOBALS['alpha_sidebar'] = $rendered['sidebar'];
         }
-        $output .= "</ul>\n";
-        return $output;
+        return $rendered['html'];
     }
 
     // Markdown output
@@ -2043,7 +2139,15 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	// v2.2: TLDR block for man section 1 detail pages
 	if ($mode === "man" && $parameter !== "" && trim($content) !== "") {
 	    $tldrData = fetchOfficialTldr($parameter, $mode, $section);
+	    // Filter out empty commands from malformed data before checking
+	    $tldrExamples = [];
 	    if (!empty($tldrData) && !empty($tldrData["examples"])) {
+	        $tldrExamples = array_filter($tldrData["examples"], function ($ex) {
+	            return !empty(trim($ex["command"] ?? ""));
+	        });
+	    }
+	    // Only render when we have at least one real example with a command
+	    if (!empty($tldrExamples)) {
 	        $contentLines = substr_count($content, "\n") + 1;
 	        $expanded = $contentLines > 200 ? " tldr-expanded" : "";
 	        echo "<div class=\"tldr-block{$expanded}\">\n";
@@ -2058,7 +2162,7 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	            echo "<p class=\"tldr-desc\">" . h($tldrData["description"]) . "</p>\n";
 	        }
 	        echo "<ul class=\"tldr-examples\">\n";
-	        foreach (array_slice($tldrData["examples"] ?? [], 0, 10) as $ex) {
+	        foreach (array_slice($tldrExamples, 0, 10) as $ex) {
 	            $desc = $ex["description"] ?? "";
 	            $desc = preg_replace('/\[(.)\]/', '<b>$1</b>', h($desc));
 	            echo "<li>{$desc}<br /><code>" . h($ex["command"] ?? "") . "</code></li>\n";
@@ -2095,6 +2199,9 @@ if ($mode !== "markdown" && $mode !== "search" && !$isSearchFallback && $paramet
 
     echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
 } elseif ($isSearchFallback || $mode === "search" || $isListContent) {
+    if ($mode === "search" && !empty($GLOBALS['alpha_sidebar'])) {
+        echo $GLOBALS['alpha_sidebar'];
+    }
     echo "<div id=\"man-content\">" . $content . "</div>\n";
 } else {
     echo "<pre>" . $content . "</pre>\n";
@@ -2198,6 +2305,16 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "u {color:#9ece6a;background:#1a1b26;text-decoration:underline;}\n".
         "a {color:#7aa2f7;}\n".
         "#content-wrap {max-width:90%;margin-right:230px;}\n".
+        /* alphabet index sidebar — desktop: compact vertical letters */
+        "#alpha-sidebar {position:fixed;top:20px;right:10px;width:30px;z-index:100;}\n".
+        "#alpha-sidebar .alpha-index {display:flex;flex-direction:column;background:#24283b;border:1px solid #3b4261;border-radius:4px;overflow:hidden;}\n".
+        "#alpha-sidebar .alpha-index a {display:block;text-align:center;padding:0 2px;" .
+            "font-size:10px;color:#7aa2f7;text-decoration:none;line-height:1.7;}\n".
+        "#alpha-sidebar .alpha-index a:hover {background:#3b4261;color:#c0caf5;}\n".
+        "#alpha-sidebar .alpha-index a.alpha-empty {color:#3b4261;pointer-events:none;}\n".
+        "#alpha-toggle {cursor:default;display:none;}\n".
+        "#alpha-toggle .alpha-open-icon, #alpha-toggle .alpha-close-icon {display:none;}\n".
+        "#man-content h2 {font-size:14px;color:#7aa2f7;margin:16px 0 6px 0;border-bottom:1px solid #3b4261;padding-bottom:4px;}\n".
         "#man-content pre {width:100%;overflow-x:auto;white-space:pre;}\n".
         "#toc-sidebar {position:fixed;top:20px;right:10px;width:200px;max-height:90vh;overflow-y:auto;".
             "background:#24283b;border:1px solid #3b4261;padding:8px;font-size:13px;z-index:100;".
@@ -3160,6 +3277,31 @@ function getSearchPage (string $parameter, string $section = "", string $format 
     }
 
     // determine link mode: perl modules (section 3pm or name with ::) use perldoc, others use man
+    // HTML: parse apropos lines into structured array for renderGroupedResults()
+    if ($format === "html") {
+        $parsed = [];
+        foreach ($lines as $line) {
+            $parsed_line = parseAproposLine($line);
+            if ($parsed_line === null) continue;
+            $name = $parsed_line[0];
+            $section_num = $parsed_line[1];
+            $description = $parsed_line[2];
+            $is_perl = str_contains($name, '::');
+            $parsed[] = [
+                'name'        => $name,
+                'section'     => $section_num,
+                'description' => $description,
+                'sources'     => $is_perl ? ['perldoc'] : ['man'],
+            ];
+        }
+        $rendered = renderGroupedResults($parsed, $script_name);
+        if ($rendered['sidebar'] !== '') {
+            $GLOBALS['alpha_sidebar'] = $rendered['sidebar'];
+        }
+        return $rendered['html'];
+    }
+
+    // Markdown: render apropos lines directly
     $output = "<ul>\n";
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
