@@ -4,7 +4,85 @@ All notable changes to phpMan are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2.3] — 2026-06-02
+## [Unreleased]
+
+### Added
+- Requirements section in README (PHP 7.2+, SQLite3 with FTS5)
+
+## [3.5] — 2026-06-06
+
+### Added
+- **Standalone rebuild-index.php** — cron-based FTS5 index maintenance with positional dir argument, `--help`, and auto-clear search cache
+
+### Changed
+- Cache directories renamed to `phpman_cache/{staging,production}`
+- Documentation uses `/path/to` style instead of `/home/your-user`
+- `TEST_USER`/`DEMO_USER` merged into single `HOST` as `user@host`
+
+### Fixed
+- FTS5 duplicate entries deduplicated via `search_index_meta` before INSERT
+- `rebuild-index.php` no-arg now shows help; cron uses full `php` path
+- Absolute path for `phpman.css` to work on nested URLs
+- CSS extracted to `phpman.css` with try/catch PRAGMA WAL
+
+## [3.4] — 2026-06-05
+
+### Fixed
+- SQLite busy timeout moved before PRAGMA exec to prevent "database is locked"
+- Removed mobile alpha sidebar overrides — same 30px sidebar for all viewports
+
+## [3.3] — 2026-06-04
+
+### Added
+- **Alphabet index sidebar** for search/index pages with >80 results, extended to pydoc/ri index pages
+- Search page caching with `hits++` UPDATE removed on cache reads
+
+### Fixed
+- Alpha sidebar embedded in cached HTML to survive `cacheOrExecute`
+- Mobile alpha sidebar: column layout with larger touch targets, body-consistent sizing
+- `#` (symbols) moved to front of alphabet sidebar to match page order
+
+### Changed
+- Font sizes normalized to 12px and 14px only (except H1)
+
+## [3.2] — 2026-06-03
+
+### Added
+- **Alphabet index sidebar** for search/index pages with >80 results
+
+### Fixed
+- Empty TLDR block suppressed when examples have no command text
+
+## [3.1] — 2026-06-03
+
+### Added
+- **FTS5 full-text search engine** with profiler and search cascade optimization
+
+### Fixed
+- MCP format link hidden on 404/search fallback pages
+
+## [3.0] — 2026-06-02
+
+### Added
+- **SQLite cache engine** — persistent disk cache with TTL, negative cache, and WAL mode
+- **phpman.config.php** — external configuration file (WordPress wp-config style)
+- `SECURITY.md` with vulnerability reporting policy
+- Git version tag in footer and deploy pipeline
+- Collapsible mobile TOC: narrow screen default collapsed, title row clickable toggle
+
+### Changed
+- Config switched to `define()` pattern
+- TLDR scoped to man section 1 only, 404 log spam removed
+- Standalone `/tldr` route removed — TLDR integrated across all 4 formats
+- Security boundary update: rate limit/gzip/headers are server-layer duty
+- No root-path files (robots.txt/sitemap/llms.txt) — phpMan may not be at root
+- `favicon.png` → `favicon.ico` with correct MIME type
+
+### Fixed
+- Code review fixes (#82-#88): pydoc index list format, design doc updates
+- `isLocalRequest()` deprecated — HSTS/version to Nginx, debug to env var
+- H1 breadcrumb + title format, JSON-LD fix
+- MCP error masking
 
 ### Added
 - **pydoc3 (Python 3) documentation mode** — `/pydoc/{module}/{format}` with HTML/Markdown/JSON/MCP output
@@ -27,6 +105,58 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Man page regex `[\dnol]\w*` → `(\d\w*|n)` to avoid false matches with pydoc/ri parameter names
 - "Not found locally" message not showing for pydoc/ri detail pages
 - `PHP_MAN_WIDTH` converted from variable to `define()` constant (shared by man + perldoc)
+
+## [2.5] — 2026-06-02
+
+### Fixed
+- pydoc index list format: `<ul><li>` instead of `<pre><a><br/>`
+
+## [2.4.1] — 2026-06-02
+
+### Changed
+- pydoc index: use `<ul><li>` list format instead of `<pre><a><br/>`
+
+## [2.4] — 2026-06-02
+
+### Added
+- Cache design v3.0 with real metrics, PHP 7.2+ floor
+- Git version tag in footer and deploy pipeline
+- Collapsible mobile TOC
+
+### Changed
+- `isLocalRequest()` deprecated — HSTS/version to Nginx, debug to env var
+- Security boundary update: rate limit/gzip/headers are server-layer duty
+- No root-path files (robots.txt/sitemap/llms.txt)
+- `favicon.png` → `favicon.ico`
+
+### Fixed
+- H1 breadcrumb + title format
+- JSON-LD fix
+- MCP error masking
+
+## [2.3] — 2026-06-01
+
+### Added
+- **pydoc3 (Python 3) documentation mode** — `/pydoc/{module}/{format}`
+- **ri (Ruby) documentation mode** — `/ri/{Class#method}/{format}`
+- **Search cascade** — `apropos` → `pydoc3 -k` → `ri`
+- **pydoc module index** — `pydoc3 modules` parsed
+- **ri class index** — `ri -l` listing
+- **Auto-detection in MCP cli_help** — dotted names → pydoc, `#` suffix → ri, `::` → perldoc
+- **pydoc class/function heading detection**
+- **ri RDoc heading detection**
+- **Mode-specific link patterns**
+- **Not found fallback links**
+- **TOC label cleaning**
+
+### Changed
+- MCP tool description updated
+- Search radio button order
+
+### Fixed
+- Man page regex fix
+- "Not found locally" message for pydoc/ri
+- `PHP_MAN_WIDTH` → `define()` constant
 
 ## [2.2] — 2026-06-02
 
@@ -189,6 +319,16 @@ Initial checkin to SourceForge CVS. A PHP script to browse Unix man pages over t
 
 ---
 
+[Unreleased]: https://github.com/chedong/phpman/compare/v3.5...HEAD
+[3.5]: https://github.com/chedong/phpman/releases/tag/v3.5
+[3.4]: https://github.com/chedong/phpman/compare/v3.4...v3.5
+[3.3]: https://github.com/chedong/phpman/compare/v3.3...v3.4
+[3.2]: https://github.com/chedong/phpman/compare/v3.2...v3.3
+[3.1]: https://github.com/chedong/phpman/compare/v3.1...v3.2
+[3.0]: https://github.com/chedong/phpman/compare/v3.0...v3.1
+[2.5]: https://github.com/chedong/phpman/compare/v2.4.1...v2.5
+[2.4.1]: https://github.com/chedong/phpman/compare/v2.4...v2.4.1
+[2.4]: https://github.com/chedong/phpman/compare/v2.3...v2.4
 [2.3]: https://github.com/chedong/phpman/releases/tag/v2.3
 [2.2]: https://github.com/chedong/phpman/compare/v2.1...v2.2
 [2.1]: https://github.com/chedong/phpman/compare/v2.0...v2.1
