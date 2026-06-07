@@ -21,15 +21,15 @@ Usage:
 
 Arguments:
   cache-dir     Path to the cache directory containing phpm_cache.db
-                (e.g. /home/chedong/cache/demo or /home/chedong/cache/staging)
+                (e.g. /home/your-user/cache/demo or /home/your-user/cache/staging)
   --cron        Timestamped, concise output for cron job logging
 
 Examples:
-  php rebuild-index.php /home/chedong/cache/demo
-  php rebuild-index.php /home/chedong/cache/staging --cron
+  php rebuild-index.php /home/your-user/cache/demo
+  php rebuild-index.php /home/your-user/cache/staging --cron
 
 Cron example (daily at 3am):
-  0 3 * * * php /home/chedong/cache/rebuild-index.php /home/chedong/cache/demo --cron
+  0 3 * * * php /home/your-user/cache/rebuild-index.php /home/your-user/cache/demo --cron
 
 The script deletes all rows from search_fts and search_index_meta,
 then repopulates them by running "apropos -s N ." for each man section (1-9,n).

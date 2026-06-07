@@ -704,19 +704,19 @@ When search results become stale or duplicated, rebuild the index:
 
 ```bash
 # Copy rebuild script to cache directory
-cp rebuild-index.php /home/chedong/cache/
+cp rebuild-index.php /home/your-user/cache/
 
 # Rebuild production index
-php /home/chedong/cache/rebuild-index.php /home/chedong/cache/demo
+php /home/your-user/cache/rebuild-index.php /home/your-user/cache/demo
 
 # Rebuild staging index (cron mode)
-php /home/chedong/cache/rebuild-index.php /home/chedong/cache/staging --cron
+php /home/your-user/cache/rebuild-index.php /home/your-user/cache/staging --cron
 ```
 
 Set up a daily cron job to prevent index bloat:
 
 ```
-0 3 * * * php /home/chedong/cache/rebuild-index.php /home/chedong/cache/demo --cron
+0 3 * * * php /home/your-user/cache/rebuild-index.php /home/your-user/cache/demo --cron
 ```
 
 The script clears `search_fts` + `search_index_meta` + stale search cache, then
