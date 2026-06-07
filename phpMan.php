@@ -831,16 +831,6 @@ class PageCache {
             return null;
         }
 
-        // Increment hit count (async, ignore failure)
-        $hitStmt = $this->db->prepare("UPDATE cache SET hits = hits + 1, updated_at = updated_at
-                         WHERE mode = :mode AND name = :name
-                         AND section = :section AND format = :format");
-        $hitStmt->bindValue(':mode', $mode, SQLITE3_TEXT);
-        $hitStmt->bindValue(':name', $name, SQLITE3_TEXT);
-        $hitStmt->bindValue(':section', $section, SQLITE3_TEXT);
-        $hitStmt->bindValue(':format', $format, SQLITE3_TEXT);
-        $hitStmt->execute();
-
         if ($row['status'] === 'not_found') {
             return '###NOT_FOUND###';
         }
@@ -1870,70 +1860,71 @@ switch ( $mode ) {
     case "search":
         $check['search'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
-            $content = getSearchPage($parameter, $section, $format);
-            Profiler::mark('fts:done');
+            $content = cacheOrExecute('search', $parameter, $section, $format,
+                function() use ($parameter, $section, $format) {
+                    $inner = getSearchPage($parameter, $section, $format);
+                    Profiler::mark('fts:done');
 
-            // Check if FTS5 (or apropos fallback) returned results.
-            // If we already have results from the man-page index, skip the
-            // expensive pydoc3/ri cascade — those forks are slow on shared
-            // hosts and add no value when the primary source has hits.
-            $hasResults = false;
-            if ($format === "json" || $format === "mcp") {
-                $jsonData = json_decode($content, true);
-                $hasResults = is_array($jsonData) && !empty($jsonData['results']);
-            } else {
-                // HTML: formatted results contain <li>; empty fallback is "<ul>\n</ul>\n"
-                // Markdown: FTS5 results start with "- ["; empty fallback is also "<ul>\n</ul>\n"
-                $hasResults = (strpos($content, '<li>') !== false)
-                           || (strpos(trim($content), '- [') === 0);
-            }
+                    // Check if FTS5 (or apropos fallback) returned results.
+                    // If we already have results from the man-page index, skip the
+                    // expensive pydoc3/ri cascade.
+                    $hasResults = false;
+                    if ($format === "json" || $format === "mcp") {
+                        $jsonData = json_decode($inner, true);
+                        $hasResults = is_array($jsonData) && !empty($jsonData['results']);
+                    } else {
+                        $hasResults = (strpos($inner, '<li>') !== false)
+                                   || (strpos(trim($inner), '- [') === 0);
+                    }
 
-            // Cascade to pydoc3 and ri only when man-page search had no hits
-            if (!$hasResults) {
-                if ($format === "html") {
-                    $content = "<h2>apropos</h2>\n" . $content . "\n";
-                    $pydocResults = getPydocSearchPage($parameter, "html");
-                    Profiler::mark('pydoc:done');
-                    if ($pydocResults !== "") {
-                        $content .= "<h2>Python 3 (pydoc3)</h2>\n" . $pydocResults . "\n";
+                    // Cascade to pydoc3 and ri only when man-page search had no hits
+                    if (!$hasResults) {
+                        if ($format === "html") {
+                            $inner = "<h2>apropos</h2>\n" . $inner . "\n";
+                            $pydocResults = getPydocSearchPage($parameter, "html");
+                            Profiler::mark('pydoc:done');
+                            if ($pydocResults !== "") {
+                                $inner .= "<h2>Python 3 (pydoc3)</h2>\n" . $pydocResults . "\n";
+                            }
+                            $riResults = getRiSearchPage($parameter, "html");
+                            Profiler::mark('ri:done');
+                            if ($riResults !== "") {
+                                $inner .= "<h2>Ruby (ri)</h2>\n<pre>" . $riResults . "</pre>\n";
+                            }
+                        } elseif ($format === "markdown") {
+                            $pydocResults = getPydocSearchPage($parameter, "markdown");
+                            Profiler::mark('pydoc:done');
+                            if ($pydocResults !== "") {
+                                $inner .= "\n\n## Python 3 (pydoc3)\n\n" . $pydocResults;
+                            }
+                            $riResults = getRiSearchPage($parameter, "markdown");
+                            Profiler::mark('ri:done');
+                            if ($riResults !== "") {
+                                $inner .= "\n\n## Ruby (ri)\n\n" . $riResults;
+                            }
+                        } elseif ($format === "json" || $format === "mcp") {
+                            $current = json_decode($inner, true);
+                            if ($current === null) $current = [];
+                            $pydocJson = getPydocSearchPage($parameter, "json");
+                            Profiler::mark('pydoc:done');
+                            if ($pydocJson !== "") {
+                                $pydocData = json_decode($pydocJson, true);
+                                if ($pydocData !== null) $current["pydoc_results"] = $pydocData["results"] ?? [];
+                            }
+                            $riJson = getRiSearchPage($parameter, "json");
+                            Profiler::mark('ri:done');
+                            if ($riJson !== "") {
+                                $riData = json_decode($riJson, true);
+                                if ($riData !== null) $current["ri_results"] = $riData["results"] ?? [];
+                            }
+                            $inner = json_encode($current, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                            if ($format === "mcp") {
+                                $inner = formatForOutput($inner, "mcp");
+                            }
+                        }
                     }
-                    $riResults = getRiSearchPage($parameter, "html");
-                    Profiler::mark('ri:done');
-                    if ($riResults !== "") {
-                        $content .= "<h2>Ruby (ri)</h2>\n<pre>" . $riResults . "</pre>\n";
-                    }
-                } elseif ($format === "markdown") {
-                    $pydocResults = getPydocSearchPage($parameter, "markdown");
-                    Profiler::mark('pydoc:done');
-                    if ($pydocResults !== "") {
-                        $content .= "\n\n## Python 3 (pydoc3)\n\n" . $pydocResults;
-                    }
-                    $riResults = getRiSearchPage($parameter, "markdown");
-                    Profiler::mark('ri:done');
-                    if ($riResults !== "") {
-                        $content .= "\n\n## Ruby (ri)\n\n" . $riResults;
-                    }
-                } elseif ($format === "json" || $format === "mcp") {
-                    $current = json_decode($content, true);
-                    if ($current === null) $current = [];
-                    $pydocJson = getPydocSearchPage($parameter, "json");
-                    Profiler::mark('pydoc:done');
-                    if ($pydocJson !== "") {
-                        $pydocData = json_decode($pydocJson, true);
-                        if ($pydocData !== null) $current["pydoc_results"] = $pydocData["results"] ?? [];
-                    }
-                    $riJson = getRiSearchPage($parameter, "json");
-                    Profiler::mark('ri:done');
-                    if ($riJson !== "") {
-                        $riData = json_decode($riJson, true);
-                        if ($riData !== null) $current["ri_results"] = $riData["results"] ?? [];
-                    }
-                    $content = json_encode($current, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-                    if ($format === "mcp") {
-                        $content = formatForOutput($content, "mcp");
-                    }
-                }
-            }
+                    return $inner;
+                });
         }
         break;
     case "pydoc":
