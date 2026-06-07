@@ -44,7 +44,8 @@ Cron example (daily at 3am):
   0 3 * * * /path/to/local/php /path/to/phpman_cache/rebuild-index.php /path/to/phpman_cache/production --cron
 
 The script deletes all rows from search_fts and search_index_meta,
-then repopulates them via "apropos -s N ." for each man section (1-9,n).
+then repopulates them via "apropos -s N ." for each man section (1-9,n),
+plus pydoc3 modules and ri classes.
 
 HELP;
     exit(0);
@@ -56,6 +57,46 @@ if (!is_dir($cacheDir)) {
 }
 
 $dbPath = rtrim($cacheDir, '/') . '/phpm_cache.db';
+
+// ---- Helper: expand name for FTS5 matching ----
+function expandNameForFts(string $name): string {
+    $expanded = $name;
+    if (str_contains($name, '-')) {
+        $expanded .= ' ' . str_replace('-', ' ', $name);
+    }
+    if (str_contains($name, '::')) {
+        $expanded .= ' ' . str_replace('::', ' ', $name);
+    }
+    return $expanded;
+}
+
+// ---- Helper: insert a single entry into search index ----
+function insertSearchEntry(SQLite3 $db, string $name, string $section, string $description, string $source, int &$total, int &$errors): void {
+    $expandedName = expandNameForFts($name);
+    try {
+        $stmt = $db->prepare(
+            "INSERT INTO search_fts (name, section, description, body)
+             VALUES (:name, :section, :description, '')"
+        );
+        $stmt->bindValue(':name', $expandedName, SQLITE3_TEXT);
+        $stmt->bindValue(':section', $section, SQLITE3_TEXT);
+        $stmt->bindValue(':description', $description, SQLITE3_TEXT);
+        $stmt->execute();
+
+        $stmt2 = $db->prepare(
+            "INSERT OR IGNORE INTO search_index_meta (name, section, source)
+             VALUES (:name, :section, :source)"
+        );
+        $stmt2->bindValue(':name', $name, SQLITE3_TEXT);
+        $stmt2->bindValue(':section', $section, SQLITE3_TEXT);
+        $stmt2->bindValue(':source', $source, SQLITE3_TEXT);
+        $stmt2->execute();
+
+        $total++;
+    } catch (\Exception $e) {
+        $errors++;
+    }
+}
 
 // ---- Main ----
 $startTime = microtime(true);
@@ -86,9 +127,13 @@ try {
     $db->exec("DELETE FROM cache WHERE mode='search'");
     if (!$cronMode) echo "Cleared search index and search cache.\n\n";
 
-    $sections = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'n'];
     $total = 0;
     $errors = 0;
+
+    // ================================================================
+    // 1. Man pages via apropos
+    // ================================================================
+    $sections = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'n'];
 
     foreach ($sections as $sec) {
         $cmd = 'apropos -s ' . escapeshellarg($sec) . ' . 2>/dev/null';
@@ -100,11 +145,11 @@ try {
         $sectionCount = 0;
         foreach ($lines as $line) {
             $name = $sectionNum = $description = '';
-            if (preg_match('/^(.+?)\s+\(((\d\w*|n)\w*)\)\s+[–-]\s+(.+)$/', $line, $m)) {
+            if (preg_match('/^(.+?)\s*\(((\d\w*|n)\w*)\)\s+[–-]\s+(.+)$/', $line, $m)) {
                 $name = trim($m[1]);
                 $sectionNum = trim($m[2]);
                 $description = trim($m[4]);
-            } elseif (preg_match('/^(.+?)\s+\[(.+?)\]\s+\(((\d\w*|n)\w*)\)\s*$/', $line, $m)) {
+            } elseif (preg_match('/^(.+?)\s*\[(.+?)\]\s*\(((\d\w*|n)\w*)\)\s*$/', $line, $m)) {
                 $name = trim($m[1]);
                 $description = trim($m[2]);
                 $sectionNum = trim($m[3]);
@@ -115,43 +160,66 @@ try {
             if ($name === '' || $description === '') continue;
             $name = substr($name, 0, 200);
 
-            // Expand name for FTS5 dual matching (hyphen/::)
-            $expandedName = $name;
-            if (str_contains($name, '-')) {
-                $expandedName .= ' ' . str_replace('-', ' ', $name);
-            }
-            if (str_contains($name, '::')) {
-                $expandedName .= ' ' . str_replace('::', ' ', $name);
-            }
-
-            try {
-                $stmt = $db->prepare(
-                    "INSERT INTO search_fts (name, section, description, body)
-                     VALUES (:name, :section, :description, '')"
-                );
-                $stmt->bindValue(':name', $expandedName, SQLITE3_TEXT);
-                $stmt->bindValue(':section', $sectionNum, SQLITE3_TEXT);
-                $stmt->bindValue(':description', $description, SQLITE3_TEXT);
-                $stmt->execute();
-
-                $stmt2 = $db->prepare(
-                    "INSERT OR IGNORE INTO search_index_meta (name, section, source)
-                     VALUES (:name, :section, 'man')"
-                );
-                $stmt2->bindValue(':name', $name, SQLITE3_TEXT);
-                $stmt2->bindValue(':section', $sectionNum, SQLITE3_TEXT);
-                $stmt2->execute();
-
-                $sectionCount++;
-                $total++;
-            } catch (\Exception $e) {
-                $errors++;
-            }
+            insertSearchEntry($db, $name, $sectionNum, $description, 'man', $total, $errors);
+            $sectionCount++;
         }
 
         if (!$cronMode) echo "  Section {$sec}: {$sectionCount} entries indexed.\n";
         else if ($sectionCount > 0) {
             echo '[' . gmdate('Y-m-d H:i:s') . "] Section {$sec}: {$sectionCount} entries\n";
+        }
+    }
+
+    // ================================================================
+    // 2. Python 3 modules via pydoc3
+    // ================================================================
+    $pydocLines = [];
+    exec('pydoc3 modules 2>/dev/null', $pydocLines, $pydocExit);
+    if ($pydocExit === 0 && !empty($pydocLines)) {
+        $pydocCount = 0;
+        $inBody = false;
+        foreach ($pydocLines as $line) {
+            $trimmed = trim($line);
+            if ($trimmed === '') {
+                $inBody = true;
+                continue;
+            }
+            if (!$inBody) continue;
+            if (preg_match('/^Enter any module name/i', $trimmed)) break;
+            // Split multi-column layout on 2+ spaces
+            $parts = preg_split('/\s{2,}/', $trimmed);
+            foreach ($parts as $part) {
+                $part = trim($part);
+                if ($part === '' || preg_match('/^\s*$/', $part)) continue;
+                if (preg_match('/^(Enter any module|Or, type|modules spam)/i', $part)) continue;
+                // Skip internal/private modules
+                if (strpos($part, '_') === 0 && !preg_match('/^__[a-z]+__$/', $part)) continue;
+                insertSearchEntry($db, $part, 'pydoc', 'Python 3 module', 'pydoc', $total, $errors);
+                $pydocCount++;
+            }
+        }
+        if (!$cronMode) echo "  pydoc3: {$pydocCount} modules indexed.\n";
+        else if ($pydocCount > 0) {
+            echo '[' . gmdate('Y-m-d H:i:s') . "] pydoc3: {$pydocCount} modules\n";
+        }
+    }
+
+    // ================================================================
+    // 3. Ruby classes via ri
+    // ================================================================
+    $riLines = [];
+    exec('ri -l 2>/dev/null', $riLines, $riExit);
+    if ($riExit === 0 && !empty($riLines)) {
+        $riCount = 0;
+        foreach ($riLines as $line) {
+            $trimmed = trim($line);
+            if ($trimmed === '') continue;
+            insertSearchEntry($db, $trimmed, 'ri', 'Ruby class/module', 'ri', $total, $errors);
+            $riCount++;
+        }
+        if (!$cronMode) echo "  ri: {$riCount} classes indexed.\n";
+        else if ($riCount > 0) {
+            echo '[' . gmdate('Y-m-d H:i:s') . "] ri: {$riCount} classes\n";
         }
     }
 
