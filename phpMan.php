@@ -32,44 +32,6 @@ $PHP_MAN_WIDTH = MAN_PAGE_WIDTH;
 define('RE_ASCII', '[ -~]');
 define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 
-// Mobile responsive CSS (extracted from showHeader for maintainability)
-$MOBILE_CSS = <<<'CSS'
-@media (max-width:1024px){
-    body.ext-nav #toc-sidebar{display:block !important;position:fixed;top:4px;right:4px;width:220px;max-height:calc(100vh - 12px);overflow-y:auto;z-index:200;border:1px solid #3b4261;box-shadow:-2px 2px 8px rgba(0,0,0,.4);background:#24283b;padding:6px 8px;font-size:14px;}
-    body.ext-nav #toc-sidebar a{display:none;}
-    body.toc-open #toc-sidebar a{display:block;}
-    body.toc-open #toc-sidebar .toc-subs{display:block;}
-    #toc-toggle{cursor:pointer;color:#c0caf5;font-size:14px;}
-    #toc-toggle:hover{color:#7aa2f7;}
-    #toc-toggle .toc-open-icon{display:inline;float:right;}
-    #toc-toggle .toc-close-icon{display:none;float:right;}
-    body.toc-open #toc-toggle .toc-open-icon{display:none;}
-    body.toc-open #toc-toggle .toc-close-icon{display:inline;float:right;}
-    #back-to-top{z-index:210;}
-    #content-wrap{margin-right:0;max-width:100%;padding:0 8px;}
-    body{font-size:12px;}
-    #man-content pre{white-space:pre-wrap;word-wrap:break-word;font-size:12px;line-height:1.4;}
-    #man-content ul{list-style:none;padding:0;margin:0 0 12px 0;}
-    #man-content li{padding:3px 0;border-bottom:1px solid #24283b;font-size:14px;line-height:1.5;}
-    #man-content li:last-child{border-bottom:none;}
-    #man-content h2{font-size:14px;color:#7aa2f7;margin:16px 0 6px 0;border-bottom:1px solid #3b4261;padding-bottom:4px;}
-    input[type='text']{width:100%;font-size:14px;padding:8px;box-sizing:border-box;}
-    input[type='submit']{font-size:14px;padding:10px 20px;min-height:44px;}
-    input[type='radio']{transform:scale(1.3);margin-right:4px;}
-    form p{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
-    form a{padding:6px 8px;display:inline-block;}
-    a{padding:4px 2px;}
-    p{font-size:12px;line-height:1.6;}
-    .tldr-block{margin:8px 0 16px 0;}
-    .tldr-header{font-size:14px;}
-    .tldr-body dt{font-size:12px;}
-    .tldr-body dd code{font-size:12px;}
-    .tldr-examples li{font-size:12px;}
-    .tldr-examples li code{font-size:12px;}
-    }
-CSS;
-
-
 // #49: Named constants for magic numbers
 define('PHPMAN_VERSION', '3.0');        // current version (#67)
 define('GIT_DESCRIBE', 'local');         // replaced by make deploy/release with git describe --tags
@@ -671,7 +633,13 @@ function cacheDb(): SQLite3 {
     $db = new SQLite3($dbPath);
     $db->enableExceptions(true);
     $db->busyTimeout(5000);  // must be before any exec() to avoid "database is locked"
-    $db->exec('PRAGMA journal_mode=WAL');
+    // PRAGMA journal_mode=WAL requires an exclusive lock — can fail under concurrent access.
+    // Wrap in try/catch so a transient lock doesn't crash the request.
+    try {
+        $db->exec('PRAGMA journal_mode=WAL');
+    } catch (\Exception $e) {
+        // Non-critical: WAL mode already active or transient lock; proceed without.
+    }
     $db->exec('PRAGMA synchronous=NORMAL');
 
     if ($isNew) {
@@ -798,7 +766,7 @@ class PageCache {
 
     public function get(string $mode, string $name, string $section, string $format): ?string {
         $stmt = $this->db->prepare(
-            "SELECT content, status, ttl, updated_at FROM cache
+            "SELECT id, content, status, ttl, updated_at FROM cache
              WHERE mode = :mode AND name = :name AND section = :section AND format = :format"
         );
         $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
@@ -817,6 +785,9 @@ class PageCache {
             return null;
         }
 
+        // Count this cache hit (found or not_found)
+        $this->db->exec("UPDATE cache SET hits = hits + 1 WHERE id = {$row['id']}");
+
         if ($row['status'] === 'not_found') {
             return '###NOT_FOUND###';
         }
@@ -832,10 +803,16 @@ class PageCache {
         $compressed = ($content !== null && $content !== '') ? gzcompress($content) : null;
         $contentLen = ($content !== null) ? strlen($content) : 0;
         $ttl = ($status === 'not_found') ? 86400 : 0;
+        // Search not-found entries live longer (7 days vs 1 day)
+        if ($mode === 'search' && $status === 'not_found') {
+            $ttl = 604800;
+        }
 
         $stmt = $this->db->prepare(
             "INSERT OR REPLACE INTO cache (mode, name, section, format, content, content_len, status, ttl, hits, created_at, updated_at)
-             VALUES (:mode, :name, :section, :format, :content, :content_len, :status, :ttl, 0, strftime('%s','now'), strftime('%s','now'))"
+             VALUES (:mode, :name, :section, :format, :content, :content_len, :status, :ttl,
+               COALESCE((SELECT c.hits FROM cache c WHERE c.mode = :m2 AND c.name = :n2 AND c.section = :s2 AND c.format = :f2), 0),
+               strftime('%s','now'), strftime('%s','now'))"
         );
         $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
         $stmt->bindValue(':name', $name, SQLITE3_TEXT);
@@ -845,6 +822,10 @@ class PageCache {
         $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
         $stmt->bindValue(':status', $status, SQLITE3_TEXT);
         $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
+        $stmt->bindValue(':m2', $mode, SQLITE3_TEXT);
+        $stmt->bindValue(':n2', $name, SQLITE3_TEXT);
+        $stmt->bindValue(':s2', $section, SQLITE3_TEXT);
+        $stmt->bindValue(':f2', $format, SQLITE3_TEXT);
 
         $ok = $stmt->execute() !== false;
 
@@ -1434,10 +1415,33 @@ function rebuildSearchIndex(): string {
             return "ERROR: FTS5 not available (search_fts table does not exist).\n";
         }
 
-        // Clear existing search index
-        $db->exec("DELETE FROM search_fts");
+        // Clear existing search index: DROP+CREATE is much faster than DELETE FROM
+        // on FTS5 (DELETE rebuilds internal indices per row)
+        try {
+            $db->exec("DROP TABLE IF EXISTS search_fts");
+        } catch (\Exception $e) {
+            // May fail if FTS5 not available
+        }
+        try {
+            $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS search_fts
+                       USING fts5(
+                           name, section, description, body,
+                           tokenize='unicode61 tokenchars ''-:''',
+                           prefix='1,2,3'
+                       )");
+        } catch (\Exception $e) {
+            // FTS5 not available — falls back to apropos
+            return "ERROR: FTS5 not available, cannot create search_fts.\n";
+        }
         $db->exec("DELETE FROM search_index_meta");
         $output[] = "Cleared existing search index.\n";
+
+        // Wrap inserts in a transaction to prevent WAL bloat
+        $db->exec("BEGIN IMMEDIATE");
+
+        $logInterval = 500; // Report progress every N entries
+        $lastLogTime = microtime(true);
+        $entriesSinceLastLog = 0;
 
         foreach ($sections as $sec) {
             $cmd = 'apropos -s ' . escapeshellarg($sec) . ' . 2>/dev/null';
@@ -1471,24 +1475,11 @@ function rebuildSearchIndex(): string {
 
                 $name = substr($name, 0, 200);
 
-                // Extract body text from man page
+                // Body text is intentionally skipped for performance on shared hosts.
+                // Extracting body text requires forking `man` per entry (9,000+ processes)
+                // which causes `fork: retry: Resource temporarily unavailable`.
+                // Name + section + description from apropos is sufficient for search matching.
                 $body = '';
-                $manCmd = 'man ' . escapeshellarg($sectionNum) . ' ' . escapeshellarg($name) . ' 2>/dev/null | col -b 2>/dev/null';
-                $manLines = [];
-                exec($manCmd, $manLines, $manExit);
-                if ($manExit === 0 && !empty($manLines)) {
-                    $allText = implode("\n", $manLines);
-                    // Skip header before NAME section
-                    $namePos = strpos($allText, "NAME");
-                    if ($namePos !== false) {
-                        $body = substr($allText, $namePos);
-                    } else {
-                        $body = $allText;
-                    }
-                    // Remove excess blank lines, truncate at 100KB
-                    $body = preg_replace('/\n{3,}/', "\n\n", $body);
-                    $body = mb_substr($body, 0, 102400);
-                }
 
                 $expandedName = expandNameForFts($name);
 
@@ -1515,16 +1506,44 @@ function rebuildSearchIndex(): string {
 
                     $sectionCount++;
                     $total++;
+                    $entriesSinceLastLog++;
+
+                    // Log progress periodically
+                    if ($entriesSinceLastLog >= $logInterval) {
+                        $now = microtime(true);
+                        $batchTime = round(($now - $lastLogTime) * 1000, 0);
+                        $rate = $entriesSinceLastLog > 0
+                            ? round($entriesSinceLastLog / ($now - $lastLogTime), 0)
+                            : 0;
+                        $output[] = "  [{$total}] Section {$sec}: +{$entriesSinceLastLog} entries in {$batchTime}ms ({$rate} ent/s)\n";
+                        $entriesSinceLastLog = 0;
+                        $lastLogTime = $now;
+                    }
                 } catch (\Exception $e) {
                     $errors++;
                 }
             }
 
             $output[] = "  Section {$sec}: {$sectionCount} entries indexed.\n";
+
+            // Flush remaining progress for this section
+            if ($entriesSinceLastLog > 0) {
+                $now = microtime(true);
+                $batchTime = round(($now - $lastLogTime) * 1000, 0);
+                $rate = $entriesSinceLastLog > 0
+                    ? round($entriesSinceLastLog / ($now - $lastLogTime), 0)
+                    : 0;
+                $output[] = "  [{$total}] Section {$sec}: +{$entriesSinceLastLog} entries in {$batchTime}ms ({$rate} ent/s)\n";
+                $entriesSinceLastLog = 0;
+                $lastLogTime = $now;
+            }
         }
 
         $elapsed = round(microtime(true) - $startTime, 2);
         $output[] = "\nDone. {$total} entries indexed, {$errors} errors in {$elapsed}s.\n";
+
+        // COMMIT the transaction
+        $db->exec("COMMIT");
 
         // Update meta
         $db->exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('search_index_count', '{$total}')");
@@ -1532,6 +1551,7 @@ function rebuildSearchIndex(): string {
 
         return implode('', $output);
     } catch (\Exception $e) {
+        try { $db->exec("ROLLBACK"); } catch (\Exception $ignored) {}
         return "ERROR: " . $e->getMessage() . "\n";
     }
 }
@@ -1836,7 +1856,12 @@ switch ( $mode ) {
         }
         else {
             //show all possable perl entrance by search keywords: 'perl'
-            $content = getPerldocIndex($format);
+            // Wrapped in cacheOrExecute like pydoc/ and ri/ indexes — FTS5
+            // row-by-row fetching on NFS takes ~5s for 300 rows, caching the
+            // rendered HTML makes subsequent visits instant.
+            $content = cacheOrExecute('perldoc', '__index__', '', $format,
+                function() use ($format) { return getPerldocIndex($format); });
+            $isListContent = true;
         }
         break;
     case "info":
@@ -1939,7 +1964,8 @@ switch ( $mode ) {
             }
         }
         else {
-            $content = getPydocIndex($format);
+            $content = cacheOrExecute('pydoc', '__index__', '', $format,
+                function() use ($format) { return getPydocIndex($format); });
             $isListContent = true;
         }
         break;
@@ -1958,7 +1984,8 @@ switch ( $mode ) {
             }
         }
         else {
-            $content = getRiIndex($format);
+            $content = cacheOrExecute('ri', '__index__', '', $format,
+                function() use ($format) { return getRiIndex($format); });
             $isListContent = true;
         }
         break;
@@ -2202,7 +2229,6 @@ showFooter($VALIDATOR, $showNav);
 
 //show html header
 function showHeader (string $title = "", string $parameter = "", string $section = "", string $mode = "", bool $hasRealContent = true, bool $showNav = false, string $etag = ""): void {
-    global $MOBILE_CSS;
     header("Content-Type: text/html; charset=UTF-8");
     // Security response headers (#40, #36, #29)
     header("X-Content-Type-Options: nosniff");
@@ -2281,61 +2307,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>\n".
         "<link rel=\"icon\" type=\"image/x-icon\" href=\"/favicon.ico\"/>\n";
 
-    echo "<style type=\"text/css\">\n".
-        "html {scroll-behavior:smooth;}\n".
-        // Tokyo Night color scheme
-        "body {color:#c0caf5;background:#1a1b26;font-family:monospace;font-size:14px;line-height:1.5;}\n".
-        "pre {font-family:inherit;font-size:inherit;}\n".
-        "b {color:#e0af68;background:#1a1b26;}\n".
-        "u {color:#9ece6a;background:#1a1b26;text-decoration:underline;}\n".
-        "a {color:#7aa2f7;}\n".
-        "#content-wrap {max-width:90%;margin-right:230px;}\n".
-        /* alphabet index sidebar — desktop: compact vertical letters */
-        "#alpha-sidebar {position:fixed;top:20px;right:10px;width:30px;z-index:100;}\n".
-        "#alpha-sidebar .alpha-index {display:flex;flex-direction:column;background:#24283b;border:1px solid #3b4261;border-radius:4px;overflow:hidden;}\n".
-        "#alpha-sidebar .alpha-index a {display:block;text-align:center;padding:0 2px;" .
-            "font-size:12px;color:#7aa2f7;text-decoration:none;line-height:1.7;}\n".
-        "#alpha-sidebar .alpha-index a:hover {background:#3b4261;color:#c0caf5;}\n".
-        "#alpha-sidebar .alpha-index a.alpha-empty {color:#3b4261;pointer-events:none;}\n".
-        "#alpha-toggle {cursor:default;display:none;}\n".
-        "#alpha-toggle .alpha-open-icon, #alpha-toggle .alpha-close-icon {display:none;}\n".
-        "#man-content h2 {font-size:14px;color:#7aa2f7;margin:16px 0 6px 0;border-bottom:1px solid #3b4261;padding-bottom:4px;}\n".
-        "#man-content pre {width:100%;overflow-x:auto;white-space:pre;}\n".
-        "#toc-sidebar {position:fixed;top:20px;right:10px;width:200px;max-height:90vh;overflow-y:auto;".
-            "background:#24283b;border:1px solid #3b4261;padding:8px;font-size:14px;z-index:100;".
-            "display:none;}\n".
-        "#toc-sidebar a {display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;".
-            "color:#a9b1d6;text-decoration:none;padding:2px 4px;border-radius:2px;}\n".
-        "#toc-sidebar a:hover {background:#3b4261;color:#c0caf5;}\n".
-        "#toc-sidebar a.toc-sub {padding-left:18px;color:#787c99;}\n".
-        "#toc-sidebar a.toc-sub:hover {color:#c0caf5;}\n".
-        "#toc-sidebar .toc-title {font-weight:bold;border-bottom:1px solid #3b4261;margin-bottom:4px;padding-bottom:2px;color:#c0caf5;}\n".
-        "#toc-toggle {cursor:default;}\n".
-        "#toc-toggle .toc-open-icon, #toc-toggle .toc-close-icon {display:none;}\n".
-        "#back-to-top {position:fixed;bottom:20px;right:20px;z-index:100;display:none;}\n".
-        "#back-to-top a {display:block;padding:8px 14px;background:#7aa2f7;color:#1a1b26;text-decoration:none;".
-            "border-radius:6px;font-size:14px;font-family:monospace;}\n".
-        "#back-to-top a:hover {background:#89b4fa;}\n".
-        "body.ext-nav #toc-sidebar, body.ext-nav #back-to-top {display:block;}\n".
-        "form fieldset {border:1px solid #3b4261;}\n".
-        "form legend {color:#a9b1d6;}\n".
-        "input[type='text'] {background:#24283b;color:#c0caf5;border:1px solid #3b4261;padding:4px 6px;font-family:inherit;font-size:14px;}\n".
-        "input[type='submit'] {background:#7aa2f7;color:#1a1b26;border:none;padding:4px 12px;font-family:inherit;font-size:14px;cursor:pointer;border-radius:3px;}\n".
-        "input[type='submit']:hover {background:#89b4fa;}\n".
-        "input[type='radio'] {accent-color:#7aa2f7;}\n".
-        ".tldr-block {background:#24283b;border:1px solid #3b4261;border-radius:4px;margin:8px 0 16px 0;overflow:hidden;}\n".
-        ".tldr-header {cursor:pointer;padding:8px 12px;font-weight:bold;font-size:14px;color:#c0caf5;background:#1f2335;user-select:none;}\n".
-        ".tldr-header:hover {background:#3b4261;}\n".
-        ".tldr-source {font-weight:normal;font-size:12px;color:#787c99;margin-left:6px;}\n".
-        ".tldr-body {display:none;padding:4px 12px 8px 12px;}\n".
-        ".tldr-expanded .tldr-body {display:block;}\n".
-        ".tldr-desc {color:#a9b1d6;font-style:italic;margin:4px 0 6px 0;}\n".
-        ".tldr-examples {list-style:none;padding:0;margin:0;}\n".
-        ".tldr-examples li {margin:6px 0;font-size:14px;color:#a9b1d6;}\n".
-        ".tldr-examples li code {font-size:14px;background:#1a1b26;color:#9ece6a;padding:1px 4px;border:1px solid #3b4261;border-radius:2px;display:inline-block;margin:2px 0;}\n".
-        ".tldr-examples li b {color:#e0af68;}\n".
-        $MOBILE_CSS . "\n".
-        "</style>\n";
+    echo "<link rel=\"stylesheet\" type=\"text/css\" href=\"phpman.css\"/>\n";
 
     // JSON-LD structured data for SEO/GEO (#64)
     if ($parameter !== "" && in_array($mode, ["man", "perldoc", "info", "pydoc", "ri"])) {
@@ -3170,34 +3142,62 @@ function getSearchPage (string $parameter, string $section = "", string $format 
     // to apropos for a complete section listing.
     $sectionOnly = preg_match("/^\(([0-9n]+)\)$/", $parameter, $m);
 
-    // Try FTS5 full-text search first (skip for section-only listings)
+    // --- KEYWORD SEARCH: try FTS5 first (faster multi-word, no fork overhead) ---
+    // Section-only listings like "(1)" go directly to apropos (need ALL entries).
+    $lines = [];
+
     if (!$sectionOnly) {
-        $ftsResults = searchFts($parameter, $section, 50);
-    } else {
-        $ftsResults = [];
+        $ftsQuery = buildFtsQuery($parameter);
+        if ($ftsQuery !== '') {
+            try {
+                $db = cacheDb();
+                // Only use FTS5 if the table actually has data
+                $totalIndexed = $db->querySingle("SELECT COUNT(*) FROM search_index_meta WHERE source='man'");
+                if ($totalIndexed > 0) {
+                    if ($section !== "" && preg_match("/^[0-9n]$/", $section)) {
+                        $stmt = $db->prepare(
+                            "SELECT name, section, description FROM search_fts WHERE search_fts MATCH :q AND section = :sec ORDER BY rank LIMIT 300"
+                        );
+                        $stmt->bindValue(':sec', $section, SQLITE3_TEXT);
+                    } else {
+                        $stmt = $db->prepare(
+                            "SELECT name, section, description FROM search_fts WHERE search_fts MATCH :q ORDER BY rank LIMIT 300"
+                        );
+                    }
+                    $stmt->bindValue(':q', $ftsQuery, SQLITE3_TEXT);
+                    $result = $stmt->execute();
+                    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+                        // expandNameForFts stores "git-commit git commit" — take first token
+                        $origName = trim(explode(' ', $row['name'])[0]);
+                        $sectionNum = $row['section'];
+                        $desc = $row['description'];
+                        // Reconstruct pseudo-apropos line so all rendering code works unchanged
+                        $lines[] = $origName . ' (' . $sectionNum . ') — ' . $desc;
+                    }
+                }
+            } catch (Exception $e) {
+                // FTS5 unavailable — fall through to apropos
+            }
+        }
     }
 
-    // If FTS5 returned results, use them
-    if (!empty($ftsResults)) {
-        return formatSearchResults($ftsResults, $parameter, $section, $format);
-    }
+    // --- FALLBACK: system apropos (when FTS5 empty/unavailable, or section-only) ---
+    if (empty($lines)) {
+        if ($section !== "" && preg_match("/^[0-9n]$/", $section) && !$sectionOnly) {
+            // Section + keyword: search within section
+            $cmd = "apropos -s " . escapeshellarg($section) . " " . escapeshellarg($parameter);
+        } elseif ($sectionOnly) {
+            $cmd = "apropos -s " . escapeshellarg($m[1]) . " .";
+        } else {
+            $cmd = "apropos " . escapeshellarg($parameter);
+        }
+        exec($cmd, $lines);
 
-    // Fallback: use apropos for section listings or when FTS5 returns nothing
-    // detect section search pattern like "(1)", "(2)", etc.
-    // use "apropos -s N ." for section listing instead of "apropos '(N)'"
-    if ($section !== "" && preg_match("/^[0-9n]$/", $section)) {
-        $cmd = "apropos -s " . escapeshellarg($section) . " .";
-    } elseif ($sectionOnly) {
-        $cmd = "apropos -s " . escapeshellarg($m[1]) . " .";
-    } else {
-        $cmd = "apropos " . escapeshellarg($parameter);
+        // Warm up FTS5 cache from apropos results (keyword searches only)
+        if (!empty($lines) && !$sectionOnly) {
+            indexAproposLines($lines);
+        }
     }
-    $lines = array();
-    exec($cmd, $lines);
-
-    // Dynamically index apropos results into FTS5 so future searches
-    // for the same term use the fast index instead of shelling out again.
-    indexAproposLines($lines);
 
     // json / mcp output
     if ($format === "json" || $format === "mcp") {

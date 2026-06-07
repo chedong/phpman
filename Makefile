@@ -19,6 +19,7 @@ $(error Missing .deploy.mk — copy from .deploy.mk.example and configure your s
 endif
 
 FILE ?= phpMan.php
+CSS_FILE ?= phpman.css
 BACKUP_DIR ?= backups/phpman
 BACKUP_KEEP ?= 5
 
@@ -39,8 +40,9 @@ deploy: test
 	ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) \
 		"test -f $(TEST_PATH)/phpman.config.php && cat > /dev/null || cat > $(TEST_PATH)/phpman.config.php && chmod 644 $(TEST_PATH)/phpman.config.php && echo 'Created phpman.config.php'"
 	sed "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" $(FILE) | \
-	ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) "cat > $(TEST_PATH)/$(FILE)"; \
-	ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE)"
+		ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) "cat > $(TEST_PATH)/$(FILE)"; \
+	scp -P $(TEST_PORT) $(CSS_FILE) $(TEST_USER)@$(TEST_HOST):$(TEST_PATH)/$(CSS_FILE); \
+	ssh -p $(TEST_PORT) $(TEST_USER)@$(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE)"
 	@echo ""
 	@echo "=== Deployed to staging ($(GIT_TAG)) ==="
 	@echo "$(TEST_URL)"
@@ -62,8 +64,9 @@ release: test
 	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) \
 		"ls -1t \"\$$HOME/$(BACKUP_DIR)/$(FILE).\"*.bak 2>/dev/null | tail -n +$$(( $(BACKUP_KEEP) + 1 )) | xargs rm -f 2>/dev/null || true"; \
 	sed "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" $(FILE) | \
-	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) "cat > $(DEMO_PATH)/$(FILE)"; \
-	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE)"; \
+		ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) "cat > $(DEMO_PATH)/$(FILE)"; \
+	scp -P $(DEMO_PORT) $(CSS_FILE) $(DEMO_USER)@$(DEMO_HOST):$(DEMO_PATH)/$(CSS_FILE); \
+	ssh -p $(DEMO_PORT) $(DEMO_USER)@$(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(CSS_FILE)"; \
 	echo ""; \
 	echo "=== Deployed to production ==="; \
 	echo "$(DEMO_URL)"; \
