@@ -35,11 +35,11 @@ define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 // Mobile responsive CSS (extracted from showHeader for maintainability)
 $MOBILE_CSS = <<<'CSS'
 @media (max-width:1024px){
-    body.ext-nav #toc-sidebar{display:block !important;position:fixed;top:4px;right:4px;width:220px;max-height:calc(100vh - 12px);overflow-y:auto;z-index:200;border:1px solid #3b4261;box-shadow:-2px 2px 8px rgba(0,0,0,.4);background:#24283b;padding:6px 8px;font-size:13px;}
+    body.ext-nav #toc-sidebar{display:block !important;position:fixed;top:4px;right:4px;width:220px;max-height:calc(100vh - 12px);overflow-y:auto;z-index:200;border:1px solid #3b4261;box-shadow:-2px 2px 8px rgba(0,0,0,.4);background:#24283b;padding:6px 8px;font-size:14px;}
     body.ext-nav #toc-sidebar a{display:none;}
     body.toc-open #toc-sidebar a{display:block;}
     body.toc-open #toc-sidebar .toc-subs{display:block;}
-    #toc-toggle{cursor:pointer;color:#c0caf5;font-size:13px;}
+    #toc-toggle{cursor:pointer;color:#c0caf5;font-size:14px;}
     #toc-toggle:hover{color:#7aa2f7;}
     #toc-toggle .toc-open-icon{display:inline;float:right;}
     #toc-toggle .toc-close-icon{display:none;float:right;}
@@ -50,7 +50,7 @@ $MOBILE_CSS = <<<'CSS'
     body{font-size:12px;}
     #man-content pre{white-space:pre-wrap;word-wrap:break-word;font-size:12px;line-height:1.4;}
     #man-content ul{list-style:none;padding:0;margin:0 0 12px 0;}
-    #man-content li{padding:3px 0;border-bottom:1px solid #24283b;font-size:13px;line-height:1.5;}
+    #man-content li{padding:3px 0;border-bottom:1px solid #24283b;font-size:14px;line-height:1.5;}
     #man-content li:last-child{border-bottom:none;}
     #man-content h2{font-size:14px;color:#7aa2f7;margin:16px 0 6px 0;border-bottom:1px solid #3b4261;padding-bottom:4px;}
     input[type='text']{width:100%;font-size:16px;padding:8px;box-sizing:border-box;}
@@ -61,16 +61,16 @@ $MOBILE_CSS = <<<'CSS'
     a{padding:4px 2px;}
     p{font-size:12px;line-height:1.6;}
     .tldr-block{margin:8px 0 16px 0;}
-    .tldr-header{font-size:13px;}
+    .tldr-header{font-size:14px;}
     .tldr-body dt{font-size:12px;}
     .tldr-body dd code{font-size:12px;}
     .tldr-examples li{font-size:12px;}
     .tldr-examples li code{font-size:12px;}
     /* alphabet index sidebar — mobile: collapsible toggle like TOC */
     #alpha-sidebar{position:fixed;top:4px;right:4px;width:220px;z-index:200;
-        background:#24283b;border:1px solid #3b4261;padding:6px 8px;font-size:13px;
+        background:#24283b;border:1px solid #3b4261;padding:6px 8px;font-size:14px;
         box-shadow:-2px 2px 8px rgba(0,0,0,.4);}
-    #alpha-toggle{display:block;cursor:pointer;color:#c0caf5;font-size:13px;font-weight:bold;
+    #alpha-toggle{display:block;cursor:pointer;color:#c0caf5;font-size:14px;font-weight:bold;
         border-bottom:1px solid #3b4261;margin-bottom:4px;padding-bottom:2px;}
     #alpha-toggle:hover{color:#7aa2f7;}
     #alpha-toggle .alpha-open-icon{display:inline;float:right;}
@@ -2320,7 +2320,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "#man-content h2 {font-size:14px;color:#7aa2f7;margin:16px 0 6px 0;border-bottom:1px solid #3b4261;padding-bottom:4px;}\n".
         "#man-content pre {width:100%;overflow-x:auto;white-space:pre;}\n".
         "#toc-sidebar {position:fixed;top:20px;right:10px;width:200px;max-height:90vh;overflow-y:auto;".
-            "background:#24283b;border:1px solid #3b4261;padding:8px;font-size:13px;z-index:100;".
+            "background:#24283b;border:1px solid #3b4261;padding:8px;font-size:14px;z-index:100;".
             "display:none;}\n".
         "#toc-sidebar a {display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;".
             "color:#a9b1d6;text-decoration:none;padding:2px 4px;border-radius:2px;}\n".
@@ -2332,7 +2332,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "#toc-toggle .toc-open-icon, #toc-toggle .toc-close-icon {display:none;}\n".
         "#back-to-top {position:fixed;bottom:20px;right:20px;z-index:100;display:none;}\n".
         "#back-to-top a {display:block;padding:8px 14px;background:#7aa2f7;color:#1a1b26;text-decoration:none;".
-            "border-radius:6px;font-size:13px;font-family:monospace;}\n".
+            "border-radius:6px;font-size:14px;font-family:monospace;}\n".
         "#back-to-top a:hover {background:#89b4fa;}\n".
         "body.ext-nav #toc-sidebar, body.ext-nav #back-to-top {display:block;}\n".
         "form fieldset {border:1px solid #3b4261;}\n".
@@ -2349,8 +2349,8 @@ function showHeader (string $title = "", string $parameter = "", string $section
         ".tldr-expanded .tldr-body {display:block;}\n".
         ".tldr-desc {color:#a9b1d6;font-style:italic;margin:4px 0 6px 0;}\n".
         ".tldr-examples {list-style:none;padding:0;margin:0;}\n".
-        ".tldr-examples li {margin:6px 0;font-size:13px;color:#a9b1d6;}\n".
-        ".tldr-examples li code {font-size:13px;background:#1a1b26;color:#9ece6a;padding:1px 4px;border:1px solid #3b4261;border-radius:2px;display:inline-block;margin:2px 0;}\n".
+        ".tldr-examples li {margin:6px 0;font-size:14px;color:#a9b1d6;}\n".
+        ".tldr-examples li code {font-size:14px;background:#1a1b26;color:#9ece6a;padding:1px 4px;border:1px solid #3b4261;border-radius:2px;display:inline-block;margin:2px 0;}\n".
         ".tldr-examples li b {color:#e0af68;}\n".
         $MOBILE_CSS . "\n".
         "</style>\n";
