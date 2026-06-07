@@ -1270,7 +1270,7 @@ function renderGroupedResults(array $results, string $scriptName): array {
         $html .= "</ul>\n";
     }
 
-    return ['html' => $html, 'sidebar' => $sidebar];
+    return ['html' => $sidebar . $html, 'sidebar' => $sidebar];
 }
 
 /**
@@ -1313,7 +1313,6 @@ function formatSearchResults(array $results, string $parameter, string $section,
     if ($format === 'html') {
         $rendered = renderGroupedResults($results, $scriptName);
         if ($rendered['sidebar'] !== '') {
-            $GLOBALS['alpha_sidebar'] = $rendered['sidebar'];
         }
         return $rendered['html'];
     }
@@ -2202,9 +2201,6 @@ if ($mode !== "markdown" && $mode !== "search" && !$isSearchFallback && $paramet
 
     echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
 } elseif ($isSearchFallback || $mode === "search" || $isListContent) {
-    if (in_array($mode, ['search', 'pydoc', 'ri']) && !empty($GLOBALS['alpha_sidebar'])) {
-        echo $GLOBALS['alpha_sidebar'];
-    }
     echo "<div id=\"man-content\">" . $content . "</div>\n";
 } else {
     echo "<pre>" . $content . "</pre>\n";
@@ -3005,7 +3001,6 @@ function getPydocIndex (string $format = "html"): string {
     }
     $rendered = renderGroupedResults($results, $script_name);
     if ($rendered['sidebar'] !== '') {
-        $GLOBALS['alpha_sidebar'] = $rendered['sidebar'];
     }
     return $rendered['html'];
 }
@@ -3061,7 +3056,6 @@ function getRiIndex (string $format = "html"): string {
     }
     $rendered = renderGroupedResults($results, $script_name);
     if ($rendered['sidebar'] !== '') {
-        $GLOBALS['alpha_sidebar'] = $rendered['sidebar'];
     }
     return $rendered['html'];
 }
@@ -3307,7 +3301,6 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         }
         $rendered = renderGroupedResults($parsed, $script_name);
         if ($rendered['sidebar'] !== '') {
-            $GLOBALS['alpha_sidebar'] = $rendered['sidebar'];
         }
         return $rendered['html'];
     }
