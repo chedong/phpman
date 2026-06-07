@@ -697,6 +697,32 @@ Or upload a release artifact via the Makefile:
 make upload-release
 ```
 
+### 6. Rebuild FTS5 Search Index
+
+The search engine uses a SQLite FTS5 index built from system `apropos` data.
+When search results become stale or duplicated, rebuild the index:
+
+```bash
+# Copy rebuild script to cache directory
+cp rebuild-index.php /home/chedong/cache/
+
+# Rebuild production index
+php /home/chedong/cache/rebuild-index.php /home/chedong/cache/demo
+
+# Rebuild staging index (cron mode)
+php /home/chedong/cache/rebuild-index.php /home/chedong/cache/staging --cron
+```
+
+Set up a daily cron job to prevent index bloat:
+
+```
+0 3 * * * php /home/chedong/cache/rebuild-index.php /home/chedong/cache/demo --cron
+```
+
+The script clears `search_fts` + `search_index_meta` + stale search cache, then
+rebuilds from scratch via `apropos -s N .` for each man section. Typically completes
+in under 2 seconds for ~9600 entries.
+
 ## License
 
 GNU General Public License v2.0 — see [copyright page](https://www.chedong.com/phpMan.php/copyright).
