@@ -4,6 +4,13 @@ phpMan is an open-source Linux Command MCP Server and Structured JSON API web in
 
 **For AI Agents:** Query Unix documentation via MCP protocol or REST API. Get structured man pages with parsed flags, examples, and cross-references.
 
+## Requirements
+
+- PHP 7.2 or higher (for SQLite3 with FTS5 support)
+- SQLite3 extension (bundled with PHP)
+- FTS5 enabled (checked at runtime via PRAGMA compile_options)
+- Web server (Apache/Nginx) or PHP built-in server
+
 ## Quick Start for Agents
 
 phpMan implements [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) via **Streamable HTTP** transport — no local installation or `npx` wrapper needed. Just point your MCP client at the endpoint URL.
