@@ -78,8 +78,8 @@ $MOBILE_CSS = <<<'CSS'
     body.alpha-open #alpha-toggle .alpha-open-icon{display:none;}
     body.alpha-open #alpha-toggle .alpha-close-icon{display:inline;float:right;}
     #alpha-sidebar .alpha-index a{display:none;}
-    body.alpha-open #alpha-sidebar .alpha-index a{display:block;}
-    body.alpha-open #alpha-sidebar .alpha-index{display:flex;flex-wrap:wrap;flex-direction:row;gap:2px;}
+    body.alpha-open #alpha-sidebar .alpha-index a{display:block;font-size:16px;padding:6px 8px;line-height:1.8;}
+    body.alpha-open #alpha-sidebar .alpha-index{display:flex;flex-direction:column;}
     }
 CSS;
 
