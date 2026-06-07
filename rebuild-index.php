@@ -7,12 +7,24 @@
  * Clears and rebuilds the FTS5 full-text search index from system apropos data.
  *
  * Usage:
- *   php rebuild-index.php /path/to/cache          rebuild index in specified dir
- *   php rebuild-index.php /path/to/cache --cron   cron mode — timestamped output
- *   php rebuild-index.php --help                  show this help
+ *   php rebuild-index.php /path/to/phpman_cache/production          rebuild index
+ *   php rebuild-index.php /path/to/phpman_cache/production --cron   cron mode
  */
 
-if (in_array('--help', $argv) || in_array('-h', $argv)) {
+// ---- Parse arguments ----
+$cacheDir = null;
+$cronMode = false;
+
+foreach ($argv as $i => $arg) {
+    if ($i === 0) continue;
+    if ($arg === '--cron' || $arg === '-h' || $arg === '--help') {
+        if ($arg === '--cron') $cronMode = true;
+    } elseif ($arg[0] !== '-') {
+        $cacheDir = $arg;
+    }
+}
+
+if ($cacheDir === null) {
     echo <<<'HELP'
 phpMan FTS5 Search Index Rebuilder
 
@@ -21,39 +33,21 @@ Usage:
 
 Arguments:
   cache-dir     Path to the cache directory containing phpm_cache.db
-                (e.g. /home/your-user/cache/demo or /home/your-user/cache/staging)
+                (e.g. /home/your-user/phpman_cache/production)
   --cron        Timestamped, concise output for cron job logging
 
 Examples:
-  php rebuild-index.php /home/your-user/cache/demo
-  php rebuild-index.php /home/your-user/cache/staging --cron
+  php rebuild-index.php /home/your-user/phpman_cache/production
+  php rebuild-index.php /home/your-user/phpman_cache/staging --cron
 
 Cron example (daily at 3am):
-  0 3 * * * php /home/your-user/cache/rebuild-index.php /home/your-user/cache/demo --cron
+  0 3 * * * /path/to/local/php /path/to/phpman_cache/rebuild-index.php /path/to/phpman_cache/production --cron
 
 The script deletes all rows from search_fts and search_index_meta,
-then repopulates them by running "apropos -s N ." for each man section (1-9,n).
+then repopulates them via "apropos -s N ." for each man section (1-9,n).
 
 HELP;
     exit(0);
-}
-
-// ---- Parse arguments ----
-$cacheDir = null;
-$cronMode = false;
-
-foreach ($argv as $i => $arg) {
-    if ($i === 0) continue; // script name
-    if ($arg === '--cron') {
-        $cronMode = true;
-    } elseif ($arg[0] !== '-') {
-        $cacheDir = $arg;
-    }
-}
-
-if ($cacheDir === null) {
-    fwrite(STDERR, "ERROR: cache directory required. Use --help for usage.\n");
-    exit(1);
 }
 
 if (!is_dir($cacheDir)) {

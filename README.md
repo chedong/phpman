@@ -704,20 +704,17 @@ When search results become stale or duplicated, rebuild the index:
 
 ```bash
 # Copy rebuild script to cache directory
-cp rebuild-index.php /home/your-user/cache/
+cp rebuild-index.php /home/your-user/phpman_cache/
 
 # Rebuild production index
-php /home/your-user/cache/rebuild-index.php /home/your-user/cache/demo
+php /home/your-user/phpman_cache/rebuild-index.php /home/your-user/phpman_cache/production
 
 # Rebuild staging index (cron mode)
-php /home/your-user/cache/rebuild-index.php /home/your-user/cache/staging --cron
+php /home/your-user/phpman_cache/rebuild-index.php /home/your-user/phpman_cache/staging --cron
 ```
 
-Set up a daily cron job to prevent index bloat:
-
-```
-0 3 * * * php /home/your-user/cache/rebuild-index.php /home/your-user/cache/demo --cron
-```
+Cron example (daily at 3am):
+  0 3 * * * /path/to/local/php /path/to/phpman_cache/rebuild-index.php /path/to/phpman_cache/production --cron
 
 The script clears `search_fts` + `search_index_meta` + stale search cache, then
 rebuilds from scratch via `apropos -s N .` for each man section. Typically completes
