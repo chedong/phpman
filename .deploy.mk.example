@@ -24,8 +24,8 @@ DEMO_URL  = https://example.com/phpMan.php
 
 # --- Cache directories (outside webroot) ---
 # Cache is stored outside webroot for security — no .htaccess needed.
-TEST_CACHE_DIR = /home/your-user/cache/staging
-DEMO_CACHE_DIR = /home/your-user/cache/demo
+TEST_CACHE_DIR = /home/your-user/phpman_cache/staging
+DEMO_CACHE_DIR = /home/your-user/phpman_cache/production
 
 # --- Server logs (for post-deploy log check via `make release-logcheck`) ---
 # Paths to access and error logs on the demo/production server.
