@@ -1194,7 +1194,7 @@ function renderGroupedResults(array $results, string $scriptName): array {
     // Build alphabet sidebar when count exceeds threshold
     $sidebar = '';
     if ($total > $ALPHA_THRESHOLD) {
-        $allKeys = array_merge(['0-9'], range('A', 'Z'), ['#']);
+        $allKeys = array_merge(['#', '0-9'], range('A', 'Z'));
         $existingKeys = array_keys($groups);
         $sb = '<div class="alpha-index">' . "\n";
         foreach ($allKeys as $k) {
