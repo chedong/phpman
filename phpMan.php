@@ -53,8 +53,8 @@ $MOBILE_CSS = <<<'CSS'
     #man-content li{padding:3px 0;border-bottom:1px solid #24283b;font-size:14px;line-height:1.5;}
     #man-content li:last-child{border-bottom:none;}
     #man-content h2{font-size:14px;color:#7aa2f7;margin:16px 0 6px 0;border-bottom:1px solid #3b4261;padding-bottom:4px;}
-    input[type='text']{width:100%;font-size:16px;padding:8px;box-sizing:border-box;}
-    input[type='submit']{font-size:16px;padding:10px 20px;min-height:44px;}
+    input[type='text']{width:100%;font-size:14px;padding:8px;box-sizing:border-box;}
+    input[type='submit']{font-size:14px;padding:10px 20px;min-height:44px;}
     input[type='radio']{transform:scale(1.3);margin-right:4px;}
     form p{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
     form a{padding:6px 8px;display:inline-block;}
@@ -2312,7 +2312,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "#alpha-sidebar {position:fixed;top:20px;right:10px;width:30px;z-index:100;}\n".
         "#alpha-sidebar .alpha-index {display:flex;flex-direction:column;background:#24283b;border:1px solid #3b4261;border-radius:4px;overflow:hidden;}\n".
         "#alpha-sidebar .alpha-index a {display:block;text-align:center;padding:0 2px;" .
-            "font-size:10px;color:#7aa2f7;text-decoration:none;line-height:1.7;}\n".
+            "font-size:12px;color:#7aa2f7;text-decoration:none;line-height:1.7;}\n".
         "#alpha-sidebar .alpha-index a:hover {background:#3b4261;color:#c0caf5;}\n".
         "#alpha-sidebar .alpha-index a.alpha-empty {color:#3b4261;pointer-events:none;}\n".
         "#alpha-toggle {cursor:default;display:none;}\n".
