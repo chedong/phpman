@@ -684,9 +684,9 @@ function cacheDb(): SQLite3 {
 
     $db = new SQLite3($dbPath);
     $db->enableExceptions(true);
+    $db->busyTimeout(5000);  // must be before any exec() to avoid "database is locked"
     $db->exec('PRAGMA journal_mode=WAL');
     $db->exec('PRAGMA synchronous=NORMAL');
-    $db->busyTimeout(5000);
 
     if ($isNew) {
         $db->exec("CREATE TABLE IF NOT EXISTS cache (
