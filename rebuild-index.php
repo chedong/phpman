@@ -3,7 +3,7 @@
 /**
  * phpMan FTS5 Search Index Rebuilder
  *
- * Standalone script — place in /home/chedong/cache/ or alongside phpm_cache.db.
+ * Standalone script — place in the phpman_cache directory alongside phpm_cache.db.
  * Clears and rebuilds the FTS5 full-text search index from system apropos data.
  *
  * Usage:
@@ -33,12 +33,12 @@ Usage:
 
 Arguments:
   cache-dir     Path to the cache directory containing phpm_cache.db
-                (e.g. /home/your-user/phpman_cache/production)
+                (e.g. /path/to/phpman_cache/production)
   --cron        Timestamped, concise output for cron job logging
 
 Examples:
-  php rebuild-index.php /home/your-user/phpman_cache/production
-  php rebuild-index.php /home/your-user/phpman_cache/staging --cron
+  php rebuild-index.php /path/to/phpman_cache/production
+  php rebuild-index.php /path/to/phpman_cache/staging --cron
 
 Cron example (daily at 3am):
   0 3 * * * /path/to/local/php /path/to/phpman_cache/rebuild-index.php /path/to/phpman_cache/production --cron

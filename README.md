@@ -637,16 +637,16 @@ cp .deploy.mk.example .deploy.mk
 Then edit `.deploy.mk` for your server:
 
 ```make
-TEST_USER = your-user
+TEST_USER = user
 TEST_HOST = example.com
 TEST_PORT = 22
-TEST_PATH = /home/your-user/example.com/test
+TEST_PATH = /path/to/example.com/test
 TEST_URL  = https://example.com/test/phpMan.php
 
-DEMO_USER = your-user
+DEMO_USER = user
 DEMO_HOST = example.com
 DEMO_PORT = 22
-DEMO_PATH = /home/your-user/example.com
+DEMO_PATH = /path/to/example.com
 DEMO_URL  = https://example.com/phpMan.php
 ```
 
@@ -704,13 +704,13 @@ When search results become stale or duplicated, rebuild the index:
 
 ```bash
 # Copy rebuild script to cache directory
-cp rebuild-index.php /home/your-user/phpman_cache/
+cp rebuild-index.php /path/to/phpman_cache/
 
 # Rebuild production index
-php /home/your-user/phpman_cache/rebuild-index.php /home/your-user/phpman_cache/production
+php /path/to/phpman_cache/rebuild-index.php /path/to/phpman_cache/production
 
 # Rebuild staging index (cron mode)
-php /home/your-user/phpman_cache/rebuild-index.php /home/your-user/phpman_cache/staging --cron
+php /path/to/phpman_cache/rebuild-index.php /path/to/phpman_cache/staging --cron
 ```
 
 Cron example (daily at 3am):

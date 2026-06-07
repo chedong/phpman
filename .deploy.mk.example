@@ -4,28 +4,28 @@
 # --- Staging / test deployment ---
 # Where `make deploy` pushes phpMan.php for testing.
 # Can be a completely different server/account from production.
-TEST_USER = your-user
+TEST_USER = user
 TEST_HOST = example.com
 # SSH port — adjust if your server uses a non-default port (e.g. 2222)
 TEST_PORT = 22
-TEST_PATH = /home/your-user/example.com/test
+TEST_PATH = /path/to/example.com/test
 # Web URL — include port if not 80/443 (e.g. https://example.com:8443/test/phpMan.php)
 TEST_URL  = https://example.com/test/phpMan.php
 
 # --- Demo / production deployment ---
 # Where `make release` pushes the public-facing demo.
-DEMO_USER = your-user
+DEMO_USER = user
 DEMO_HOST = example.com
 # SSH port — adjust if your server uses a non-default port (e.g. 2222)
 DEMO_PORT = 22
-DEMO_PATH = /home/your-user/example.com
+DEMO_PATH = /path/to/example.com
 # Web URL — include port if not 80/443 (e.g. https://example.com:8443/phpMan.php)
 DEMO_URL  = https://example.com/phpMan.php
 
 # --- Cache directories (outside webroot) ---
 # Cache is stored outside webroot for security — no .htaccess needed.
-TEST_CACHE_DIR = /home/your-user/phpman_cache/staging
-DEMO_CACHE_DIR = /home/your-user/phpman_cache/production
+TEST_CACHE_DIR = /path/to/phpman_cache/staging
+DEMO_CACHE_DIR = /path/to/phpman_cache/production
 
 # --- Server logs (for post-deploy log check via `make release-logcheck`) ---
 # Paths to access and error logs on the demo/production server.
