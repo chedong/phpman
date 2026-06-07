@@ -1222,18 +1222,24 @@ function renderGroupedResults(array $results, string $scriptName): array {
             $html .= '<div class="alpha-group" id="alpha-' . $key . '"><h2>' . h($key) . '</h2>' . "\n<ul>\n";
             foreach ($items as $r) {
                 $is_perl = str_contains($r['name'], '::');
-                $link_mode = $is_perl ? 'perldoc' : 'man';
+                $sources = $r['sources'] ?? [];
+                $link_mode = in_array('pydoc', $sources) ? 'pydoc'
+                           : (in_array('ri', $sources) ? 'ri'
+                           : ($is_perl ? 'perldoc' : 'man'));
                 $desc = h($r['description'] ?? '');
-                $sources = !empty($r['sources']) ? ' <span class="sources">[' . implode(', ', $r['sources']) . ']</span>' : '';
+                $sourceTag = !empty($sources) ? ' <span class="sources">[' . implode(', ', $sources) . ']</span>' : '';
                 $html .= '<li><a href="' . $scriptName . '/' . $link_mode . '/' . urlencode($r['name']);
                 if ($r['section'] !== '') {
                     $html .= '/' . urlencode($r['section']);
                 }
-                $html .= '">' . h($r['name']) . '</a> <span class="section">(' . h($r['section']) . ')</span>';
+                $html .= '">' . h($r['name']) . '</a>';
+                if ($r['section'] !== '') {
+                    $html .= ' <span class="section">(' . h($r['section']) . ')</span>';
+                }
                 if ($desc !== '') {
                     $html .= ' — ' . $desc;
                 }
-                $html .= $sources . "</li>\n";
+                $html .= $sourceTag . "</li>\n";
             }
             $html .= "</ul></div>\n";
         }
@@ -1242,18 +1248,24 @@ function renderGroupedResults(array $results, string $scriptName): array {
         $html = "<ul>\n";
         foreach ($results as $r) {
             $is_perl = str_contains($r['name'], '::');
-            $link_mode = $is_perl ? 'perldoc' : 'man';
+            $sources = $r['sources'] ?? [];
+            $link_mode = in_array('pydoc', $sources) ? 'pydoc'
+                       : (in_array('ri', $sources) ? 'ri'
+                       : ($is_perl ? 'perldoc' : 'man'));
             $desc = h($r['description'] ?? '');
-            $sources = !empty($r['sources']) ? ' <span class="sources">[' . implode(', ', $r['sources']) . ']</span>' : '';
+            $sourceTag = !empty($sources) ? ' <span class="sources">[' . implode(', ', $sources) . ']</span>' : '';
             $html .= '<li><a href="' . $scriptName . '/' . $link_mode . '/' . urlencode($r['name']);
             if ($r['section'] !== '') {
                 $html .= '/' . urlencode($r['section']);
             }
-            $html .= '">' . h($r['name']) . '</a> <span class="section">(' . h($r['section']) . ')</span>';
+            $html .= '">' . h($r['name']) . '</a>';
+            if ($r['section'] !== '') {
+                $html .= ' <span class="section">(' . h($r['section']) . ')</span>';
+            }
             if ($desc !== '') {
                 $html .= ' — ' . $desc;
             }
-            $html .= $sources . "</li>\n";
+            $html .= $sourceTag . "</li>\n";
         }
         $html .= "</ul>\n";
     }
@@ -1942,7 +1954,7 @@ switch ( $mode ) {
             }
         }
         else {
-            $content = "<ul>" . getPydocIndex($format) . "</ul>";
+            $content = getPydocIndex($format);
             $isListContent = true;
         }
         break;
@@ -2190,7 +2202,7 @@ if ($mode !== "markdown" && $mode !== "search" && !$isSearchFallback && $paramet
 
     echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
 } elseif ($isSearchFallback || $mode === "search" || $isListContent) {
-    if ($mode === "search" && !empty($GLOBALS['alpha_sidebar'])) {
+    if (in_array($mode, ['search', 'pydoc', 'ri']) && !empty($GLOBALS['alpha_sidebar'])) {
         echo $GLOBALS['alpha_sidebar'];
     }
     echo "<div id=\"man-content\">" . $content . "</div>\n";
@@ -2987,10 +2999,15 @@ function getPydocIndex (string $format = "html"): string {
         return $result;
     }
     $output = "";
+    $results = [];
     foreach ($modules as $mod) {
-        $output .= '<li><a href="'.$script_name.'/pydoc/'.urlencode($mod).'">'.h($mod).'</a></li>'."\n";
+        $results[] = ['name' => $mod, 'section' => '', 'description' => '', 'sources' => ['pydoc']];
     }
-    return $output;
+    $rendered = renderGroupedResults($results, $script_name);
+    if ($rendered['sidebar'] !== '') {
+        $GLOBALS['alpha_sidebar'] = $rendered['sidebar'];
+    }
+    return $rendered['html'];
 }
 
 //get ri class index (ri -l)
@@ -3035,15 +3052,18 @@ function getRiIndex (string $format = "html"): string {
         }
         return $result;
     }
-    $output = "<ul>\n";
+    $results = [];
     foreach ($lines as $line) {
         $trimmed = trim($line);
         if ($trimmed !== "") {
-            $output .= '<li><a href="'.$script_name.'/ri/'.urlencode($trimmed).'">'.h($trimmed).'</a></li>'."\n";
+            $results[] = ['name' => $trimmed, 'section' => '', 'description' => '', 'sources' => ['ri']];
         }
     }
-    $output .= "</ul>\n";
-    return $output;
+    $rendered = renderGroupedResults($results, $script_name);
+    if ($rendered['sidebar'] !== '') {
+        $GLOBALS['alpha_sidebar'] = $rendered['sidebar'];
+    }
+    return $rendered['html'];
 }
 
 //get pydoc3 keyword search results
