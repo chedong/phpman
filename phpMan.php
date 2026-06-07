@@ -1237,7 +1237,7 @@ function renderGroupedResults(array $results, string $scriptName): array {
         $html .= "</ul>\n";
     }
 
-    return ['html' => $sidebar . $html, 'sidebar' => $sidebar];
+    return ['html' => $html . $sidebar, 'sidebar' => $sidebar];
 }
 
 /**
@@ -1361,22 +1361,22 @@ function indexAproposLines (array $lines): int {
 
             [$name, $section] = $parsed;
 
-            // Expand name for FTS5 tokenization (hyphens → dual matching)
-            $expandedName = expandNameForFts($name);
-
-            $insertFts->bindValue(':name', $expandedName, SQLITE3_TEXT);
-            $insertFts->bindValue(':section', $section, SQLITE3_TEXT);
-            $insertFts->bindValue(':description', $parsed[2], SQLITE3_TEXT);
-            $insertFts->execute();
-            $insertFts->reset();
-
+            // Only insert FTS5 entry when meta entry is new — FTS5 lacks UNIQUE
+            // so INSERT OR IGNORE always succeeds, causing duplicates. Dedup via meta.
             $insertMeta->bindValue(':name', $name, SQLITE3_TEXT);
             $insertMeta->bindValue(':section', $section, SQLITE3_TEXT);
             $insertMeta->execute();
+            $isNew = ($db->changes() === 1);
             $insertMeta->reset();
 
-            // If already existed, bump hit count
-            if ($db->changes() === 0) {
+            if ($isNew) {
+                $expandedName = expandNameForFts($name);
+                $insertFts->bindValue(':name', $expandedName, SQLITE3_TEXT);
+                $insertFts->bindValue(':section', $section, SQLITE3_TEXT);
+                $insertFts->bindValue(':description', $parsed[2], SQLITE3_TEXT);
+                $insertFts->execute();
+                $insertFts->reset();
+            } else {
                 $updateHits->bindValue(':name', $name, SQLITE3_TEXT);
                 $updateHits->bindValue(':section', $section, SQLITE3_TEXT);
                 $updateHits->execute();
@@ -2188,37 +2188,38 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	}
 
 	// For man page content, add section anchors and floating TOC
-if ($mode !== "markdown" && $mode !== "search" && !$isSearchFallback && $parameter !== "" && trim($content) !== "") {
-    list($anchoredContent, $tocItems) = addManPageToc($content);
+    // Sidebars are collected and output AFTER content for better SEO
+    $tocSidebar = '';
+    if ($mode !== "markdown" && $mode !== "search" && !$isSearchFallback && $parameter !== "" && trim($content) !== "") {
+        list($anchoredContent, $tocItems) = addManPageToc($content);
 
-    // Show TOC when we have multiple L1 sections, or a single L1 section with L2 subsections
-    // AND content exceeds line threshold ($showNav from line 665-668)
-    $hasTocContent = $showNav && (count($tocItems) > 1
-        || (count($tocItems) === 1 && !empty($tocItems[0]['children'])));
-    if ($hasTocContent) {
-        echo "<div id=\"toc-sidebar\">\n";
-        $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
-        echo "<div class=\"toc-title\" id=\"toc-toggle\" onclick=\"document.body.classList.toggle('toc-open');\">" . h($pageLabel) . " <span class=\"toc-open-icon\">&#9633;</span><span class=\"toc-close-icon\">&#10005;</span></div>\n";
-        foreach ($tocItems as $l1) {
-            echo "<a href=\"#" . h($l1['id']) . "\">" . h($l1['label']) . "</a>\n";
-            if (!empty($l1['children'])) {
-                echo "<div class=\"toc-subs\">\n";
-                foreach ($l1['children'] as $l2) {
-                    echo "<a href=\"#" . h($l2['id']) . "\" class=\"toc-sub\">" . h($l2['label']) . "</a>\n";
+        $hasTocContent = $showNav && (count($tocItems) > 1
+            || (count($tocItems) === 1 && !empty($tocItems[0]['children'])));
+        if ($hasTocContent) {
+            $tocSidebar .= "<div id=\"toc-sidebar\">\n";
+            $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
+            $tocSidebar .= "<div class=\"toc-title\" id=\"toc-toggle\" onclick=\"document.body.classList.toggle('toc-open');\">" . h($pageLabel) . " <span class=\"toc-open-icon\">&#9633;</span><span class=\"toc-close-icon\">&#10005;</span></div>\n";
+            foreach ($tocItems as $l1) {
+                $tocSidebar .= "<a href=\"#" . h($l1['id']) . "\">" . h($l1['label']) . "</a>\n";
+                if (!empty($l1['children'])) {
+                    $tocSidebar .= "<div class=\"toc-subs\">\n";
+                    foreach ($l1['children'] as $l2) {
+                        $tocSidebar .= "<a href=\"#" . h($l2['id']) . "\" class=\"toc-sub\">" . h($l2['label']) . "</a>\n";
+                    }
+                    $tocSidebar .= "</div>\n";
                 }
-                echo "</div>\n";
             }
+            $tocSidebar .= "</div>\n";
         }
-        echo "</div>\n";
-    }
 
-    echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
-} elseif ($isSearchFallback || $mode === "search" || $isListContent) {
-    echo "<div id=\"man-content\">" . $content . "</div>\n";
-} else {
-    echo "<pre>" . $content . "</pre>\n";
-}
-echo "</div>";
+        echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
+    } elseif ($isSearchFallback || $mode === "search" || $isListContent) {
+        echo "<div id=\"man-content\">" . $content . "</div>\n";
+    } else {
+        echo "<pre>" . $content . "</pre>\n";
+    }
+    echo "</div>";
+    echo $tocSidebar;
 
 showFooter($VALIDATOR, $showNav);
 
