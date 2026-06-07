@@ -66,20 +66,6 @@ $MOBILE_CSS = <<<'CSS'
     .tldr-body dd code{font-size:12px;}
     .tldr-examples li{font-size:12px;}
     .tldr-examples li code{font-size:12px;}
-    /* alphabet index sidebar — mobile: collapsible toggle like TOC */
-    #alpha-sidebar{position:fixed;top:4px;right:4px;width:220px;z-index:200;
-        background:#24283b;border:1px solid #3b4261;padding:6px 8px;font-size:14px;
-        box-shadow:-2px 2px 8px rgba(0,0,0,.4);}
-    #alpha-toggle{display:block;cursor:pointer;color:#c0caf5;font-size:14px;font-weight:bold;
-        border-bottom:1px solid #3b4261;margin-bottom:4px;padding-bottom:2px;}
-    #alpha-toggle:hover{color:#7aa2f7;}
-    #alpha-toggle .alpha-open-icon{display:inline;float:right;}
-    #alpha-toggle .alpha-close-icon{display:none;float:right;}
-    body.alpha-open #alpha-toggle .alpha-open-icon{display:none;}
-    body.alpha-open #alpha-toggle .alpha-close-icon{display:inline;float:right;}
-    #alpha-sidebar .alpha-index a{display:none;}
-    body.alpha-open #alpha-sidebar .alpha-index a{display:block;}
-    body.alpha-open #alpha-sidebar .alpha-index{display:flex;flex-direction:column;}
     }
 CSS;
 
