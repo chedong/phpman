@@ -35,11 +35,11 @@ define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 // Mobile responsive CSS (extracted from showHeader for maintainability)
 $MOBILE_CSS = <<<'CSS'
 @media (max-width:1024px){
-    body.ext-nav #toc-sidebar{display:block !important;position:fixed;top:4px;right:4px;width:220px;max-height:calc(100vh - 12px);overflow-y:auto;z-index:200;border:1px solid #3b4261;box-shadow:-2px 2px 8px rgba(0,0,0,.4);background:#24283b;padding:6px 8px;font-size:13px;}
+    body.ext-nav #toc-sidebar{display:block !important;position:fixed;top:4px;right:4px;width:220px;max-height:calc(100vh - 12px);overflow-y:auto;z-index:200;border:1px solid #3b4261;box-shadow:-2px 2px 8px rgba(0,0,0,.4);background:#24283b;padding:6px 8px;font-size:14px;}
     body.ext-nav #toc-sidebar a{display:none;}
     body.toc-open #toc-sidebar a{display:block;}
     body.toc-open #toc-sidebar .toc-subs{display:block;}
-    #toc-toggle{cursor:pointer;color:#c0caf5;font-size:13px;}
+    #toc-toggle{cursor:pointer;color:#c0caf5;font-size:14px;}
     #toc-toggle:hover{color:#7aa2f7;}
     #toc-toggle .toc-open-icon{display:inline;float:right;}
     #toc-toggle .toc-close-icon{display:none;float:right;}
@@ -50,27 +50,27 @@ $MOBILE_CSS = <<<'CSS'
     body{font-size:12px;}
     #man-content pre{white-space:pre-wrap;word-wrap:break-word;font-size:12px;line-height:1.4;}
     #man-content ul{list-style:none;padding:0;margin:0 0 12px 0;}
-    #man-content li{padding:3px 0;border-bottom:1px solid #24283b;font-size:13px;line-height:1.5;}
+    #man-content li{padding:3px 0;border-bottom:1px solid #24283b;font-size:14px;line-height:1.5;}
     #man-content li:last-child{border-bottom:none;}
     #man-content h2{font-size:14px;color:#7aa2f7;margin:16px 0 6px 0;border-bottom:1px solid #3b4261;padding-bottom:4px;}
-    input[type='text']{width:100%;font-size:16px;padding:8px;box-sizing:border-box;}
-    input[type='submit']{font-size:16px;padding:10px 20px;min-height:44px;}
+    input[type='text']{width:100%;font-size:14px;padding:8px;box-sizing:border-box;}
+    input[type='submit']{font-size:14px;padding:10px 20px;min-height:44px;}
     input[type='radio']{transform:scale(1.3);margin-right:4px;}
     form p{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
     form a{padding:6px 8px;display:inline-block;}
     a{padding:4px 2px;}
     p{font-size:12px;line-height:1.6;}
     .tldr-block{margin:8px 0 16px 0;}
-    .tldr-header{font-size:13px;}
+    .tldr-header{font-size:14px;}
     .tldr-body dt{font-size:12px;}
     .tldr-body dd code{font-size:12px;}
     .tldr-examples li{font-size:12px;}
     .tldr-examples li code{font-size:12px;}
     /* alphabet index sidebar — mobile: collapsible toggle like TOC */
     #alpha-sidebar{position:fixed;top:4px;right:4px;width:220px;z-index:200;
-        background:#24283b;border:1px solid #3b4261;padding:6px 8px;font-size:13px;
+        background:#24283b;border:1px solid #3b4261;padding:6px 8px;font-size:14px;
         box-shadow:-2px 2px 8px rgba(0,0,0,.4);}
-    #alpha-toggle{display:block;cursor:pointer;color:#c0caf5;font-size:13px;font-weight:bold;
+    #alpha-toggle{display:block;cursor:pointer;color:#c0caf5;font-size:14px;font-weight:bold;
         border-bottom:1px solid #3b4261;margin-bottom:4px;padding-bottom:2px;}
     #alpha-toggle:hover{color:#7aa2f7;}
     #alpha-toggle .alpha-open-icon{display:inline;float:right;}
@@ -79,7 +79,7 @@ $MOBILE_CSS = <<<'CSS'
     body.alpha-open #alpha-toggle .alpha-close-icon{display:inline;float:right;}
     #alpha-sidebar .alpha-index a{display:none;}
     body.alpha-open #alpha-sidebar .alpha-index a{display:block;}
-    body.alpha-open #alpha-sidebar .alpha-index{display:flex;flex-wrap:wrap;flex-direction:row;gap:2px;}
+    body.alpha-open #alpha-sidebar .alpha-index{display:flex;flex-direction:column;}
     }
 CSS;
 
@@ -831,16 +831,6 @@ class PageCache {
             return null;
         }
 
-        // Increment hit count (async, ignore failure)
-        $hitStmt = $this->db->prepare("UPDATE cache SET hits = hits + 1, updated_at = updated_at
-                         WHERE mode = :mode AND name = :name
-                         AND section = :section AND format = :format");
-        $hitStmt->bindValue(':mode', $mode, SQLITE3_TEXT);
-        $hitStmt->bindValue(':name', $name, SQLITE3_TEXT);
-        $hitStmt->bindValue(':section', $section, SQLITE3_TEXT);
-        $hitStmt->bindValue(':format', $format, SQLITE3_TEXT);
-        $hitStmt->execute();
-
         if ($row['status'] === 'not_found') {
             return '###NOT_FOUND###';
         }
@@ -1204,7 +1194,7 @@ function renderGroupedResults(array $results, string $scriptName): array {
     // Build alphabet sidebar when count exceeds threshold
     $sidebar = '';
     if ($total > $ALPHA_THRESHOLD) {
-        $allKeys = array_merge(['0-9'], range('A', 'Z'), ['#']);
+        $allKeys = array_merge(['#', '0-9'], range('A', 'Z'));
         $existingKeys = array_keys($groups);
         $sb = '<div class="alpha-index">' . "\n";
         foreach ($allKeys as $k) {
@@ -1232,18 +1222,24 @@ function renderGroupedResults(array $results, string $scriptName): array {
             $html .= '<div class="alpha-group" id="alpha-' . $key . '"><h2>' . h($key) . '</h2>' . "\n<ul>\n";
             foreach ($items as $r) {
                 $is_perl = str_contains($r['name'], '::');
-                $link_mode = $is_perl ? 'perldoc' : 'man';
+                $sources = $r['sources'] ?? [];
+                $link_mode = in_array('pydoc', $sources) ? 'pydoc'
+                           : (in_array('ri', $sources) ? 'ri'
+                           : ($is_perl ? 'perldoc' : 'man'));
                 $desc = h($r['description'] ?? '');
-                $sources = !empty($r['sources']) ? ' <span class="sources">[' . implode(', ', $r['sources']) . ']</span>' : '';
+                $sourceTag = !empty($sources) ? ' <span class="sources">[' . implode(', ', $sources) . ']</span>' : '';
                 $html .= '<li><a href="' . $scriptName . '/' . $link_mode . '/' . urlencode($r['name']);
                 if ($r['section'] !== '') {
                     $html .= '/' . urlencode($r['section']);
                 }
-                $html .= '">' . h($r['name']) . '</a> <span class="section">(' . h($r['section']) . ')</span>';
+                $html .= '">' . h($r['name']) . '</a>';
+                if ($r['section'] !== '') {
+                    $html .= ' <span class="section">(' . h($r['section']) . ')</span>';
+                }
                 if ($desc !== '') {
                     $html .= ' — ' . $desc;
                 }
-                $html .= $sources . "</li>\n";
+                $html .= $sourceTag . "</li>\n";
             }
             $html .= "</ul></div>\n";
         }
@@ -1252,23 +1248,29 @@ function renderGroupedResults(array $results, string $scriptName): array {
         $html = "<ul>\n";
         foreach ($results as $r) {
             $is_perl = str_contains($r['name'], '::');
-            $link_mode = $is_perl ? 'perldoc' : 'man';
+            $sources = $r['sources'] ?? [];
+            $link_mode = in_array('pydoc', $sources) ? 'pydoc'
+                       : (in_array('ri', $sources) ? 'ri'
+                       : ($is_perl ? 'perldoc' : 'man'));
             $desc = h($r['description'] ?? '');
-            $sources = !empty($r['sources']) ? ' <span class="sources">[' . implode(', ', $r['sources']) . ']</span>' : '';
+            $sourceTag = !empty($sources) ? ' <span class="sources">[' . implode(', ', $sources) . ']</span>' : '';
             $html .= '<li><a href="' . $scriptName . '/' . $link_mode . '/' . urlencode($r['name']);
             if ($r['section'] !== '') {
                 $html .= '/' . urlencode($r['section']);
             }
-            $html .= '">' . h($r['name']) . '</a> <span class="section">(' . h($r['section']) . ')</span>';
+            $html .= '">' . h($r['name']) . '</a>';
+            if ($r['section'] !== '') {
+                $html .= ' <span class="section">(' . h($r['section']) . ')</span>';
+            }
             if ($desc !== '') {
                 $html .= ' — ' . $desc;
             }
-            $html .= $sources . "</li>\n";
+            $html .= $sourceTag . "</li>\n";
         }
         $html .= "</ul>\n";
     }
 
-    return ['html' => $html, 'sidebar' => $sidebar];
+    return ['html' => $sidebar . $html, 'sidebar' => $sidebar];
 }
 
 /**
@@ -1311,7 +1313,6 @@ function formatSearchResults(array $results, string $parameter, string $section,
     if ($format === 'html') {
         $rendered = renderGroupedResults($results, $scriptName);
         if ($rendered['sidebar'] !== '') {
-            $GLOBALS['alpha_sidebar'] = $rendered['sidebar'];
         }
         return $rendered['html'];
     }
@@ -1870,70 +1871,71 @@ switch ( $mode ) {
     case "search":
         $check['search'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
-            $content = getSearchPage($parameter, $section, $format);
-            Profiler::mark('fts:done');
+            $content = cacheOrExecute('search', $parameter, $section, $format,
+                function() use ($parameter, $section, $format) {
+                    $inner = getSearchPage($parameter, $section, $format);
+                    Profiler::mark('fts:done');
 
-            // Check if FTS5 (or apropos fallback) returned results.
-            // If we already have results from the man-page index, skip the
-            // expensive pydoc3/ri cascade — those forks are slow on shared
-            // hosts and add no value when the primary source has hits.
-            $hasResults = false;
-            if ($format === "json" || $format === "mcp") {
-                $jsonData = json_decode($content, true);
-                $hasResults = is_array($jsonData) && !empty($jsonData['results']);
-            } else {
-                // HTML: formatted results contain <li>; empty fallback is "<ul>\n</ul>\n"
-                // Markdown: FTS5 results start with "- ["; empty fallback is also "<ul>\n</ul>\n"
-                $hasResults = (strpos($content, '<li>') !== false)
-                           || (strpos(trim($content), '- [') === 0);
-            }
+                    // Check if FTS5 (or apropos fallback) returned results.
+                    // If we already have results from the man-page index, skip the
+                    // expensive pydoc3/ri cascade.
+                    $hasResults = false;
+                    if ($format === "json" || $format === "mcp") {
+                        $jsonData = json_decode($inner, true);
+                        $hasResults = is_array($jsonData) && !empty($jsonData['results']);
+                    } else {
+                        $hasResults = (strpos($inner, '<li>') !== false)
+                                   || (strpos(trim($inner), '- [') === 0);
+                    }
 
-            // Cascade to pydoc3 and ri only when man-page search had no hits
-            if (!$hasResults) {
-                if ($format === "html") {
-                    $content = "<h2>apropos</h2>\n" . $content . "\n";
-                    $pydocResults = getPydocSearchPage($parameter, "html");
-                    Profiler::mark('pydoc:done');
-                    if ($pydocResults !== "") {
-                        $content .= "<h2>Python 3 (pydoc3)</h2>\n" . $pydocResults . "\n";
+                    // Cascade to pydoc3 and ri only when man-page search had no hits
+                    if (!$hasResults) {
+                        if ($format === "html") {
+                            $inner = "<h2>apropos</h2>\n" . $inner . "\n";
+                            $pydocResults = getPydocSearchPage($parameter, "html");
+                            Profiler::mark('pydoc:done');
+                            if ($pydocResults !== "") {
+                                $inner .= "<h2>Python 3 (pydoc3)</h2>\n" . $pydocResults . "\n";
+                            }
+                            $riResults = getRiSearchPage($parameter, "html");
+                            Profiler::mark('ri:done');
+                            if ($riResults !== "") {
+                                $inner .= "<h2>Ruby (ri)</h2>\n<pre>" . $riResults . "</pre>\n";
+                            }
+                        } elseif ($format === "markdown") {
+                            $pydocResults = getPydocSearchPage($parameter, "markdown");
+                            Profiler::mark('pydoc:done');
+                            if ($pydocResults !== "") {
+                                $inner .= "\n\n## Python 3 (pydoc3)\n\n" . $pydocResults;
+                            }
+                            $riResults = getRiSearchPage($parameter, "markdown");
+                            Profiler::mark('ri:done');
+                            if ($riResults !== "") {
+                                $inner .= "\n\n## Ruby (ri)\n\n" . $riResults;
+                            }
+                        } elseif ($format === "json" || $format === "mcp") {
+                            $current = json_decode($inner, true);
+                            if ($current === null) $current = [];
+                            $pydocJson = getPydocSearchPage($parameter, "json");
+                            Profiler::mark('pydoc:done');
+                            if ($pydocJson !== "") {
+                                $pydocData = json_decode($pydocJson, true);
+                                if ($pydocData !== null) $current["pydoc_results"] = $pydocData["results"] ?? [];
+                            }
+                            $riJson = getRiSearchPage($parameter, "json");
+                            Profiler::mark('ri:done');
+                            if ($riJson !== "") {
+                                $riData = json_decode($riJson, true);
+                                if ($riData !== null) $current["ri_results"] = $riData["results"] ?? [];
+                            }
+                            $inner = json_encode($current, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                            if ($format === "mcp") {
+                                $inner = formatForOutput($inner, "mcp");
+                            }
+                        }
                     }
-                    $riResults = getRiSearchPage($parameter, "html");
-                    Profiler::mark('ri:done');
-                    if ($riResults !== "") {
-                        $content .= "<h2>Ruby (ri)</h2>\n<pre>" . $riResults . "</pre>\n";
-                    }
-                } elseif ($format === "markdown") {
-                    $pydocResults = getPydocSearchPage($parameter, "markdown");
-                    Profiler::mark('pydoc:done');
-                    if ($pydocResults !== "") {
-                        $content .= "\n\n## Python 3 (pydoc3)\n\n" . $pydocResults;
-                    }
-                    $riResults = getRiSearchPage($parameter, "markdown");
-                    Profiler::mark('ri:done');
-                    if ($riResults !== "") {
-                        $content .= "\n\n## Ruby (ri)\n\n" . $riResults;
-                    }
-                } elseif ($format === "json" || $format === "mcp") {
-                    $current = json_decode($content, true);
-                    if ($current === null) $current = [];
-                    $pydocJson = getPydocSearchPage($parameter, "json");
-                    Profiler::mark('pydoc:done');
-                    if ($pydocJson !== "") {
-                        $pydocData = json_decode($pydocJson, true);
-                        if ($pydocData !== null) $current["pydoc_results"] = $pydocData["results"] ?? [];
-                    }
-                    $riJson = getRiSearchPage($parameter, "json");
-                    Profiler::mark('ri:done');
-                    if ($riJson !== "") {
-                        $riData = json_decode($riJson, true);
-                        if ($riData !== null) $current["ri_results"] = $riData["results"] ?? [];
-                    }
-                    $content = json_encode($current, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-                    if ($format === "mcp") {
-                        $content = formatForOutput($content, "mcp");
-                    }
-                }
-            }
+                    return $inner;
+                });
         }
         break;
     case "pydoc":
@@ -1951,7 +1953,7 @@ switch ( $mode ) {
             }
         }
         else {
-            $content = "<ul>" . getPydocIndex($format) . "</ul>";
+            $content = getPydocIndex($format);
             $isListContent = true;
         }
         break;
@@ -2199,9 +2201,6 @@ if ($mode !== "markdown" && $mode !== "search" && !$isSearchFallback && $paramet
 
     echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
 } elseif ($isSearchFallback || $mode === "search" || $isListContent) {
-    if ($mode === "search" && !empty($GLOBALS['alpha_sidebar'])) {
-        echo $GLOBALS['alpha_sidebar'];
-    }
     echo "<div id=\"man-content\">" . $content . "</div>\n";
 } else {
     echo "<pre>" . $content . "</pre>\n";
@@ -2309,7 +2308,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "#alpha-sidebar {position:fixed;top:20px;right:10px;width:30px;z-index:100;}\n".
         "#alpha-sidebar .alpha-index {display:flex;flex-direction:column;background:#24283b;border:1px solid #3b4261;border-radius:4px;overflow:hidden;}\n".
         "#alpha-sidebar .alpha-index a {display:block;text-align:center;padding:0 2px;" .
-            "font-size:10px;color:#7aa2f7;text-decoration:none;line-height:1.7;}\n".
+            "font-size:12px;color:#7aa2f7;text-decoration:none;line-height:1.7;}\n".
         "#alpha-sidebar .alpha-index a:hover {background:#3b4261;color:#c0caf5;}\n".
         "#alpha-sidebar .alpha-index a.alpha-empty {color:#3b4261;pointer-events:none;}\n".
         "#alpha-toggle {cursor:default;display:none;}\n".
@@ -2317,7 +2316,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "#man-content h2 {font-size:14px;color:#7aa2f7;margin:16px 0 6px 0;border-bottom:1px solid #3b4261;padding-bottom:4px;}\n".
         "#man-content pre {width:100%;overflow-x:auto;white-space:pre;}\n".
         "#toc-sidebar {position:fixed;top:20px;right:10px;width:200px;max-height:90vh;overflow-y:auto;".
-            "background:#24283b;border:1px solid #3b4261;padding:8px;font-size:13px;z-index:100;".
+            "background:#24283b;border:1px solid #3b4261;padding:8px;font-size:14px;z-index:100;".
             "display:none;}\n".
         "#toc-sidebar a {display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;".
             "color:#a9b1d6;text-decoration:none;padding:2px 4px;border-radius:2px;}\n".
@@ -2329,7 +2328,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "#toc-toggle .toc-open-icon, #toc-toggle .toc-close-icon {display:none;}\n".
         "#back-to-top {position:fixed;bottom:20px;right:20px;z-index:100;display:none;}\n".
         "#back-to-top a {display:block;padding:8px 14px;background:#7aa2f7;color:#1a1b26;text-decoration:none;".
-            "border-radius:6px;font-size:13px;font-family:monospace;}\n".
+            "border-radius:6px;font-size:14px;font-family:monospace;}\n".
         "#back-to-top a:hover {background:#89b4fa;}\n".
         "body.ext-nav #toc-sidebar, body.ext-nav #back-to-top {display:block;}\n".
         "form fieldset {border:1px solid #3b4261;}\n".
@@ -2346,8 +2345,8 @@ function showHeader (string $title = "", string $parameter = "", string $section
         ".tldr-expanded .tldr-body {display:block;}\n".
         ".tldr-desc {color:#a9b1d6;font-style:italic;margin:4px 0 6px 0;}\n".
         ".tldr-examples {list-style:none;padding:0;margin:0;}\n".
-        ".tldr-examples li {margin:6px 0;font-size:13px;color:#a9b1d6;}\n".
-        ".tldr-examples li code {font-size:13px;background:#1a1b26;color:#9ece6a;padding:1px 4px;border:1px solid #3b4261;border-radius:2px;display:inline-block;margin:2px 0;}\n".
+        ".tldr-examples li {margin:6px 0;font-size:14px;color:#a9b1d6;}\n".
+        ".tldr-examples li code {font-size:14px;background:#1a1b26;color:#9ece6a;padding:1px 4px;border:1px solid #3b4261;border-radius:2px;display:inline-block;margin:2px 0;}\n".
         ".tldr-examples li b {color:#e0af68;}\n".
         $MOBILE_CSS . "\n".
         "</style>\n";
@@ -2996,10 +2995,14 @@ function getPydocIndex (string $format = "html"): string {
         return $result;
     }
     $output = "";
+    $results = [];
     foreach ($modules as $mod) {
-        $output .= '<li><a href="'.$script_name.'/pydoc/'.urlencode($mod).'">'.h($mod).'</a></li>'."\n";
+        $results[] = ['name' => $mod, 'section' => '', 'description' => '', 'sources' => ['pydoc']];
     }
-    return $output;
+    $rendered = renderGroupedResults($results, $script_name);
+    if ($rendered['sidebar'] !== '') {
+    }
+    return $rendered['html'];
 }
 
 //get ri class index (ri -l)
@@ -3044,15 +3047,17 @@ function getRiIndex (string $format = "html"): string {
         }
         return $result;
     }
-    $output = "<ul>\n";
+    $results = [];
     foreach ($lines as $line) {
         $trimmed = trim($line);
         if ($trimmed !== "") {
-            $output .= '<li><a href="'.$script_name.'/ri/'.urlencode($trimmed).'">'.h($trimmed).'</a></li>'."\n";
+            $results[] = ['name' => $trimmed, 'section' => '', 'description' => '', 'sources' => ['ri']];
         }
     }
-    $output .= "</ul>\n";
-    return $output;
+    $rendered = renderGroupedResults($results, $script_name);
+    if ($rendered['sidebar'] !== '') {
+    }
+    return $rendered['html'];
 }
 
 //get pydoc3 keyword search results
@@ -3296,7 +3301,6 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         }
         $rendered = renderGroupedResults($parsed, $script_name);
         if ($rendered['sidebar'] !== '') {
-            $GLOBALS['alpha_sidebar'] = $rendered['sidebar'];
         }
         return $rendered['html'];
     }
