@@ -637,14 +637,12 @@ cp .deploy.mk.example .deploy.mk
 Then edit `.deploy.mk` for your server:
 
 ```make
-TEST_USER = user
-TEST_HOST = example.com
+TEST_HOST = user@example.com
 TEST_PORT = 22
 TEST_PATH = /path/to/example.com/test
 TEST_URL  = https://example.com/test/phpMan.php
 
-DEMO_USER = user
-DEMO_HOST = example.com
+DEMO_HOST = user@example.com
 DEMO_PORT = 22
 DEMO_PATH = /path/to/example.com
 DEMO_URL  = https://example.com/phpMan.php
