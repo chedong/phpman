@@ -2307,7 +2307,8 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>\n".
         "<link rel=\"icon\" type=\"image/x-icon\" href=\"/favicon.ico\"/>\n";
 
-    echo "<link rel=\"stylesheet\" type=\"text/css\" href=\"phpman.css\"/>\n";
+    $css_path = str_replace('phpMan.php', 'phpman.css', scriptName());
+    echo "<link rel=\"stylesheet\" type=\"text/css\" href=\"".h($css_path)."\"/>\n";
 
     // JSON-LD structured data for SEO/GEO (#64)
     if ($parameter !== "" && in_array($mode, ["man", "perldoc", "info", "pydoc", "ri"])) {
