@@ -946,9 +946,19 @@ function expandNameForFts(string $name): string {
     }
 
     // Double-colon expansion: "File::Find" → append "File Find"
+    // Also lowercase for case-insensitive matching: "File Find" → "file find"
     if (str_contains($name, '::')) {
-        $expanded .= ' ' . str_replace('::', ' ', $name);
+        $parts = str_replace('::', ' ', $name);
+        $expanded .= ' ' . $parts . ' ' . mb_strtolower($parts);
     }
+
+    // Dot expansion: "json.decoder" → append "json decoder"
+    if (str_contains($name, '.')) {
+        $expanded .= ' ' . str_replace('.', ' ', $name);
+    }
+
+    // Append lowercase version for case-insensitive FTS5 prefix matching
+    $expanded .= ' ' . mb_strtolower($name);
 
     return $expanded;
 }
@@ -1071,6 +1081,86 @@ function searchFts(string $parameter, string $section = '', int $limit = 50): ar
     } catch (\Exception $e) {
         phpManLog("FTS5 search error: " . $e->getMessage());
         return []; // Graceful fallback
+    }
+}
+
+/**
+ * Search FTS5 index for pydoc or ri entries matching a query.
+ * Returns results in the format expected by the search cascade:
+ *   - 'json': array of ['name' => ..., 'description' => ..., 'link' => ...]
+ *   - 'html': <ul><li>...</li></ul>
+ *   - 'markdown': markdown list
+ *
+ * @param string $parameter  Search query
+ * @param string $source     'pydoc' or 'ri'
+ * @param string $format     'json', 'html', or 'markdown'
+ * @return array|string      Formatted results (array for json, string for html/markdown)
+ */
+function searchFtsBySource(string $parameter, string $source, string $format) {
+    try {
+        $db = cacheDb();
+        $ftsQuery = buildFtsQuery($parameter);
+        if ($ftsQuery === '') return $format === 'json' ? [] : '';
+
+        $stmt = $db->prepare(
+            "SELECT s.name, s.section, s.description
+             FROM search_fts s
+             LEFT JOIN search_index_meta m ON m.section = s.section
+                 AND (s.name = m.name OR s.name LIKE m.name || ' %')
+             WHERE search_fts MATCH :q AND s.section = :source
+             ORDER BY rank LIMIT 100"
+        );
+        $stmt->bindValue(':q', $ftsQuery, SQLITE3_TEXT);
+        $stmt->bindValue(':source', $source, SQLITE3_TEXT);
+        $result = $stmt->execute();
+
+        $script_name = ($format === 'markdown' || $format === 'json') ? baseUrl() : scriptName();
+        $entries = [];
+        while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+            $origName = trim(explode(' ', $row['name'])[0]);
+            $entries[] = ['name' => $origName, 'description' => $row['description']];
+        }
+
+        if (empty($entries)) return $format === 'json' ? [] : '';
+
+        if ($format === 'json') {
+            $out = [];
+            foreach ($entries as $e) {
+                $out[] = [
+                    'name' => $e['name'],
+                    'description' => $e['description'],
+                    'link' => $script_name . '/' . $source . '/' . urlencode($e['name']) . '/json',
+                ];
+            }
+            return $out;
+        }
+
+        if ($format === 'html') {
+            $out = "<ul>\n";
+            foreach ($entries as $e) {
+                $out .= '<li><a href="' . $script_name . '/' . $source . '/' . urlencode($e['name']) . '">'
+                     . h($e['name']) . '</a>';
+                if ($e['description'] !== '') {
+                    $out .= ' — ' . h($e['description']);
+                }
+                $out .= "</li>\n";
+            }
+            $out .= "</ul>\n";
+            return $out;
+        }
+
+        // markdown
+        $out = '';
+        foreach ($entries as $e) {
+            $out .= '- [' . $e['name'] . '](' . $script_name . '/' . $source . '/' . urlencode($e['name']) . '/markdown)';
+            if ($e['description'] !== '') {
+                $out .= ' — ' . $e['description'];
+            }
+            $out .= "\n";
+        }
+        return $out;
+    } catch (\Exception $e) {
+        return $format === 'json' ? [] : '';
     }
 }
 
@@ -1540,7 +1630,104 @@ function rebuildSearchIndex(): string {
         }
 
         $elapsed = round(microtime(true) - $startTime, 2);
-        $output[] = "\nDone. {$total} entries indexed, {$errors} errors in {$elapsed}s.\n";
+        $output[] = "\nMan pages: {$total} entries indexed.\n";
+        $output[] = "Man page errors: {$errors}.\n";
+
+        // ================================================================
+        // 2. Python 3 modules via pydoc3
+        // ================================================================
+        $pydocLines = [];
+        exec('pydoc3 modules 2>/dev/null', $pydocLines, $pydocExit);
+        if ($pydocExit === 0 && !empty($pydocLines)) {
+            $pydocCount = 0;
+            $pydocErrors = 0;
+            $inBody = false;
+            foreach ($pydocLines as $line) {
+                $trimmed = trim($line);
+                if ($trimmed === '') {
+                    $inBody = true;
+                    continue;
+                }
+                if (!$inBody) continue;
+                if (preg_match('/^Enter any module name/i', $trimmed)) break;
+                $parts = preg_split('/\s{2,}/', $trimmed);
+                foreach ($parts as $part) {
+                    $part = trim($part);
+                    if ($part === '' || preg_match('/^\s*$/', $part)) continue;
+                    if (preg_match('/^(Enter any module|Or, type|modules spam)/i', $part)) continue;
+                    if (strpos($part, '_') === 0 && !preg_match('/^__[a-z]+__$/', $part)) continue;
+                    $expandedName = expandNameForFts($part);
+                    try {
+                        $stmt = $db->prepare(
+                            "INSERT INTO search_fts (name, section, description, body)
+                             VALUES (:name, :section, :description, '')"
+                        );
+                        $stmt->bindValue(':name', $expandedName, SQLITE3_TEXT);
+                        $stmt->bindValue(':section', 'pydoc', SQLITE3_TEXT);
+                        $stmt->bindValue(':description', 'Python 3 module', SQLITE3_TEXT);
+                        $stmt->execute();
+
+                        $stmt2 = $db->prepare(
+                            "INSERT OR IGNORE INTO search_index_meta (name, section, source, body_len)
+                             VALUES (:name, :section, 'pydoc', 0)"
+                        );
+                        $stmt2->bindValue(':name', $part, SQLITE3_TEXT);
+                        $stmt2->bindValue(':section', 'pydoc', SQLITE3_TEXT);
+                        $stmt2->execute();
+
+                        $pydocCount++;
+                        $total++;
+                    } catch (\Exception $e) {
+                        $pydocErrors++;
+                        $errors++;
+                    }
+                }
+            }
+            $output[] = "  pydoc3: {$pydocCount} modules indexed.\n";
+        }
+
+        // ================================================================
+        // 3. Ruby classes via ri
+        // ================================================================
+        $riLines = [];
+        exec('ri -l 2>/dev/null', $riLines, $riExit);
+        if ($riExit === 0 && !empty($riLines)) {
+            $riCount = 0;
+            $riErrors = 0;
+            foreach ($riLines as $line) {
+                $trimmed = trim($line);
+                if ($trimmed === '') continue;
+                $expandedName = expandNameForFts($trimmed);
+                try {
+                    $stmt = $db->prepare(
+                        "INSERT INTO search_fts (name, section, description, body)
+                         VALUES (:name, :section, :description, '')"
+                    );
+                    $stmt->bindValue(':name', $expandedName, SQLITE3_TEXT);
+                    $stmt->bindValue(':section', 'ri', SQLITE3_TEXT);
+                    $stmt->bindValue(':description', 'Ruby class/module', SQLITE3_TEXT);
+                    $stmt->execute();
+
+                    $stmt2 = $db->prepare(
+                        "INSERT OR IGNORE INTO search_index_meta (name, section, source, body_len)
+                         VALUES (:name, :section, 'ri', 0)"
+                    );
+                    $stmt2->bindValue(':name', $trimmed, SQLITE3_TEXT);
+                    $stmt2->bindValue(':section', 'ri', SQLITE3_TEXT);
+                    $stmt2->execute();
+
+                    $riCount++;
+                    $total++;
+                } catch (\Exception $e) {
+                    $riErrors++;
+                    $errors++;
+                }
+            }
+            $output[] = "  ri: {$riCount} classes indexed.\n";
+        }
+
+        $elapsed = round(microtime(true) - $startTime, 2);
+        $output[] = "\nDone. {$total} total entries indexed, {$errors} errors in {$elapsed}s.\n";
 
         // COMMIT the transaction
         $db->exec("COMMIT");
@@ -1887,62 +2074,67 @@ switch ( $mode ) {
                     $inner = getSearchPage($parameter, $section, $format);
                     Profiler::mark('fts:done');
 
-                    // Check if FTS5 (or apropos fallback) returned results.
-                    // If we already have results from the man-page index, skip the
-                    // expensive pydoc3/ri cascade.
-                    $hasResults = false;
-                    if ($format === "json" || $format === "mcp") {
-                        $jsonData = json_decode($inner, true);
-                        $hasResults = is_array($jsonData) && !empty($jsonData['results']);
-                    } else {
-                        $hasResults = (strpos($inner, '<li>') !== false)
-                                   || (strpos(trim($inner), '- [') === 0);
-                    }
-
-                    // Cascade to pydoc3 and ri only when man-page search had no hits
-                    if (!$hasResults) {
-                        if ($format === "html") {
-                            $inner = "<h2>apropos</h2>\n" . $inner . "\n";
-                            $pydocResults = getPydocSearchPage($parameter, "html");
-                            Profiler::mark('pydoc:done');
-                            if ($pydocResults !== "") {
-                                $inner .= "<h2>Python 3 (pydoc3)</h2>\n" . $pydocResults . "\n";
-                            }
-                            $riResults = getRiSearchPage($parameter, "html");
-                            Profiler::mark('ri:done');
-                            if ($riResults !== "") {
-                                $inner .= "<h2>Ruby (ri)</h2>\n<pre>" . $riResults . "</pre>\n";
-                            }
-                        } elseif ($format === "markdown") {
-                            $pydocResults = getPydocSearchPage($parameter, "markdown");
-                            Profiler::mark('pydoc:done');
-                            if ($pydocResults !== "") {
-                                $inner .= "\n\n## Python 3 (pydoc3)\n\n" . $pydocResults;
-                            }
-                            $riResults = getRiSearchPage($parameter, "markdown");
-                            Profiler::mark('ri:done');
-                            if ($riResults !== "") {
-                                $inner .= "\n\n## Ruby (ri)\n\n" . $riResults;
-                            }
-                        } elseif ($format === "json" || $format === "mcp") {
-                            $current = json_decode($inner, true);
-                            if ($current === null) $current = [];
-                            $pydocJson = getPydocSearchPage($parameter, "json");
-                            Profiler::mark('pydoc:done');
-                            if ($pydocJson !== "") {
-                                $pydocData = json_decode($pydocJson, true);
-                                if ($pydocData !== null) $current["pydoc_results"] = $pydocData["results"] ?? [];
-                            }
-                            $riJson = getRiSearchPage($parameter, "json");
-                            Profiler::mark('ri:done');
-                            if ($riJson !== "") {
-                                $riData = json_decode($riJson, true);
-                                if ($riData !== null) $current["ri_results"] = $riData["results"] ?? [];
-                            }
-                            $inner = json_encode($current, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-                            if ($format === "mcp") {
-                                $inner = formatForOutput($inner, "mcp");
-                            }
+                    // Always cascade to pydoc3 and ri — aggregate results
+                    // from all three sources (apropos/pydoc3/ri).
+                    if ($format === "html") {
+                        $inner = "<h2>apropos</h2>\n" . $inner . "\n";
+                        $pydocResults = getPydocSearchPage($parameter, "html");
+                        Profiler::mark('pydoc:done');
+                        if ($pydocResults === "") {
+                            $pydocResults = searchFtsBySource($parameter, 'pydoc', 'html');
+                        }
+                        if ($pydocResults !== "") {
+                            $inner .= "<h2>Python 3 (pydoc3)</h2>\n" . $pydocResults . "\n";
+                        }
+                        $riResults = getRiSearchPage($parameter, "html");
+                        Profiler::mark('ri:done');
+                        if ($riResults === "") {
+                            $riResults = searchFtsBySource($parameter, 'ri', 'html');
+                        }
+                        if ($riResults !== "") {
+                            $inner .= "<h2>Ruby (ri)</h2>\n" . $riResults . "\n";
+                        }
+                    } elseif ($format === "markdown") {
+                        $pydocResults = getPydocSearchPage($parameter, "markdown");
+                        Profiler::mark('pydoc:done');
+                        if ($pydocResults === "") {
+                            $pydocResults = searchFtsBySource($parameter, 'pydoc', 'markdown');
+                        }
+                        if ($pydocResults !== "") {
+                            $inner .= "\n\n## Python 3 (pydoc3)\n\n" . $pydocResults;
+                        }
+                        $riResults = getRiSearchPage($parameter, "markdown");
+                        Profiler::mark('ri:done');
+                        if ($riResults === "") {
+                            $riResults = searchFtsBySource($parameter, 'ri', 'markdown');
+                        }
+                        if ($riResults !== "") {
+                            $inner .= "\n\n## Ruby (ri)\n\n" . $riResults;
+                        }
+                    } elseif ($format === "json" || $format === "mcp") {
+                        $current = json_decode($inner, true);
+                        if ($current === null) $current = [];
+                        $pydocJson = getPydocSearchPage($parameter, "json");
+                        Profiler::mark('pydoc:done');
+                        if ($pydocJson !== "") {
+                            $pydocData = json_decode($pydocJson, true);
+                            if ($pydocData !== null) $current["pydoc_results"] = $pydocData["results"] ?? [];
+                        }
+                        if (empty($current["pydoc_results"])) {
+                            $current["pydoc_results"] = searchFtsBySource($parameter, 'pydoc', 'json');
+                        }
+                        $riJson = getRiSearchPage($parameter, "json");
+                        Profiler::mark('ri:done');
+                        if ($riJson !== "") {
+                            $riData = json_decode($riJson, true);
+                            if ($riData !== null) $current["ri_results"] = $riData["results"] ?? [];
+                        }
+                        if (empty($current["ri_results"])) {
+                            $current["ri_results"] = searchFtsBySource($parameter, 'ri', 'json');
+                        }
+                        $inner = json_encode($current, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                        if ($format === "mcp") {
+                            $inner = formatForOutput($inner, "mcp");
                         }
                     }
                     return $inner;
@@ -3091,7 +3283,7 @@ function getRiSearchPage (string $parameter, string $format = "html"): string {
         return "";
     }
     $first_line = count($lines) > 0 ? trim($lines[0]) : "";
-    if (preg_match('/^Nothing known about/i', $first_line)) {
+    if (preg_match('/^Nothing known about/i', $first_line) || preg_match('/^\.json not found/i', $first_line)) {
         return "";
     }
     if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "ri");
@@ -3153,17 +3345,29 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         if ($ftsQuery !== '') {
             try {
                 $db = cacheDb();
-                // Only use FTS5 if the table actually has data
-                $totalIndexed = $db->querySingle("SELECT COUNT(*) FROM search_index_meta WHERE source='man'");
+                // Use FTS5 if any source has indexed data (man/pydoc/ri)
+                $totalIndexed = $db->querySingle("SELECT COUNT(*) FROM search_index_meta");
                 if ($totalIndexed > 0) {
+                    // Man-page results: match numeric sections only
                     if ($section !== "" && preg_match("/^[0-9n]$/", $section)) {
                         $stmt = $db->prepare(
-                            "SELECT name, section, description FROM search_fts WHERE search_fts MATCH :q AND section = :sec ORDER BY rank LIMIT 300"
+                            "SELECT s.name, s.section, s.description
+                             FROM search_fts s
+                             LEFT JOIN search_index_meta m ON m.section = s.section
+                                 AND (s.name = m.name OR s.name LIKE m.name || ' %')
+                             WHERE search_fts MATCH :q AND s.section = :sec
+                             ORDER BY rank LIMIT 300"
                         );
                         $stmt->bindValue(':sec', $section, SQLITE3_TEXT);
                     } else {
                         $stmt = $db->prepare(
-                            "SELECT name, section, description FROM search_fts WHERE search_fts MATCH :q ORDER BY rank LIMIT 300"
+                            "SELECT s.name, s.section, s.description
+                             FROM search_fts s
+                             LEFT JOIN search_index_meta m ON m.section = s.section
+                                 AND (s.name = m.name OR s.name LIKE m.name || ' %')
+                             WHERE search_fts MATCH :q
+                               AND s.section NOT IN ('pydoc', 'ri')
+                             ORDER BY rank LIMIT 300"
                         );
                     }
                     $stmt->bindValue(':q', $ftsQuery, SQLITE3_TEXT);
@@ -3204,9 +3408,30 @@ function getSearchPage (string $parameter, string $section = "", string $format 
     // json / mcp output
     if ($format === "json" || $format === "mcp") {
         $results = array();
+        $pydoc_results = array();
+        $ri_results = array();
         $count = count($lines);
         for ($i = 0; $i < $count; $i++) {
             $line = $lines[$i];
+            // Route pydoc/ri entries by section
+            if (preg_match('/^(.+)\s+\(pydoc\)\s+—\s+(.+)$/', $line, $m)) {
+                $name = trim($m[1]);
+                $pydoc_results[] = array(
+                    "name" => $name,
+                    "description" => trim($m[2]),
+                    "link" => $script_name . "/pydoc/" . urlencode($name) . "/json",
+                );
+                continue;
+            }
+            if (preg_match('/^(.+)\s+\(ri\)\s+—\s+(.+)$/', $line, $m)) {
+                $name = trim($m[1]);
+                $ri_results[] = array(
+                    "name" => $name,
+                    "description" => trim($m[2]),
+                    "link" => $script_name . "/ri/" . urlencode($name) . "/json",
+                );
+                continue;
+            }
             if (preg_match('/^(.+)\s+\[\s*(.+?)\s*\]\s+\(((\d\w*|n)\w*)\)\s*$/', $line, $m)) {
                 $name = trim($m[1]);
                 $description = trim($m[2]);
@@ -3266,6 +3491,12 @@ function getSearchPage (string $parameter, string $section = "", string $format 
             "results" => $results,
             "count" => count($results),
         );
+        if (!empty($pydoc_results)) {
+            $jsonData["pydoc_results"] = $pydoc_results;
+        }
+        if (!empty($ri_results)) {
+            $jsonData["ri_results"] = $ri_results;
+        }
         return formatForOutput(json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), $format);
     }
 

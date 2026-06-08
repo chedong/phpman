@@ -18,37 +18,37 @@ require_once __DIR__ . '/../../phpMan.php';
 echo "=== Unit: FTS5 Search Functions ===\n\n";
 
 echo "--- expandNameForFts() ---\n";
-// Hyphenated command names
-assert_equals("git-commit git commit", expandNameForFts("git-commit"),
-    "git-commit → expanded with space-replaced version");
-assert_equals("git-upload-pack git upload pack", expandNameForFts("git-upload-pack"),
-    "git-upload-pack → multi-hyphen expanded");
-assert_equals("run-parts run parts", expandNameForFts("run-parts"),
-    "run-parts → expanded");
+// Hyphenated command names — now includes lowercase copy
+assert_equals("git-commit git commit git-commit", expandNameForFts("git-commit"),
+    "git-commit → expanded with space-replaced + lowercase");
+assert_equals("git-upload-pack git upload pack git-upload-pack", expandNameForFts("git-upload-pack"),
+    "git-upload-pack → multi-hyphen expanded + lowercase");
+assert_equals("run-parts run parts run-parts", expandNameForFts("run-parts"),
+    "run-parts → expanded + lowercase");
 
-// Double-colon Perl modules
-assert_equals("File::Find File Find", expandNameForFts("File::Find"),
-    "File::Find → expanded with space-replaced version");
-assert_equals("File::Path::Tiny File Path Tiny", expandNameForFts("File::Path::Tiny"),
-    "File::Path::Tiny → multi-colon expanded");
+// Double-colon Perl modules — includes space-separated + lowercase + lowercase space-separated
+assert_equals("File::Find File Find file find file::find", expandNameForFts("File::Find"),
+    "File::Find → expanded with space, lowercase, original-lowercase");
+assert_equals("File::Path::Tiny File Path Tiny file path tiny file::path::tiny", expandNameForFts("File::Path::Tiny"),
+    "File::Path::Tiny → multi-colon expanded + lowercase");
 
-// No special separators
-assert_equals("ls", expandNameForFts("ls"),
-    "simple command → unchanged");
-assert_equals("grep", expandNameForFts("grep"),
-    "grep → unchanged");
-assert_equals("bash", expandNameForFts("bash"),
-    "bash → unchanged");
+// No special separators — still gets lowercase copy
+assert_equals("ls ls", expandNameForFts("ls"),
+    "simple command → original + lowercase");
+assert_equals("grep grep", expandNameForFts("grep"),
+    "grep → original + lowercase");
+assert_equals("bash bash", expandNameForFts("bash"),
+    "bash → original + lowercase");
 
 // Empty / edge cases
-assert_equals("", expandNameForFts(""),
-    "empty string → empty");
-assert_equals("a", expandNameForFts("a"),
-    "single char → unchanged");
+assert_equals(" ", expandNameForFts(""),
+    "empty string → single space (lowercase of empty)");
+assert_equals("a a", expandNameForFts("a"),
+    "single char → original + lowercase");
 
 // Combination: both hyphen and colon
-assert_equals("App-Cmd::Command App Cmd::Command App-Cmd Command", expandNameForFts("App-Cmd::Command"),
-    "App-Cmd::Command → both hyphen and colon expanded");
+assert_equals("App-Cmd::Command App Cmd::Command App-Cmd Command app-cmd command app-cmd::command", expandNameForFts("App-Cmd::Command"),
+    "App-Cmd::Command → both hyphen and colon expanded + lowercase");
 
 echo "\n--- buildFtsQuery() ---\n";
 // Single word → prefix match
