@@ -810,7 +810,7 @@ class PageCache {
     public function set(string $mode, string $name, string $section, string $format, ?string $content, string $status = 'found'): bool {
         $compressed = ($content !== null && $content !== '') ? gzcompress($content) : null;
         $contentLen = ($content !== null) ? strlen($content) : 0;
-        $ttl = ($status === 'not_found') ? 86400 : 0;
+        $ttl = ($status === 'not_found') ? 86400 : 604800;  // 1 day for 404, 7 days for found
         // Search not-found entries live longer (7 days vs 1 day)
         if ($mode === 'search' && $status === 'not_found') {
             $ttl = 604800;
@@ -931,6 +931,15 @@ function cacheOrExecute(string $mode, string $name, string $section, string $for
     $content = $generator();
     if (trim($content) !== "") {
         $cache->set($mode, $name, $section, $format, $content, 'found');
+    }
+    // 1% chance: clean up expired cache entries to prevent unbounded growth
+    if (mt_rand(0, 99) === 0) {
+        try {
+            $db = cacheDb();
+            $db->exec("DELETE FROM cache WHERE ttl > 0 AND (strftime('%s','now') - updated_at) > ttl");
+        } catch (\Exception $e) {
+            // ignore cleanup failures
+        }
     }
     return $content;
 }
@@ -1514,11 +1523,21 @@ function rebuildSearchIndex(): string {
         }
 
         // Clear existing search index: DROP+CREATE is much faster than DELETE FROM
-        // on FTS5 (DELETE rebuilds internal indices per row)
+        // on FTS5 (DELETE rebuilds internal indices per row).
+        // Fall back to DELETE FROM if DROP fails (e.g., DB locked by another connection).
+        $dropped = false;
         try {
             $db->exec("DROP TABLE IF EXISTS search_fts");
+            $dropped = true;
         } catch (\Exception $e) {
-            // May fail if FTS5 not available
+            // DROP may fail under lock — fall through to DELETE below
+        }
+        if (!$dropped) {
+            try {
+                $db->exec("DELETE FROM search_fts");
+            } catch (\Exception $e) {
+                // DELETE also failed — can't proceed
+            }
         }
         try {
             $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS search_fts
