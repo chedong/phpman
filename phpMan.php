@@ -2481,8 +2481,7 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	    }
 	    // Only render when we have at least one real example with a command
 	    if (!empty($tldrExamples)) {
-	        $contentLines = substr_count($content, "\n") + 1;
-	        $expanded = $contentLines > 200 ? " tldr-expanded" : "";
+	        $expanded = " tldr-expanded";
 	        echo "<div class=\"tldr-block{$expanded}\">\n";
 	        echo "<div class=\"tldr-header\" onclick=\"this.parentNode.classList.toggle('tldr-expanded')\">";
 	        $src = $tldrData["source"] === "cheatsh" ? "cheat.sh" : "tldr-pages";
