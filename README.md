@@ -1,6 +1,6 @@
 # phpMan — Unix Man Page / Perldoc / Info Page Web Interface & MCP Server
 
-phpMan is an open-source Linux Command MCP Server and Structured JSON API web interface with HTML and markdown format. It provides comprehensive Unix/Linux man pages, perldoc and texinfo, optimized for human developers and LLM AI Agents.
+phpMan is an open-source Linux Command MCP Server and Structured JSON API web interface with HTML and markdown format. It provides comprehensive Unix/Linux man pages, perldoc, Python 3 (pydoc3), Ruby (ri), and texinfo, optimized for human developers and LLM AI Agents.
 
 **For AI Agents:** Query Unix documentation via MCP protocol or REST API. Get structured man pages with parsed flags, examples, and cross-references.
 
@@ -196,11 +196,13 @@ curl -X POST "https://www.chedong.com/phpMan.php/mcp" \
 
 **Auto-detection:**
 - Commands containing `::` or section `3pm`/`3perl` → `perldoc` mode
+- Commands containing `#` → `ri` mode (Ruby)
+- Commands containing `.` (no `::`) → `pydoc` mode (Python)
 - Other commands → `man` mode
 
-#### 2. `cli_search` — Search Man Pages
+#### 2. `cli_search` — Search Documentation
 
-Search across all man page names and descriptions using `apropos`.
+Search across man pages, Python modules, and Ruby classes using FTS5 full-text index with command-line fallback.
 
 **Input Schema:**
 ```json
@@ -367,7 +369,7 @@ Both MCP `structuredContent` and REST `/json` endpoints return the same schema.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `mode` | string | `"man"`, `"perldoc"`, `"info"`, or `"search"` |
+| `mode` | string | `"man"`, `"perldoc"`, `"info"`, `"pydoc"`, `"ri"`, or `"search"` |
 | `parameter` | string | Command or module name |
 | `section` | string | Manual section number (e.g. `"1"`, `"3pm"`) |
 | `url` | string | Canonical JSON API URL for this page |
@@ -395,25 +397,33 @@ Both MCP `structuredContent` and REST `/json` endpoints return the same schema.
 
 ### Search Response
 
+Search results aggregate three documentation sources:
+
 ```json
 {
   "mode": "search",
-  "query": "cron",
-  "count": 5,
+  "query": "json",
+  "count": 26,
   "results": [
-    {
-      "name": "cron",
-      "section": "8",
-      "description": "daemon to execute scheduled commands"
-    },
-    {
-      "name": "crontab",
-      "section": "1",
-      "description": "maintain crontab files for individual users"
-    }
+    {"name": "JSON::PP", "section": "3perl", "description": "JSON::XS compatible pure-Perl module"},
+    {"name": "json_pp", "section": "1", "description": "JSON::PP command utility"}
+  ],
+  "pydoc_results": [
+    {"name": "json", "description": "JSON (JavaScript Object Notation)"},
+    {"name": "json.decoder", "description": "Implementation of JSONDecoder"}
+  ],
+  "ri_results": [
+    {"name": "Psych::JSON", "description": "Ruby class/module"},
+    {"name": "ActiveSupport::JSON", "description": "Ruby class/module"}
   ]
 }
 ```
+
+| Field | Description |
+|-------|-------------|
+| `results` | Man page / perldoc matches |
+| `pydoc_results` | Python 3 module matches |
+| `ri_results` | Ruby class/module matches |
 
 ### MCP Wrapper Format
 
@@ -512,7 +522,20 @@ Returns Markdown with:
 
 ---
 
-## What's New in v2.1
+## What's New
+
+### v3.6.1 (2026-06-08)
+
+- **Single FTS5 query covers man/pydoc/ri** — one SQL query routes results by section into separate buckets; no more `searchFtsBySource()` fallback calls
+- Search cascade only falls back to command-line when FTS5 has no hits for a source
+
+### v3.6 (2026-06-08)
+
+- **FTS5 index includes pydoc3 and ri** — `rebuildSearchIndex()` now indexes Python 3 modules (`pydoc3 modules`) and Ruby classes (`ri -l`) alongside man pages
+- **Case-insensitive FTS5 matching** — `expandNameForFts()` appends lowercase + dot/colon expansion: searching `json` matches `JSON::Ext::Parser`, `Psych::JSON`, `json.decoder`
+- **Search always aggregates three sources** — apropos + pydoc3 + ri results are always merged, not just when apropos is empty
+
+### v2.1
 
 ### Cross-Platform Width Control
 
@@ -524,11 +547,87 @@ Returns Markdown with:
 
 See [docs/PLAN.md](docs/PLAN.md) for the full project plan:
 
-- **pydoc / ri** — Python and Ruby documentation support (pydoc3 / ri)
+- **pydoc / ri** — ✅ Shipped in v3.6 — Python and Ruby documentation support with FTS5 search
 - **LLM-powered** — AI translation (identifier-preserving), cheat sheets, example generation
-- **Search** — Alphabetic sidebar navigation for large index pages (>150 entries)
+- **Search** — ✅ Shipped in v3.6 — FTS5 full-text index with three-source aggregation (man + pydoc + ri)
 - **MCP** — Streaming output, error standardization, dynamic tool discovery
 - **I18N** — LANG-based locale support + AI fallback translation
+
+---
+
+## Generating ri (Ruby) Documentation for Gems
+
+On shared servers, Ruby gems are typically installed in system directories (e.g. `/usr/lib/x86_64-linux-gnu/rubygems-integration/` or `/usr/share/rubygems-integration/all/gems/`). The `gem rdoc` command fails silently because it cannot write to those directories, and `ri` finds no gem documentation. This means `ri -l` won't list gem classes like `JSON::Ext::Parser`, `ActiveSupport::JSON`, etc., and phpMan's FTS5 search won't index them.
+
+The solution is to use `rdoc --ri` to generate ri data into `~/.local/share/rdoc/`, which `ri` scans by default. After generating, run `php phpMan.php --build-index` to rebuild the FTS5 search index with the new ri entries.
+
+### One-Command Setup
+
+```bash
+# Generate ri docs for all gems across all system gem paths
+for dir in \
+  /usr/lib/x86_64-linux-gnu/rubygems-integration/3.0.0/gems \
+  /usr/share/rubygems-integration/all/gems \
+  /var/lib/gems/3.0.0/gems; do
+  [ -d "$dir" ] || continue
+  for gem in "$dir"/*/lib; do
+    [ -d "$gem" ] || continue
+    name=$(basename "$(dirname "$gem")")
+    echo "Generating ri for $name..."
+    RUBYOPT="-Eutf-8:utf-8" rdoc --ri "$gem" -o ~/.local/share/rdoc 2>/dev/null
+  done
+done
+```
+
+### Verify
+
+```bash
+ri --list-doc-dirs    # Should include ~/.local/share/rdoc
+ri Nokogiri::HTML     # Should show documentation
+ri ActiveRecord::Base # Should show documentation
+```
+
+### Important Notes
+
+- **Output directory must be `~/.local/share/rdoc`** — `ri` auto-discovers this path. Subdirectories within it are **not** scanned separately.
+- **All gems must write to the same directory** — `rdoc --ri` merges data incrementally. Don't use per-gem subdirectories; `ri` won't find them.
+- **`RUBYOPT="-Eutf-8:utf-8"`** is needed to avoid `invalid byte sequence in UTF-8` errors on some gems.
+- **`2>/dev/null`** silences per-gem rdoc warnings. Remove it to debug individual failures.
+- **`cache.ri`** is auto-generated by `rdoc` in the output directory. If `ri` can't find classes after a fresh generate, delete `~/.local/share/rdoc/cache.ri` and regenerate.
+
+### Why Not `gem rdoc --all`?
+
+| Approach | Works on shared servers? | Output location | ri discovers? |
+|----------|--------------------------|-----------------|----------------|
+| `gem rdoc --all` | ❌ Fails silently (no write access to system gem dirs) | System doc dirs | N/A |
+| `gem rdoc <gem> --ri` | ❌ Same permission issue | N/A | N/A |
+| `rdoc --ri <lib-dir> -o ~/.local/share/rdoc` | ✅ | `~/.local/share/rdoc` | ✅ |
+
+### Future Gems
+
+To generate ri docs for a single newly installed gem:
+
+```bash
+RUBYOPT="-Eutf-8:utf-8" rdoc --ri /path/to/gem/lib -o ~/.local/share/rdoc
+```
+
+To auto-generate on `gem install`, add to `~/.gemrc`:
+
+```yaml
+gem: --document ri
+```
+
+Then for system-installed gems, manually run the `rdoc --ri` command above after install.
+
+### After Generating ri Docs
+
+Rebuild the FTS5 search index so phpMan's search includes the new ri entries:
+
+```bash
+php /path/to/phpMan.php --build-index
+```
+
+This adds the newly discovered ri classes to `search_fts`, making them searchable alongside man pages and pydoc modules.
 
 ---
 
@@ -536,8 +635,10 @@ See [docs/PLAN.md](docs/PLAN.md) for the full project plan:
 
 - **Man Pages** — Browse any Unix/Linux manual page with `-Tutf8` output (SGR bold/underline support)
 - **Perldoc** — Read Perl module documentation in-browser
+- **Python 3 (pydoc3)** — Browse Python module documentation via `pydoc3`
+- **Ruby (ri)** — Browse Ruby class/module documentation via `ri`
 - **Info Pages** — View GNU info documentation
-- **Apropos Search** — Full-text search across man page summaries
+- **Apropos Search** — Full-text search across man pages, Python modules, and Ruby classes (FTS5 + command-line fallback)
 - **TOC Sidebar** — Two-level floating table of contents for navigation
 - **Markdown Output** — Append `/markdown` for machine-readable format
 - **JSON API** — Append `/json` for structured JSON output with semantic fields
@@ -547,9 +648,9 @@ See [docs/PLAN.md](docs/PLAN.md) for the full project plan:
 - **SEO Optimized** — Canonical URLs, meta description, robots directives
 - **Clean URLs** — PATH_INFO routing: `/man/ls/1`
 
-## Comparison: man / Info / Perldoc Modes
+## Comparison: man / Info / Perldoc / pydoc / ri Modes
 
-phpMan supports three Unix documentation retrieval methods, each corresponding to different system commands, data sources, and documentation format specifications.
+phpMan supports five Unix documentation retrieval methods, each corresponding to different system commands, data sources, and documentation format specifications.
 
 ### 1. man Mode
 
@@ -584,19 +685,42 @@ phpMan supports three Unix documentation retrieval methods, each corresponding t
 | **Internal Structure** | Flat document with clear `=head1` → `=head2` hierarchy |
 | **Subsections** | Supports second-level subsections (`=head2`), fully displayed in TOC |
 
-### 4. Cross-Comparison
+### 4. pydoc3 Mode
 
-| Dimension | man | info | perldoc |
-|-----------|-----|------|---------|
-| Ecosystem | BSD / Unix general | GNU project specific | Perl language specific |
-| Source Format | troff / groff | Texinfo | POD |
-| Overstrike Output | ✅ Yes | ❌ No | ❌ No (but has ANSI escapes) |
-| Second-level Headings | `.SS` → bold/underline | Section number + indent | `=head2` → Title Case |
-| TOC Depth | ✅ Full two levels | ❌ First level only | ✅ Full two levels |
-| Linking Capability | Weak (cross-reference `name(sec)`) | Strong (node tree `(node)` navigation) | Weak (module reference `Module::Name`) |
-| Typical Content | Command references, syscalls, config formats | GNU project complete manuals (tutorials, concepts) | Perl module API references |
+| Item | Description |
+|------|-------------|
+| **System Command** | `pydoc3 <module>` for documentation, `pydoc3 -k <keyword>` for search, `pydoc3 modules` for index |
+| **Data Source** | Python 3 standard library + installed packages |
+| **Source Format** | **Plain text** — no overstrike or ANSI, uses ALL CAPS section headers (`NAME`, `DESCRIPTION`, `CLASSES`, `FUNCTIONS`) |
+| **Standard** | Python docstring conventions (PEP 257) |
+| **Internal Structure** | Flat document with ALL CAPS L1 sections, indented class/function definitions as L2 |
+| **Subsections** | L2 via `class Name(Parent)` and `funcName(args)` patterns |
+| **URL Pattern** | `/pydoc/{module}`, `/pydoc/{module}/{format}` |
 
-> ℹ️ **About info Subsections:** info mode currently cannot generate a second-level TOC because `info` plain text output only has section numbers (e.g., `3.1 Simple options`), lacking explicit heading markers like man's `.SS` or perldoc's `=head2`. Support can be added by extending the heading recognition logic.
+### 5. ri (Ruby) Mode
+
+| Item | Description |
+|------|-------------|
+| **System Command** | `ri <Class#method>` for documentation, `ri -l` for class index |
+| **Data Source** | Ruby core + installed gem ri data (see [Generating ri Documentation for Gems](#generating-ri-ruby-documentation-for-gems) below) |
+| **Source Format** | **Overstrike** (same as man pages), uses RDoc markers (`= Heading`, `== Subheading`) |
+| **Standard** | **RDoc** — Ruby documentation format |
+| **Internal Structure** | Flat document with `=` L1 and `==` L2 headings |
+| **Subsections** | `==` subheadings, fully displayed in TOC |
+| **URL Pattern** | `/ri/{Class}`, `/ri/{Class#method}/{format}` |
+| **Search** | No native `ri -k`; phpMan uses `ri <query>` (built-in fuzzy match) + FTS5 index |
+
+### 6. Cross-Comparison
+
+| Dimension | man | info | perldoc | pydoc3 | ri |
+|-----------|-----|------|---------|--------|-----|
+| Ecosystem | BSD / Unix general | GNU project | Perl | Python 3 | Ruby |
+| Source Format | troff / groff | Texinfo | POD | Plain text / docstrings | RDoc |
+| Overstrike Output | ✅ Yes | ❌ No | ❌ No (ANSI) | ❌ No | ✅ Yes |
+| Second-level Headings | `.SS` → bold | Section number | `=head2` | `class`/`func()` | `==` markers |
+| TOC Depth | ✅ Full two levels | ❌ First level only | ✅ Full two levels | ✅ Full two levels | ✅ Full two levels |
+| Linking | Weak (cross-ref) | Strong (node tree) | Weak (module ref) | Weak (module ref) | Weak (`::` ref) |
+| Typical Content | Command refs, syscalls | GNU manuals | Perl API refs | Python API refs | Ruby API refs |
 
 ## Check Out Source Code
 
@@ -722,8 +846,9 @@ Cron example (daily at 3am):
   0 3 * * * /path/to/local/php /path/to/phpman_cache/rebuild-index.php /path/to/phpman_cache/production --cron
 
 The script clears `search_fts` + `search_index_meta` + stale search cache, then
-rebuilds from scratch via `apropos -s N .` for each man section. Typically completes
-in under 2 seconds for ~9600 entries.
+rebuilds from scratch via `apropos -s N .` for man pages, `pydoc3 modules` for
+Python 3, and `ri -l` for Ruby. Typically completes in ~10 seconds for ~14,000 entries
+(9,600 man + 340 pydoc + 3,900 ri).
 
 ## License
 
