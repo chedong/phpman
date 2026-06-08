@@ -6,8 +6,28 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.6.1] — 2026-06-08
+
+### Changed
+- **getSearchPage() single FTS5 query covers man/pydoc/ri** — removed `AND section NOT IN ('pydoc','ri')` filter; results routed by section into `$lines` (man), `$pydocFtsLines` (pydoc), `$riFtsLines` (ri)
+- Search cascade uses FTS5 results as baseline, only falls back to command-line `pydoc3 -k` / `ri` when FTS5 had no hits for that source
+- Removed `searchFtsBySource()` calls from cascade — no longer needed since FTS5 query already covers all sources
+- Updated `docs/SEARCH_FTS5_DESIGN.md` to v4: single-query architecture, two-level search flow
+
+## [3.6] — 2026-06-08
+
 ### Added
-- Requirements section in README (PHP 7.2+, SQLite3 with FTS5)
+- **FTS5 index now includes pydoc3 and ri entries** — `rebuildSearchIndex()` indexes `pydoc3 modules` (section='pydoc') and `ri -l` (section='ri') alongside man pages
+- **`expandNameForFts()` case-insensitive matching** — appends lowercase + dot/colon expansion: `JSON::Ext::Parser` also matches `json`, `parser`, `ext parser`
+- **`searchFtsBySource()`** — queries FTS5 for pydoc/ri entries by section (retained as utility function)
+
+### Changed
+- Search mode always aggregates apropos + pydoc3 + ri results (no longer only cascades when apropos is empty)
+- `getSearchPage()` FTS5 availability check uses all sources (`SELECT COUNT(*) FROM search_index_meta`) not just `source='man'`
+
+### Fixed
+- `getRiSearchPage()` now filters `.xxx not found` responses from `ri` command
+- Updated test expectations for expanded `expandNameForFts()` output
 
 ## [3.5] — 2026-06-06
 

@@ -1,7 +1,7 @@
 # phpMan FTS5 全文搜索设计方案
 
-> **状态:** v4 — FTS5 离线索引优先 + 命令行级联 fallback + 三源聚合搜索
-> **日期:** 2026-06-08 (v3.6)
+> **状态:** v4 — FTS5 离线索引优先 + 命令行级联 fallback + 单次查询三源聚合
+> **日期:** 2026-06-08 (v3.6.1)
 > **环境:** PHP 7.2+ / SQLite 3.53.1 · `PRAGMA compile_options` 含 ENABLE_FTS5
 > **关联设计:** [CACHE_DESIGN.md](CACHE_DESIGN.md) — 页面内容缓存架构
 
@@ -14,38 +14,45 @@
 ```
 用户搜索请求
     ↓
-┌─────────────────────────────────────────────────┐
-│ 第一级：FTS5 离线索引（快、有缓存）               │
-│                                                   │
-│  search_fts 表 = apropos + pydoc3 + ri 三源索引   │
-│  只索引标题(name) + 简介(description)             │
-│  不索引正文(body) — 避免索引膨胀                   │
-└───────────────┬─────────────────────────────────┘
-                │ FTS5 有结果?
-                ├── YES → 返回 FTS5 结果 + 缓存
-                └── NO  ↓
-┌─────────────────────────────────────────────────┐
-│ 第二级：命令行级联搜索（慢、无缓存）               │
-│                                                   │
-│  1. apropos $parameter     ← man page 搜索       │
-│  2. pydoc3 -k $parameter   ← Python 模块搜索     │
-│  3. ri $parameter          ← Ruby 类搜索         │
-│                                                   │
-│  apropos 结果回填 FTS5 索引（增量索引）            │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│ 第一级：FTS5 离线索引（快、有缓存）                    │
+│                                                        │
+│  getSearchPage() 一次 FTS5 查询覆盖全部三个来源:        │
+│    search_fts MATCH 'json*'                            │
+│      → section='3pm'  → $lines (man/perldoc)           │
+│      → section='pydoc' → $pydocFtsLines                │
+│      → section='ri'    → $riFtsLines                   │
+│                                                        │
+│  只索引标题(name) + 简介(description)                   │
+│  不索引正文(body) — 避免索引膨胀                        │
+└───────────────┬──────────────────────────────────────┘
+                │ FTS5 某源无结果?
+                ├── man 无结果 ↓
+                │   exec("apropos ...") + indexAproposLines()
+                ├── pydoc 无结果 ↓
+                │   getPydocSearchPage() → pydoc3 -k
+                └── ri 无结果 ↓
+                    getRiSearchPage() → ri $parameter
 ```
 
-### 1.2 三源聚合搜索
+### 1.2 单次 FTS5 查询三源聚合
 
-v3.6 起，搜索模式**始终**聚合三个来源的结果：
+v3.6.1 起，`getSearchPage()` 的 FTS5 查询**不再排除** pydoc/ri section，
+一次查询即获取全部三个来源的结果，按 section 路由到不同数组：
 
 ```
-getSearchPage($parameter)           ← apropos / FTS5 (man pages)
-  + getPydocSearchPage($parameter)  ← pydoc3 -k 或 FTS5 pydoc 索引
-  + getRiSearchPage($parameter)     ← ri 命令或 FTS5 ri 索引
+getSearchPage($parameter)
+    ↓ FTS5 单次查询
+    $lines         ← section IN ('1','2','3','4','5','6','7','8','9','n','3pm','3perl'...)
+    $pydocFtsLines ← section = 'pydoc'
+    $riFtsLines    ← section = 'ri'
+    ↓ FTS5 某源无结果时 fallback
+    man 空   → apropos + indexAproposLines()
+    pydoc 空 → getPydocSearchPage() (pydoc3 -k)
+    ri 空    → getRiSearchPage() (ri command)
 ```
 
-**不再**只在 apropos 无结果时才级联到 pydoc/ri。三个来源的结果始终合并返回。
+不再需要 `searchFtsBySource()` — FTS5 查询在 `getSearchPage()` 内一步完成。
 
 ### 1.3 搜索结果缓存
 
@@ -197,7 +204,7 @@ FTS5 `unicode61` 分词器默认将 token 转为小写存储。配合 `expandNam
 
 ## 四、搜索执行流程（详细）
 
-### 4.1 getSearchPage() — man page 搜索
+### 4.1 getSearchPage() — 单次 FTS5 查询覆盖三源
 
 ```
 getSearchPage($parameter, $section, $format)
@@ -206,49 +213,40 @@ getSearchPage($parameter, $section, $format)
     ↓
 2. FTS5 可用? (search_index_meta 有数据)
     ├── YES → SELECT FROM search_fts WHERE MATCH :q
-    │         AND section NOT IN ('pydoc', 'ri')    ← 只查 man page
-    │         ORDER BY rank LIMIT 300
-    │         → 重构为 pseudo-apropos 行格式
+    │         ORDER BY rank LIMIT 300    ← 包含 pydoc/ri section
+    │         按 section 路由:
+    │           section='pydoc' → $pydocFtsLines
+    │           section='ri'    → $riFtsLines
+    │           其他             → $lines (man pages)
     └── NO  → 空结果，进入 fallback
     ↓
-3. FTS5 结果为空? → exec("apropos " . escapeshellarg($parameter))
+3. $lines 为空? → exec("apropos ...") + indexAproposLines()
     ↓
-4. apropos 结果回填 FTS5: indexAproposLines($lines)
+4. 输出格式处理:
+    json/mcp → $lines→results, $pydocFtsLines→pydoc_results, $riFtsLines→ri_results
+    html     → <h2>apropos</h2> + $lines
+              + <h2>Python 3</h2> + $pydocFtsLines (或 getPydocSearchPage)
+              + <h2>Ruby (ri)</h2> + $riFtsLines (或 getRiSearchPage)
 ```
 
-### 4.2 搜索级联 — pydoc3 和 ri
+### 4.2 搜索级联 — pydoc3 和 ri 命令行 fallback
+
+FTS5 查询已在 `getSearchPage()` 内完成三源路由。级联只在 FTS5 某源无结果时触发：
 
 ```
 search case (cacheOrExecute 包裹):
     ↓
-getSearchPage()       → man/apropos 结果
-    ↓ (始终级联，不再判断 man 是否有结果)
-getPydocSearchPage()  → pydoc3 -k $parameter
-    ↓ (pydoc3 -k 无结果时)
-searchFtsBySource('pydoc')  → FTS5 pydoc 索引搜索
+getSearchPage()       → 一次 FTS5 查询
+    → $lines (man), $pydocFtsLines, $riFtsLines
     ↓
-getRiSearchPage()     → ri $parameter
-    ↓ (ri 无结果时)
-searchFtsBySource('ri')     → FTS5 ri 索引搜索
+$pydocFtsLines 非空? → 用 FTS5 pydoc 结果
+    └── 空 → getPydocSearchPage() → pydoc3 -k
+    ↓
+$riFtsLines 非空?    → 用 FTS5 ri 结果
+    └── 空 → getRiSearchPage() → ri command
 ```
 
-### 4.3 searchFtsBySource() — FTS5 pydoc/ri 搜索
-
-当命令行搜索（`pydoc3 -k` / `ri`）无结果时，回退到 FTS5 索引搜索：
-
-```php
-function searchFtsBySource(string $parameter, string $source, string $format) {
-    // SELECT FROM search_fts WHERE MATCH :q AND section = :source
-    // :source = 'pydoc' 或 'ri'
-    // 返回格式化结果（HTML <ul>/Markdown 列表/JSON 数组）
-}
-```
-
-典型场景：
-- 搜索 `json` → `ri json` 返回 ".json not found" → `searchFtsBySource('ri')` 找到 `Psych::JSON`, `RDoc::Generator::JsonIndex` 等
-- 搜索 `parser` → `pydoc3 -k parser` 可能超时 → `searchFtsBySource('pydoc')` 从 FTS5 找到 `json.decoder` 等模块
-
-### 4.4 getRiSearchPage() — "not found" 过滤
+### 4.3 getRiSearchPage() — "not found" 过滤
 
 ri 命令的模糊匹配结果有时不是真正的搜索结果，需要过滤：
 
@@ -258,9 +256,9 @@ if (preg_match('/^Nothing known about/i', $first_line)) return "";
 if (preg_match('/^\.json not found/i', $first_line)) return "";  // ri 对小写名的特殊响应
 ```
 
-### 4.5 getSearchPage() JSON 输出 — pydoc/ri 分离
+### 4.4 getSearchPage() JSON 输出 — pydoc/ri 从 FTS5 合并
 
-`getSearchPage()` 的 JSON 输出将 pydoc/ri 条目路由到独立数组：
+`getSearchPage()` 的 FTS5 查询按 section 路由后，JSON 输出直接从 `$pydocFtsLines` / `$riFtsLines` 合并：
 
 ```json
 {
@@ -370,17 +368,12 @@ if (!empty($lines) && !$sectionOnly) {
     ↓
 cache 命中? → YES → 直接返回缓存结果
     ↓ NO
-FTS5 search_fts 有数据?
-    ├── YES → FTS5 MATCH 查询 (man sections only)
-    └── NO  → exec("apropos ...") + indexAproposLines()
+FTS5 一次查询 search_fts (man + pydoc + ri)
+    → $lines (man), $pydocFtsLines, $riFtsLines
     ↓
-级联: getPydocSearchPage()
-    ├── pydoc3 -k 有结果 → 返回
-    └── 无结果 → searchFtsBySource('pydoc') → FTS5 pydoc 索引
-    ↓
-级联: getRiSearchPage()
-    ├── ri 有结果 → 返回
-    └── 无结果 → searchFtsBySource('ri') → FTS5 ri 索引
+$lines 为空? → exec("apropos ...") + indexAproposLines()
+$pydocFtsLines 为空? → getPydocSearchPage() (pydoc3 -k)
+$riFtsLines 为空?    → getRiSearchPage() (ri command)
     ↓
 聚合三源结果 → 缓存 → 返回
 ```
@@ -402,18 +395,16 @@ search_fts 索引:
 
 | 优先级 | 数据源 | 触发条件 |
 |--------|--------|---------|
-| 1 | FTS5 离线索引 | 索引有数据时优先使用 |
-| 2 | apropos 命令 | FTS5 无数据或未命中 |
-| 3 | pydoc3 -k 命令 | 始终级联执行 |
-| 4 | FTS5 pydoc 索引 | pydoc3 -k 无结果时 fallback |
-| 5 | ri 命令 | 始终级联执行 |
-| 6 | FTS5 ri 索引 | ri 无结果时 fallback |
+| 1 | FTS5 离线索引（三源单次查询） | 索引有数据时优先使用 |
+| 2 | apropos 命令 | FTS5 无 man 数据或未命中 |
+| 3 | pydoc3 -k 命令 | FTS5 无 pydoc 数据时 fallback |
+| 4 | ri 命令 | FTS5 无 ri 数据时 fallback |
 
-### 9.3 为什么 pydoc/ri 有双重搜索路径
+### 9.3 为什么单次 FTS5 查询优于分源查询
 
-- **命令行搜索**（`pydoc3 -k` / `ri`）返回带描述的详细结果，但可能超时或无结果
-- **FTS5 索引搜索**（`searchFtsBySource`）返回索引中的条目，描述为通用（"Python 3 module" / "Ruby class/module"），但速度快且覆盖全
-- 两者互补：命令行有结果时用命令行（更详细），无结果时用 FTS5（不漏条目）
+- **性能**：一次 SQL 查询 vs 三次 SQL 查询 + PHP 序列化/反序列化
+- **简洁**：`getSearchPage()` 内完成路由，级联层无需再调 `searchFtsBySource()`
+- **一致性**：FTS5 的 rank 排序跨源统一，不会因分源查询而丢失相关性信息
 
 ---
 
@@ -454,7 +445,7 @@ php rebuild-index.php /path/to/phpman_cache/production --cron  # 带时间戳
 
 | 文件 | 改动 |
 |------|------|
-| `phpMan.php` | `rebuildSearchIndex()` 增加 pydoc/ri 索引；`getSearchPage()` FTS5 查询排除 pydoc/ri section；搜索级联始终聚合；`searchFtsBySource()` 新函数；`expandNameForFts()` 增加小写+点号展开；`getRiSearchPage()` 过滤 `.xxx not found` |
+| `phpMan.php` | `getSearchPage()` 单次 FTS5 查询覆盖三源（按 section 路由到 $lines/$pydocFtsLines/$riFtsLines）；搜索级联仅 FTS5 无结果时 fallback 到命令行；`expandNameForFts()` 增加小写+点号展开；`getRiSearchPage()` 过滤 `.xxx not found`；`rebuildSearchIndex()` 增加 pydoc/ri 索引 |
 | `rebuild-index.php` | 已包含 pydoc3/ri 索引逻辑 |
 | `docs/SEARCH_FTS5_DESIGN.md` | 本文档 |
 | `test/unit/test_search_fts.php` | 更新 expandNameForFts 期望值 |
