@@ -1168,13 +1168,13 @@ function searchFtsBySource(string $parameter, string $source, string $format) {
 
         // markdown
         $out = '';
-        foreach ($entries as $e) {
-            $out .= '- [' . $e['name'] . '](' . $script_name . '/' . $source . '/' . urlencode($e['name']) . '/markdown)';
-            if ($e['description'] !== '') {
-                $out .= ' — ' . $e['description'];
-            }
-            $out .= "\n";
-        }
+      foreach ($entries as $e) {
+    $out .= '- [' . h($e['name']) . '](' . $script_name . '/' . $source . '/' . urlencode($e['name']) . '/markdown)';
+    if ($e['description'] !== '') {
+        $out .= ' - ' . h($e['description']);
+    }
+    $out .= "\n";
+}
         return $out;
     } catch (\Exception $e) {
         return $format === 'json' ? [] : '';
@@ -1301,7 +1301,7 @@ function renderGroupedResults(array $results, string $scriptName): array {
                            : (in_array('ri', $sources) ? 'ri'
                            : ($is_perl ? 'perldoc' : 'man'));
                 $desc = h($r['description'] ?? '');
-                $sourceTag = !empty($sources) ? ' <span class="sources">[' . implode(', ', $sources) . ']</span>' : '';
+				$sourceTag = !empty($sources) ? ' <span class="sources">[' . implode(', ', array_map('h', $sources)) . ']</span>' : '';
                 $html .= '<li><a href="' . $scriptName . '/' . $link_mode . '/' . urlencode($r['name']);
                 if ($r['section'] !== '') {
                     $html .= '/' . urlencode($r['section']);
