@@ -4157,6 +4157,11 @@ function fetchOfficialTldr(string $command, string $mode = "man", string $sectio
         if ($cached) {
             $result = json_decode($cached['content'], true);
             if (is_array($result)) {
+                // Negative cache: return empty array for previously-missing entries
+                if (($result['source'] ?? '') === 'not_found') {
+                    $cache[$cacheKey] = [];
+                    return [];
+                }
                 $cache[$cacheKey] = $result;
                 return $result;
             }
@@ -4170,20 +4175,22 @@ function fetchOfficialTldr(string $command, string $mode = "man", string $sectio
     $cache[$cacheKey] = $result;
 
     // Persist to SQLite cache — 7-day TTL for future requests
-    if (!empty($result)) {
-        try {
-            $db = cacheDb();
-            $stmt = $db->prepare(
-                "INSERT OR REPLACE INTO tldr_cache (command, source, content, fetched_at)
-                 VALUES (:cmd, :source, :content, strftime('%s','now'))"
-            );
-            $stmt->bindValue(':cmd', $command, SQLITE3_TEXT);
-            $stmt->bindValue(':source', $result['source'] ?? 'unknown', SQLITE3_TEXT);
-            $stmt->bindValue(':content', json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), SQLITE3_TEXT);
-            $stmt->execute();
-        } catch (\Exception $e) {
-            // SQLite unavailable — ignore, just don't cache
+    // Cache both successful and empty/missing results (negative cache, #80)
+    try {
+        $db = cacheDb();
+        if (empty($result)) {
+            $result = ['source' => 'not_found', 'examples' => []];
         }
+        $stmt = $db->prepare(
+            "INSERT OR REPLACE INTO tldr_cache (command, source, content, fetched_at)
+             VALUES (:cmd, :source, :content, strftime('%s','now'))"
+        );
+        $stmt->bindValue(':cmd', $command, SQLITE3_TEXT);
+        $stmt->bindValue(':source', $result['source'] ?? 'unknown', SQLITE3_TEXT);
+        $stmt->bindValue(':content', json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), SQLITE3_TEXT);
+        $stmt->execute();
+    } catch (\Exception $e) {
+        // SQLite unavailable — ignore, just don't cache
     }
 
     return $result;

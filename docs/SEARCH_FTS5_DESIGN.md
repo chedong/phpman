@@ -270,6 +270,18 @@ if (preg_match('/^\.json not found/i', $first_line)) return "";  // ri 对小写
 
 搜索级联在 `cacheOrExecute` 闭包内完成聚合，确保缓存结果也包含三源数据。
 
+### 4.5 Section 列表模式 `(1)` `(3pm)` `(n)` — 必须使用 apropos
+
+当搜索参数为 section-only 格式（如 `(1)`、`(3pm)`、`(n)`）时，`getSearchPage()` 检测到 `$sectionOnly = true`，**直接跳过 FTS5，使用 `apropos -s <section> .` 进行全量枚举**。
+
+**为什么必须用 apropos 而非 FTS5：**
+
+1. **FTS5 覆盖不全**：`apropos -s 1 .` 返回 2872 个唯一名，FTS5 section=`1` 仅 2659 个。少了的 213 个是 1p/1ssl/1mh 等子 section 条目，FTS5 将它们存在对应 sub-section（如 section=`1p`）中
+2. **不应混入 pydoc/ri**：Section 列表请求的是特定 man 节的全部命令，pydoc 模块（section=`pydoc`）和 ri 类（section=`ri`）不应出现
+3. **FTS5 设计为全文搜索**：按 section 枚举不是 FTS5 的设计目标；FTS5 的 rank 排序对全量列出无意义
+
+**性能**：`apropos` 依赖 whatis/mandb 数据库，首次可能需 15-30s。结果通过 `cacheOrExecute` 缓存到 SQLite（~500KB），后续请求 ~4s。性能瓶颈在 apropos 数据库质量，不在 phpMan 缓存层。
+
 ---
 
 ## 五、数据模型
