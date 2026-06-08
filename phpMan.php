@@ -702,6 +702,14 @@ function cacheDb(): SQLite3 {
             UNIQUE(name, section, source)
         )");
 
+        // TLDR persistent cache — avoids repeated GitHub/cheat.sh HTTP fetches
+        $db->exec("CREATE TABLE IF NOT EXISTS tldr_cache (
+            command     TEXT UNIQUE NOT NULL,
+            source      TEXT NOT NULL,
+            content     TEXT NOT NULL,
+            fetched_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+        )");
+
         $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_lookup
                    ON cache(mode, name, section, format)");
         $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_status
@@ -1574,17 +1582,8 @@ function rebuildSearchIndex(): string {
                 $expandedName = expandNameForFts($name);
 
                 try {
-                    $stmt = $db->prepare(
-                        "INSERT INTO search_fts (name, section, description, body)
-                         VALUES (:name, :section, :description, :body)"
-                    );
-                    $stmt->bindValue(':name', $expandedName, SQLITE3_TEXT);
-                    $stmt->bindValue(':section', $sectionNum, SQLITE3_TEXT);
-                    $stmt->bindValue(':description', $description, SQLITE3_TEXT);
-                    $stmt->bindValue(':body', $body, SQLITE3_TEXT);
-                    $stmt->execute();
-
-                    // Also insert meta
+                    // Dedup via search_index_meta before FTS INSERT
+                    // (FTS5 lacks UNIQUE constraints; plain INSERT always adds rows)
                     $stmt2 = $db->prepare(
                         "INSERT OR IGNORE INTO search_index_meta (name, section, source, body_len)
                          VALUES (:name, :section, 'man', :body_len)"
@@ -1593,6 +1592,19 @@ function rebuildSearchIndex(): string {
                     $stmt2->bindValue(':section', $sectionNum, SQLITE3_TEXT);
                     $stmt2->bindValue(':body_len', strlen($body), SQLITE3_INTEGER);
                     $stmt2->execute();
+                    $isNew = ($db->changes() === 1);
+
+                    if ($isNew) {
+                        $stmt = $db->prepare(
+                            "INSERT INTO search_fts (name, section, description, body)
+                             VALUES (:name, :section, :description, :body)"
+                        );
+                        $stmt->bindValue(':name', $expandedName, SQLITE3_TEXT);
+                        $stmt->bindValue(':section', $sectionNum, SQLITE3_TEXT);
+                        $stmt->bindValue(':description', $description, SQLITE3_TEXT);
+                        $stmt->bindValue(':body', $body, SQLITE3_TEXT);
+                        $stmt->execute();
+                    }
 
                     $sectionCount++;
                     $total++;
@@ -1658,15 +1670,7 @@ function rebuildSearchIndex(): string {
                     if (strpos($part, '_') === 0 && !preg_match('/^__[a-z]+__$/', $part)) continue;
                     $expandedName = expandNameForFts($part);
                     try {
-                        $stmt = $db->prepare(
-                            "INSERT INTO search_fts (name, section, description, body)
-                             VALUES (:name, :section, :description, '')"
-                        );
-                        $stmt->bindValue(':name', $expandedName, SQLITE3_TEXT);
-                        $stmt->bindValue(':section', 'pydoc', SQLITE3_TEXT);
-                        $stmt->bindValue(':description', 'Python 3 module', SQLITE3_TEXT);
-                        $stmt->execute();
-
+                        // Dedup via meta before FTS INSERT
                         $stmt2 = $db->prepare(
                             "INSERT OR IGNORE INTO search_index_meta (name, section, source, body_len)
                              VALUES (:name, :section, 'pydoc', 0)"
@@ -1674,6 +1678,18 @@ function rebuildSearchIndex(): string {
                         $stmt2->bindValue(':name', $part, SQLITE3_TEXT);
                         $stmt2->bindValue(':section', 'pydoc', SQLITE3_TEXT);
                         $stmt2->execute();
+                        $isNew = ($db->changes() === 1);
+
+                        if ($isNew) {
+                            $stmt = $db->prepare(
+                                "INSERT INTO search_fts (name, section, description, body)
+                                 VALUES (:name, :section, :description, '')"
+                            );
+                            $stmt->bindValue(':name', $expandedName, SQLITE3_TEXT);
+                            $stmt->bindValue(':section', 'pydoc', SQLITE3_TEXT);
+                            $stmt->bindValue(':description', 'Python 3 module', SQLITE3_TEXT);
+                            $stmt->execute();
+                        }
 
                         $pydocCount++;
                         $total++;
@@ -1699,15 +1715,7 @@ function rebuildSearchIndex(): string {
                 if ($trimmed === '') continue;
                 $expandedName = expandNameForFts($trimmed);
                 try {
-                    $stmt = $db->prepare(
-                        "INSERT INTO search_fts (name, section, description, body)
-                         VALUES (:name, :section, :description, '')"
-                    );
-                    $stmt->bindValue(':name', $expandedName, SQLITE3_TEXT);
-                    $stmt->bindValue(':section', 'ri', SQLITE3_TEXT);
-                    $stmt->bindValue(':description', 'Ruby class/module', SQLITE3_TEXT);
-                    $stmt->execute();
-
+                    // Dedup via meta before FTS INSERT
                     $stmt2 = $db->prepare(
                         "INSERT OR IGNORE INTO search_index_meta (name, section, source, body_len)
                          VALUES (:name, :section, 'ri', 0)"
@@ -1715,6 +1723,18 @@ function rebuildSearchIndex(): string {
                     $stmt2->bindValue(':name', $trimmed, SQLITE3_TEXT);
                     $stmt2->bindValue(':section', 'ri', SQLITE3_TEXT);
                     $stmt2->execute();
+                    $isNew = ($db->changes() === 1);
+
+                    if ($isNew) {
+                        $stmt = $db->prepare(
+                            "INSERT INTO search_fts (name, section, description, body)
+                             VALUES (:name, :section, :description, '')"
+                        );
+                        $stmt->bindValue(':name', $expandedName, SQLITE3_TEXT);
+                        $stmt->bindValue(':section', 'ri', SQLITE3_TEXT);
+                        $stmt->bindValue(':description', 'Ruby class/module', SQLITE3_TEXT);
+                        $stmt->execute();
+                    }
 
                     $riCount++;
                     $total++;
@@ -4110,7 +4130,7 @@ function fetchOfficialTldr(string $command, string $mode = "man", string $sectio
     $command = strtolower($command);
     $cacheKey = $command;
 
-    // Static cache first — avoids repeated validation checks (#87)
+    // Static cache first — avoids repeated lookups within a single request (#87)
     static $cache = [];
     if (array_key_exists($cacheKey, $cache)) return $cache[$cacheKey];
 
@@ -4124,9 +4144,48 @@ function fetchOfficialTldr(string $command, string $mode = "man", string $sectio
     // Skip commands with non-simple names (dots, special chars beyond [-_.])
     if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]*$/', $command)) return [];
 
+    // SQLite persistent cache — 7-day TTL (#80)
+    try {
+        $db = cacheDb();
+        $stmt = $db->prepare(
+            "SELECT content FROM tldr_cache
+             WHERE command = :cmd
+               AND (strftime('%s','now') - fetched_at) < 604800"
+        );
+        $stmt->bindValue(':cmd', $command, SQLITE3_TEXT);
+        $cached = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+        if ($cached) {
+            $result = json_decode($cached['content'], true);
+            if (is_array($result)) {
+                $cache[$cacheKey] = $result;
+                return $result;
+            }
+        }
+    } catch (\Exception $e) {
+        // SQLite unavailable — fall through to live fetch
+    }
+
     $result = fetchTldrPages($command);
     if (empty($result)) $result = fetchCheatShTldr($command);
     $cache[$cacheKey] = $result;
+
+    // Persist to SQLite cache — 7-day TTL for future requests
+    if (!empty($result)) {
+        try {
+            $db = cacheDb();
+            $stmt = $db->prepare(
+                "INSERT OR REPLACE INTO tldr_cache (command, source, content, fetched_at)
+                 VALUES (:cmd, :source, :content, strftime('%s','now'))"
+            );
+            $stmt->bindValue(':cmd', $command, SQLITE3_TEXT);
+            $stmt->bindValue(':source', $result['source'] ?? 'unknown', SQLITE3_TEXT);
+            $stmt->bindValue(':content', json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), SQLITE3_TEXT);
+            $stmt->execute();
+        } catch (\Exception $e) {
+            // SQLite unavailable — ignore, just don't cache
+        }
+    }
+
     return $result;
 }
 
