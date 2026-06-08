@@ -21,3 +21,4 @@ cache/
 # site-specific config (contains API keys, paths)
 phpman.config.php
 *.swp
+.claude/
