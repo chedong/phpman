@@ -37,13 +37,17 @@ pydoc/ri 复用已有的 `formatManPerlDoc()` / `formatToJSON()` / `formatManPer
 
 ### 搜索级联
 
-`cli_search` MCP 工具和 HTML 搜索页面在 `apropos` 之后自动追加 pydoc3 和 ri 结果：
+v3.6 起，搜索始终聚合三个来源的结果（不再只在 apropos 无结果时才级联）：
 
 ```
-apropos → pydoc3 -k → ri (直接查找，使用模糊匹配)
+getSearchPage()                  → FTS5/apropos (man pages)
+  + getPydocSearchPage()         → pydoc3 -k 或 FTS5 pydoc 索引
+  + getRiSearchPage()            → ri 命令或 FTS5 ri 索引
 ```
 
-代码：phpMan.php line 804–843。
+搜索优先级：FTS5 离线索引 > 命令行搜索 > FTS5 按源搜索
+
+详见 [SEARCH_FTS5_DESIGN.md](SEARCH_FTS5_DESIGN.md)。
 
 ### MCP auto-detection
 
@@ -255,8 +259,15 @@ replace: $3<a href="/ri/$4">$4</a>$6
 
 ### 4.6 搜索策略
 
-ri **没有** 原生的 `ri -k`（关键字搜索），所以 `getRiSearchPage()` 直接执行 `ri <query>`（line 1925–1938）。
-ri 内置模糊匹配：如果找不到精确匹配，会尝试部分匹配。检查首行是否为 `Nothing known about` 来判断是否找到结果。
+ri **没有** 原生的 `ri -k`（关键字搜索），所以 `getRiSearchPage()` 直接执行 `ri <query>`。
+ri 内置模糊匹配：如果找不到精确匹配，会尝试部分匹配。
+
+首行过滤规则（无结果判断）：
+- `Nothing known about` — 标准无结果响应
+- `.xxx not found` — ri 对小写名称的特殊响应（如 `ri json` 返回 `.json not found`）
+
+当 `ri` 命令无结果时，搜索级联回退到 `searchFtsBySource('ri')` 从 FTS5 索引中搜索 ri 条目。
+详见 [SEARCH_FTS5_DESIGN.md](SEARCH_FTS5_DESIGN.md)。
 
 ---
 
