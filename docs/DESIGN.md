@@ -50,11 +50,12 @@ phpMan 保持 XHTML 1.0 Transitional 合规，不升级到 HTML5：
 
 ### 2.4 TLDR 缓存策略 ✅
 
-TLDR 缓存文件存储在 webroot 内的 `tldr_cache/` 目录：
+TLDR 结果通过 SQLite `tldr_cache` 表持久缓存（7 天 TTL）：
 
-- man page 内容不变 → LLM 生成结果可永久缓存
-- 缓存按 `命令+模型+prompt版本+上下文hash` 唯一标识（#23 修复后）
-- 这是性能与成本的平衡：避免每次请求都调用 LLM API
+- `fetchOfficialTldr()` 从 tldr-pages GitHub Raw 获取（cheat.sh fallback）
+- 缓存在 `phpm_cache.db` 的 `tldr_cache` 表中
+- 包括负缓存：404/not_found 的命令也缓存，避免重复 HTTP 请求
+- 旧的文件系统 `tldr_cache/` 目录已废弃，不再使用
 
 ### 2.5 Info 模式 Setext 标题检测 ✅
 

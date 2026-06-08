@@ -46,7 +46,7 @@ The test framework is minimal (no PHPUnit): `assert_equals`, `assert_contains`, 
 
 **MCP server** — `handleMcp()` (~line 1064) implements JSON-RPC 2.0 over Streamable HTTP POST at `/mcp`. Two tools: `cli_help` and `cli_search`. MCP responses wrap JSON in `{content: [{type: "text", text: ...}], structuredContent: {...}}`.
 
-**TLDR** — The `/tldr` endpoint calls an LLM (OpenAI-compatible API) to generate cheatsheets. Configure via env vars: `LLM_API_URL`, `LLM_API_KEY`, `LLM_MODEL`. Results are cached to `tldr_cache/` using a composite key of command + model + prompt version + context hash.
+**TLDR** — TLDR cheatsheets are embedded inline in man page detail pages. `fetchOfficialTldr()` fetches from tldr-pages GitHub raw (primary) or cheat.sh (fallback), caches in SQLite `tldr_cache` table with 7-day TTL. No LLM/API key needed. The old `/tldr` route is removed.
 
 ## Key design rules
 

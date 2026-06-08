@@ -89,18 +89,16 @@ curl "https://www.chedong.com/phpMan.php/man/ls/1/mcp"
 
 ## Configuration
 
-phpMan uses environment variables for configuration. All variables have sensible defaults and are optional except `LLM_API_KEY` (required for TLDR generation).
+phpMan uses environment variables for configuration. TLDR is fetched from tldr-pages/cheat.sh and cached in SQLite — no API key needed.
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_API_URL` | _(empty)_ | OpenAI-compatible API endpoint (e.g. `https://api.openai.com/v1/chat/completions`) |
-| `LLM_API_KEY` | _(empty)_ | API key for LLM provider. **Required** for `/tldr` endpoint |
-| `LLM_MODEL` | `gpt-4o-mini` | Model name (e.g. `gpt-4o`, `claude-3-haiku`, `qwen-max`) |
-| `LLM_TIMEOUT` | `15` | LLM request timeout in seconds |
-| `TLDR_CACHE_DIR` | `./tldr_cache` | Cache directory for generated TLDR pages |
-| `TLDR_CACHE_TTL` | `604800` | Cache TTL in seconds (default: 7 days) |
+| `CACHE_DIR` | _(auto)_ | SQLite cache directory (set via `phpman.config.php`) |
+| `LLM_API_URL` | _(empty)_ | OpenAI-compatible API endpoint (reserved for future use) |
+| `LLM_API_KEY` | _(empty)_ | API key for LLM provider (reserved for future use) |
+| `LLM_MODEL` | `gpt-4o-mini` | Model name (reserved for future use) |
 
 ### Server Configuration
 
@@ -108,7 +106,6 @@ phpMan uses environment variables for configuration. All variables have sensible
 ```apache
 SetEnv LLM_API_KEY sk-ant-xxxxx
 SetEnv LLM_MODEL gpt-4o-mini
-SetEnv TLDR_CACHE_DIR /var/cache/phpman
 ```
 
 **Nginx (server block):**
@@ -116,7 +113,6 @@ SetEnv TLDR_CACHE_DIR /var/cache/phpman
 location ~ \.php$ {
     fastcgi_param LLM_API_KEY sk-ant-xxxxx;
     fastcgi_param LLM_MODEL gpt-4o-mini;
-    fastcgi_param TLDR_CACHE_DIR /var/cache/phpman;
     # ... other fastcgi params
 }
 ```
@@ -125,14 +121,12 @@ location ~ \.php$ {
 ```ini
 env[LLM_API_KEY] = sk-ant-xxxxx
 env[LLM_MODEL] = gpt-4o-mini
-env[TLDR_CACHE_DIR] = /var/cache/phpman
 ```
 
 ### Security Notes
 
-- **Never commit API keys to git.** Use environment variables or `.env` files (excluded from version control).
-- **Cache directory permissions:** Ensure `TLDR_CACHE_DIR` is writable by the web server user (e.g. `www-data`).
-- **Cache security:** The `tldr_cache/.htaccess` file denies direct web access to cached files.
+- **Never commit API keys to git.** Use environment variables (excluded from version control).
+- **Cache security:** SQLite cache DB files are stored outside webroot (via `CACHE_DIR` in `phpman.config.php`), not directly accessible via HTTP.
 
 ---
 
@@ -506,34 +500,32 @@ curl "https://www.chedong.com/phpMan.php/perldoc/Digest::MD5/mcp"
 
 This means any MCP client can `GET /man/ls/1/mcp` and parse the result identically to `POST /mcp` `tools/call`.
 
-### TLDR Endpoint
+### TLDR (Integrated in Man Pages)
 
-Generate cheatsheet-style summaries from man pages:
+TLDR cheatsheets are embedded directly in man page detail pages. When viewing a man section 1 command page, phpMan fetches from [tldr-pages](https://github.com/tldr-pages/tldr) (with [cheat.sh](https://cheat.sh) fallback) and caches results in SQLite for 7 days. The TLDR block appears at the top of the man page with collapsible examples.
 
 ```bash
-curl "https://www.chedong.com/phpMan.php/tldr/tar"
+# TLDR is integrated directly into man page output
+curl "https://www.chedong.com/phpMan.php/man/tar/1/markdown"
 ```
 
-Returns Markdown with:
-- Command summary
-- 5-8 practical examples
-- Common flags with descriptions
-- Auto-generated `--help` and `--version` examples
+| Format | TLDR location |
+|--------|-------------|
+| HTML | Collapsible block at top of page |
+| Markdown | `## TLDR` section before man content |
+| JSON | `tldr_summary` + `tldr_examples` fields |
+| MCP | `structuredContent.tldr_summary` + `tldr_examples` |
 
 ---
 
 ## What's New
 
-### v3.6.1 (2026-06-08)
+### v3.6+ (2026-06-08)
 
-- **Single FTS5 query covers man/pydoc/ri** — one SQL query routes results by section into separate buckets; no more `searchFtsBySource()` fallback calls
-- Search cascade only falls back to command-line when FTS5 has no hits for a source
-
-### v3.6 (2026-06-08)
-
-- **FTS5 index includes pydoc3 and ri** — `rebuildSearchIndex()` now indexes Python 3 modules (`pydoc3 modules`) and Ruby classes (`ri -l`) alongside man pages
-- **Case-insensitive FTS5 matching** — `expandNameForFts()` appends lowercase + dot/colon expansion: searching `json` matches `JSON::Ext::Parser`, `Psych::JSON`, `json.decoder`
-- **Search always aggregates three sources** — apropos + pydoc3 + ri results are always merged, not just when apropos is empty
+- **TLDR embedded in man pages** — TLDR is now integrated directly into man page rendering (HTML/Markdown/JSON/MCP), fetching from tldr-pages + cheat.sh with SQLite 7-day cache. The old `/tldr` route and `TLDR_CACHE_DIR` env vars are removed.
+- **FTS5 single-query search** — one SQL query covers man/pydoc/ri, routing results by section
+- **pydoc3 / ri FTS5 indexing** — Python and Ruby documentation searchable alongside man pages
+- **Case-insensitive matching** — searching `json` matches `JSON::Ext::Parser`, `Psych::JSON`, `json.decoder`
 
 ### v2.1
 
@@ -644,7 +636,7 @@ This adds the newly discovered ri classes to `search_fts`, making them searchabl
 - **JSON API** — Append `/json` for structured JSON output with semantic fields
 - **MCP Format** — Append `/mcp` for MCP-compatible output
 - **MCP Server** — Model Context Protocol endpoint for AI agent integration
-- **TLDR Endpoint** — Append `/tldr` for cheatsheet-style summaries
+- **TLDR Integration** — Inline cheatsheets from tldr-pages + cheat.sh, cached in SQLite
 - **SEO Optimized** — Canonical URLs, meta description, robots directives
 - **Clean URLs** — PATH_INFO routing: `/man/ls/1`
 
