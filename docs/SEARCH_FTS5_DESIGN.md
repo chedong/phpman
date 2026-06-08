@@ -422,22 +422,25 @@ search_fts 索引:
 
 ## 十、重建索引脚本
 
-### 10.1 rebuild-index.php（独立脚本）
-
-位于 `phpman_cache/` 目录，可直接在服务器上运行：
+### 10.1 重建方式
 
 ```bash
-php rebuild-index.php /path/to/phpman_cache/production
-php rebuild-index.php /path/to/phpman_cache/production --cron  # 带时间戳
+# CLI 全量重建
+php phpMan.php --build-index
+
+# Cron 模式（带时间戳）
+php phpMan.php --build-index-cron
+
+# 查看帮助
+php phpMan.php --help
 ```
 
-与 `phpMan.php --build-index` 逻辑相同，但不依赖 Web 上下文。
-
-### 10.2 Cron 定时重建
-
+Cron 示例（每日凌晨 3 点）：
 ```
-0 3 * * * /usr/bin/php /path/to/phpman_cache/rebuild-index.php /path/to/phpman_cache/production --cron
+0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron
 ```
+
+索引重建通过 `CACHE_DIR` 配置定位数据库文件，不需要额外参数。
 
 ---
 
@@ -457,7 +460,6 @@ php rebuild-index.php /path/to/phpman_cache/production --cron  # 带时间戳
 
 | 文件 | 改动 |
 |------|------|
-| `phpMan.php` | `getSearchPage()` 单次 FTS5 查询覆盖三源（按 section 路由到 $lines/$pydocFtsLines/$riFtsLines）；搜索级联仅 FTS5 无结果时 fallback 到命令行；`expandNameForFts()` 增加小写+点号展开；`getRiSearchPage()` 过滤 `.xxx not found`；`rebuildSearchIndex()` 增加 pydoc/ri 索引 |
-| `rebuild-index.php` | 已包含 pydoc3/ri 索引逻辑 |
+| `phpMan.php` | `getSearchPage()` 单次 FTS5 查询覆盖三源；`rebuildSearchIndex()` 含 man+pydoc+ri 索引 + meta-guard 去重；`expandNameForFts()` 大小写+点号+冒号展开；`getRiSearchPage()` 过滤 `.xxx not found`；`--help` CLI 帮助 |
 | `docs/SEARCH_FTS5_DESIGN.md` | 本文档 |
 | `test/unit/test_search_fts.php` | 更新 expandNameForFts 期望值 |

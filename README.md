@@ -820,24 +820,24 @@ make upload-release
 
 ### 6. Rebuild FTS5 Search Index
 
-The search engine uses a SQLite FTS5 index built from system `apropos` data.
-When search results become stale or duplicated, rebuild the index:
+The search engine uses a SQLite FTS5 index built from system `apropos`, `pydoc3`, and `ri` data.
+Rebuild the index when search results become stale or after installing new packages:
 
 ```bash
-# Copy rebuild script to cache directory
-cp rebuild-index.php /path/to/phpman_cache/
+# Rebuild index (interactive)
+php phpMan.php --build-index
 
-# Rebuild production index
-php /path/to/phpman_cache/rebuild-index.php /path/to/phpman_cache/production
+# Rebuild index (cron mode with timestamp)
+php phpMan.php --build-index-cron
 
-# Rebuild staging index (cron mode)
-php /path/to/phpman_cache/rebuild-index.php /path/to/phpman_cache/staging --cron
+# Show help
+php phpMan.php --help
 ```
 
 Cron example (daily at 3am):
-  0 3 * * * /path/to/local/php /path/to/phpman_cache/rebuild-index.php /path/to/phpman_cache/production --cron
+  0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron
 
-The script clears `search_fts` + `search_index_meta` + stale search cache, then
+The script clears search_fts + search_index_meta + stale search cache, then
 rebuilds from scratch via `apropos -s N .` for man pages, `pydoc3 modules` for
 Python 3, and `ri -l` for Ruby. Typically completes in ~10 seconds for ~14,000 entries
 (9,600 man + 340 pydoc + 3,900 ri).

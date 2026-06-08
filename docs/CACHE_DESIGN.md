@@ -99,9 +99,6 @@ php phpMan.php --build-index
 
 # Cron (daily)
 0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron
-
-# 或使用独立脚本
-php rebuild-index.php /path/to/phpman_cache/production --cron
 ```
 
 重建流程：`DROP TABLE search_fts` → `CREATE` → `DELETE FROM search_index_meta` → `INSERT` man pages (apropos) → `INSERT` pydoc3 modules → `INSERT` ri classes。

@@ -6,6 +6,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `--help` CLI help for phpMan.php (`php phpMan.php --help`)
+
+### Removed
+- `rebuild-index.php` — superseded by `php phpMan.php --build-index` (which has dedup guard, lowercase expansion, DROP+DELETE fallback)
+
+### Fixed
+- FTS5 rebuild DROP TABLE fallback: if DROP fails, falls back to DELETE FROM
+
+### Changed
+- Cache TTL: found entries from permanent to 7 days; expired entries auto-cleaned (1% chance per request)
+- `docs/CACHE_DESIGN.md` rewritten with actual v3.6.2 schema
+
 ## [3.6.1] — 2026-06-08
 
 ### Changed

@@ -1791,16 +1791,39 @@ if (defined('PHPMAN_TEST_MODE')) {
     return;
 }
 
-// CLI Mode: handle command-line invocation (e.g. --build-index)
+// CLI Mode: handle command-line invocation
 if (PHP_SAPI === 'cli') {
-    $options = getopt('', ['build-index', 'build-index-cron']);
+    $options = getopt('h', ['help', 'build-index', 'build-index-cron']);
+
+    if (isset($options['help']) || isset($options['h'])) {
+        echo "phpMan — Unix Man Page / Perldoc / Info / pydoc / ri Web Interface\n";
+        echo "Version: " . GIT_DESCRIBE . "\n\n";
+        echo "Usage:\n";
+        echo "  php phpMan.php --build-index          Rebuild FTS5 search index\n";
+        echo "  php phpMan.php --build-index-cron     Rebuild with timestamp (cron)\n";
+        echo "  php phpMan.php --help                 Show this help\n\n";
+        echo "FTS5 Search Index:\n";
+        echo "  Builds a full-text search index from three sources:\n";
+        echo "    - apropos -s N .  for man page sections 1-9,n\n";
+        echo "    - pydoc3 modules  for Python 3 standard library + packages\n";
+        echo "    - ri -l           for Ruby core + gem classes\n\n";
+        echo "  Index entries: name (expanded for FTS5) + section + description.\n";
+        echo "  Body content is NOT indexed (avoid fork resource exhaustion).\n\n";
+        echo "  After rebuilding, clear search cache to force fresh results:\n";
+        echo "    sqlite3 phpm_cache.db \"DELETE FROM cache WHERE mode='search'\"\n\n";
+        echo "Cron example (daily at 3am):\n";
+        echo "  0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron\n\n";
+        echo "Docs: https://github.com/chedong/phpman\n";
+        exit;
+    }
+
     if (isset($options['build-index'])) {
         echo rebuildSearchIndex();
         exit;
     }
     if (isset($options['build-index-cron'])) {
         $result = rebuildSearchIndex();
-        // Cron output: prefix with timestamp, avoid duplicated log lines
+        // Cron output: prefix with timestamp
         echo '[' . gmdate('Y-m-d H:i:s') . "]\n" . $result;
         exit;
     }
