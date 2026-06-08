@@ -38,11 +38,9 @@ input[type='submit'] {background:#7aa2f7;color:#1a1b26;border:none;padding:4px 1
 input[type='submit']:hover {background:#89b4fa;}
 input[type='radio'] {accent-color:#7aa2f7;}
 .tldr-block {background:#24283b;border:1px solid #3b4261;border-radius:4px;margin:8px 0 16px 0;overflow:hidden;}
-.tldr-header {cursor:pointer;padding:8px 12px;font-weight:bold;font-size:14px;color:#c0caf5;background:#1f2335;user-select:none;}
-.tldr-header:hover {background:#3b4261;}
+.tldr-header {padding:8px 12px;font-weight:bold;font-size:14px;color:#c0caf5;background:#1f2335;}
 .tldr-source {font-weight:normal;font-size:12px;color:#787c99;margin-left:6px;}
-.tldr-body {display:none;padding:4px 12px 8px 12px;}
-.tldr-expanded .tldr-body {display:block;}
+.tldr-body {padding:4px 12px 8px 12px;}
 .tldr-desc {color:#a9b1d6;font-style:italic;margin:4px 0 6px 0;}
 .tldr-examples {list-style:none;padding:0;margin:0;}
 .tldr-examples li {margin:6px 0;font-size:14px;color:#a9b1d6;}
