@@ -1,156 +1,153 @@
-# phpMan FTS5 全文搜索设计方案
+# phpMan FTS5 Full-Text Search Design
 
-> **状态:** v4 — FTS5 离线索引优先 + 命令行级联 fallback + 单次查询三源聚合
-> **日期:** 2026-06-08 (v3.6.1)
-> **环境:** PHP 7.2+ / SQLite 3.53.1 · `PRAGMA compile_options` 含 ENABLE_FTS5
-> **关联设计:** [CACHE_DESIGN.md](CACHE_DESIGN.md) — 页面内容缓存架构
+> **Status:** v4 — FTS5 offline index priority + command-line cascade fallback + single-query 3-source aggregation
+> **Date:** 2026-06-08 (v3.6.3)
+> **Environment:** PHP 7.2+ / SQLite 3.53.1 · `PRAGMA compile_options` includes `ENABLE_FTS5`
+> **Related:** [CACHE_DESIGN.md](CACHE_DESIGN.md) — page content cache architecture
 
 ---
 
-## 一、搜索架构总览
+## 1. Search Architecture Overview
 
-### 1.1 两级搜索策略：FTS5 优先，命令行 fallback
+### 1.1 Two-Level Search Strategy: FTS5 First, Command-Line Fallback
 
 ```
-用户搜索请求
+User search request
     ↓
 ┌──────────────────────────────────────────────────────┐
-│ 第一级：FTS5 离线索引（快、有缓存）                    │
+│ Level 1: FTS5 Offline Index (fast, cached)            │
 │                                                        │
-│  getSearchPage() 一次 FTS5 查询覆盖全部三个来源:        │
+│  getSearchPage() single FTS5 query covers 3 sources:   │
 │    search_fts MATCH 'json*'                            │
 │      → section='3pm'  → $lines (man/perldoc)           │
 │      → section='pydoc' → $pydocFtsLines                │
 │      → section='ri'    → $riFtsLines                   │
 │                                                        │
-│  只索引标题(name) + 简介(description)                   │
-│  不索引正文(body) — 避免索引膨胀                        │
+│  Only indexes title (name) + description (summary)     │
+│  Body text NOT indexed — avoid index bloat              │
 └───────────────┬──────────────────────────────────────┘
-                │ FTS5 某源无结果?
-                ├── man 无结果 ↓
+                │ Source has no results?
+                ├── man empty ↓
                 │   exec("apropos ...") + indexAproposLines()
-                ├── pydoc 无结果 ↓
+                ├── pydoc empty ↓
                 │   getPydocSearchPage() → pydoc3 -k
-                └── ri 无结果 ↓
+                └── ri empty ↓
                     getRiSearchPage() → ri $parameter
 ```
 
-### 1.2 单次 FTS5 查询三源聚合
+### 1.2 Single FTS5 Query, 3-Source Aggregation
 
-v3.6.1 起，`getSearchPage()` 的 FTS5 查询**不再排除** pydoc/ri section，
-一次查询即获取全部三个来源的结果，按 section 路由到不同数组：
+Since v3.6.1, `getSearchPage()` FTS5 query **no longer excludes** pydoc/ri sections. One query retrieves all three sources, routed by section:
 
 ```
 getSearchPage($parameter)
-    ↓ FTS5 单次查询
+    ↓ Single FTS5 query
     $lines         ← section IN ('1','2','3','4','5','6','7','8','9','n','3pm','3perl'...)
     $pydocFtsLines ← section = 'pydoc'
     $riFtsLines    ← section = 'ri'
-    ↓ FTS5 某源无结果时 fallback
-    man 空   → apropos + indexAproposLines()
-    pydoc 空 → getPydocSearchPage() (pydoc3 -k)
-    ri 空    → getRiSearchPage() (ri command)
+    ↓ Fallback only when source has no FTS5 hits
+    man empty   → apropos + indexAproposLines()
+    pydoc empty → getPydocSearchPage() (pydoc3 -k)
+    ri empty    → getRiSearchPage() (ri command)
 ```
 
-不再需要 `searchFtsBySource()` — FTS5 查询在 `getSearchPage()` 内一步完成。
+### 1.3 Search Result Caching
 
-### 1.3 搜索结果缓存
+The entire search process is wrapped in `cacheOrExecute('search', ...)`. Results are written to the `cache` table:
 
-整个搜索过程通过 `cacheOrExecute('search', ...)` 包裹，结果写入 `cache` 表：
-
-| 字段 | 值 |
+| Field | Value |
 |------|-----|
 | `mode` | `'search'` |
-| `name` | 搜索关键词 |
-| `section` | 可选过滤 |
-| `format` | 请求的输出格式 |
-| `content` | gzip(聚合后的完整结果) |
-| `ttl` | `3600`（1h 过期） |
+| `format` | Requested output format |
+| `content` | gzip(aggregated complete result) |
+| `ttl` | `3600` (1 hour) |
 
-相同关键词的重复搜索直接命中缓存，不走 FTS5 也不调命令行。
+Repeated searches for the same keyword hit the cache directly — no FTS5 or command-line call.
 
 ---
 
-## 二、FTS5 离线索引构建
+## 2. FTS5 Offline Index Build
 
-### 2.1 索引来源
+### 2.1 Index Sources
 
-FTS5 索引通过 `--build-index` 离线构建，来自三个系统命令的输出：
+FTS5 index is built offline via `--build-index` from three system commands:
 
-| 来源 | 命令 | 数据 | section 值 | source 值 |
+| Source | Command | Data | section value | source value |
 |------|------|------|-----------|-----------|
-| man pages | `apropos -s N .` | 命令名 + 一句话摘要 | `1`-`9`, `n` | `man` |
-| Python 3 模块 | `pydoc3 modules` | 模块名 | `pydoc` | `pydoc` |
-| Ruby 类/模块 | `ri -l` | 类名 | `ri` | `ri` |
+| man pages | `apropos -s N .` | name + one-line summary | `1`-`9`, `n` | `man` |
+| Python 3 modules | `pydoc3 modules` | module name | `pydoc` | `pydoc` |
+| Ruby classes/modules | `ri -l` | class name | `ri` | `ri` |
 
-### 2.2 索引内容：只索引标题和简介
+### 2.2 Index Content: Title + Description Only
 
 ```sql
 CREATE VIRTUAL TABLE search_fts USING fts5(
-    name,               -- 展开后的命令名: "JSON::Ext::Parser JSON Ext Parser json ext parser json::ext::parser"
-    section,            -- 节号: "1", "3pm", "pydoc", "ri"
-    description,        -- 一句话摘要: "Python 3 module", "Ruby class/module"
-    body,               -- 空（不索引正文，避免索引膨胀）
+    name,               -- expanded name: "JSON::Ext::Parser JSON Ext Parser json ext parser json::ext::parser"
+    section,            -- "1", "3pm", "pydoc", "ri"
+    description,        -- one-line summary: "Python 3 module", "Ruby class/module"
+    body,               -- empty (body text NOT indexed)
     tokenize='unicode61 tokenchars ''-:''',
     prefix='1,2,3'
 );
 ```
 
-**为什么只索引标题+简介而不索引正文：**
+**Why only title+description, not body text:**
 
-- `apropos -s N .` 遍历 9,000+ 条目只需 ~3 秒；索引正文需要 `man` 逐条调用，~0.15s/页 × 13,000 ≈ 30 分钟
-- 共享主机环境 fork 大量 `man` 进程会触发 `fork: retry: Resource temporarily unavailable`
-- 标题+简介已足够覆盖绝大多数搜索场景
+- `apropos -s N .` traverses 9,000+ entries in ~3 seconds. Indexing body text requires forking `man` per entry (~0.15s/page × 13,000 ≈ 30 minutes)
+- Shared hosting environments trigger `fork: retry: Resource temporarily unavailable` when forking many `man` processes
+- Title + description is sufficient for the vast majority of search scenarios
 
-### 2.3 构建步骤
+### 2.3 Build Steps
 
 ```
-1. DROP + CREATE search_fts（比 DELETE FROM 快得多）
+1. DROP + CREATE search_fts (much faster than DELETE FROM)
 2. DELETE FROM search_index_meta
 
-3. 遍历 man section 1-9, n:
-   exec("apropos -s N .") → 解析每行 "name (section) — description"
+3. Traverse man sections 1-9, n:
+   exec("apropos -s N .") → parse "name (section) — description"
    INSERT INTO search_fts (expandNameForFts(name), section, description, '')
    INSERT INTO search_index_meta (name, section, 'man')
 
-4. pydoc3 模块:
-   exec("pydoc3 modules") → 按 2+ 空格拆分多列
+4. pydoc3 modules:
+   exec("pydoc3 modules") → split multi-column layout on 2+ spaces
    INSERT INTO search_fts (expandNameForFts(module), 'pydoc', 'Python 3 module', '')
    INSERT INTO search_index_meta (module, 'pydoc', 'pydoc')
 
-5. ri 类/模块:
-   exec("ri -l") → 每行一个类名
+5. ri classes/modules:
+   exec("ri -l") → one class name per line
    INSERT INTO search_fts (expandNameForFts(class), 'ri', 'Ruby class/module', '')
    INSERT INTO search_index_meta (class, 'ri', 'ri')
 ```
 
-### 2.4 触发方式
+All inserts are guarded by `search_index_meta` dedup check: `INSERT OR IGNORE INTO meta` → `changes() === 1` → only then INSERT INTO search_fts.
+
+### 2.4 Trigger Methods
 
 ```
 CLI:  php phpMan.php --build-index
-Cron: 0 3 * * * php /path/to/phpMan.php --build-index-cron
-URL:  GET /phpMan.php?build-index (仅限本地请求)
+Cron: 0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron
+URL:  GET /phpMan.php?build-index (local requests only)
 ```
 
-### 2.5 数据量
+### 2.5 Data Volume
 
-| 来源 | 条目数（production） | 索引时间 |
+| Source | Entries (production) | Index time |
 |------|---------------------|---------|
 | man pages | 9,630 | ~5s |
 | pydoc3 modules | 341 | ~1s |
 | ri classes | 3,878 | ~2s |
-| **合计** | **13,849** | **~10s** |
+| **Total** | **13,849** | **~10s** |
 
 ---
 
-## 三、name 列分词策略
+## 3. Name Column Tokenization Strategy
 
-### 3.1 expandNameForFts() — 索引时展开
+### 3.1 expandNameForFts() — Index-Time Expansion
 
-为了让 FTS5 的 `unicode61` 分词器能同时匹配精确名称和各组成部分，`name` 列存储展开后的多 token 字符串：
+To enable FTS5's `unicode61` tokenizer to match both exact names and component words, the `name` column stores an expanded multi-token string:
 
 ```
-原始名称              → 展开后存储到 search_fts.name
+Original name          → Stored in search_fts.name
 ─────────────────────────────────────────────────────────────────────
 git-commit            → git-commit git commit git-commit
 File::Find            → File::Find File Find file find file::find
@@ -159,147 +156,147 @@ json.decoder          → json.decoder json decoder json.decoder
 ls                    → ls ls
 ```
 
-展开规则：
-1. **原始名称**：始终保留
-2. **连字符展开**：`git-commit` → 追加 `git commit`
-3. **双冒号展开**：`File::Find` → 追加 `File Find` + `file find`（小写）+ `file::find`（小写原始）
-4. **点号展开**：`json.decoder` → 追加 `json decoder`
-5. **小写副本**：始终追加 `mb_strtolower(name)`，确保大小写不敏感匹配
+Expansion rules:
+1. **Original name**: always preserved
+2. **Hyphen expansion**: `git-commit` → append `git commit`
+3. **Double-colon expansion**: `File::Find` → append `File Find` + `file find` (lowercase) + `file::find` (lowercase original)
+4. **Dot expansion**: `json.decoder` → append `json decoder`
+5. **Lowercase copy**: always append `mb_strtolower(name)` for case-insensitive matching
 
-### 3.2 FTS5 tokenizer 配置
+### 3.2 FTS5 Tokenizer Configuration
 
 ```sql
 tokenchars '-:'
 ```
 
-使 `-` 和 `:` 成为 token 字符的一部分，而非分隔符：
+Makes `-` and `:` part of token characters rather than separators:
 
-| 原文 | 默认 unicode61 | 加 `tokenchars='-:'` |
+| Original | Default unicode61 | With `tokenchars='-:'` |
 |------|---------------|---------------------|
 | `git-commit` | `git` `commit` | `git-commit` |
 | `File::Find` | `File` `Find` | `File::Find` |
 | `--verbose` | `verbose` | `--verbose` |
 
-### 3.3 buildFtsQuery() — 搜索时保留特殊字符
+### 3.3 buildFtsQuery() — Preserve Special Characters at Search Time
 
-用户搜索 `git-commit` 或 `File::Find` 时，`buildFtsQuery()` 保留 `-`、`:`、`.`、`_`：
+When users search for `git-commit` or `File::Find`, `buildFtsQuery()` preserves `-`, `:`, `.`, `_`:
 
 ```php
-// 默认：对每个词做前缀搜索
+// Default: prefix-match each term
 $parts[] = '"' . $t . '"*';
-// "json" → '"json"*' — 匹配 json, JSON::Ext, json.decoder 等
-// "git-commit" → '"git-commit"*' — 匹配 git-commit 精确名
-// "Parser" → '"Parser"*' — 匹配 JSON::Ext::Parser 的展开部分
+// "json" → '"json"*' — matches json, JSON::Ext, json.decoder etc.
+// "git-commit" → '"git-commit"*' — exact match on git-commit
+// "Parser" → '"Parser"*' — matches JSON::Ext::Parser expansion
 ```
 
-### 3.4 大小写不敏感
+### 3.4 Case Insensitivity
 
-FTS5 `unicode61` 分词器默认将 token 转为小写存储。配合 `expandNameForFts()` 追加的小写副本：
+FTS5 `unicode61` tokenizer lowercases tokens on storage by default. Combined with `expandNameForFts()` lowercase copies:
 
-- 搜索 `json` → 匹配 `json`、`JSON::PP`（展开含 `json`）、`Psych::JSON`（展开含 `json`）
-- 搜索 `JSON` → FTS5 自动转小写 `json` → 同上
-- 搜索 `Parser` → FTS5 自动转小写 `parser` → 匹配 `JSON::Ext::Parser`（展开含 `parser`）
+- Search `json` → matches `json`, `JSON::PP` (expansion contains `json`), `Psych::JSON` (expansion contains `json`)
+- Search `JSON` → FTS5 auto-lowercases to `json` → same as above
+- Search `Parser` → FTS5 auto-lowercases to `parser` → matches `JSON::Ext::Parser` (expansion contains `parser`)
 
 ---
 
-## 四、搜索执行流程（详细）
+## 4. Search Execution Flow (Detailed)
 
-### 4.1 getSearchPage() — 单次 FTS5 查询覆盖三源
+### 4.1 getSearchPage() — Single FTS5 Query Covers 3 Sources
 
 ```
 getSearchPage($parameter, $section, $format)
     ↓
-1. 构建 FTS5 查询: buildFtsQuery($parameter)
+1. Build FTS5 query: buildFtsQuery($parameter)
     ↓
-2. FTS5 可用? (search_index_meta 有数据)
+2. FTS5 available? (search_index_meta has data)
     ├── YES → SELECT FROM search_fts WHERE MATCH :q
-    │         ORDER BY rank LIMIT 300    ← 包含 pydoc/ri section
-    │         按 section 路由:
+    │         ORDER BY rank LIMIT 300    ← includes pydoc/ri sections
+    │         Route by section:
     │           section='pydoc' → $pydocFtsLines
     │           section='ri'    → $riFtsLines
-    │           其他             → $lines (man pages)
-    └── NO  → 空结果，进入 fallback
+    │           other           → $lines (man pages)
+    └── NO  → empty, go to fallback
     ↓
-3. $lines 为空? → exec("apropos ...") + indexAproposLines()
+3. $lines empty? → exec("apropos ...") + indexAproposLines()
     ↓
-4. 输出格式处理:
+4. Output formatting:
     json/mcp → $lines→results, $pydocFtsLines→pydoc_results, $riFtsLines→ri_results
     html     → <h2>apropos</h2> + $lines
-              + <h2>Python 3</h2> + $pydocFtsLines (或 getPydocSearchPage)
-              + <h2>Ruby (ri)</h2> + $riFtsLines (或 getRiSearchPage)
+              + <h2>Python 3</h2> + $pydocFtsLines (or getPydocSearchPage)
+              + <h2>Ruby (ri)</h2> + $riFtsLines (or getRiSearchPage)
 ```
 
-### 4.2 搜索级联 — pydoc3 和 ri 命令行 fallback
+### 4.2 Search Cascade — pydoc3 and ri Command-Line Fallback
 
-FTS5 查询已在 `getSearchPage()` 内完成三源路由。级联只在 FTS5 某源无结果时触发：
+The FTS5 query already routes all 3 sources inside `getSearchPage()`. Cascade only fires when FTS5 has no hits for a source:
 
 ```
-search case (cacheOrExecute 包裹):
+search case (wrapped in cacheOrExecute):
     ↓
-getSearchPage()       → 一次 FTS5 查询
+getSearchPage()       → one FTS5 query
     → $lines (man), $pydocFtsLines, $riFtsLines
     ↓
-$pydocFtsLines 非空? → 用 FTS5 pydoc 结果
-    └── 空 → getPydocSearchPage() → pydoc3 -k
+$pydocFtsLines non-empty? → use FTS5 pydoc results
+    └── empty → getPydocSearchPage() → pydoc3 -k
     ↓
-$riFtsLines 非空?    → 用 FTS5 ri 结果
-    └── 空 → getRiSearchPage() → ri command
+$riFtsLines non-empty?    → use FTS5 ri results
+    └── empty → getRiSearchPage() → ri command
 ```
 
-### 4.3 getRiSearchPage() — "not found" 过滤
+### 4.3 getRiSearchPage() — "not found" Filtering
 
-ri 命令的模糊匹配结果有时不是真正的搜索结果，需要过滤：
+ri command fuzzy match results are sometimes not actual search results and need filtering:
 
 ```php
-// 以下首行表示无结果，返回空
+// These first-line patterns indicate no results; return empty
 if (preg_match('/^Nothing known about/i', $first_line)) return "";
-if (preg_match('/^\.json not found/i', $first_line)) return "";  // ri 对小写名的特殊响应
+if (preg_match('/^\.json not found/i', $first_line)) return ""; // ri special response for lowercase names
 ```
 
-### 4.4 getSearchPage() JSON 输出 — pydoc/ri 从 FTS5 合并
+### 4.4 getSearchPage() JSON Output — pydoc/ri Merged from FTS5
 
-`getSearchPage()` 的 FTS5 查询按 section 路由后，JSON 输出直接从 `$pydocFtsLines` / `$riFtsLines` 合并：
+After FTS5 query routes by section, JSON output merges from `$pydocFtsLines` / `$riFtsLines`:
 
 ```json
 {
-  "results": [...],          // man/perldoc 条目
-  "pydoc_results": [...],   // Python 3 模块条目
-  "ri_results": [...]       // Ruby 类/模块条目
+  "results": [...],          // man/perldoc entries
+  "pydoc_results": [...],   // Python 3 module entries
+  "ri_results": [...]       // Ruby class/module entries
 }
 ```
 
-搜索级联在 `cacheOrExecute` 闭包内完成聚合，确保缓存结果也包含三源数据。
+The search cascade aggregates inside the `cacheOrExecute` closure, ensuring cached results also include all three sources.
 
-### 4.5 Section 列表模式 `(1)` `(3pm)` `(n)` — 必须使用 apropos
+### 4.5 Section-Only Listing `(1)` `(3pm)` `(n)` — Must Use apropos
 
-当搜索参数为 section-only 格式（如 `(1)`、`(3pm)`、`(n)`）时，`getSearchPage()` 检测到 `$sectionOnly = true`，**直接跳过 FTS5，使用 `apropos -s <section> .` 进行全量枚举**。
+When the search parameter is section-only format (e.g., `(1)`, `(3pm)`, `(n)`), `getSearchPage()` detects `$sectionOnly = true` and **skips FTS5, using `apropos -s <section> .` for full enumeration**.
 
-**为什么必须用 apropos 而非 FTS5：**
+**Why apropos, not FTS5:**
 
-1. **FTS5 覆盖不全**：`apropos -s 1 .` 返回 2872 个唯一名，FTS5 section=`1` 仅 2659 个。少了的 213 个是 1p/1ssl/1mh 等子 section 条目，FTS5 将它们存在对应 sub-section（如 section=`1p`）中
-2. **不应混入 pydoc/ri**：Section 列表请求的是特定 man 节的全部命令，pydoc 模块（section=`pydoc`）和 ri 类（section=`ri`）不应出现
-3. **FTS5 设计为全文搜索**：按 section 枚举不是 FTS5 的设计目标；FTS5 的 rank 排序对全量列出无意义
+1. **FTS5 coverage gap**: `apropos -s 1 .` returns 2,872 unique names; FTS5 section=`1` has only 2,659. The missing 213 are sub-section entries (1p/1ssl/1mh) that FTS5 stores under their respective sub-sections (e.g., section=`1p`)
+2. **No pydoc/ri mixing**: Section listings request all commands in a specific man section; pydoc modules (section=`pydoc`) and ri classes (section=`ri`) must not appear
+3. **FTS5 is designed for full-text search**: enumerating by section is not FTS5's design goal; FTS5 rank ordering is meaningless for full listings
 
-**性能**：`apropos` 依赖 whatis/mandb 数据库，首次可能需 15-30s。结果通过 `cacheOrExecute` 缓存到 SQLite（~500KB），后续请求 ~4s。性能瓶颈在 apropos 数据库质量，不在 phpMan 缓存层。
+**Performance**: apropos depends on the whatis/mandb database. First request may take 15-30s. Results are cached via `cacheOrExecute` to SQLite (~500KB); subsequent requests ~4s. The bottleneck is apropos database quality, not the phpMan cache layer.
 
 ---
 
-## 五、数据模型
+## 5. Data Model
 
-### 5.1 search_fts — FTS5 全文索引表
+### 5.1 search_fts — FTS5 Full-Text Index Table
 
 ```sql
 CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
-    name,               -- 展开后的命令名
+    name,               -- expanded name
     section,            -- "1"-"9","n","pydoc","ri"
-    description,        -- 一句话摘要
-    body,               -- 空（不索引正文）
+    description,        -- one-line summary
+    body,               -- empty (body text NOT indexed)
     tokenize='unicode61 tokenchars ''-:''',
     prefix='1,2,3'
 );
 ```
 
-### 5.2 search_index_meta — 索引元数据
+### 5.2 search_index_meta — Index Metadata
 
 ```sql
 CREATE TABLE IF NOT EXISTS search_index_meta (
@@ -313,153 +310,153 @@ CREATE TABLE IF NOT EXISTS search_index_meta (
 );
 ```
 
-### 5.3 FTS5 可用性检测
+### 5.3 FTS5 Availability Detection
 
-`getSearchPage()` 检查 `search_index_meta` 总行数（不限 source），确认至少有数据时才走 FTS5：
+`getSearchPage()` checks total `search_index_meta` rows (any source), using FTS5 only when data exists:
 
 ```php
 $totalIndexed = $db->querySingle("SELECT COUNT(*) FROM search_index_meta");
-if ($totalIndexed > 0) { /* 使用 FTS5 */ }
+if ($totalIndexed > 0) { /* use FTS5 */ }
 ```
 
 ---
 
-## 六、搜索排序
+## 6. Search Ranking
 
-### 6.1 5 层排序
+### 6.1 5-Level Ranking
 
-| 层级 | 因子 | 权重 | 说明 |
+| Level | Factor | Weight | Description |
 |------|------|------|------|
-| **L1** | 精确名称匹配 | 最高 | `name == query` |
-| **L2** | 名称前缀匹配 | 高 | `name LIKE 'query%'` |
-| **L3** | BM25 相关性 | 中 | FTS5 内置 rank |
-| **L4** | Section 优先级 | 中低 | 1 > 8 > 3 > 5 > 7 > 4 > 6 > 9 |
-| **L5** | 命中次数(hits) | 低 | 被浏览越多越靠前 |
+| **L1** | Exact name match | Highest | `name == query` |
+| **L2** | Name prefix match | High | `name LIKE 'query%'` |
+| **L3** | BM25 relevance | Medium | FTS5 built-in rank |
+| **L4** | Section priority | Medium-low | 1 > 8 > 3 > 5 > 7 > 4 > 6 > 9 |
+| **L5** | Hit count | Low | More views → higher rank |
 
 ---
 
-## 七、搜索结果缓存
+## 7. Search Result Caching
 
-### 7.1 缓存策略
+### 7.1 Cache Strategy
 
-| 场景 | 策略 |
+| Scenario | Strategy |
 |------|------|
-| 正常搜索 | `cacheOrExecute('search', ...)` 缓存 1h |
-| FTS5 命中 | 缓存聚合结果（含 pydoc_results / ri_results） |
-| FTS5 未命中 → apropos | 缓存 apropos 结果；apropos 结果回填 FTS5 |
-| 索引重建 | `DELETE FROM cache WHERE mode='search'` |
-| Schema 升级 | 全部清除 |
+| Normal search | `cacheOrExecute('search', ...)` cached 1h |
+| FTS5 hit | Cache aggregated result (with pydoc_results / ri_results) |
+| FTS5 miss → apropos | Cache apropos result; apropos results backfill FTS5 |
+| Index rebuild | `DELETE FROM cache WHERE mode='search'` |
+| Schema upgrade | Full clear |
 
-### 7.2 搜索页面不进 FTS5 索引
+### 7.2 Search Pages Not in FTS5 Index
 
 ```
-mode='search' 的页面：
-  ✅ 缓存到 cache 表
-  ❌ 不写入 search_fts 索引
-  ❌ 不触发 hits 计数
-  ❌ 输出 <meta name="robots" content="noindex, follow">
+mode='search' pages:
+  ✅ Cached in cache table
+  ❌ Not written to search_fts index
+  ❌ Not triggering hits counting
+  ❌ Output <meta name="robots" content="noindex, follow">
 ```
 
-### 7.3 增量索引
+### 7.3 Incremental Indexing
 
-apropos fallback 的结果会通过 `indexAproposLines()` 回填到 FTS5：
+Apropos fallback results are backfilled into FTS5 via `indexAproposLines()`:
 
 ```php
-// getSearchPage() 中，apropos fallback 之后
+// In getSearchPage(), after apropos fallback
 if (!empty($lines) && !$sectionOnly) {
-    indexAproposLines($lines);  // 回填 FTS5，下次搜索可直接命中
+    indexAproposLines($lines); // backfill FTS5 — next search hits FTS5 directly
 }
 ```
 
 ---
 
-## 八、回退机制总览
+## 8. Fallback Mechanism Overview
 
 ```
-搜索请求
+Search request
     ↓
-cache 命中? → YES → 直接返回缓存结果
+cache hit? → YES → return cached result directly
     ↓ NO
-FTS5 一次查询 search_fts (man + pydoc + ri)
+FTS5 single query search_fts (man + pydoc + ri)
     → $lines (man), $pydocFtsLines, $riFtsLines
     ↓
-$lines 为空? → exec("apropos ...") + indexAproposLines()
-$pydocFtsLines 为空? → getPydocSearchPage() (pydoc3 -k)
-$riFtsLines 为空?    → getRiSearchPage() (ri command)
+$lines empty? → exec("apropos ...") + indexAproposLines()
+$pydocFtsLines empty? → getPydocSearchPage() (pydoc3 -k)
+$riFtsLines empty?    → getRiSearchPage() (ri command)
     ↓
-聚合三源结果 → 缓存 → 返回
+Aggregate 3-source results → cache → return
 ```
 
 ---
 
-## 九、与其他搜索源的关系
+## 9. Relationship with Other Search Sources
 
-### 9.1 FTS5 三源索引覆盖
+### 9.1 FTS5 3-Source Index Coverage
 
 ```
-search_fts 索引:
+search_fts index:
   ├── man pages    — name + section + description  (via apropos -s N .)
   ├── pydoc3       — name + 'pydoc' + description  (via pydoc3 modules)
   └── ri           — name + 'ri' + description     (via ri -l)
 ```
 
-### 9.2 搜索优先级
+### 9.2 Search Priority
 
-| 优先级 | 数据源 | 触发条件 |
+| Priority | Data source | Trigger condition |
 |--------|--------|---------|
-| 1 | FTS5 离线索引（三源单次查询） | 索引有数据时优先使用 |
-| 2 | apropos 命令 | FTS5 无 man 数据或未命中 |
-| 3 | pydoc3 -k 命令 | FTS5 无 pydoc 数据时 fallback |
-| 4 | ri 命令 | FTS5 无 ri 数据时 fallback |
+| 1 | FTS5 offline index (3-source single query) | Index has data |
+| 2 | apropos command | FTS5 has no man data or no hits |
+| 3 | pydoc3 -k command | FTS5 has no pydoc data |
+| 4 | ri command | FTS5 has no ri data |
 
-### 9.3 为什么单次 FTS5 查询优于分源查询
+### 9.3 Why Single FTS5 Query Beats Per-Source Query
 
-- **性能**：一次 SQL 查询 vs 三次 SQL 查询 + PHP 序列化/反序列化
-- **简洁**：`getSearchPage()` 内完成路由，级联层无需再调 `searchFtsBySource()`
-- **一致性**：FTS5 的 rank 排序跨源统一，不会因分源查询而丢失相关性信息
+- **Performance**: one SQL query vs three SQL queries + PHP serialization/deserialization
+- **Simplicity**: routing done inside `getSearchPage()`; cascade layer doesn't need `searchFtsBySource()`
+- **Consistency**: FTS5 rank ordering unified across sources, no relevance loss from split queries
 
 ---
 
-## 十、重建索引脚本
+## 10. Index Rebuild
 
-### 10.1 重建方式
+### 10.1 Rebuild Commands
 
 ```bash
-# CLI 全量重建
+# CLI full rebuild
 php phpMan.php --build-index
 
-# Cron 模式（带时间戳）
+# Cron mode (with timestamp)
 php phpMan.php --build-index-cron
 
-# 查看帮助
+# Show help
 php phpMan.php --help
 ```
 
-Cron 示例（每日凌晨 3 点）：
+Cron example (daily at 3 AM):
 ```
 0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron
 ```
 
-索引重建通过 `CACHE_DIR` 配置定位数据库文件，不需要额外参数。
+The rebuild uses `CACHE_DIR` configuration to locate the database file; no extra arguments needed.
 
 ---
 
-## 十一、文件与部署
+## 11. Files and Deploy
 
-### 11.1 部署顺序
+### 11.1 Deploy Steps
 
 ```
-1. 更新 phpMan.php
-2. scp 到服务器
-3. 执行 php phpMan.php --build-index（重建含 pydoc/ri 的 FTS5 索引）
-4. 验证: curl /phpMan.php/search/json/json | python3 -m json.tool
-5. 检查 ri_results / pydoc_results 是否有数据
+1. Update phpMan.php
+2. scp to server
+3. Run php phpMan.php --build-index (rebuild FTS5 index with pydoc/ri)
+4. Verify: curl /phpMan.php/search/json/json | python3 -m json.tool
+5. Check ri_results / pydoc_results
 ```
 
-### 11.2 相关文件
+### 11.2 Related Files
 
-| 文件 | 改动 |
+| File | Changes |
 |------|------|
-| `phpMan.php` | `getSearchPage()` 单次 FTS5 查询覆盖三源；`rebuildSearchIndex()` 含 man+pydoc+ri 索引 + meta-guard 去重；`expandNameForFts()` 大小写+点号+冒号展开；`getRiSearchPage()` 过滤 `.xxx not found`；`--help` CLI 帮助 |
-| `docs/SEARCH_FTS5_DESIGN.md` | 本文档 |
-| `test/unit/test_search_fts.php` | 更新 expandNameForFts 期望值 |
+| `phpMan.php` | `getSearchPage()` single FTS5 query covering 3 sources; `rebuildSearchIndex()` with man+pydoc+ri + meta-guard dedup; `expandNameForFts()` case+dot+colon expansion; `getRiSearchPage()` `.xxx not found` filtering; `--help` CLI |
+| `docs/SEARCH_FTS5_DESIGN.md` | This document |
+| `test/unit/test_search_fts.php` | Updated expandNameForFts expectations |
