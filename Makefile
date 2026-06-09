@@ -1,16 +1,39 @@
 # phpMan CI/CD tasks
 # Usage:
 #   make test
-#   make deploy
-#   make release
+#   make deploy                  # staging: push code + CSS only
+#   make deploy-reindex          # staging: push code + rebuild search index
+#   make release                 # production: push code + CSS only
+#   make release-reindex         # production: push code + rebuild search index
+#   make rebuild-search-index    # production: rebuild search index only (no code push)
+#   make rebuild-search-index-staging  # staging: rebuild search index only
 #   make rollback
 #   make deploy-verify
 #   make release-logcheck
-#   make cache-flush
-#   make cache-flush-staging
-#   make cache-stats
+#   make cache-flush / cache-flush-staging / cache-stats
 #
 # Requires .deploy.mk — copy from .deploy.mk.example and configure
+#
+# ─── When to use release-reindex ───
+# Only rebuild the search index when search logic changes:
+#
+#   NEED reindex:
+#     - search_fts schema / tokenizer / prefix changes
+#     - search_index_meta schema / dedup rule changes
+#     - expandNameForFts() rule changes
+#     - rebuildSearchIndex() data source, section, name normalization changes
+#     - System man/pydoc/ri docs were installed/updated (new content needs indexing)
+#
+#   Do NOT need reindex (plain release is enough):
+#     - HTML/CSS/UI changes
+#     - Formatter output changes (HTML/Markdown/JSON/MCP)
+#     - MCP/JSON wrapper logic changes
+#     - PageCache TTL, logging, backup, config directory changes
+#     - Security fixes that don't alter search index content
+#
+# Default release does NOT touch the database. Use release-reindex explicitly
+# when index changes are needed — this keeps deployments fast and avoids
+# taking the search-index write lock on every code fix.
 
 -include .deploy.mk
 
@@ -21,7 +44,7 @@ endif
 FILE ?= phpMan.php
 CSS_FILE ?= phpman.css
 
-.PHONY: test deploy release rollback deploy-verify release-logcheck package upload-release clean cache-flush cache-flush-staging cache-stats
+.PHONY: test deploy deploy-reindex release release-reindex rebuild-search-index rebuild-search-index-staging rollback deploy-verify release-logcheck package upload-release clean cache-flush cache-flush-staging cache-stats _deploy-code _release-code
 
 GIT_TAG := $(shell git describe --tags --always --dirty 2>/dev/null || echo "local")
 
@@ -29,7 +52,10 @@ test:
 	php -l $(FILE)
 	php -l phpman.config.php.example
 
-deploy: test
+# ─── Staging ───
+
+# Internal: push code + CSS to staging (no index rebuild)
+_deploy-code:
 	@echo "=== Preparing staging server ==="
 	@echo "--- Configuring staging home: ~/.phpman_test ---"
 	sed "s|// define('PHPMAN_HOME'.*|define('PHPMAN_HOME', '\$$HOME/.phpman_test');|" \
@@ -45,7 +71,18 @@ deploy: test
 	@echo "$(TEST_URL)"
 	@echo ""
 
-release: test
+deploy: test _deploy-code
+
+deploy-reindex: test _deploy-code
+	@echo "=== Rebuilding staging search index ==="
+	ssh -p $(TEST_PORT) $(TEST_HOST) \
+		"cd $(TEST_PATH) && php $(FILE) --build-index-cron"
+	@echo "=== Staging index rebuild complete ==="
+
+# ─── Production ───
+
+# Internal: push code + CSS to production, with backup
+_release-code:
 	@echo "=== Deploying $(GIT_TAG) ==="
 	@echo "=== Preparing production server ==="
 	@echo "--- Configuring home: ~/.phpman ---"
@@ -69,6 +106,30 @@ release: test
 	echo "Rollback: make rollback"; \
 	echo ""; \
 	$(MAKE) release-logcheck
+
+release: test _release-code
+
+release-reindex: test _release-code
+	@echo "=== Rebuilding production search index ==="
+	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
+		"cd $(DEMO_PATH) && php $(FILE) --build-index-cron"
+	@echo "=== Production index rebuild complete ==="
+
+# ─── Standalone search index rebuild (no code push) ───
+
+rebuild-search-index:
+	@echo "=== Rebuilding production search index (no code push) ==="
+	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
+		"cd $(DEMO_PATH) && php $(FILE) --build-index-cron"
+	@echo "=== Done ==="
+
+rebuild-search-index-staging:
+	@echo "=== Rebuilding staging search index (no code push) ==="
+	ssh -p $(TEST_PORT) $(TEST_HOST) \
+		"cd $(TEST_PATH) && php $(FILE) --build-index-cron"
+	@echo "=== Done ==="
+
+# ─── Rollback ───
 
 rollback:
 	@LATEST_BACKUP=$$(ssh -p $(DEMO_PORT) $(DEMO_HOST) \
@@ -94,7 +155,11 @@ deploy-verify:
 # Requires DEMO_ERROR_LOG and DEMO_ACCESS_LOG to be set in .deploy.mk.
 release-logcheck:
 	@echo "=== Post-deploy log check ==="
-	@echo "--- Error log (last 10 lines) ---"
+	@echo "--- phpMan error log ---"
+	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
+		"test -f \"\$$HOME/.phpman/logs/phpman_error.log\" && tail -10 \"\$$HOME/.phpman/logs/phpman_error.log\" || echo '(no phpman_error.log yet)'"
+	@echo ""
+	@echo "--- Server error log (last 10 lines) ---"
 	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"test -f '$(DEMO_ERROR_LOG)' && echo '$(DEMO_ERROR_LOG):' && tail -10 '$(DEMO_ERROR_LOG)' || echo '(error log not configured or not found)'"
 	@echo ""
@@ -103,6 +168,8 @@ release-logcheck:
 		"test -f '$(DEMO_ACCESS_LOG)' && echo '$(DEMO_ACCESS_LOG):' && (tail -100 '$(DEMO_ACCESS_LOG)' | grep -E '\" (5[0-9][0-9]) ' || echo '(no 5xx in recent requests)') || echo '(access log not configured or not found)'"
 	@echo ""
 	@echo "=== Log check complete ==="
+
+# ─── Cache management ───
 
 cache-flush:
 	@echo "=== Flushing production cache ==="
