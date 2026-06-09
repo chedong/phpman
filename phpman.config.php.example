@@ -14,6 +14,11 @@
 // define('LLM_MODEL', '');
 // define('LLM_MAX_TOKENS', 4096);
 
+// --- MCP Authentication (#97) ---
+// Set a secret key to require X-API-Key header on all MCP requests.
+// Leave empty to allow unauthenticated access (default, for local/trusted networks).
+// define('MCP_API_KEY', 'your-secret-key-here');
+
 // --- Debug ---
 // Set true for development/troubleshooting; false for production.
 // define('PHPMAN_DEBUG', false);

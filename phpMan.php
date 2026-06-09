@@ -55,6 +55,9 @@ if (!defined('CACHE_DIR')) define('CACHE_DIR', dirname(__FILE__) . '/cache');
 define('CACHE_DB', CACHE_DIR . '/phpm_cache.db');
 define('CACHE_SCHEMA_VERSION', '3');
 
+// MCP API key: if defined in config, all MCP requests require this key in X-API-Key header
+if (!defined('MCP_API_KEY')) define('MCP_API_KEY', '');
+
 // Debug mode: phpman.config.php > env var > default false
 if (!defined('PHPMAN_DEBUG')) define('PHPMAN_DEBUG', getenv('PHPMAN_DEBUG') === 'true');
 Profiler::init();
@@ -716,6 +719,8 @@ function cacheDb(): SQLite3 {
             content     TEXT NOT NULL,
             fetched_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
         )");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_tldr_cache_fetched
+                   ON tldr_cache(fetched_at)");
 
         $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_lookup
                    ON cache(mode, name, section, format)");
@@ -802,7 +807,9 @@ class PageCache {
         }
 
         // Count this cache hit (found or not_found)
-        $this->db->exec("UPDATE cache SET hits = hits + 1 WHERE id = " . intval($row['id']));
+        $hitStmt = $this->db->prepare("UPDATE cache SET hits = hits + 1 WHERE id = :id");
+        $hitStmt->bindValue(':id', $row['id'], SQLITE3_INTEGER);
+        $hitStmt->execute();
 
         if ($row['status'] === 'not_found') {
             return '###NOT_FOUND###';
@@ -825,6 +832,8 @@ class PageCache {
             $ttl = 604800;
         }
 
+        // INSERT OR REPLACE is DELETE+INSERT: the COALESCE subquery preserves the
+        // existing hits count across replacements (resets to 0 for new entries).
         $stmt = $this->db->prepare(
             "INSERT OR REPLACE INTO cache (mode, name, section, format, content, content_len, status, ttl, hits, created_at, updated_at)
              VALUES (:mode, :name, :section, :format, :content, :content_len, :status, :ttl,
@@ -914,6 +923,7 @@ class PageCache {
             }
         }
         try {
+            // INSERT OR REPLACE is DELETE+INSERT: replaces any existing FTS row for same rowid
             $stmt = $this->db->prepare(
                 "INSERT OR REPLACE INTO cache_fts (rowid, mode, name, section, title)
                  VALUES (:id, :mode, :name, :section, :title)"
@@ -1316,7 +1326,7 @@ function renderGroupedResults(array $results, string $scriptName): array {
                            : (in_array('ri', $sources) ? 'ri'
                            : ($is_perl ? 'perldoc' : 'man'));
                 $desc = h($r['description'] ?? '');
-                $sourceTag = !empty($sources) ? ' <span class="sources">[' . implode(', ', $sources) . ']</span>' : '';
+                $sourceTag = !empty($sources) ? ' <span class="sources">[' . implode(', ', array_map('h', $sources)) . ']</span>' : '';
                 $html .= '<li><a href="' . $scriptName . '/' . $link_mode . '/' . urlencode($r['name']);
                 if ($r['section'] !== '') {
                     $html .= '/' . urlencode($r['section']);
@@ -1412,7 +1422,7 @@ function formatSearchResults(array $results, string $parameter, string $section,
         $is_perl = str_contains($r['name'], '::');
         $link_mode = $is_perl ? 'perldoc' : 'man';
         $desc = $r['description'] ?? '';
-        $sources = !empty($r['sources']) ? ' [' . implode(', ', $r['sources']) . ']' : '';
+        $sources = !empty($r['sources']) ? ' [' . implode(', ', array_map('h', $r['sources'])) . ']' : '';
         $output .= '- [' . $r['name'] . '(' . $r['section'] . ')](' . $scriptName . '/' . $link_mode . '/' . urlencode($r['name']) . '/' . urlencode($r['section']) . '/' . $format . ')';
         if ($desc !== '') {
             $output .= ' — ' . $desc;
@@ -1835,7 +1845,7 @@ if (PHP_SAPI === 'cli') {
         echo "  Index entries: name (expanded for FTS5) + section + description.\n";
         echo "  Body content is NOT indexed (avoid fork resource exhaustion).\n\n";
         echo "  After rebuilding, clear search cache to force fresh results:\n";
-        echo "    sqlite3 phpm_cache.db \"DELETE FROM cache WHERE mode='search'\"\n\n";
+        echo "    sqlite3 " . CACHE_DB . " \"DELETE FROM cache WHERE mode='search'\"\n\n";
         echo "Cron example (daily at 3am):\n";
         echo "  0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron\n\n";
         echo "Docs: https://github.com/chedong/phpman\n";
@@ -2453,7 +2463,7 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	    }
 	    // Only render when we have at least one real example with a command
 	    if (!empty($tldrExamples)) {
-	        echo "<div class=\"tldr-block{$expanded}\">\n";
+	        echo "<div class=\"tldr-block\">\n";
 	        echo "<div class=\"tldr-header\">";
 	        $src = $tldrData["source"] === "cheatsh" ? "cheat.sh" : "tldr-pages";
 	        $tldrLink = $tldrData["source"] === "cheatsh"
@@ -2818,6 +2828,16 @@ function handleMcp (): void {
         header("Allow: POST");
         sendMcpError(null, -32600, "Method not allowed. Use POST.");
         return;
+    }
+
+    // API key authentication (#97)
+    if (MCP_API_KEY !== '') {
+        $apiKey = serverValue("HTTP_X_API_KEY", "");
+        if ($apiKey !== MCP_API_KEY) {
+            http_response_code(401);
+            sendMcpError(null, -32001, "Unauthorized: invalid or missing API key");
+            return;
+        }
     }
 
     // Limit request body size to 64KB (#31, #42)
@@ -4192,6 +4212,7 @@ function fetchOfficialTldr(string $command, string $mode = "man", string $sectio
         if (empty($result)) {
             $result = ['source' => 'not_found', 'examples' => []];
         }
+        // INSERT OR REPLACE is DELETE+INSERT: refreshes cached TLDR for this command
         $stmt = $db->prepare(
             "INSERT OR REPLACE INTO tldr_cache (command, source, content, fetched_at)
              VALUES (:cmd, :source, :content, strftime('%s','now'))"
