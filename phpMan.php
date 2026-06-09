@@ -624,7 +624,14 @@ function cacheDb(): SQLite3 {
 
     $dir = CACHE_DIR;
     if (!is_dir($dir)) {
-        @mkdir($dir, 0755, true);
+        if (!@mkdir($dir, 0755, true)) {
+            phpManLog("CACHE_DIR not writable: " . $dir);
+            return null;
+        }
+    }
+    if (!is_writable($dir)) {
+        phpManLog("CACHE_DIR not writable: " . $dir);
+        return null;
     }
 
     $dbPath = CACHE_DB;
@@ -638,7 +645,7 @@ function cacheDb(): SQLite3 {
     try {
         $db->exec('PRAGMA journal_mode=WAL');
     } catch (\Exception $e) {
-        // Non-critical: WAL mode already active or transient lock; proceed without.
+        phpManLog("cache init WAL: " . $e->getMessage());
     }
     $db->exec('PRAGMA synchronous=NORMAL');
 
@@ -674,7 +681,7 @@ function cacheDb(): SQLite3 {
                                   content='cache',
                                   content_rowid='id')");
         } catch (\Exception $e) {
-            // FTS5 not available — search index is optional
+            phpManLog("FTS5 content table: " . $e->getMessage());
         }
 
         // FTS5 search engine: independent full-text search table (v2)
@@ -689,7 +696,7 @@ function cacheDb(): SQLite3 {
                            prefix='1,2,3'
                        )");
         } catch (\Exception $e) {
-            // FTS5 not available — search falls back to apropos
+            phpManLog("FTS5 prefix index: " . $e->getMessage());
         }
 
         $db->exec("CREATE TABLE IF NOT EXISTS search_index_meta (
@@ -733,7 +740,7 @@ function cacheDb(): SQLite3 {
                                    prefix='1,2,3'
                                )");
                 } catch (\Exception $e) {
-                    // FTS5 not available — falls back to apropos
+                    phpManLog("FTS5 meta prefix: " . $e->getMessage());
                 }
                 $db->exec("CREATE TABLE IF NOT EXISTS search_index_meta (
                     name TEXT NOT NULL,
@@ -749,7 +756,7 @@ function cacheDb(): SQLite3 {
                 try {
                     $db->exec("DELETE FROM search_fts");
                 } catch (\Exception $e) {
-                    // FTS5 not available — ignore
+                    phpManLog("FTS5 delete: " . $e->getMessage());
                 }
                 $db->exec("DELETE FROM search_index_meta");
             } else {
@@ -766,13 +773,14 @@ function cacheDb(): SQLite3 {
  * PageCache — SQLite-based cache for rendered man/perldoc/info/pydoc/ri pages.
  */
 class PageCache {
-    private SQLite3 $db;
+    private ?SQLite3 $db;
 
     public function __construct() {
         $this->db = cacheDb();
     }
 
     public function get(string $mode, string $name, string $section, string $format): ?string {
+        if (!$this->db) return null;
         $stmt = $this->db->prepare(
             "SELECT id, content, status, ttl, updated_at FROM cache
              WHERE mode = :mode AND name = :name AND section = :section AND format = :format"
@@ -794,7 +802,7 @@ class PageCache {
         }
 
         // Count this cache hit (found or not_found)
-        $this->db->exec("UPDATE cache SET hits = hits + 1 WHERE id = {$row['id']}");
+        $this->db->exec("UPDATE cache SET hits = hits + 1 WHERE id = " . intval($row['id']));
 
         if ($row['status'] === 'not_found') {
             return '###NOT_FOUND###';
@@ -808,6 +816,7 @@ class PageCache {
     }
 
     public function set(string $mode, string $name, string $section, string $format, ?string $content, string $status = 'found'): bool {
+        if (!$this->db) return false;
         $compressed = ($content !== null && $content !== '') ? gzcompress($content) : null;
         $contentLen = ($content !== null) ? strlen($content) : 0;
         $ttl = ($status === 'not_found') ? 86400 : 604800;  // 1 day for 404, 7 days for found
@@ -852,6 +861,7 @@ class PageCache {
     }
 
     public function clear(): bool {
+        if (!$this->db) return false;
         $this->db->exec("DELETE FROM cache");
         return true;
     }
@@ -873,6 +883,7 @@ class PageCache {
     }
 
     private function deleteEntry(string $mode, string $name, string $section, string $format): void {
+        if (!$this->db) return;
         if ($format === '%') {
             $stmt = $this->db->prepare(
                 "DELETE FROM cache WHERE mode = :mode AND name = :name AND section = :section"
@@ -938,7 +949,7 @@ function cacheOrExecute(string $mode, string $name, string $section, string $for
             $db = cacheDb();
             $db->exec("DELETE FROM cache WHERE ttl > 0 AND (strftime('%s','now') - updated_at) > ttl");
         } catch (\Exception $e) {
-            // ignore cleanup failures
+            phpManLog("cache TTL cleanup: " . $e->getMessage());
         }
     }
     return $content;
@@ -995,14 +1006,17 @@ function buildFtsQuery(string $raw): string {
     // already stripped by the [^\p{L}\p{N}\.\-_:] regex below.
     $raw = preg_replace('/[、，；]/u', ' ', $raw);
 
-    // Detect explicit FTS5 operators — pass through as-is
+    // Detect explicit FTS5 operators — validate and pass through
     if (preg_match('/\b(AND|OR|NOT|NEAR)\b/i', $raw)) {
-        return $raw;
+        // Strip dangerous FTS5 syntax: column filters, special commands
+        $sanitized = preg_replace('/[{}^!@#]/', '', $raw);
+        return $sanitized;
     }
 
-    // Exact phrase (quoted) — pass through
+    // Exact phrase (quoted) — sanitize and pass through
     if (preg_match('/^".*"$/', $raw)) {
-        return $raw;
+        $sanitized = preg_replace('/[{}^!@#]/', '', $raw);
+        return $sanitized;
     }
 
     // Default: prefix-match each term with AND
@@ -1177,6 +1191,7 @@ function searchFtsBySource(string $parameter, string $source, string $format) {
         }
         return $out;
     } catch (\Exception $e) {
+        phpManLog("formatForOutput: " . $e->getMessage());
         return $format === 'json' ? [] : '';
     }
 }
@@ -1495,6 +1510,7 @@ function indexAproposLines (array $lines): int {
 
         return $count;
     } catch (Exception $e) {
+        phpManLog("cacheDb stats: " . $e->getMessage());
         return 0;
     }
 }
@@ -1530,13 +1546,13 @@ function rebuildSearchIndex(): string {
             $db->exec("DROP TABLE IF EXISTS search_fts");
             $dropped = true;
         } catch (\Exception $e) {
-            // DROP may fail under lock — fall through to DELETE below
+            phpManLog("DROP search_fts: " . $e->getMessage());
         }
         if (!$dropped) {
             try {
                 $db->exec("DELETE FROM search_fts");
             } catch (\Exception $e) {
-                // DELETE also failed — can't proceed
+                phpManLog("DELETE search_fts: " . $e->getMessage());
             }
         }
         try {
@@ -1642,6 +1658,7 @@ function rebuildSearchIndex(): string {
                     }
                 } catch (\Exception $e) {
                     $errors++;
+                    phpManLog("rebuildFts man: " . $e->getMessage());
                 }
             }
 
@@ -1715,6 +1732,7 @@ function rebuildSearchIndex(): string {
                     } catch (\Exception $e) {
                         $pydocErrors++;
                         $errors++;
+                        phpManLog("rebuildFts pydoc: " . $e->getMessage());
                     }
                 }
             }
@@ -1760,6 +1778,7 @@ function rebuildSearchIndex(): string {
                 } catch (\Exception $e) {
                     $riErrors++;
                     $errors++;
+                    phpManLog("rebuildFts ri: " . $e->getMessage());
                 }
             }
             $output[] = "  ri: {$riCount} classes indexed.\n";
@@ -1772,11 +1791,17 @@ function rebuildSearchIndex(): string {
         $db->exec("COMMIT");
 
         // Update meta
-        $db->exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('search_index_count', '{$total}')");
-        $db->exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('search_index_updated', '" . gmdate('Y-m-d\TH:i:s\Z') . "')");
+        $stmtMeta = $db->prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (:key, :value)");
+        $stmtMeta->bindValue(':key', 'search_index_count', SQLITE3_TEXT);
+        $stmtMeta->bindValue(':value', (string)$total, SQLITE3_TEXT);
+        $stmtMeta->execute();
+        $stmtMeta->bindValue(':key', 'search_index_updated', SQLITE3_TEXT);
+        $stmtMeta->bindValue(':value', gmdate('Y-m-d\TH:i:s\Z'), SQLITE3_TEXT);
+        $stmtMeta->execute();
 
         return implode('', $output);
     } catch (\Exception $e) {
+        phpManLog("rebuildSearchIndex: " . $e->getMessage());
         try { $db->exec("ROLLBACK"); } catch (\Exception $ignored) {}
         return "ERROR: " . $e->getMessage() . "\n";
     }
@@ -2002,9 +2027,16 @@ $section = normalizeSection($section);
 Profiler::mark('parse');
 
 // ETag/304 check before exec-heavy dispatch (#83)
-// Key-based ETag: content is stable for same mode/parameter/section until system update
+// Key-based ETag: include cache timestamp so re-indexing invalidates stale ETags
 if ($format === "html" && $mode !== "mcp" && $mode !== "copyright" && $mode !== "search" && $parameter !== "") {
-    $etag = '"' . md5($mode . '/' . $parameter . '/' . $section . '/' . PHPMAN_VERSION) . '"';
+    $cacheAge = '';
+    try {
+        $db = cacheDb();
+        if ($db) {
+            $cacheAge = $db->querySingle("SELECT value FROM meta WHERE key = 'search_index_updated'") ?: '';
+        }
+    } catch (\Exception $ignored) {}
+    $etag = '"' . md5($mode . '/' . $parameter . '/' . $section . '/' . PHPMAN_VERSION . '/' . $cacheAge) . '"';
     $ifNoneMatch = serverValue("HTTP_IF_NONE_MATCH", "");
     if ($ifNoneMatch === $etag) {
         http_response_code(304);
@@ -3086,11 +3118,10 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
     $width = intval($GLOBALS['PHP_MAN_WIDTH']);
     // pod2text -w controls output width at the POD formatter level (replaces MANWIDTH
-    // pod2text -w controls output width at the POD formatter level (replaces MANWIDTH
     // Pipeline: perldoc -l locates source → head -1 picks first file → pod2text formats.
     // head -1 prevents multi-file concatenation when perldoc -l returns multiple paths.
     // Falls back to raw perldoc if pod2text pipeline fails (e.g. source not found).
-    $cmd = "perldoc -l ".escapeshellarg($parameter)." 2>/dev/null | head -1 | tr '\\n' '\\0' | xargs -0 pod2text -w {$width} 2>/dev/null";  // #24: xargs -0 for space-safe paths
+    $cmd = "perldoc -l ".escapeshellarg($parameter)." 2>/dev/null | head -1 | tr '\\n' '\\0' | xargs -0 pod2text -w " . escapeshellarg((string)$width) . " 2>/dev/null";  // #24: xargs -0 for space-safe paths
     exec($cmd, $lines, $return_code);
     if ($return_code === 0 && count($lines) > 0) {
         if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "perldoc");        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "perldoc"), $format);
@@ -3453,7 +3484,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
                     }
                 }
             } catch (Exception $e) {
-                // FTS5 unavailable — fall through to apropos
+                phpManLog("FTS5 search fallback: " . $e->getMessage());
             }
         }
     }
@@ -4147,7 +4178,7 @@ function fetchOfficialTldr(string $command, string $mode = "man", string $sectio
             }
         }
     } catch (\Exception $e) {
-        // SQLite unavailable — fall through to live fetch
+        phpManLog("TLDR cache read: " . $e->getMessage());
     }
 
     $result = fetchTldrPages($command);
@@ -4170,7 +4201,7 @@ function fetchOfficialTldr(string $command, string $mode = "man", string $sectio
         $stmt->bindValue(':content', json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), SQLITE3_TEXT);
         $stmt->execute();
     } catch (\Exception $e) {
-        // SQLite unavailable — ignore, just don't cache
+        phpManLog("TLDR cache write: " . $e->getMessage());
     }
 
     return $result;
