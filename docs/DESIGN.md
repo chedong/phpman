@@ -237,11 +237,35 @@ When reviewing code, follow this order:
 
 ---
 
-## 5. Revision History
+## 5. Ticket Status Summary
+
+| Issue | Title | Status | Fix Version |
+|-------|-------|--------|-------------|
+| #96 | Unescaped array in search HTML (XSS) | Fixed | v3.7 |
+| #97 | MCP endpoint has no authentication | Fixed | v3.7 |
+| #98 | Silent catch blocks swallow exceptions | Fixed | v3.7 |
+| #99 | $pydocFtsLines/$riFtsLines undefined | Verified | v3.7 |
+| #100 | CACHE_DIR writable validation | Fixed | v3.7 |
+| #101 | PageCache/cacheDb unit tests | Open | — |
+| #102 | Perldoc $width not escaped | Fixed | v3.7 |
+| #103 | rebuildSearchIndex transaction safety | Fixed | v3.7 |
+| #104 | FTS5 operator passthrough | Fixed | v3.7 |
+| #105 | ETag strategy inconsistency | Fixed | v3.7 |
+| #107 | $expanded undefined in TLDR | Fixed | v3.7.1 |
+| #108 | SQL string interpolation | Fixed | v3.7.1 |
+| #109 | tldr_cache missing TTL index | Fixed | v3.7.1 |
+| #110 | INSERT OR REPLACE semantics unclear | Fixed | v3.7.1 |
+| #111 | DESIGN.md ticket status table | Fixed | v3.7.1 |
+| #112 | CLI --help hardcodes cache DB path | Fixed | v3.7.1 |
+
+---
+
+## 6. Revision History
 
 | Date | Changes |
 |------|----------|
-| 2026-06-08 | TLDR cache strategy: SQLite `tldr_cache` with 7-day TTL, negative caching; old file-based `tldr_cache/` deprecated |
+| 2026-06-09 | v3.7.1: Fix #96 XSS (sources array h()), #107 undefined $expanded, #108 SQL prepared stmt, #109 tldr_cache TTL index, #110 INSERT OR REPLACE comments, #111 ticket status table, #112 CLI CACHE_DB constant; add Ticket Status Summary table |
+| 2026-06-08 | v3.7: Security hardening — #95 SQL parameterize, #98 catch block logging, #100 CACHE_DIR validation, #102 perldoc $width escape, #104 FTS5 sanitize, #105 ETag invalidation, #103 rebuildSearchIndex logging | TLDR cache strategy: SQLite `tldr_cache` with 7-day TTL, negative caching; old file-based `tldr_cache/` deprecated |
 | 2026-06-04 | `isLocalRequest()` deprecation: HSTS/version hiding moved to Nginx config, debug switched to `PHPMAN_DEBUG` env var; `ob_gzhandler` + `checkRateLimit()` marked for cleanup (#84 #89); security hardening table adds status column |
 | 2026-06-03 | Security boundary update: rate limiting/compression/security headers positioned as server-layer responsibilities, PHP layer as fallback only; no root-path file generation; closed #66 #72 #76 #77 |
 | 2026-06-03 | v2.3 mobile TOC collapse: narrow screen default collapsed, title row tappable to expand/collapse, fixed `$MOBILE_CSS` global declaration |
