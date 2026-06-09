@@ -33,7 +33,7 @@ define('RE_ASCII', '[ -~]');
 define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 
 // #49: Named constants for magic numbers
-define('PHPMAN_VERSION', '3.0');        // current version (#67)
+define('PHPMAN_VERSION', '3.7');        // current version (#67)
 define('GIT_DESCRIBE', 'local');         // replaced by make deploy/release with git describe --tags
 define('TOC_LINE_THRESHOLD', 80);      // min lines to show TOC sidebar
 define('GZIP_MIN_BYTES', 1000);        // min response size for gzip compression
