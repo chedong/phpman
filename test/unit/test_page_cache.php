@@ -9,10 +9,10 @@ declare(strict_types=1);
 define('PHPMAN_TEST_MODE', true);
 require_once __DIR__ . '/../test_helper.php';
 
-// Override CACHE_DIR before loading phpMan.php so cacheDb() uses a temp path
+// Override PHPMAN_CACHE_DIR before loading phpMan.php so cacheDb() uses a temp path
 $tmpDir = sys_get_temp_dir() . '/phpman_test_cache_' . getmypid();
 if (!is_dir($tmpDir)) mkdir($tmpDir, 0755, true);
-define('CACHE_DIR', $tmpDir);
+define('PHPMAN_CACHE_DIR', $tmpDir);
 
 require_once __DIR__ . '/../../phpMan.php';
 

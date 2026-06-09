@@ -31,10 +31,3 @@ DEMO_CACHE_DIR = /path/to/phpman_cache/production
 # `make release-logcheck` checks these after release to catch new issues.
 DEMO_ACCESS_LOG = /var/log/nginx/access.log
 DEMO_ERROR_LOG  = /var/log/nginx/error.log
-
-# --- Backup (production release only) ---
-# Backup directory on the production server (relative to $HOME).
-# `make release` creates a timestamped copy here before deploying.
-BACKUP_DIR = backups/phpman
-# Number of recent backups to retain; older ones are pruned automatically.
-BACKUP_KEEP = 5

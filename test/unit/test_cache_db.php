@@ -11,7 +11,7 @@ require_once __DIR__ . '/../test_helper.php';
 
 $tmpDir = sys_get_temp_dir() . '/phpman_test_cachedb_' . getmypid();
 if (!is_dir($tmpDir)) mkdir($tmpDir, 0755, true);
-define('CACHE_DIR', $tmpDir);
+define('PHPMAN_CACHE_DIR', $tmpDir);
 
 require_once __DIR__ . '/../../phpMan.php';
 
@@ -90,7 +90,7 @@ cleanupTmpDir();
 if (!is_dir($tmpDir)) mkdir($tmpDir, 0755, true);
 
 // Create a v1 database manually (without search_fts/search_index_meta)
-$migDb = new SQLite3(CACHE_DB);
+$migDb = new SQLite3(PHPMAN_CACHE_DB);
 $migDb->enableExceptions(true);
 $migDb->exec("CREATE TABLE cache (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,7 +128,7 @@ cleanupTmpDir();
 if (!is_dir($tmpDir)) mkdir($tmpDir, 0755, true);
 
 // Create a v2 database with existing search data
-$migDb = new SQLite3(CACHE_DB);
+$migDb = new SQLite3(PHPMAN_CACHE_DB);
 $migDb->enableExceptions(true);
 $migDb->exec("CREATE TABLE cache (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -167,7 +167,7 @@ echo "\n--- Schema migration unknown version: clears all cache ---\n";
 cleanupTmpDir();
 if (!is_dir($tmpDir)) mkdir($tmpDir, 0755, true);
 
-$migDb = new SQLite3(CACHE_DB);
+$migDb = new SQLite3(PHPMAN_CACHE_DB);
 $migDb->enableExceptions(true);
 $migDb->exec("CREATE TABLE cache (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -190,26 +190,26 @@ assert_equals(0, (int)$cacheCount, "unknown schema version → all cache cleared
 $version = $db->querySingle("SELECT value FROM meta WHERE key='schema_version'", false);
 assert_equals(CACHE_SCHEMA_VERSION, $version, "unknown version migrated to current");
 
-// ─── CACHE_DIR not writable ───
-echo "\n--- CACHE_DIR not writable returns null ---\n";
+// ─── PHPMAN_CACHE_DIR not writable ───
+echo "\n--- PHPMAN_CACHE_DIR not writable returns null ---\n";
 cleanupTmpDir();
-// Override CACHE_DIR to a non-existent unwritable path
+// Override PHPMAN_CACHE_DIR to a non-existent unwritable path
 // This is tricky because the constant is already defined. Instead, test that
 // when db is null, PageCache methods return safe defaults.
-// Direct test: verify null return when CACHE_DIR is unwritable
+// Direct test: verify null return when PHPMAN_CACHE_DIR is unwritable
 $readOnlyDir = sys_get_temp_dir() . '/phpman_test_readonly_' . getmypid();
 if (!is_dir($readOnlyDir)) mkdir($readOnlyDir, 0000, true);
 // Note: on some systems, mkdir with 0000 may still be writable by the owner
 // so we skip the assertion if the DB can still be created
 @chmod($readOnlyDir, 0000);
 if (!is_writable($readOnlyDir)) {
-    // Temporarily override CACHE_DIR by creating a new function context
-    // Since CACHE_DIR is a constant, we can't override it.
+    // Temporarily override PHPMAN_CACHE_DIR by creating a new function context
+    // Since PHPMAN_CACHE_DIR is a constant, we can't override it.
     // This test validates the guard code path exists but can't easily trigger it
     // with a constant. Skip with a passing note.
-    assert_equals(true, true, "CACHE_DIR unwritable guard exists (code path verified)");
+    assert_equals(true, true, "PHPMAN_CACHE_DIR unwritable guard exists (code path verified)");
 } else {
-    assert_equals(true, true, "CACHE_DIR writable on this system (guard code exists but not triggered)");
+    assert_equals(true, true, "PHPMAN_CACHE_DIR writable on this system (guard code exists but not triggered)");
 }
 @chmod($readOnlyDir, 0755);
 @rmdir($readOnlyDir);
