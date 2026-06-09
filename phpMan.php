@@ -1168,13 +1168,13 @@ function searchFtsBySource(string $parameter, string $source, string $format) {
 
         // markdown
         $out = '';
-      foreach ($entries as $e) {
-    $out .= '- [' . h($e['name']) . '](' . $script_name . '/' . $source . '/' . urlencode($e['name']) . '/markdown)';
-    if ($e['description'] !== '') {
-        $out .= ' - ' . h($e['description']);
-    }
-    $out .= "\n";
-}
+       foreach ($entries as $e) {
+            $out .= '- [' . h($e['name']) . '](' . $script_name . '/' . $source . '/' . urlencode($e['name']) . '/markdown)';
+            if ($e['description'] !== '') {
+                $out .= ' — ' . h($e['description']);
+            }
+            $out .= "\n";
+        }
         return $out;
     } catch (\Exception $e) {
         return $format === 'json' ? [] : '';
