@@ -1,15 +1,15 @@
 # phpMan CI/CD tasks
 # Usage:
 #   make test
-#   make deploy                  # staging: push code + CSS only
-#   make deploy-reindex          # staging: push code + rebuild search index
-#   make release                 # production: push code + CSS only
-#   make release-reindex         # production: push code + rebuild search index
-#   make rebuild-search-index    # production: rebuild search index only (no code push)
-#   make rebuild-search-index-staging  # staging: rebuild search index only
+#   make staging                  # staging: push code + CSS only
+#   make staging-reindex          # staging: push code + rebuild search index
+#   make release                  # production: push code + CSS only
+#   make release-reindex          # production: push code + rebuild search index
+#   make reindex                  # production: rebuild search index only (no code push)
+#   make reindex-staging          # staging: rebuild search index only
 #   make rollback
-#   make deploy-verify
-#   make release-logcheck
+#   make verify
+#   make logcheck
 #   make cache-flush / cache-flush-staging / cache-stats
 #
 # Requires .deploy.mk — copy from .deploy.mk.example and configure
@@ -44,7 +44,7 @@ endif
 FILE ?= phpMan.php
 CSS_FILE ?= phpman.css
 
-.PHONY: test deploy deploy-reindex release release-reindex rebuild-search-index rebuild-search-index-staging rollback deploy-verify release-logcheck package upload-release clean cache-flush cache-flush-staging cache-stats _deploy-code _release-code
+.PHONY: test staging staging-reindex release release-reindex reindex reindex-staging rollback verify logcheck package upload-release clean cache-flush cache-flush-staging cache-stats _deploy-code _release-code
 
 GIT_TAG := $(shell git describe --tags --always --dirty 2>/dev/null || echo "local")
 
@@ -71,9 +71,9 @@ _deploy-code:
 	@echo "$(TEST_URL)"
 	@echo ""
 
-deploy: test _deploy-code
+staging: test _deploy-code
 
-deploy-reindex: test _deploy-code
+staging-reindex: test _deploy-code
 	@echo "=== Rebuilding staging search index ==="
 	ssh -p $(TEST_PORT) $(TEST_HOST) \
 		"cd $(TEST_PATH) && php $(FILE) --build-index-cron"
@@ -105,7 +105,7 @@ _release-code:
 	echo "$(DEMO_URL)"; \
 	echo "Rollback: make rollback"; \
 	echo ""; \
-	$(MAKE) release-logcheck
+	$(MAKE) logcheck
 
 release: test _release-code
 
@@ -117,13 +117,13 @@ release-reindex: test _release-code
 
 # ─── Standalone search index rebuild (no code push) ───
 
-rebuild-search-index:
+reindex:
 	@echo "=== Rebuilding production search index (no code push) ==="
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"cd $(DEMO_PATH) && php $(FILE) --build-index-cron"
 	@echo "=== Done ==="
 
-rebuild-search-index-staging:
+reindex-staging:
 	@echo "=== Rebuilding staging search index (no code push) ==="
 	ssh -p $(TEST_PORT) $(TEST_HOST) \
 		"cd $(TEST_PATH) && php $(FILE) --build-index-cron"
@@ -144,7 +144,7 @@ rollback:
 	echo "=== Rolled back to: $$(basename $$LATEST_BACKUP) ==="; \
 	echo "Verify: $(DEMO_URL)"
 
-deploy-verify:
+verify:
 	@echo "=== Staging ==="
 	@curl -sk -o /dev/null -w "HTTP: %{http_code}  %{url_effective}\n" $(TEST_URL)
 	@echo ""
@@ -153,7 +153,7 @@ deploy-verify:
 
 # Check server logs for errors after a production release.
 # Requires DEMO_ERROR_LOG and DEMO_ACCESS_LOG to be set in .deploy.mk.
-release-logcheck:
+logcheck:
 	@echo "=== Post-deploy log check ==="
 	@echo "--- phpMan error log ---"
 	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
