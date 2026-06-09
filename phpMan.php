@@ -51,10 +51,15 @@ if (file_exists($_config_file)) {
 }
 
 // PHPMAN_HOME: base directory for all local data (cache, logs, backups).
-// Default: PHPMAN_HOME env var > $HOME/.phpman
+// Default: PHPMAN_HOME env var > HOME env var > $_SERVER['HOME'] > posix_getpwuid
 // staging should use ~/.phpman_test to avoid sharing DB/logs/backups with production.
 if (!defined('PHPMAN_HOME')) {
-    define('PHPMAN_HOME', getenv('PHPMAN_HOME') ?: (getenv('HOME') ?: ($_SERVER['HOME'] ?? '')) . '/.phpman');
+    $home = getenv('HOME') ?: ($_SERVER['HOME'] ?? '');
+    if (!$home && function_exists('posix_getpwuid')) {
+        $pw = posix_getpwuid(posix_getuid());
+        $home = $pw['dir'] ?? '';
+    }
+    define('PHPMAN_HOME', getenv('PHPMAN_HOME') ?: $home . '/.phpman');
 }
 
 // Derived paths — can be overridden individually in phpman.config.php
@@ -643,7 +648,7 @@ function normalizeSection ($section): string {
  * Get or create the SQLite cache database connection.
  * Uses static $db for connection reuse within a single request.
  */
-function cacheDb(): SQLite3 {
+function cacheDb(): ?SQLite3 {
     static $db = null;
     if ($db !== null) return $db;
 
