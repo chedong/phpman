@@ -2136,44 +2136,21 @@ switch ( $mode ) {
                     $inner = getSearchPage($parameter, $section, $format);
                     Profiler::mark('fts:done');
 
-                    // Always cascade to pydoc3 and ri — aggregate results
-                    // from all three sources (apropos/pydoc3/ri).
-                    // getSearchPage() already extracted pydoc/ri from FTS5 into
-                    // $pydocFtsLines / $riFtsLines; use those as baseline,
-                    // only fall back to command-line if FTS5 had no hits.
+                    // Cascade to pydoc3 and ri — always check FTS5 (fast),
+                    // command-line only when man search had no results.
+                    $hasManResults = ($inner !== "" && $inner !== "<ul>\n</ul>\n");
                     if ($format === "html") {
                         $inner = "<h2>apropos</h2>\n" . $inner . "\n";
-                        $pydocResults = "";
-                        if (!empty($pydocFtsLines)) {
-                            // FTS5 already found pydoc entries — render them
-                            $pydocResults = "<ul>\n";
-                            foreach ($pydocFtsLines as $pl) {
-                                if (preg_match('/^(.+)\s+\(pydoc\)\s+—\s+(.+)$/', $pl, $m)) {
-                                    $pydocResults .= '<li><a href="'.scriptName().'/pydoc/'.urlencode(trim($m[1])).'">'.h(trim($m[1])).'</a>';
-                                    if (trim($m[2]) !== '') $pydocResults .= ' — '.h(trim($m[2]));
-                                    $pydocResults .= "</li>\n";
-                                }
-                            }
-                            $pydocResults .= "</ul>\n";
-                        } else {
+                        $pydocResults = searchFtsBySource($parameter, 'pydoc', 'html');
+                        if ($pydocResults === "" && !$hasManResults) {
                             $pydocResults = getPydocSearchPage($parameter, "html");
                         }
                         Profiler::mark('pydoc:done');
                         if ($pydocResults !== "") {
                             $inner .= "<h2>Python 3 (pydoc3)</h2>\n" . $pydocResults . "\n";
                         }
-                        $riResults = "";
-                        if (!empty($riFtsLines)) {
-                            $riResults = "<ul>\n";
-                            foreach ($riFtsLines as $rl) {
-                                if (preg_match('/^(.+)\s+\(ri\)\s+—\s+(.+)$/', $rl, $m)) {
-                                    $riResults .= '<li><a href="'.scriptName().'/ri/'.urlencode(trim($m[1])).'">'.h(trim($m[1])).'</a>';
-                                    if (trim($m[2]) !== '') $riResults .= ' — '.h(trim($m[2]));
-                                    $riResults .= "</li>\n";
-                                }
-                            }
-                            $riResults .= "</ul>\n";
-                        } else {
+                        $riResults = searchFtsBySource($parameter, 'ri', 'html');
+                        if ($riResults === "") {
                             $riResults = getRiSearchPage($parameter, "html");
                         }
                         Profiler::mark('ri:done');
@@ -2181,32 +2158,16 @@ switch ( $mode ) {
                             $inner .= "<h2>Ruby (ri)</h2>\n" . $riResults . "\n";
                         }
                     } elseif ($format === "markdown") {
-                        $pydocResults = "";
-                        if (!empty($pydocFtsLines)) {
-                            foreach ($pydocFtsLines as $pl) {
-                                if (preg_match('/^(.+)\s+\(pydoc\)\s+—\s+(.+)$/', $pl, $m)) {
-                                    $pydocResults .= '- ['.trim($m[1]).']('.baseUrl().'/pydoc/'.urlencode(trim($m[1])).'/markdown)';
-                                    if (trim($m[2]) !== '') $pydocResults .= ' — '.trim($m[2]);
-                                    $pydocResults .= "\n";
-                                }
-                            }
-                        } else {
+                        $pydocResults = searchFtsBySource($parameter, 'pydoc', 'markdown');
+                        if ($pydocResults === "") {
                             $pydocResults = getPydocSearchPage($parameter, "markdown");
                         }
                         Profiler::mark('pydoc:done');
                         if ($pydocResults !== "") {
                             $inner .= "\n\n## Python 3 (pydoc3)\n\n" . $pydocResults;
                         }
-                        $riResults = "";
-                        if (!empty($riFtsLines)) {
-                            foreach ($riFtsLines as $rl) {
-                                if (preg_match('/^(.+)\s+\(ri\)\s+—\s+(.+)$/', $rl, $m)) {
-                                    $riResults .= '- ['.trim($m[1]).']('.baseUrl().'/ri/'.urlencode(trim($m[1])).'/markdown)';
-                                    if (trim($m[2]) !== '') $riResults .= ' — '.trim($m[2]);
-                                    $riResults .= "\n";
-                                }
-                            }
-                        } else {
+                        $riResults = searchFtsBySource($parameter, 'ri', 'markdown');
+                        if ($riResults === "") {
                             $riResults = getRiSearchPage($parameter, "markdown");
                         }
                         Profiler::mark('ri:done');
@@ -2216,43 +2177,23 @@ switch ( $mode ) {
                     } elseif ($format === "json" || $format === "mcp") {
                         $current = json_decode($inner, true);
                         if ($current === null) $current = [];
-                        // Use FTS5 pydoc results if available, otherwise command-line
-                        if (!empty($pydocFtsLines)) {
-                            $pydoc_results_arr = [];
-                            foreach ($pydocFtsLines as $pl) {
-                                if (preg_match('/^(.+)\s+\(pydoc\)\s+—\s+(.+)$/', $pl, $m)) {
-                                    $pydoc_results_arr[] = [
-                                        "name" => trim($m[1]),
-                                        "description" => trim($m[2]),
-                                        "link" => baseUrl() . "/pydoc/" . urlencode(trim($m[1])) . "/json",
-                                    ];
-                                }
-                            }
-                            $current["pydoc_results"] = $pydoc_results_arr;
+                        $pydocFts = searchFtsBySource($parameter, 'pydoc', 'json');
+                        Profiler::mark('pydoc:done');
+                        if (!empty($pydocFts)) {
+                            $current["pydoc_results"] = $pydocFts;
                         } else {
                             $pydocJson = getPydocSearchPage($parameter, "json");
-                            Profiler::mark('pydoc:done');
                             if ($pydocJson !== "") {
                                 $pydocData = json_decode($pydocJson, true);
                                 if ($pydocData !== null) $current["pydoc_results"] = $pydocData["results"] ?? [];
                             }
                         }
-                        // Use FTS5 ri results if available, otherwise command-line
-                        if (!empty($riFtsLines)) {
-                            $ri_results_arr = [];
-                            foreach ($riFtsLines as $rl) {
-                                if (preg_match('/^(.+)\s+\(ri\)\s+—\s+(.+)$/', $rl, $m)) {
-                                    $ri_results_arr[] = [
-                                        "name" => trim($m[1]),
-                                        "description" => trim($m[2]),
-                                        "link" => baseUrl() . "/ri/" . urlencode(trim($m[1])) . "/json",
-                                    ];
-                                }
-                            }
-                            $current["ri_results"] = $ri_results_arr;
+                        $riFts = searchFtsBySource($parameter, 'ri', 'json');
+                        Profiler::mark('ri:done');
+                        if (!empty($riFts)) {
+                            $current["ri_results"] = $riFts;
                         } else {
                             $riJson = getRiSearchPage($parameter, "json");
-                            Profiler::mark('ri:done');
                             if ($riJson !== "") {
                                 $riData = json_decode($riJson, true);
                                 if ($riData !== null) $current["ri_results"] = $riData["results"] ?? [];
@@ -2263,8 +2204,7 @@ switch ( $mode ) {
                             $inner = formatForOutput($inner, "mcp");
                         }
                     }
-                    return $inner;
-                });
+                    return $inner;                });
         }
         break;
     case "pydoc":
