@@ -20,8 +20,6 @@ endif
 
 FILE ?= phpMan.php
 CSS_FILE ?= phpman.css
-BACKUP_DIR ?= backups/phpman
-BACKUP_KEEP ?= 5
 
 .PHONY: test deploy release rollback deploy-verify release-logcheck package upload-release clean cache-flush cache-flush-staging cache-stats
 
@@ -33,9 +31,8 @@ test:
 
 deploy: test
 	@echo "=== Preparing staging server ==="
-	ssh -p $(TEST_PORT) $(TEST_HOST) \
-		"mkdir -p $(TEST_CACHE_DIR) && chmod 755 $(TEST_CACHE_DIR)"
-	sed "s|// define('CACHE_DIR'.*|define('CACHE_DIR', '$(TEST_CACHE_DIR)');|" \
+	@echo "--- Configuring staging home: ~/.phpman_test ---"
+	sed "s|// define('PHPMAN_HOME'.*|define('PHPMAN_HOME', '\$$HOME/.phpman_test');|" \
 		phpman.config.php.example | \
 	ssh -p $(TEST_PORT) $(TEST_HOST) \
 		"test -f $(TEST_PATH)/phpman.config.php && cat > /dev/null || cat > $(TEST_PATH)/phpman.config.php && chmod 644 $(TEST_PATH)/phpman.config.php && echo 'Created phpman.config.php'"
@@ -51,18 +48,17 @@ deploy: test
 release: test
 	@echo "=== Deploying $(GIT_TAG) ==="
 	@echo "=== Preparing production server ==="
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"mkdir -p $(DEMO_CACHE_DIR) && chmod 755 $(DEMO_CACHE_DIR)"
-	sed "s|// define('CACHE_DIR'.*|define('CACHE_DIR', '$(DEMO_CACHE_DIR)');|" \
+	@echo "--- Configuring home: ~/.phpman ---"
+	sed "s|// define('PHPMAN_HOME'.*|define('PHPMAN_HOME', '\$$HOME/.phpman');|" \
 		phpman.config.php.example | \
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"test -f $(DEMO_PATH)/phpman.config.php && cat > /dev/null || cat > $(DEMO_PATH)/phpman.config.php && chmod 644 $(DEMO_PATH)/phpman.config.php && echo 'Created phpman.config.php'"
 	@TIMESTAMP=$$(date +%Y%m%d-%H%M%S); \
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"mkdir -p \"\$$HOME/$(BACKUP_DIR)\" && cp $(DEMO_PATH)/$(FILE) \"\$$HOME/$(BACKUP_DIR)/$(FILE).$${TIMESTAMP}.bak\" 2>/dev/null || true"; \
-	echo "=== Pruning old backups (keeping last $(BACKUP_KEEP)) ==="; \
+		"mkdir -p \"\$$HOME/.phpman/backups\" && cp $(DEMO_PATH)/$(FILE) \"\$$HOME/.phpman/backups/$(FILE).$${TIMESTAMP}.bak\" 2>/dev/null || true"; \
+	echo "=== Pruning old backups (keeping last 5) ==="; \
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"ls -1t \"\$$HOME/$(BACKUP_DIR)/$(FILE).\"*.bak 2>/dev/null | tail -n +$$(( $(BACKUP_KEEP) + 1 )) | xargs rm -f 2>/dev/null || true"; \
+		"ls -1t \"\$$HOME/.phpman/backups/$(FILE).\"*.bak 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true"; \
 	sed "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" $(FILE) | \
 		ssh -p $(DEMO_PORT) $(DEMO_HOST) "cat > $(DEMO_PATH)/$(FILE)"; \
 	scp -P $(DEMO_PORT) $(CSS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(CSS_FILE); \
@@ -76,9 +72,9 @@ release: test
 
 rollback:
 	@LATEST_BACKUP=$$(ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"ls -1t \"\$$HOME/$(BACKUP_DIR)/$(FILE).\"*.bak 2>/dev/null | head -1"); \
+		"ls -1t \"\$$HOME/.phpman/backups/$(FILE).\"*.bak 2>/dev/null | head -1"); \
 	if [ -z "$$LATEST_BACKUP" ]; then \
-		echo "ERROR: No backup found in ~/\$(BACKUP_DIR)"; \
+		echo "ERROR: No backup found in ~/.phpman/backups"; \
 		exit 1; \
 	fi; \
 	echo "=== Restoring: $$LATEST_BACKUP ==="; \
@@ -111,19 +107,19 @@ release-logcheck:
 cache-flush:
 	@echo "=== Flushing production cache ==="
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"rm -f $(DEMO_CACHE_DIR)/phpm_cache.db*"
+		"rm -f \"\$$HOME/.phpman/db/phpman_cache.db\"*"
 	@echo "Done. Cache will rebuild on next request."
 
 cache-flush-staging:
 	@echo "=== Flushing staging cache ==="
 	ssh -p $(TEST_PORT) $(TEST_HOST) \
-		"rm -f $(TEST_CACHE_DIR)/phpm_cache.db*"
+		"rm -f \"\$$HOME/.phpman_test/db/phpman_cache.db\"*"
 	@echo "Done. Cache will rebuild on next request."
 
 cache-stats:
 	@echo "=== Production cache stats ==="
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"ls -lh $(DEMO_CACHE_DIR)/phpm_cache.db 2>/dev/null || echo '(cache DB not yet created)'"
+		"ls -lh \"\$$HOME/.phpman/db/phpman_cache.db\" 2>/dev/null || echo '(cache DB not yet created)'"
 
 package: test
 	gzip -k -f $(FILE)

@@ -33,7 +33,7 @@ define('RE_ASCII', '[ -~]');
 define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 
 // #49: Named constants for magic numbers
-define('PHPMAN_VERSION', '3.7');        // current version (#67)
+define('PHPMAN_VERSION', '3.7.1');        // current version (#67)
 define('GIT_DESCRIBE', 'local');         // replaced by make deploy/release with git describe --tags
 define('TOC_LINE_THRESHOLD', 80);      // min lines to show TOC sidebar
 define('GZIP_MIN_BYTES', 1000);        // min response size for gzip compression
@@ -50,10 +50,32 @@ if (file_exists($_config_file)) {
     require $_config_file;
 }
 
-// Cache constants: phpman.config.php > defaults
-if (!defined('CACHE_DIR')) define('CACHE_DIR', dirname(__FILE__) . '/cache');
-define('CACHE_DB', CACHE_DIR . '/phpm_cache.db');
+// PHPMAN_HOME: base directory for all local data (cache, logs, backups).
+// Default: PHPMAN_HOME env var > $HOME/.phpman
+// staging should use ~/.phpman_test to avoid sharing DB/logs/backups with production.
+if (!defined('PHPMAN_HOME')) {
+    define('PHPMAN_HOME', getenv('PHPMAN_HOME') ?: (getenv('HOME') ?: ($_SERVER['HOME'] ?? '')) . '/.phpman');
+}
+
+// Derived paths — can be overridden individually in phpman.config.php
+if (!defined('PHPMAN_CACHE_DIR')) {
+    define('PHPMAN_CACHE_DIR', PHPMAN_HOME . '/db');
+}
+if (!defined('PHPMAN_LOG_DIR')) {
+    define('PHPMAN_LOG_DIR', PHPMAN_HOME . '/logs');
+}
+if (!defined('PHPMAN_BACKUP_DIR')) {
+    define('PHPMAN_BACKUP_DIR', PHPMAN_HOME . '/backups');
+}
+
+// Fixed filenames under derived dirs (not configurable)
+define('PHPMAN_CACHE_DB', PHPMAN_CACHE_DIR . '/phpman_cache.db');
+define('PHPMAN_LOG_FILE', PHPMAN_LOG_DIR . '/phpman_error.log');
 define('CACHE_SCHEMA_VERSION', '3');
+
+// Ensure log dir exists, then set error_log target
+if (!is_dir(PHPMAN_LOG_DIR)) @mkdir(PHPMAN_LOG_DIR, 0755, true);
+@ini_set('error_log', PHPMAN_LOG_FILE);
 
 // MCP API key: if defined in config, all MCP requests require this key in X-API-Key header
 if (!defined('MCP_API_KEY')) define('MCP_API_KEY', '');
@@ -625,19 +647,19 @@ function cacheDb(): SQLite3 {
     static $db = null;
     if ($db !== null) return $db;
 
-    $dir = CACHE_DIR;
+    $dir = PHPMAN_CACHE_DIR;
     if (!is_dir($dir)) {
         if (!@mkdir($dir, 0755, true)) {
-            phpManLog("CACHE_DIR not writable: " . $dir);
+            phpManLog("PHPMAN_CACHE_DIR not writable: " . $dir);
             return null;
         }
     }
     if (!is_writable($dir)) {
-        phpManLog("CACHE_DIR not writable: " . $dir);
+        phpManLog("PHPMAN_CACHE_DIR not writable: " . $dir);
         return null;
     }
 
-    $dbPath = CACHE_DB;
+    $dbPath = PHPMAN_CACHE_DB;
     $isNew = !file_exists($dbPath);
 
     $db = new SQLite3($dbPath);
@@ -880,7 +902,7 @@ class PageCache {
         $found = $this->db->querySingle("SELECT COUNT(*) FROM cache WHERE status='found'");
         $notFound = $this->db->querySingle("SELECT COUNT(*) FROM cache WHERE status='not_found'");
         $totalHits = $this->db->querySingle("SELECT SUM(hits) FROM cache") ?: 0;
-        $dbSize = file_exists(CACHE_DB) ? filesize(CACHE_DB) : 0;
+        $dbSize = file_exists(PHPMAN_CACHE_DB) ? filesize(PHPMAN_CACHE_DB) : 0;
 
         return [
             'total' => (int)$total,
@@ -1845,7 +1867,7 @@ if (PHP_SAPI === 'cli') {
         echo "  Index entries: name (expanded for FTS5) + section + description.\n";
         echo "  Body content is NOT indexed (avoid fork resource exhaustion).\n\n";
         echo "  After rebuilding, clear search cache to force fresh results:\n";
-        echo "    sqlite3 " . CACHE_DB . " \"DELETE FROM cache WHERE mode='search'\"\n\n";
+        echo "    sqlite3 " . PHPMAN_CACHE_DB . " \"DELETE FROM cache WHERE mode='search'\"\n\n";
         echo "Cron example (daily at 3am):\n";
         echo "  0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron\n\n";
         echo "Docs: https://github.com/chedong/phpman\n";

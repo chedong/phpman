@@ -7,7 +7,7 @@
 
 ## 1. Database Overview
 
-Single `phpm_cache.db` file containing page cache + FTS5 full-text search index + TLDR cache.
+Single `phpman_cache.db` file containing page cache + FTS5 full-text search index + TLDR cache.
 
 | Table | Type | Rows (production) | Purpose |
 |---|------|:---:|------|
@@ -236,13 +236,13 @@ php phpMan.php --build-index
 
 ```bash
 # Full reset (delete DB file; next request auto-creates)
-rm -f /path/to/phpman_cache/production/phpm_cache.db*
+rm -f ~/.phpman/db/phpman_cache.db*
 
 # Clear only search cache (forces fresh FTS5 results on next query)
-sqlite3 phpm_cache.db "DELETE FROM cache WHERE mode='search'"
+sqlite3 ~/.phpman/db/phpman_cache.db "DELETE FROM cache WHERE mode='search'"
 
 # Remove expired entries (auto-triggered, manual also works)
-sqlite3 phpm_cache.db "DELETE FROM cache WHERE ttl > 0 AND (strftime('%s','now') - updated_at) > ttl"
+sqlite3 ~/.phpman/db/phpman_cache.db "DELETE FROM cache WHERE ttl > 0 AND (strftime('%s','now') - updated_at) > ttl"
 ```
 
 ### 10.3 Defragmentation
@@ -250,7 +250,7 @@ sqlite3 phpm_cache.db "DELETE FROM cache WHERE ttl > 0 AND (strftime('%s','now')
 After extended operation, many INSERT/DELETEs may cause fragmentation. VACUUM rewrites the entire database file:
 
 ```bash
-sqlite3 /path/to/phpm_cache.db "PRAGMA journal_mode=DELETE; VACUUM;"
+sqlite3 ~/.phpman/db/phpman_cache.db "PRAGMA journal_mode=DELETE; VACUUM;"
 ```
 
 Best results when run after rebuilding the FTS5 index (DROP+CREATE clears old index, then VACUUM reclaims space).
