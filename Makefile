@@ -58,7 +58,7 @@ test:
 _deploy-code:
 	@echo "=== Preparing staging server ==="
 	@echo "--- Configuring staging home: ~/.phpman_test (debug ON) ---"
-	sed -e "s|// define('PHPMAN_HOME'.*|define('PHPMAN_HOME', '\$$HOME/.phpman_test');|" \
+	sed -e "s|// define('PHPMAN_HOME'.*\.phpman_test.*|define('PHPMAN_HOME', getenv('HOME') . '/.phpman_test');|" \
 	    -e "s|// define('PHPMAN_DEBUG'.*|define('PHPMAN_DEBUG', true);|" \
 		phpman.config.php.example | \
 	ssh -p $(TEST_PORT) $(TEST_HOST) \
@@ -87,7 +87,7 @@ _release-code:
 	@echo "=== Deploying $(GIT_TAG) ==="
 	@echo "=== Preparing production server ==="
 	@echo "--- Configuring home: ~/.phpman ---"
-	sed "s|// define('PHPMAN_HOME'.*|define('PHPMAN_HOME', '\$$HOME/.phpman');|" \
+	sed "s|// define('PHPMAN_HOME'.*\.phpman');|define('PHPMAN_HOME', getenv('HOME') . '/.phpman');|" \
 		phpman.config.php.example | \
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"test -f $(DEMO_PATH)/phpman.config.php && cat > /dev/null || cat > $(DEMO_PATH)/phpman.config.php && chmod 644 $(DEMO_PATH)/phpman.config.php && echo 'Created phpman.config.php'"
