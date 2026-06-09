@@ -57,8 +57,9 @@ test:
 # Internal: push code + CSS to staging (no index rebuild)
 _deploy-code:
 	@echo "=== Preparing staging server ==="
-	@echo "--- Configuring staging home: ~/.phpman_test ---"
-	sed "s|// define('PHPMAN_HOME'.*|define('PHPMAN_HOME', '\$$HOME/.phpman_test');|" \
+	@echo "--- Configuring staging home: ~/.phpman_test (debug ON) ---"
+	sed -e "s|// define('PHPMAN_HOME'.*|define('PHPMAN_HOME', '\$$HOME/.phpman_test');|" \
+	    -e "s|// define('PHPMAN_DEBUG'.*|define('PHPMAN_DEBUG', true);|" \
 		phpman.config.php.example | \
 	ssh -p $(TEST_PORT) $(TEST_HOST) \
 		"test -f $(TEST_PATH)/phpman.config.php && cat > /dev/null || cat > $(TEST_PATH)/phpman.config.php && chmod 644 $(TEST_PATH)/phpman.config.php && echo 'Created phpman.config.php'"
