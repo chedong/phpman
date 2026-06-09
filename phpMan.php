@@ -648,8 +648,11 @@ function normalizeSection ($section): string {
  * Get or create the SQLite cache database connection.
  * Uses static $db for connection reuse within a single request.
  */
-function cacheDb(): ?SQLite3 {
+function cacheDb(?bool $reset = null): ?SQLite3 {
     static $db = null;
+    // Test-mode reset: cacheDb(true) clears the static singleton so tests
+    // can simulate fresh database creation across migration scenarios.
+    if ($reset === true) { $db = null; return null; }
     if ($db !== null) return $db;
 
     $dir = PHPMAN_CACHE_DIR;
@@ -859,32 +862,50 @@ class PageCache {
             $ttl = 604800;
         }
 
-        // INSERT OR REPLACE is DELETE+INSERT: the COALESCE subquery preserves the
-        // existing hits count across replacements (resets to 0 for new entries).
-        $stmt = $this->db->prepare(
-            "INSERT OR REPLACE INTO cache (mode, name, section, format, content, content_len, status, ttl, hits, created_at, updated_at)
-             VALUES (:mode, :name, :section, :format, :content, :content_len, :status, :ttl,
-               COALESCE((SELECT c.hits FROM cache c WHERE c.mode = :m2 AND c.name = :n2 AND c.section = :s2 AND c.format = :f2), 0),
-               strftime('%s','now'), strftime('%s','now'))"
-        );
-        $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
-        $stmt->bindValue(':name', $name, SQLITE3_TEXT);
-        $stmt->bindValue(':section', $section, SQLITE3_TEXT);
-        $stmt->bindValue(':format', $format, SQLITE3_TEXT);
-        $stmt->bindValue(':content', $compressed, SQLITE3_BLOB);
-        $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
-        $stmt->bindValue(':status', $status, SQLITE3_TEXT);
-        $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
-        $stmt->bindValue(':m2', $mode, SQLITE3_TEXT);
-        $stmt->bindValue(':n2', $name, SQLITE3_TEXT);
-        $stmt->bindValue(':s2', $section, SQLITE3_TEXT);
-        $stmt->bindValue(':f2', $format, SQLITE3_TEXT);
+        // Check if a row already exists for this key (stable rowid avoids FTS orphans)
+        $chk = $this->db->prepare("SELECT id FROM cache WHERE mode = :cm AND name = :cn AND section = :cs AND format = :cf");
+        $chk->bindValue(':cm', $mode, SQLITE3_TEXT);
+        $chk->bindValue(':cn', $name, SQLITE3_TEXT);
+        $chk->bindValue(':cs', $section, SQLITE3_TEXT);
+        $chk->bindValue(':cf', $format, SQLITE3_TEXT);
+        $oldRes = $chk->execute();
+        $existing = ($oldRes && ($oldRow = $oldRes->fetchArray(SQLITE3_ASSOC))) ? $oldRow : null;
 
-        $ok = $stmt->execute() !== false;
+        if ($existing) {
+            // UPDATE existing row — rowid is stable, no FTS orphan
+            $stmt = $this->db->prepare(
+                "UPDATE cache SET content = :content, content_len = :content_len, status = :status,
+                 ttl = :ttl, updated_at = strftime('%s','now')
+                 WHERE id = :id"
+            );
+            $stmt->bindValue(':content', $compressed, SQLITE3_BLOB);
+            $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
+            $stmt->bindValue(':status', $status, SQLITE3_TEXT);
+            $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
+            $stmt->bindValue(':id', (int)$existing['id'], SQLITE3_INTEGER);
+            $ok = $stmt->execute() !== false;
+            $cacheId = (int)$existing['id'];
+        } else {
+            // INSERT new row
+            $stmt = $this->db->prepare(
+                "INSERT INTO cache (mode, name, section, format, content, content_len, status, ttl, created_at, updated_at)
+                 VALUES (:mode, :name, :section, :format, :content, :content_len, :status, :ttl,
+                         strftime('%s','now'), strftime('%s','now'))"
+            );
+            $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
+            $stmt->bindValue(':name', $name, SQLITE3_TEXT);
+            $stmt->bindValue(':section', $section, SQLITE3_TEXT);
+            $stmt->bindValue(':format', $format, SQLITE3_TEXT);
+            $stmt->bindValue(':content', $compressed, SQLITE3_BLOB);
+            $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
+            $stmt->bindValue(':status', $status, SQLITE3_TEXT);
+            $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
+            $ok = $stmt->execute() !== false;
+            $cacheId = $ok ? $this->db->lastInsertRowID() : 0;
+        }
 
         // Sync FTS5 index for found entries (skip search mode — search results aren't indexed)
         if ($ok && $status === 'found' && $mode !== 'search') {
-            $cacheId = $this->db->lastInsertRowID();
             $this->syncFts($cacheId, $mode, $name, $section, $content);
         }
 
@@ -1220,9 +1241,9 @@ function searchFtsBySource(string $parameter, string $source, string $format) {
         // markdown
         $out = '';
         foreach ($entries as $e) {
-            $out .= '- [' . $e['name'] . '](' . $script_name . '/' . $source . '/' . urlencode($e['name']) . '/markdown)';
+            $out .= '- [' . h($e['name']) . '](' . $script_name . '/' . $source . '/' . urlencode($e['name']) . '/markdown)';
             if ($e['description'] !== '') {
-                $out .= ' — ' . $e['description'];
+                $out .= ' — ' . h($e['description']);
             }
             $out .= "\n";
         }
@@ -1379,7 +1400,7 @@ function renderGroupedResults(array $results, string $scriptName): array {
                        : (in_array('ri', $sources) ? 'ri'
                        : ($is_perl ? 'perldoc' : 'man'));
             $desc = h($r['description'] ?? '');
-            $sourceTag = !empty($sources) ? ' <span class="sources">[' . implode(', ', $sources) . ']</span>' : '';
+            $sourceTag = !empty($sources) ? ' <span class="sources">[' . implode(', ', array_map('h', $sources)) . ']</span>' : '';
             $html .= '<li><a href="' . $scriptName . '/' . $link_mode . '/' . urlencode($r['name']);
             if ($r['section'] !== '') {
                 $html .= '/' . urlencode($r['section']);

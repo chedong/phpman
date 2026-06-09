@@ -86,6 +86,8 @@ assert_equals(true, $db1 === $db2, "cacheDb() returns same instance on repeated 
 // ─── Schema migration: v1 → v2 → v3 ───
 echo "\n--- Schema migration v1→v2: adds search_fts and search_index_meta ---\n";
 cleanupTmpDir();
+// Reset static singleton so migration runs on the manually-created DB
+cacheDb(true);
 // Recreate the tmpDir since cacheDb() needs it
 if (!is_dir($tmpDir)) mkdir($tmpDir, 0755, true);
 
@@ -125,6 +127,7 @@ assert_equals(1, (int)$checkMeta, "v1→v2: search_index_meta table created");
 
 echo "\n--- Schema migration v2→v3: clears search_fts and search_index_meta ---\n";
 cleanupTmpDir();
+cacheDb(true);
 if (!is_dir($tmpDir)) mkdir($tmpDir, 0755, true);
 
 // Create a v2 database with existing search data
@@ -165,6 +168,7 @@ assert_equals(0, (int)$metaCount, "v2→v3: search_index_meta data cleared");
 
 echo "\n--- Schema migration unknown version: clears all cache ---\n";
 cleanupTmpDir();
+cacheDb(true);
 if (!is_dir($tmpDir)) mkdir($tmpDir, 0755, true);
 
 $migDb = new SQLite3(PHPMAN_CACHE_DB);
@@ -217,6 +221,7 @@ if (!is_writable($readOnlyDir)) {
 // ─── search_index_meta schema ───
 echo "\n--- search_index_meta UNIQUE constraint on (name, section, source) ---\n";
 cleanupTmpDir();
+cacheDb(true);
 $db = cacheDb();
 $db->exec("INSERT INTO search_index_meta (name, section, source, body_len, hits) VALUES ('ls', '1', 'man', 100, 5)");
 // Duplicate should fail

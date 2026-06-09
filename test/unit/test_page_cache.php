@@ -170,6 +170,22 @@ $cache->set('search', 'testsearch', '', 'html', 'search content');
 $ftsSearch = $db->querySingle("SELECT COUNT(*) FROM cache_fts WHERE cache_fts MATCH 'testsearch'", false);
 assert_equals(0, (int)$ftsSearch, "cache_fts has no entry for search mode (MATCH query)");
 
+echo "\n--- FTS: overwrite preserves stable rowid (#118) ---\n";
+$cache->set('man', 'ftsoverwrite', '1', 'html', 'original FTS content for overwrite test');
+$overwriteDb = cacheDb();
+$beforeId = $overwriteDb->querySingle("SELECT id FROM cache WHERE mode='man' AND name='ftsoverwrite' AND section='1' AND format='html'", false);
+// Overwrite the same key
+$cache->set('man', 'ftsoverwrite', '1', 'html', 'updated FTS content after overwrite');
+$afterId = $overwriteDb->querySingle("SELECT id FROM cache WHERE mode='man' AND name='ftsoverwrite' AND section='1' AND format='html'", false);
+// Rowid should be stable (UPDATE, not INSERT OR REPLACE)
+assert_equals((int)$beforeId, (int)$afterId, "rowid stable after overwrite (UPDATE preserves id)");
+// Only one FTS row should exist
+$ftsCountAfter = $overwriteDb->querySingle("SELECT COUNT(*) FROM cache_fts WHERE cache_fts MATCH 'overwrite'", false);
+assert_equals(1, (int)$ftsCountAfter, "only one FTS row after overwrite (no orphans)");
+// The FTS row should point to the stable rowid
+$ftsRowid = $overwriteDb->querySingle("SELECT rowid FROM cache_fts WHERE cache_fts MATCH 'overwrite'", false);
+assert_equals((int)$afterId, (int)$ftsRowid, "FTS rowid matches cache rowid");
+
 // ─── Compression round-trip ───
 echo "\n--- Content compression round-trip ---\n";
 $longContent = str_repeat("This is a test string for compression. ", 100);
