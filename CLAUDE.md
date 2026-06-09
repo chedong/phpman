@@ -26,10 +26,15 @@ bash phpman-regression.sh                        # against production
 bash phpman-regression.sh --local http://localhost:8080/phpMan.php   # pre-deploy
 
 # Deploy
-make deploy                          # scp to staging
-make release                         # scp to production (backs up first)
+make staging                         # scp to staging (code + CSS only)
+make release                         # scp to production (backs up first, code only)
+make release-reindex                 # production: code + rebuild search index
+make staging-reindex                 # staging: code + rebuild search index
+make reindex                         # production: rebuild search index only
+make reindex-staging                 # staging: rebuild search index only
 make rollback                        # restore production backup
-make deploy-verify                   # curl health check on both
+make verify                          # curl health check on both
+make logcheck                        # tail server logs after release
 ```
 
 The test framework is minimal (no PHPUnit): `assert_equals`, `assert_contains`, `assert_match`. Tests load `phpMan.php` with `define('PHPMAN_TEST_MODE', true)` to skip runtime execution and only define functions.
