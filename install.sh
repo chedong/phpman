@@ -2,7 +2,7 @@
 # phpMan One-Line Installer
 # =============================================================================
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/chedong/phpman/main/install.sh | bash
+#   curl -sSL https://raw.githubusercontent.com/chedong/phpman/master/install.sh | bash
 #   curl ... | bash -s -- --update
 #   curl ... | bash -s -- --reindex
 #   curl ... | bash -s -- --webroot /var/www/html
@@ -300,7 +300,7 @@ while [ $# -gt 0 ]; do
             echo "phpMan Installer"
             echo ""
             echo "Usage:"
-            echo "  curl -sSL https://raw.githubusercontent.com/chedong/phpman/main/install.sh | bash"
+            echo "  curl -sSL https://raw.githubusercontent.com/chedong/phpman/master/install.sh | bash"
             echo ""
             echo "With options (note the -s -- between bash and options):"
             echo "  curl ... | bash -s -- --update"
