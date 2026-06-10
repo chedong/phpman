@@ -1,4 +1,10 @@
 # phpMan CI/CD tasks
+# This Makefile is for the phpMan maintainer's CI/CD pipeline (staging, release,
+# rollback, cache management). Requires SSH access to target servers.
+#
+# If you're looking to install phpMan on your own server, use install.sh instead:
+#   curl -fsSL https://raw.githubusercontent.com/chedong/phpman/master/install.sh | bash
+#
 # Usage:
 #   make test
 #   make staging                  # staging: push code + CSS only

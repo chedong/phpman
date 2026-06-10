@@ -171,7 +171,28 @@ phpMan.php/man/RUBY/1
 - **back-to-top**: mobile z-index above TOC sidebar, not hidden when expanded
 - **Implementation**: `body.toc-open` class toggle, pure CSS, inline onclick JS with no external dependencies
 
-**Code location**: `$MOBILE_CSS` heredoc (~line 37), `showHeader()` global `$MOBILE_CSS` (~line 1163), `$hasTocContent` block (~line 1128)
+
+### 2.13 Project Structure: Makefile vs install.sh
+
+phpMan provides two deployment tools for two different audiences:
+
+| | Makefile | install.sh |
+|---|---|---|
+| **受众** | 项目维护者（chedong） | 外部用户 |
+| **入口** | `make staging` / `make release` | `curl \| bash` |
+| **前提** | SSH 访问目标服务器 + `.deploy.mk` | 本地 PHP + git |
+| **功能** | 远程部署、回滚、日志检查、缓存管理、健康检查 | 本地安装、更新、启动开发服务器、webroot 部署 |
+
+**为什么两者共存而非统一**：
+
+- `make rollback` — 从远程备份恢复，install.sh 做不到（需要 SSH）
+- `make logcheck` — 读取服务器 nginx/PHP 错误日志，install.sh 做不到
+- `make cache-flush/stats` — 管理远程 SQLite 缓存，install.sh 做不到
+- `make verify` — 同时健康检查 staging + production，install.sh 做不到
+
+**敏感信息隔离**：`.deploy.mk` 包含 SSH host/port/path，已 `.gitignore`。模板 `.deploy.mk.example` 可公开。
+
+**Code location**: `Makefile`（CI/CD 入口）, `.deploy.mk.example`（服务器配置模板）, `install.sh`（用户端一键安装）
 
 ---
 
