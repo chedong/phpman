@@ -21,9 +21,6 @@ declare(strict_types=1);
 // +--------------------------------------------------------------------------------+
 // $Id$
 
-// Default terminal width for man/perldoc output (used as MANROFFOPT -rLL=NNNn)
-define('PHPMAN_WIDTH', 100);         // #49: character width for man/perldoc output
-$PHPMAN_WIDTH = PHPMAN_WIDTH;
 
 // ASCII character classes for overstrike pattern matching:
 // RE_ASCII — plain printable ASCII, for raw terminal output (cleanTerminalOutput)
@@ -33,11 +30,8 @@ define('RE_ASCII', '[ -~]');
 define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 
 // #49: Named constants for magic numbers
-define('PHPMAN_VERSION', '3.7.1');        // current version (#67)
+define('PHPMAN_VERSION', '3.7.9');        // current version (#67)
 define('GIT_DESCRIBE', 'local');         // replaced by make deploy/release with git describe --tags
-define('PHPMAN_TOC_THRESHOLD', 80);      // min lines to show TOC sidebar
-define('PHPMAN_GZIP_MIN_BYTES', 1000);        // min response size for gzip compression
-define('PHPMAN_TLDR_MAX_EXAMPLES', 16);       // max examples in TLDR output
 
 
 // --- Shared helper functions (#44: DRY refactoring) ---
@@ -47,6 +41,29 @@ define('PHPMAN_TLDR_MAX_EXAMPLES', 16);       // max examples in TLDR output
 $_config_file = dirname(__FILE__) . '/phpman.config.php';
 if (file_exists($_config_file)) {
     require $_config_file;
+}
+
+// Default terminal width for man/perldoc output (#49: character width, used as MANROFFOPT -rLL=NNNn).
+// Override in phpman.config.php via define('PHPMAN_WIDTH', 120);
+if (!defined('PHPMAN_WIDTH')) {
+    define('PHPMAN_WIDTH', 100);
+}
+
+// Tuning knobs — overrideable in phpman.config.php
+if (!defined('PHPMAN_TOC_THRESHOLD')) {
+    define('PHPMAN_TOC_THRESHOLD', 80);       // min lines to show TOC sidebar
+}
+if (!defined('PHPMAN_GZIP_MIN_BYTES')) {
+    define('PHPMAN_GZIP_MIN_BYTES', 1000);     // min response size for gzip compression
+}
+if (!defined('PHPMAN_TLDR_MAX_EXAMPLES')) {
+    define('PHPMAN_TLDR_MAX_EXAMPLES', 16);     // max examples in TLDR output
+}
+if (!defined('PHPMAN_HOME_TITLE')) {
+    define('PHPMAN_HOME_TITLE', 'phpman - Linux Command Reference, JSON API & MCP Server for AI Agents');
+}
+if (!defined('PHPMAN_PROJECT_NAME')) {
+    define('PHPMAN_PROJECT_NAME', 'phpman');
 }
 
 // PHPMAN_HOME: base directory for all local data (cache, logs, backups).
@@ -311,7 +328,7 @@ function extractFlagsFromSections (array $data): array {
 // +--------------------------------------------------------------------------------+
 
 //app title
-$PHPMAN_TITLE = "phpman - Linux Command Reference, JSON API & MCP Server for AI Agents";
+$PHPMAN_TITLE = PHPMAN_HOME_TITLE;
 
 // TOC entries for floating right sidebar (populated when rendering man page content)
 $TOC_ITEMS = array();
@@ -2423,11 +2440,11 @@ Profiler::mark('render');
 
 showHeader($PHPMAN_TITLE, $parameter, $section, $mode, $hasRealContent, $showNav, $etag);
 
-// H1 breadcrumb: phpMan > mode > command(section)
+// H1 breadcrumb: phpman > mode > command(section)
 $modes = ["man" => ["label" => "man", "url" => "/man"], "perldoc" => ["label" => "perldoc", "url" => "/search/perl"], "info" => ["label" => "info", "url" => "/info"], "pydoc" => ["label" => "pydoc", "url" => "/pydoc"], "ri" => ["label" => "ri", "url" => "/ri"]];
 if ($parameter !== "" && $mode !== "" && $mode !== "search") {
     $bc_parts = [];
-    $bc_parts[] = "<a href=\"".h(scriptName())."\">phpMan</a>";
+    $bc_parts[] = "<a href=\"".h(scriptName())."\">phpman</a>";
     if (isset($modes[$mode])) {
         $bc_parts[] = "<a href=\"".h(scriptName() . $modes[$mode]["url"])."\">".h($modes[$mode]["label"])."</a>";
     }
@@ -2435,7 +2452,7 @@ if ($parameter !== "" && $mode !== "" && $mode !== "search") {
     $bc_parts[] = h($parameter . $section_label);
     echo "<h1>" . implode(" &gt; ", $bc_parts) . "</h1>\n";
 } elseif ($mode !== "" && $mode !== "search" && isset($modes[$mode])) {
-    echo "<h1><a href=\"".h(scriptName())."\">phpMan</a> &gt; " . h($modes[$mode]["label"]) . "</h1>\n";
+    echo "<h1><a href=\"".h(scriptName())."\">phpman</a> &gt; " . h($modes[$mode]["label"]) . "</h1>\n";
 } else {
     echo "<h1><a href=\"".h(scriptName())."\">".h($PHPMAN_TITLE)."</a></h1>\n";
 }
@@ -2599,7 +2616,6 @@ function showHeader (string $title = "", string $parameter = "", string $section
     // Gzip handled by Nginx/Cloudflare (#84)
 
     // Build SEO meta values
-    $site_name = "phpMan";
     // Auto-detect base URL from current request (works for any deployment)
     $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "http";
     $script_path = isset($_SERVER['SCRIPT_NAME']) ? $_SERVER['SCRIPT_NAME'] : strtok($_SERVER['REQUEST_URI'], '?');
@@ -2672,7 +2688,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
             ],
             "publisher" => [
                 "@type" => "Organization",
-                "name" => $site_name,
+                "name" => PHPMAN_PROJECT_NAME,
                 "url" => $base_url
             ],
             "about" => [
@@ -2692,7 +2708,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
         $schema_json = json_encode([
             "@context" => "https://schema.org",
             "@type" => "WebApplication",
-            "name" => $site_name,
+            "name" => PHPMAN_PROJECT_NAME,
             "description" => $meta_description,
             "url" => $canonical_url,
             "author" => [
@@ -2794,7 +2810,7 @@ function showFooter (string $validator = "", bool $showNav = false): void {
         $server_info = " On " . h(serverValue("SERVER_SOFTWARE", "unknown server"));
     }
 
-    echo "<p>Generated by <a href=\"https://github.com/chedong/phpman\">phpMan</a>" .
+    echo "<p>Generated by <a href=\"https://github.com/chedong/phpman\">phpman</a>" .
         " " . h(GIT_DESCRIBE) .
         " Author: <a href=\"https://www.chedong.com/\">Che Dong</a>" .
         $server_info .
@@ -3085,7 +3101,7 @@ function getManPage (string $parameter, string $section = "", string $format = "
     $oldManroffopt = getenv('MANROFFOPT');
     $oldManwidth = getenv('MANWIDTH');
     try {
-        putenv("MANROFFOPT=-rLL=" . $GLOBALS['PHPMAN_WIDTH'] . "n");
+        putenv("MANROFFOPT=-rLL=" . PHPMAN_WIDTH . "n");
         // Prefer -Tutf8 (GNU man) for SGR-encoded bold/underline output.
         // Falls back to bare man on BSD/macOS, which uses overstrike (X^HX).
         // Both formats are handled by formatManPerlDoc().
@@ -3110,7 +3126,7 @@ function getManPage (string $parameter, string $section = "", string $format = "
             // BSD man doesn't support -Tutf8 or groff's -rLL,
             // but it respects MANWIDTH for line-width control.
             $lines = array();
-            putenv("MANWIDTH=" . $GLOBALS['PHPMAN_WIDTH']);
+            putenv("MANWIDTH=" . PHPMAN_WIDTH);
             $fallback = "man ";
             if ($section !== "") {
                 $fallback .= escapeshellarg($section)." ";
@@ -3183,7 +3199,7 @@ function addManPageToc (string $html): array {
 //get specified perl module's man page and convert to html format
 function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
-    $width = intval($GLOBALS['PHPMAN_WIDTH']);
+    $width = intval(PHPMAN_WIDTH);
     // pod2text -w controls output width at the POD formatter level (replaces MANWIDTH
     // Pipeline: perldoc -l locates source → head -1 picks first file → pod2text formats.
     // head -1 prevents multi-file concatenation when perldoc -l returns multiple paths.

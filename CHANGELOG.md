@@ -20,6 +20,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `docs/CACHE_DESIGN.md` rewritten with actual v3.6.2 schema
 - Removed dead constant `PHPMAN_FLAG_DESC_MAX_LEN` (unused)
 - **Naming consistency**: all global vars/constants use `PHPMAN_` prefix — `$PHP_MAN_WIDTH` → `$PHPMAN_WIDTH`, `$PHP_MAN_TITLE` → `$PHPMAN_TITLE`, internal constants (`TOC_LINE_THRESHOLD`, `GZIP_MIN_BYTES`, `FLAG_DESC_MAX_LEN`, `TLDR_MAX_EXAMPLES`) also renamed
+- **Config overridable**: `PHPMAN_WIDTH`, `PHPMAN_TOC_THRESHOLD`, `PHPMAN_GZIP_MIN_BYTES`, `PHPMAN_TLDR_MAX_EXAMPLES`, `PHPMAN_HOME_TITLE`, `PHPMAN_PROJECT_NAME` now use `defined()` guard pattern — overridable via `phpman.config.php`
+- `$GLOBALS['PHPMAN_WIDTH']` → direct constant `PHPMAN_WIDTH` usage
+- `$site_name` → `PHPMAN_PROJECT_NAME` (define)
+- Visible branding: `phpMan` → `phpman` in H1 breadcrumb, site_name, footer
 
 ## [3.6.1] — 2026-06-08
 
