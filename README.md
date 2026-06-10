@@ -37,6 +37,65 @@ Then open **http://localhost:45678/** in your browser.
 > ```
 
 
+---
+
+## Configuration
+
+phpMan uses environment variables for configuration. TLDR is fetched from tldr-pages/cheat.sh and cached in SQLite — no API key needed.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CACHE_DIR` | _(auto)_ | SQLite cache directory (set via `phpman.config.php`) |
+| `LLM_API_URL` | _(empty)_ | OpenAI-compatible API endpoint (reserved for future use) |
+| `LLM_API_KEY` | _(empty)_ | API key for LLM provider (reserved for future use) |
+| `LLM_MODEL` | `gpt-4o-mini` | Model name (reserved for future use) |
+
+### Server Configuration
+
+**Apache (.htaccess or VirtualHost):**
+```apache
+SetEnv LLM_API_KEY sk-ant-xxxxx
+SetEnv LLM_MODEL gpt-4o-mini
+```
+
+**Nginx (server block):**
+```nginx
+location ~ \.php$ {
+    fastcgi_param LLM_API_KEY sk-ant-xxxxx;
+    fastcgi_param LLM_MODEL gpt-4o-mini;
+    # ... other fastcgi params
+}
+```
+
+**PHP-FPM (pool configuration):**
+```ini
+env[LLM_API_KEY] = sk-ant-xxxxx
+env[LLM_MODEL] = gpt-4o-mini
+```
+
+### Security Notes
+
+- **Never commit API keys to git.** Use environment variables (excluded from version control).
+- **Cache security:** SQLite cache DB files are stored outside webroot (via `CACHE_DIR` in `phpman.config.php`), not directly accessible via HTTP.
+
+---
+
+## Project Home
+
+- **GitHub:** <https://github.com/chedong/phpman>
+- **Live Demo:** <https://www.chedong.com/phpMan.php>
+- **Archived at SourceForge:** <https://sourceforge.net/projects/phpunixman>
+
+> **Development has moved to GitHub.** The SourceForge repository is frozen at v2.1 and will not receive further updates.
+
+## Screenshot
+
+![phpMan: perldoc page with TOC sidebar](https://a.fsdn.com/con/app/proj/phpunixman/screenshots/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A120260525-161915%402x-8c442be2.png/750/400)
+
+---
+
 ## Quick Start for Agents
 
 phpMan implements [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) via **Streamable HTTP** transport — no local installation or `npx` wrapper needed. Just point your MCP client at the endpoint URL.
@@ -111,62 +170,6 @@ curl "https://www.chedong.com/phpMan.php/man/ls/1/json"
 curl "https://www.chedong.com/phpMan.php/man/ls/1/mcp"
 ```
 
----
-
-## Configuration
-
-phpMan uses environment variables for configuration. TLDR is fetched from tldr-pages/cheat.sh and cached in SQLite — no API key needed.
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CACHE_DIR` | _(auto)_ | SQLite cache directory (set via `phpman.config.php`) |
-| `LLM_API_URL` | _(empty)_ | OpenAI-compatible API endpoint (reserved for future use) |
-| `LLM_API_KEY` | _(empty)_ | API key for LLM provider (reserved for future use) |
-| `LLM_MODEL` | `gpt-4o-mini` | Model name (reserved for future use) |
-
-### Server Configuration
-
-**Apache (.htaccess or VirtualHost):**
-```apache
-SetEnv LLM_API_KEY sk-ant-xxxxx
-SetEnv LLM_MODEL gpt-4o-mini
-```
-
-**Nginx (server block):**
-```nginx
-location ~ \.php$ {
-    fastcgi_param LLM_API_KEY sk-ant-xxxxx;
-    fastcgi_param LLM_MODEL gpt-4o-mini;
-    # ... other fastcgi params
-}
-```
-
-**PHP-FPM (pool configuration):**
-```ini
-env[LLM_API_KEY] = sk-ant-xxxxx
-env[LLM_MODEL] = gpt-4o-mini
-```
-
-### Security Notes
-
-- **Never commit API keys to git.** Use environment variables (excluded from version control).
-- **Cache security:** SQLite cache DB files are stored outside webroot (via `CACHE_DIR` in `phpman.config.php`), not directly accessible via HTTP.
-
----
-
-## Project Home
-
-- **GitHub:** <https://github.com/chedong/phpman>
-- **Live Demo:** <https://www.chedong.com/phpMan.php>
-- **Archived at SourceForge:** <https://sourceforge.net/projects/phpunixman>
-
-> **Development has moved to GitHub.** The SourceForge repository is frozen at v2.1 and will not receive further updates.
-
-## Screenshot
-
-![phpMan: perldoc page with TOC sidebar](https://a.fsdn.com/con/app/proj/phpunixman/screenshots/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A120260525-161915%402x-8c442be2.png/750/400)
 
 ---
 
@@ -754,28 +757,17 @@ git clone https://github.com/chedong/phpman.git
 git clone git@github.com:chedong/phpman.git
 ```
 
-## Quick Start
+## Publish Updates (Maintainer Only)
 
-Deploy phpMan on any PHP 7.2+ server with a single file:
+The repository includes a `Makefile` for CI/CD (staging, release, rollback, cache
+management). This is for the phpMan maintainer — requires SSH access to target servers.
 
+For self-hosting, use the [install script](#quick-start-local) instead:
 ```bash
-# Clone the repository
-git clone https://github.com/chedong/phpman.git
-
-# Copy to your web server's document root
-cp phpman/phpMan.php /var/www/html/
-
-# Access in browser
-# https://your-server/phpMan.php
+curl -fsSL https://raw.githubusercontent.com/chedong/phpman/master/install.sh | bash
 ```
 
-For Apache 2.x, ensure `AcceptPathInfo On` is configured to enable clean URL routing.
-
-## Publish Updates
-
-The repository includes a generic `Makefile` for local checks, staging deployment,
-production deployment, and release upload. Site-specific values are loaded from
-`.deploy.mk`, which is intentionally ignored by git.
+Site-specific values are loaded from `.deploy.mk`, which is gitignored.
 
 Create your local deployment config from the example:
 
