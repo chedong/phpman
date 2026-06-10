@@ -11,6 +11,32 @@ phpMan is an open-source Linux Command MCP Server and Structured JSON API web in
 - FTS5 enabled (checked at runtime via PRAGMA compile_options)
 - Web server (Apache/Nginx) or PHP built-in server
 
+## Quick Start (Local)
+
+One command to download and run phpMan on your machine:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/chedong/phpman/master/install.sh | bash
+```
+
+Then open **http://localhost:45678/** in your browser.
+
+> **macOS users:** If `php` is not found, install via Homebrew first:
+> ```bash
+> brew install php
+> ```
+>
+> **Debian/Ubuntu users:**
+> ```bash
+> sudo apt-get install -y php-cli php-sqlite3
+> ```
+>
+> After first launch, build the FTS5 search index for full-text search:
+> ```bash
+> cd ~/.phpman && php phpMan.php --build-index
+> ```
+
+
 ## Quick Start for Agents
 
 phpMan implements [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) via **Streamable HTTP** transport — no local installation or `npx` wrapper needed. Just point your MCP client at the endpoint URL.
