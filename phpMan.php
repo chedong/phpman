@@ -37,7 +37,6 @@ define('PHPMAN_VERSION', '3.7.1');        // current version (#67)
 define('GIT_DESCRIBE', 'local');         // replaced by make deploy/release with git describe --tags
 define('PHPMAN_TOC_THRESHOLD', 80);      // min lines to show TOC sidebar
 define('PHPMAN_GZIP_MIN_BYTES', 1000);        // min response size for gzip compression
-define('PHPMAN_FLAG_DESC_MAX_LEN', 120);      // max length for flag descriptions
 define('PHPMAN_TLDR_MAX_EXAMPLES', 16);       // max examples in TLDR output
 
 

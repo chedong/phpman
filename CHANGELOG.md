@@ -18,6 +18,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - Cache TTL: found entries from permanent to 7 days; expired entries auto-cleaned (1% chance per request)
 - `docs/CACHE_DESIGN.md` rewritten with actual v3.6.2 schema
+- Removed dead constant `PHPMAN_FLAG_DESC_MAX_LEN` (unused)
 - **Naming consistency**: all global vars/constants use `PHPMAN_` prefix — `$PHP_MAN_WIDTH` → `$PHPMAN_WIDTH`, `$PHP_MAN_TITLE` → `$PHPMAN_TITLE`, internal constants (`TOC_LINE_THRESHOLD`, `GZIP_MIN_BYTES`, `FLAG_DESC_MAX_LEN`, `TLDR_MAX_EXAMPLES`) also renamed
 
 ## [3.6.1] — 2026-06-08
