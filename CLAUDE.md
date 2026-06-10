@@ -59,6 +59,6 @@ The test framework is minimal (no PHPUnit): `assert_equals`, `assert_contains`, 
 - **XHTML 1.0 Transitional** — no HTML5 tags (`<nav>`, `<section>`), no `og:` meta tags. Use `<div id="...">` and `<p>` instead.
 - **Footer IP + UA display is intentional** — it's for spider/bot tracking in `showFooter()`. Do not remove it. See `docs/DESIGN.md` for the full rationale.
 - **`?debug=1`** only shows sensitive details when `isLocalRequest()` returns true (REMOTE_ADDR is 127.0.0.1, ::1, or empty).
-- **Global constants/vars at top-level**: `$PHP_MAN_WIDTH` (100), `RE_ASCII_SAFE`, `$MOBILE_CSS`, `$TOC_ITEMS`.
+- **Global constants/vars at top-level**: `$PHPMAN_WIDTH` (100), `RE_ASCII_SAFE`, `$MOBILE_CSS`, `$TOC_ITEMS`.
 - **Cap word style** for new code: functionNames, variableNames, arrayKeys. Existing code uses mixed styles — match the surrounding convention.
 - **`h()` and `serverValue()`** are the canonical helpers for HTML escaping and reading `$_SERVER`. Use them instead of direct access.

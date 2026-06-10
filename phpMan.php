@@ -22,8 +22,8 @@ declare(strict_types=1);
 // $Id$
 
 // Default terminal width for man/perldoc output (used as MANROFFOPT -rLL=NNNn)
-define('MAN_PAGE_WIDTH', 100);         // #49: character width for man/perldoc output
-$PHP_MAN_WIDTH = MAN_PAGE_WIDTH;
+define('PHPMAN_WIDTH', 100);         // #49: character width for man/perldoc output
+$PHPMAN_WIDTH = PHPMAN_WIDTH;
 
 // ASCII character classes for overstrike pattern matching:
 // RE_ASCII — plain printable ASCII, for raw terminal output (cleanTerminalOutput)
@@ -35,10 +35,10 @@ define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 // #49: Named constants for magic numbers
 define('PHPMAN_VERSION', '3.7.1');        // current version (#67)
 define('GIT_DESCRIBE', 'local');         // replaced by make deploy/release with git describe --tags
-define('TOC_LINE_THRESHOLD', 80);      // min lines to show TOC sidebar
-define('GZIP_MIN_BYTES', 1000);        // min response size for gzip compression
-define('FLAG_DESC_MAX_LEN', 120);      // max length for flag descriptions
-define('TLDR_MAX_EXAMPLES', 16);       // max examples in TLDR output
+define('PHPMAN_TOC_THRESHOLD', 80);      // min lines to show TOC sidebar
+define('PHPMAN_GZIP_MIN_BYTES', 1000);        // min response size for gzip compression
+define('PHPMAN_FLAG_DESC_MAX_LEN', 120);      // max length for flag descriptions
+define('PHPMAN_TLDR_MAX_EXAMPLES', 16);       // max examples in TLDR output
 
 
 // --- Shared helper functions (#44: DRY refactoring) ---
@@ -312,7 +312,7 @@ function extractFlagsFromSections (array $data): array {
 // +--------------------------------------------------------------------------------+
 
 //app title
-$PHP_MAN_TITLE = "phpman - Linux Command Reference, JSON API & MCP Server for AI Agents";
+$PHPMAN_TITLE = "phpman - Linux Command Reference, JSON API & MCP Server for AI Agents";
 
 // TOC entries for floating right sidebar (populated when rendering man page content)
 $TOC_ITEMS = array();
@@ -2106,18 +2106,18 @@ if ($format === "html" && $mode !== "mcp" && $mode !== "copyright" && $mode !== 
 
 if ( $parameter != "" ) {
     if ( $section == "" ) {
-        $PHP_MAN_TITLE = "phpman > " . $mode . " > " . $parameter;
+        $PHPMAN_TITLE = "phpman > " . $mode . " > " . $parameter;
     }
     else {
-        $PHP_MAN_TITLE = "phpman > " . $mode . " > " . $parameter . "(" . $section . ")";
+        $PHPMAN_TITLE = "phpman > " . $mode . " > " . $parameter . "(" . $section . ")";
     }
 } elseif ($mode !== "" && $mode !== "search" && in_array($mode, ["man", "perldoc", "info", "pydoc", "ri"])) {
-    $PHP_MAN_TITLE = "phpman > " . $mode;
+    $PHPMAN_TITLE = "phpman > " . $mode;
 }
 
 //show GPL
 else if ( $mode == "copyright" ) {
-    showHeader($PHP_MAN_TITLE, "", "", $mode);
+    showHeader($PHPMAN_TITLE, "", "", $mode);
     showCopyright();
     echo "</body></html>";
     exit;
@@ -2360,7 +2360,7 @@ if ($format === "markdown") {
         }
         $content .= "\n\n<!-- profile:\n" . implode("\n", $lines) . "\n  total: {$total}ms\n-->\n";
     }
-    echo "# " . $PHP_MAN_TITLE . "\n\n" . $content;
+    echo "# " . $PHPMAN_TITLE . "\n\n" . $content;
     exit;
 }
 
@@ -2390,7 +2390,7 @@ if ($format === "json" || $format === "mcp") {
     header("Expires: " . gmdate("D, d M Y H:i:s", time() + 3600 * 24 * 7) . " GMT");
     // Gzip compress large JSON responses (bash=351KB → ~97KB)
     $acceptEncoding = strtolower(serverValue("HTTP_ACCEPT_ENCODING", ""));
-    if (strpos($acceptEncoding, "gzip") !== false && function_exists("gzencode") && strlen($content) > GZIP_MIN_BYTES) {
+    if (strpos($acceptEncoding, "gzip") !== false && function_exists("gzencode") && strlen($content) > PHPMAN_GZIP_MIN_BYTES) {
         $gzipped = gzencode($content, 6);
         if ($gzipped !== false) {
             header("Content-Encoding: gzip");
@@ -2408,7 +2408,7 @@ if ($format === "json" || $format === "mcp") {
 // | show output                                                                    |
 // +--------------------------------------------------------------------------------+
 // Line threshold: ~80 lines ≈ two screens at 14px monospace
-$lineThreshold = TOC_LINE_THRESHOLD;
+$lineThreshold = PHPMAN_TOC_THRESHOLD;
 // Determine if this page has real content (for robots meta)
 // Search results and build-index pages should be noindex
 $hasRealContent = (trim($content) !== "" && !$isSearchFallback && $mode !== "search" && !$buildIndexRequested);
@@ -2422,7 +2422,7 @@ if ($hasRealContent) {
 // ETag already computed before exec() dispatch (#83)
 Profiler::mark('render');
 
-showHeader($PHP_MAN_TITLE, $parameter, $section, $mode, $hasRealContent, $showNav, $etag);
+showHeader($PHPMAN_TITLE, $parameter, $section, $mode, $hasRealContent, $showNav, $etag);
 
 // H1 breadcrumb: phpMan > mode > command(section)
 $modes = ["man" => ["label" => "man", "url" => "/man"], "perldoc" => ["label" => "perldoc", "url" => "/search/perl"], "info" => ["label" => "info", "url" => "/info"], "pydoc" => ["label" => "pydoc", "url" => "/pydoc"], "ri" => ["label" => "ri", "url" => "/ri"]];
@@ -2438,7 +2438,7 @@ if ($parameter !== "" && $mode !== "" && $mode !== "search") {
 } elseif ($mode !== "" && $mode !== "search" && isset($modes[$mode])) {
     echo "<h1><a href=\"".h(scriptName())."\">phpMan</a> &gt; " . h($modes[$mode]["label"]) . "</h1>\n";
 } else {
-    echo "<h1><a href=\"".h(scriptName())."\">".h($PHP_MAN_TITLE)."</a></h1>\n";
+    echo "<h1><a href=\"".h(scriptName())."\">".h($PHPMAN_TITLE)."</a></h1>\n";
 }
 
 // Build markdown/JSON URLs for format links (showForm below)
@@ -3086,7 +3086,7 @@ function getManPage (string $parameter, string $section = "", string $format = "
     $oldManroffopt = getenv('MANROFFOPT');
     $oldManwidth = getenv('MANWIDTH');
     try {
-        putenv("MANROFFOPT=-rLL=" . $GLOBALS['PHP_MAN_WIDTH'] . "n");
+        putenv("MANROFFOPT=-rLL=" . $GLOBALS['PHPMAN_WIDTH'] . "n");
         // Prefer -Tutf8 (GNU man) for SGR-encoded bold/underline output.
         // Falls back to bare man on BSD/macOS, which uses overstrike (X^HX).
         // Both formats are handled by formatManPerlDoc().
@@ -3111,7 +3111,7 @@ function getManPage (string $parameter, string $section = "", string $format = "
             // BSD man doesn't support -Tutf8 or groff's -rLL,
             // but it respects MANWIDTH for line-width control.
             $lines = array();
-            putenv("MANWIDTH=" . $GLOBALS['PHP_MAN_WIDTH']);
+            putenv("MANWIDTH=" . $GLOBALS['PHPMAN_WIDTH']);
             $fallback = "man ";
             if ($section !== "") {
                 $fallback .= escapeshellarg($section)." ";
@@ -3184,7 +3184,7 @@ function addManPageToc (string $html): array {
 //get specified perl module's man page and convert to html format
 function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
-    $width = intval($GLOBALS['PHP_MAN_WIDTH']);
+    $width = intval($GLOBALS['PHPMAN_WIDTH']);
     // pod2text -w controls output width at the POD formatter level (replaces MANWIDTH
     // Pipeline: perldoc -l locates source → head -1 picks first file → pod2text formats.
     // head -1 prevents multi-file concatenation when perldoc -l returns multiple paths.
@@ -4509,7 +4509,7 @@ function formatTldr (?array $data): string {
     $out .= "> More information: {$canonical}.\n\n";
 
     $exampleCount = 0;
-    $maxExamples = TLDR_MAX_EXAMPLES;
+    $maxExamples = PHPMAN_TLDR_MAX_EXAMPLES;
 
     // If man page has explicit EXAMPLES section, use those first
     if (!empty($examples)) {

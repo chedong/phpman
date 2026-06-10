@@ -18,6 +18,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - Cache TTL: found entries from permanent to 7 days; expired entries auto-cleaned (1% chance per request)
 - `docs/CACHE_DESIGN.md` rewritten with actual v3.6.2 schema
+- **Naming consistency**: all global vars/constants use `PHPMAN_` prefix — `$PHP_MAN_WIDTH` → `$PHPMAN_WIDTH`, `$PHP_MAN_TITLE` → `$PHPMAN_TITLE`, internal constants (`TOC_LINE_THRESHOLD`, `GZIP_MIN_BYTES`, `FLAG_DESC_MAX_LEN`, `TLDR_MAX_EXAMPLES`) also renamed
 
 ## [3.6.1] — 2026-06-08
 
@@ -137,7 +138,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - Man page regex `[\dnol]\w*` → `(\d\w*|n)` to avoid false matches with pydoc/ri parameter names
 - "Not found locally" message not showing for pydoc/ri detail pages
-- `PHP_MAN_WIDTH` converted from variable to `define()` constant (shared by man + perldoc)
+- `PHPMAN_WIDTH` converted from variable to `define()` constant (shared by man + perldoc)
 
 ## [2.5] — 2026-06-02
 
@@ -189,7 +190,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - Man page regex fix
 - "Not found locally" message for pydoc/ri
-- `PHP_MAN_WIDTH` → `define()` constant
+- `PHPMAN_WIDTH` → `define()` constant
 
 ## [2.2] — 2026-06-02
 
