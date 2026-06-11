@@ -1643,6 +1643,11 @@ function rebuildSearchIndex(): string {
         $db->exec("DELETE FROM search_index_meta");
         $output[] = "Cleared existing search index.\n";
 
+        // Invalidate all page caches — FTS5 index rebuild makes cached search
+        // results and man-page search-fallthrough entries stale.
+        $db->exec("DELETE FROM cache");
+        $output[] = "Cleared page cache.\n";
+
         // Wrap inserts in a transaction to prevent WAL bloat
         $db->exec("BEGIN IMMEDIATE");
 
