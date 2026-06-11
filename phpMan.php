@@ -1509,12 +1509,12 @@ function parseAproposLine (string $line): ?array {
     if (preg_match('/^(.+)\s+\[\s*(.+?)\s*\]\s+\(((?:\d\w*|n)\w*)\)\s*$/', $line, $m)) {
         return [trim($m[1]), trim($m[3]), trim($m[2])];
     }
-    // Linux em-dash: "name (section) — description"
-    if (preg_match('/^(.+)\s+\(((?:\d\w*|n)\w*)\)\s+—\s+(.+)$/', $line, $m)) {
+    // Linux em-dash: "name (section) — description" (also macOS: "name(section)")
+    if (preg_match('/^(.+)\s*\(((?:\d\w*|n)\w*)\)\s+—\s+(.+)$/', $line, $m)) {
         return [trim($m[1]), trim($m[2]), trim($m[3])];
     }
-    // Linux dash: "name (section) - description"
-    if (preg_match('/^(.+)\s+\(((?:\d\w*|n)\w*)\)\s+-\s+(.+)$/', $line, $m)) {
+    // Linux dash: "name (section) - description" (also macOS: "name(section)")
+    if (preg_match('/^(.+)\s*\(((?:\d\w*|n)\w*)\)\s+-\s+(.+)$/', $line, $m)) {
         return [trim($m[1]), trim($m[2]), trim($m[3])];
     }
     return null;
@@ -3612,7 +3612,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
                     "section" => $section_num,
                     "link" => $script_name . "/" . $link_mode . "/" . urlencode($name) . "/" . urlencode($section_num) . "/json",
                 );
-            } elseif (preg_match('/^(.+)\s+\(((\d\w*|n)\w*)\)\s+—\s+(.+)$/', $line, $m)) {
+            } elseif (preg_match('/^(.+)\s*\(((\d\w*|n)\w*)\)\s+—\s+(.+)$/', $line, $m)) {
                 $name = trim($m[1]);
                 $section_num = trim($m[2]);
                 $description = trim($m[3]);
@@ -3624,7 +3624,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
                     "section" => $section_num,
                     "link" => $script_name . "/" . $link_mode . "/" . urlencode($name) . "/" . urlencode($section_num) . "/json",
                 );
-            } elseif (preg_match('/^([\w\.\:\-\+]+)\s+\(((\d\w*|n)\w*)\)\s+—\s+(.+)$/', $line, $m)) {
+            } elseif (preg_match('/^([\w\.\:\-\+]+)\s*\(((\d\w*|n)\w*)\)\s+—\s+(.+)$/', $line, $m)) {
                 $is_perl = (preg_match('/:/', $m[1]));
                 $link_mode = $is_perl ? "perldoc" : "man";
                 $results[] = array(
@@ -3633,8 +3633,8 @@ function getSearchPage (string $parameter, string $section = "", string $format 
                     "section" => trim($m[2]),
                     "link" => $script_name . "/" . $link_mode . "/" . urlencode(trim($m[1])) . "/" . urlencode(trim($m[2])) . "/json",
                 );
-            } elseif (preg_match('/^(.+)\s+\(((\d\w*|n)\w*)\)\s+-\s+(.+)$/', $line, $m)) {
-                // Linux "apropos" output: command (section) - description (with hyphens, not em dashes)
+            } elseif (preg_match('/^(.+)\s*\(((\d\w*|n)\w*)\)\s+-\s+(.+)$/', $line, $m)) {
+                // Linux/macOS "apropos" output: command (section) - description
                 $name = trim($m[1]);
                 $section_num = trim($m[2]);
                 $description = trim($m[3]);
