@@ -1661,9 +1661,10 @@ function rebuildSearchIndex(): string {
 
             $sectionCount = 0;
             foreach ($lines as $line) {
-                // Parse apropos output: "name (section) - description"
+                // Parse apropos output: "name (section) - description" (Linux)
+                // or "name(section) - description" (macOS/BSD) — \s* between name and (section)
                 // or "name [description] (section)" (BSD style)
-                if (preg_match('/^(.+?)\s+\(((\d\w*|n)\w*)\)\s+[–-]\s+(.+)$/', $line, $m)) {
+                if (preg_match('/^(.+?)\s*\(((\d\w*|n)\w*)\)\s+[–-]\s+(.+)$/', $line, $m)) {
                     $name = trim($m[1]);
                     $sectionNum = trim($m[2]);
                     $description = trim($m[4]);
