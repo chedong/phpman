@@ -4285,7 +4285,7 @@ function fetchTldrPages(string $command): array {
                 "header" => "User-Agent: phpMan/2.2\r\n",
             ],
         ]);
-        $md = file_get_contents($url, false, $ctx);
+        $md = @file_get_contents($url, false, $ctx);
         if ($md === false) {
             // 404 is normal — most man pages don't have tldr-pages entries.
             // No need to log; the static cache above prevents repeated lookups.
@@ -4309,7 +4309,7 @@ function fetchCheatShTldr(string $command): array {
             "header" => "User-Agent: phpMan/2.2\r\n",
         ],
     ]);
-    $raw = file_get_contents($url, false, $ctx);
+    $raw = @file_get_contents($url, false, $ctx);
     if ($raw === false) {
         // cheat.sh miss is normal — no need to log.
         return [];
