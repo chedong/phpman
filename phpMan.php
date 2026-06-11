@@ -1709,6 +1709,8 @@ function rebuildSearchIndex(): string {
             if ($exitCode !== 0 || empty($lines)) {
                 continue;
             }
+            // macOS may have duplicate man pages from multiple databases (system + Homebrew)
+            $lines = array_unique($lines);
 
             $sectionCount = 0;
             foreach ($lines as $line) {
@@ -3624,6 +3626,8 @@ function getSearchPage (string $parameter, string $section = "", string $format 
             $cmd = "apropos " . escapeshellarg($parameter);
         }
         exec($cmd, $lines);
+        // macOS may return duplicates from multiple man databases (system + Homebrew)
+        $lines = array_unique($lines);
 
         // Warm up FTS5 cache from apropos results (keyword searches only)
         if (!empty($lines) && !$sectionOnly) {
