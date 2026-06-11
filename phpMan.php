@@ -1521,6 +1521,53 @@ function parseAproposLine (string $line): ?array {
 }
 
 /**
+ * Parse an apropos line that may contain multiple comma-separated commands
+ * sharing a single description. BSD section 9 kernel man pages commonly
+ * use this format: "name1(9), name2(9), name3 (9) — description".
+ *
+ * Falls back to parseAproposLine() for standard single-entry lines.
+ *
+ * @return array<int, array{string, string, string}>  [name, section, description]
+ */
+function parseAproposLines(string $line): array {
+    // Quick check: does this line have comma-separated entries?
+    if (!preg_match('/\)\s*,\s*\S/', $line)) {
+        $parsed = parseAproposLine($line);
+        return $parsed !== null ? [$parsed] : [];
+    }
+
+    // Extract shared description from the end: match " — " (em-dash) or " - " (hyphen)
+    $desc = '';
+    $namePart = $line;
+    if (preg_match('/^(.*?)\s+—\s+(.+)$/', $line, $m) ||
+        preg_match('/^(.*?)\s+-\s+(.+)$/', $line, $m)) {
+        $namePart = rtrim($m[1]);
+        $desc = $m[2];
+    }
+
+    // Split on "), " or ")," to get individual name(section) parts
+    $parts = preg_split('/\),\s*/', $namePart);
+    $entries = [];
+    foreach ($parts as $part) {
+        $part = trim($part);
+        if ($part === '') continue;
+        // preg_split consumed the closing paren — add it back
+        if (!str_ends_with($part, ')')) {
+            $part .= ')';
+        }
+        // Parse "name (section)" or "name(section)"
+        if (preg_match('/^(.+?)\s*\(((?:\d\w*|n)\w*)\)\s*$/', $part, $m)) {
+            $entries[] = [trim($m[1]), trim($m[2]), $desc];
+        }
+    }
+    if (empty($entries)) {
+        $parsed = parseAproposLine($line);
+        return $parsed !== null ? [$parsed] : [];
+    }
+    return $entries;
+}
+
+/**
  * Dynamically index apropos results into the FTS5 search index.
  *
  * Called after every apropos fallback in getSearchPage(). Inserted entries
@@ -1552,10 +1599,8 @@ function indexAproposLines (array $lines): int {
         );
 
         foreach ($lines as $line) {
-            $parsed = parseAproposLine($line);
-            if ($parsed === null) continue;
-
-            [$name, $section] = $parsed;
+            $entries = parseAproposLines($line);
+            foreach ($entries as [$name, $section, $description]) {
 
             // Only insert FTS5 entry when meta entry is new — FTS5 lacks UNIQUE
             // so INSERT OR IGNORE always succeeds, causing duplicates. Dedup via meta.
@@ -1569,7 +1614,7 @@ function indexAproposLines (array $lines): int {
                 $expandedName = expandNameForFts($name);
                 $insertFts->bindValue(':name', $expandedName, SQLITE3_TEXT);
                 $insertFts->bindValue(':section', $section, SQLITE3_TEXT);
-                $insertFts->bindValue(':description', $parsed[2], SQLITE3_TEXT);
+                $insertFts->bindValue(':description', $description, SQLITE3_TEXT);
                 $insertFts->execute();
                 $insertFts->reset();
             } else {
@@ -1580,6 +1625,7 @@ function indexAproposLines (array $lines): int {
             }
 
             $count++;
+            }
         }
 
         return $count;
@@ -1666,20 +1712,8 @@ function rebuildSearchIndex(): string {
 
             $sectionCount = 0;
             foreach ($lines as $line) {
-                // Parse apropos output: "name (section) - description" (Linux)
-                // or "name(section) - description" (macOS/BSD) — \s* between name and (section)
-                // or "name [description] (section)" (BSD style)
-                if (preg_match('/^(.+?)\s*\(((\d\w*|n)\w*)\)\s+[–-]\s+(.+)$/', $line, $m)) {
-                    $name = trim($m[1]);
-                    $sectionNum = trim($m[2]);
-                    $description = trim($m[4]);
-                } elseif (preg_match('/^(.+?)\s+\[(.+?)\]\s+\(((\d\w*|n)\w*)\)\s*$/', $line, $m)) {
-                    $name = trim($m[1]);
-                    $description = trim($m[2]);
-                    $sectionNum = trim($m[3]);
-                } else {
-                    continue;
-                }
+                $entries = parseAproposLines($line);
+                foreach ($entries as [$name, $sectionNum, $description]) {
 
                 // Skip entries with invalid characters
                 if ($name === '' || $description === '') {
@@ -1740,6 +1774,7 @@ function rebuildSearchIndex(): string {
                     $errors++;
                     phpManLog("rebuildFts man: " . $e->getMessage());
                 }
+                }  // inner foreach (parseAproposLines entries)
             }
 
             $output[] = "  Section {$sec}: {$sectionCount} entries indexed.\n";
@@ -3601,56 +3636,18 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         $results = array();
         $pydoc_results = array();
         $ri_results = array();
-        // Parse man page results from $lines
-        $count = count($lines);
-        for ($i = 0; $i < $count; $i++) {
-            $line = $lines[$i];
-            if (preg_match('/^(.+)\s+\[\s*(.+?)\s*\]\s+\(((\d\w*|n)\w*)\)\s*$/', $line, $m)) {
-                $name = trim($m[1]);
-                $description = trim($m[2]);
-                $section_num = trim($m[3]);
-                $is_perl = preg_match('/:/', $name);
-                $link_mode = $is_perl ? "perldoc" : "man";
-                $results[] = array(
-                    "name" => $name,
-                    "description" => $description,
-                    "section" => $section_num,
-                    "link" => $script_name . "/" . $link_mode . "/" . urlencode($name) . "/" . urlencode($section_num) . "/json",
-                );
-            } elseif (preg_match('/^(.+)\s*\(((\d\w*|n)\w*)\)\s+—\s+(.+)$/', $line, $m)) {
-                $name = trim($m[1]);
-                $section_num = trim($m[2]);
-                $description = trim($m[3]);
-                $is_perl = preg_match('/:/', $name);
-                $link_mode = $is_perl ? "perldoc" : "man";
-                $results[] = array(
-                    "name" => $name,
-                    "description" => $description,
-                    "section" => $section_num,
-                    "link" => $script_name . "/" . $link_mode . "/" . urlencode($name) . "/" . urlencode($section_num) . "/json",
-                );
-            } elseif (preg_match('/^([\w\.\:\-\+]+)\s*\(((\d\w*|n)\w*)\)\s+—\s+(.+)$/', $line, $m)) {
-                $is_perl = (preg_match('/:/', $m[1]));
-                $link_mode = $is_perl ? "perldoc" : "man";
-                $results[] = array(
-                    "name" => trim($m[1]),
-                    "description" => trim($m[3]),
-                    "section" => trim($m[2]),
-                    "link" => $script_name . "/" . $link_mode . "/" . urlencode(trim($m[1])) . "/" . urlencode(trim($m[2])) . "/json",
-                );
-            } elseif (preg_match('/^(.+)\s*\(((\d\w*|n)\w*)\)\s+-\s+(.+)$/', $line, $m)) {
-                // Linux/macOS "apropos" output: command (section) - description
-                $name = trim($m[1]);
-                $section_num = trim($m[2]);
-                $description = trim($m[3]);
-                $is_perl = preg_match('/:/', $name);
-                $link_mode = $is_perl ? "perldoc" : "man";
-                $results[] = array(
-                    "name" => $name,
-                    "description" => $description,
-                    "section" => $section_num,
-                    "link" => $script_name . "/" . $link_mode . "/" . urlencode($name) . "/" . urlencode($section_num) . "/json",
-                );
+        // Parse man page results from $lines (supports multi-name BSD lines)
+        foreach ($lines as $line) {
+            $entries = parseAproposLines($line);
+            foreach ($entries as [$name, $section_num, $description]) {
+            $is_perl = preg_match('/:/', $name);
+            $link_mode = $is_perl ? "perldoc" : "man";
+            $results[] = array(
+                "name" => $name,
+                "description" => $description,
+                "section" => $section_num,
+                "link" => $script_name . "/" . $link_mode . "/" . urlencode($name) . "/" . urlencode($section_num) . "/json",
+            );
             }
         }
         // Merge FTS5 pydoc/ri results (from getSearchPage's FTS5 query)
@@ -3697,11 +3694,8 @@ function getSearchPage (string $parameter, string $section = "", string $format 
     if ($format === "html") {
         $parsed = [];
         foreach ($lines as $line) {
-            $parsed_line = parseAproposLine($line);
-            if ($parsed_line === null) continue;
-            $name = $parsed_line[0];
-            $section_num = $parsed_line[1];
-            $description = $parsed_line[2];
+            $entries = parseAproposLines($line);
+            foreach ($entries as [$name, $section_num, $description]) {
             $is_perl = str_contains($name, '::');
             $parsed[] = [
                 'name'        => $name,
@@ -3709,6 +3703,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
                 'description' => $description,
                 'sources'     => $is_perl ? ['perldoc'] : ['man'],
             ];
+            }
         }
         $rendered = renderGroupedResults($parsed, $script_name);
         if ($rendered['sidebar'] !== '') {
