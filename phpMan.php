@@ -3711,52 +3711,27 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         return $rendered['html'];
     }
 
-    // Markdown: render apropos lines directly
+    // Markdown: render parsed apropos lines (supports multi-name BSD lines)
     $output = "<ul>\n";
-    $count = count($lines);
-    for ( $i = 0; $i < $count; $i ++ ) {
-        $line = $lines[$i];
-
-        // detect perl module: section 3pm/3perl or name contains ::
-        $is_perl = (preg_match("/\((3pm|3perl)\)/", $line) || preg_match("/\w+::\w+/", $line));
+    foreach ($lines as $line) {
+        $entries = parseAproposLines($line);
+        foreach ($entries as [$name, $section_num, $description]) {
+        $is_perl = str_contains($name, '::');
         $link_mode = $is_perl ? "perldoc" : "man";
-
+        $link = "{$script_name}/{$link_mode}/" . urlencode($name) . "/" . urlencode($section_num) . "/markdown";
         if ($format === "markdown") {
-            $patterns = array(
-                "/(.*\/)?([\w\-\.\+:]+)((\s+\[)([\w\-\.:]+)(\]\s+))\(((\d\w*|n)\w*)\)/",
-                "/([\w+\.\-:]+)(\s+)?(\(((\d\w*|n)\w*)\))/"
-            );
-            if ($link_mode === "perldoc") {
-                $replace = array(
-                    '$1$2$4[$5($7)]('.$script_name.'/perldoc/$5/markdown)$6($7)',
-                    '[$1($3)]('.$script_name.'/perldoc/$1/markdown)'
-                );
-            } else {
-                $replace = array(
-                    '$1$2$4[$5($7)]('.$script_name.'/man/$5/$7/markdown)$6($7)',
-                    '[$1($3)]('.$script_name.'/man/$1/$3/markdown)'
-                );
-            }
-            $output .= preg_replace($patterns, $replace, $line) . "\n";
+            $output .= "<li>[{$name}({$section_num})]({$link})";
         } else {
-            $escaped = h($line);
-            // Link patterns for apropos output
-            $link_patterns = array(
-                "/(.*\/)?([\w\-\.\+:]+)((\s+\[)([\w\-\.:]+)(\]\s+))\(((\d\w*|n)\w*)\)/",
-                "/([\w+\.\-:]+)(\s+)?(\(((\d\w*|n)\w*)\))/"
-            );
-            if ($link_mode === "perldoc") {
-                $link_replace = array(
-                    '$1$2$4<a href="'.$script_name.'/perldoc/$5">$5</a>$6($7)',
-                    '<a href="'.$script_name.'/perldoc/$1">$1</a>$2$3'
-                );
+            $output .= '<li><a href="' . h("{$script_name}/{$link_mode}/" . urlencode($name) . "/" . urlencode($section_num)) . '">' . h($name) . '</a>(' . h($section_num) . ')';
+        }
+        if ($description !== '') {
+            if ($format === "markdown") {
+                $output .= " — " . html_entity_decode(strip_tags($description));
             } else {
-                $link_replace = array(
-                    '$1$2$4<a href="'.$script_name.'/man/$5/$7">$5</a>$6($7)',
-                    '<a href="'.$script_name.'/man/$1/$4">$1</a>$2$3'
-                );
+                $output .= ' — ' . h($description);
             }
-            $output .= '<li>' . preg_replace($link_patterns, $link_replace, $escaped) . '</li>' . "\n";
+        }
+        $output .= ($format === "markdown") ? "</li>\n" : "</li>\n";
         }
     }
     $output .= "</ul>\n";
