@@ -1507,17 +1507,32 @@ function formatSearchResults(array $results, string $parameter, string $section,
 function parseAproposLine (string $line): ?array {
     // BSD: "name [description] (section)"
     if (preg_match('/^(.+)\s+\[\s*(.+?)\s*\]\s+\(((?:\d\w*|n)\w*)\)\s*$/', $line, $m)) {
-        return [trim($m[1]), trim($m[3]), trim($m[2])];
+        $name = trim($m[1]);
+        if (!isValidManPageName($name)) return null;
+        return [$name, trim($m[3]), trim($m[2])];
     }
     // Linux em-dash: "name (section) — description" (also macOS: "name(section)")
     if (preg_match('/^(.+)\s*\(((?:\d\w*|n)\w*)\)\s+—\s+(.+)$/', $line, $m)) {
-        return [trim($m[1]), trim($m[2]), trim($m[3])];
+        $name = trim($m[1]);
+        if (!isValidManPageName($name)) return null;
+        return [$name, trim($m[2]), trim($m[3])];
     }
     // Linux dash: "name (section) - description" (also macOS: "name(section)")
     if (preg_match('/^(.+)\s*\(((?:\d\w*|n)\w*)\)\s+-\s+(.+)$/', $line, $m)) {
-        return [trim($m[1]), trim($m[2]), trim($m[3])];
+        $name = trim($m[1]);
+        if (!isValidManPageName($name)) return null;
+        return [$name, trim($m[2]), trim($m[3])];
     }
     return null;
+}
+
+/**
+ * Reject single punctuation characters (shell builtins like !, %, ., :, etc.)
+ * and troff formatting leakage. Keep '[' (the shell test(1) command alias).
+ */
+function isValidManPageName(string $name): bool {
+    if ($name === '[') return true;
+    return (bool)preg_match('/[A-Za-z0-9]/', $name);
 }
 
 /**
@@ -1557,7 +1572,10 @@ function parseAproposLines(string $line): array {
         }
         // Parse "name (section)" or "name(section)"
         if (preg_match('/^(.+?)\s*\(((?:\d\w*|n)\w*)\)\s*$/', $part, $m)) {
-            $entries[] = [trim($m[1]), trim($m[2]), $desc];
+            $name = trim($m[1]);
+            if (isValidManPageName($name)) {
+                $entries[] = [$name, trim($m[2]), $desc];
+            }
         }
     }
     if (empty($entries)) {
