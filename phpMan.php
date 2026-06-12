@@ -4002,6 +4002,11 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
         // man and perldoc: standard command(section) and module linking
         $patterns[] = "/((<.>)|([\s,]))([\w\-\.\+]+)(<\/.>)?\((<.>)?(\d\w*|n)(<\/.>)?\)(,)?(<\/.>)?/";
         $replace[] = '$3$4($7)$9';
+        // Handle names split by a single inline tag boundary:
+        //   <b>io</b>_cancel(2) → io_cancel(2)
+        // (the _ was wrapped in <u> by SGR/overstrike, leaving a </b>.. boundary)
+        $patterns[] = "/((<.>)|([\s,]))([\w\-\.\+]+)<\/[bu]>([\w\-\.\+]+)\((<.>)?(\d\w*|n)(<\/.>)?\)/";
+        $replace[] = '$3$4$5($7)';
         $patterns[] = "/([\s,])([\w\-\.\+]+)\((\d\w*|n)\)/";
         $replace[] = '$1<a href="'.$script_name.'/'.$mode.'/$2/$3">$2($3)</a>';
         //translate link to related perl modules, but $obj->Module::Name-> will not be translate
