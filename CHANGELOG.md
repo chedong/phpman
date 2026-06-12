@@ -14,6 +14,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - FTS5 rebuild DROP TABLE fallback: if DROP fails, falls back to DELETE FROM
+- Cross-reference links for underscored names (e.g., `io_cancel(2)`) — SGR processing now runs before linkification so SGR-split names are rejoined before `name(section)` matching
 
 ### Changed
 - Cache TTL: found entries from permanent to 7 days; expired entries auto-cleaned (1% chance per request)
