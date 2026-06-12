@@ -30,7 +30,7 @@ define('RE_ASCII', '[ -~]');
 define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 
 // #49: Named constants for magic numbers
-define('PHPMAN_VERSION', '3.7.9');        // current version (#67)
+define('PHPMAN_VERSION', '3.7.10');        // current version (#67)
 define('GIT_DESCRIBE', 'local');         // replaced by make deploy/release with git describe --tags
 
 
@@ -3951,10 +3951,6 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                     //reverse html special chars
                     "/".chr(5)."/",  //reverse '&'
                     "/".chr(6)."/",  //reverse '<'
-                    //removed duplicated html tag
-                    "/<\/u><u>/",           // '</u><u>' => ''
-                    "/<u>_<\/u>/",          // '<u>_</u>' => '_'
-                    "/<\/b><b>/",       // '<\/b><b>' => ''
                     //perldoc specific: plain text headings (no overstrike sequences in perldoc output)
                     "/^([A-Z][A-Z0-9][A-Z0-9\/\s]{1,50})\s*$/",
                     "/^ {2}([A-Z][a-z][\w\s:\x27;,-]+)\s*$/",
@@ -3971,12 +3967,24 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                     '<b>$1</b>',
                    "&amp;",
                    "&lt;",
-                   "",
-                   "_",
-                   "",
                    '<b>$1</b>',
                    '  <u>$1</u>',
                );
+
+    // SGR escape sequences — must process BEFORE linkification so that
+    // SGR-split names (e.g. ESC[1mioESC[4m_ESC[24mcancelESC[0m) are rejoined
+    // into clean <b>io<u>_</u>cancel</b> before name(section) linking.
+    $patterns[] = "/".chr(27)."\[1m(.*?)".chr(27)."\[(?:0|22)m/";
+    $replace[] = '<b>$1</b>';
+    $patterns[] = "/".chr(27)."\[4m(.*?)".chr(27)."\[(?:0|24)m/";
+    $replace[] = '<u>$1</u>';
+    // Cleanup duplicated / orphan tags from combined overstrike + SGR processing
+    $patterns[] = "/<\/u><u>/";
+    $replace[] = '';
+    $patterns[] = "/<u>_<\/u>/";
+    $replace[] = '_';
+    $patterns[] = "/<\/b><b>/";
+    $replace[] = '';
 
     // Mode-specific link patterns
     if ($mode === "pydoc") {
@@ -4001,12 +4009,6 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
         $patterns[] = "/((<.>)|([\s,]))(\w+(::\w+)+)(<\/.>)?/";
         $replace[] = '$3<a href="'.$script_name.'/'.$mode.'/$4">$4</a>$6';
     }
-
-    // SGR escape sequences (common to all modes)
-    $patterns[] = "/".chr(27)."\[1m(.*?)".chr(27)."\[(?:0|22)m/";
-    $replace[] = '<b>$1</b>';
-    $patterns[] = "/".chr(27)."\[4m(.*?)".chr(27)."\[(?:0|24)m/";
-    $replace[] = '<u>$1</u>';
 
     // Common patterns: email, URL, closing >
     $patterns[] = "/(([\w\-\.]+)@([\w\-]+)(\.[\w\-]+)+)/";  //link to email
