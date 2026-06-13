@@ -30,7 +30,7 @@ define('RE_ASCII', '[ -~]');
 define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 
 // #49: Named constants for magic numbers
-define('PHPMAN_VERSION', '3.7.11');        // current version (#67)
+define('PHPMAN_VERSION', '3.7.12');        // current version (#67)
 define('GIT_DESCRIBE', 'local');         // replaced by make deploy/release with git describe --tags
 
 
@@ -2843,8 +2843,14 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
             '<a href="https://www.google.com/search?q=' . urlencode($parameter) . '" target="_blank" rel="noopener">Google search</a>';
 
         if ($mode === "man") {
-            echo ' | ' .
-                '<a href="https://cheat.sh/' . urlencode($parameter) . '" target="_blank" rel="noopener">cheat.sh</a>';
+            // man7.org: canonical Linux man pages
+            if ($section !== "") {
+                $man7 = 'https://man7.org/linux/man-pages/man' . urlencode($section)
+                      . '/' . urlencode($parameter) . '.' . urlencode($section) . '.html';
+            } else {
+                $man7 = 'https://man7.org/linux/man-pages/index.html';
+            }
+            echo ' | <a href="' . h($man7) . '" target="_blank" rel="noopener">man7.org</a>';
         } elseif ($mode === "perldoc") {
             echo ' | ' .
                 '<a href="https://metacpan.org/pod/' . urlencode($parameter) . '" target="_blank" rel="noopener">MetaCPAN</a>';
