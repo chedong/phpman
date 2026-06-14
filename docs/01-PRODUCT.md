@@ -26,11 +26,11 @@ phpMan is a single-file PHP web application that presents Unix `man`/`perldoc`/`
 3. **Traffic analysis** — IP helps distinguish real users from automated requests for ops decisions
 
 **Design principles**:
-- This information only appears in HTML page source (XSS-protected via `h()`)
+- This information only appears in HTML page source (XSS-protected via `h`)
 - JSON/MCP/Markdown formats do not include visitor information
 - This is phpMan's core observability feature as a public documentation site, not a privacy leak
 
-**Code location**: `showFooter()` ~line 964-965
+**Code location**: `showFooter()`
 
 ### 2.2 Single-File Architecture
 
@@ -69,7 +69,7 @@ GNU info pages use Setext-style underline headings:
 
 `detectHeadingType($line, $mode, $nextLine)` accepts an optional `$nextLine` parameter. In info mode, detected headings return `skipNext: true`, and the caller skips the underline line. Other modes ignore this parameter.
 
-**Code location**: `detectHeadingType()` ~line 420, `formatManPerlDoc()` ~line 2374
+**Code location**: `detectHeadingType()`, `formatManPerlDoc()`
 
 ### 2.6 Tokyo Night Dark Theme
 
@@ -91,7 +91,7 @@ CSS unified globally: `body`/`pre` share font family and size, `<b>`/`<u>` color
 
 Markdown | JSON | MCP format links only appear on detail pages (with actual content) in the search bar row. Index pages and no-result pages do not show format links.
 
-**Code location**: `showForm()` ~line 1252
+**Code location**: `showForm()`
 
 ### 2.8 H1 Breadcrumb + Title Format
 
@@ -132,7 +132,7 @@ phpMan's `normalizeParameter()` routing preserves original case in command names
 | Platform | `man RUBY` | Reason |
 |------|-----------|------|
 | Linux (GNU man-db) | Found `ruby(1)` | mandb database + filesystem glob dual-path normalization |
-| macOS (BSD man) | No manual entry | Direct `stat()` on file, case-sensitive |
+| macOS (BSD man) | No manual entry | Direct `stat` on file, case-sensitive |
 
 **GNU man normalization** (confirmed via `man -d RUBY`):
 1. Opens `/var/cache/man/index.db`
@@ -209,21 +209,21 @@ The following are **defense-in-depth measures** that should be handled by the se
 
 | Defense | Server-layer solution | PHP-layer current state (to clean up) | Issue | Notes |
 |--------|-------------|------------------------|-------|------|
-| Rate limiting | Nginx `limit_req` / Cloudflare WAF | `checkRateLimit()` file-lock approach | #84 | PHP rate limiting ineffective behind proxy (`REMOTE_ADDR` is proxy IP); file locks have high contention |
+| Rate limiting | Nginx `limit_req` / Cloudflare WAF | `checkRateLimit` file-lock approach | #84 | PHP rate limiting ineffective behind proxy (`REMOTE_ADDR` is proxy IP); file locks have high contention |
 | Gzip compression | Nginx `gzip on` / Cloudflare auto-compression | `ob_gzhandler` | #84 | May double-compress with server gzip; blocks PHP process |
-| Security headers (HSTS) | Nginx `add_header Strict-Transport-Security ... always;` | Conditional output in `showHeader()` via `if (!isLocalRequest())` | #89 | Behind proxy, `REMOTE_ADDR` is internal IP → production doesn't send HSTS; local dev uses HTTP so no HSTS needed |
+| Security headers (HSTS) | Nginx `add_header Strict-Transport-Security ... always;` | Conditional output in `showHeader` via `if (!isLocalRequest)` | #89 | Behind proxy, `REMOTE_ADDR` is internal IP → production doesn't send HSTS; local dev uses HTTP so no HSTS needed |
 
 **Design principle**: phpMan is a single-file app. Rate limiting, compression, and security headers are infrastructure concerns to be handled by the deployment layer (Nginx/Apache/Cloudflare/CDN). phpMan doesn't necessarily run at the website root, so it does not generate robots.txt, sitemap.xml, llms.txt, or other root-path files — these should be configured by the site admin at the server layer.
 
-### 3.1 `isLocalRequest()` Deprecation
+### 3.1 `isLocalRequest` Deprecation
 
-`isLocalRequest()` determines request source via `$_SERVER['REMOTE_ADDR']`, which behind a reverse proxy is the proxy IP, not the client IP, making the check unreliable. This function will be removed entirely, with its 3 call sites replaced by correct alternatives:
+`isLocalRequest` determines request source via `$_SERVER['REMOTE_ADDR']`, which behind a reverse proxy is the proxy IP, not the client IP, making the check unreliable. This function will be removed entirely, with its 3 call sites replaced by correct alternatives:
 
 | Call site | Current behavior | Problem | Replacement | Issue |
 |--------|----------|------|----------|-------|
-| line 1172: HSTS header | `if (!isLocalRequest())` → send HSTS | Behind proxy, `REMOTE_ADDR` is internal IP → production never sends HSTS | **Nginx config**: production HTTPS vhost `add_header Strict-Transport-Security ... always;`; local dev uses HTTP so no HSTS | #89 |
-| line 1423: server version | `if (isLocalRequest())` → show `SERVER_SOFTWARE` | Behind proxy, all requests come from internal IP → anyone can see version info | **Nginx `server_tokens off`** + **php.ini `expose_php=Off`**; remove version display from PHP code | #89 |
-| `?debug=1` debug mode | `isLocalRequest()` → allow sensitive details | Same as above, behind proxy anyone can trigger debug | **PHP env var** `PHPMAN_DEBUG=true`, explicit config instead of IP inference | #89 |
+| line 1172: HSTS header | `if (!isLocalRequest)` → send HSTS | Behind proxy, `REMOTE_ADDR` is internal IP → production never sends HSTS | **Nginx config**: production HTTPS vhost `add_header Strict-Transport-Security ... always;`; local dev uses HTTP so no HSTS | #89 |
+| line 1423: server version | `if (isLocalRequest)` → show `SERVER_SOFTWARE` | Behind proxy, all requests come from internal IP → anyone can see version info | **Nginx `server_tokens off`** + **php.ini `expose_php=Off`**; remove version display from PHP code | #89 |
+| `?debug=1` debug mode | `isLocalRequest` → allow sensitive details | Same as above, behind proxy anyone can trigger debug | **PHP env var** `PHPMAN_DEBUG=true`, explicit config instead of IP inference | #89 |
 
 **Design principle**: Security policies (HSTS, version hiding) belong to the transport/infrastructure layer and should be handled by the web server at TLS termination, not by PHP application logic. Application-level features (debug mode) should use explicit environment variables, not runtime IP inference — `REMOTE_ADDR` is unreliable in proxy architectures.
 
@@ -232,17 +232,17 @@ The following are **security hardening completed in v2.3**:
 | Hardening | Issue | Implementation | Status |
 |--------|-------|------|------|
 | Non-HTML response security headers | #63 | JSON/Markdown/MCP responses add `X-Content-Type-Options: nosniff` + `X-Frame-Options: DENY` | ✅ Retained |
-| HSTS force HTTPS | #70 → #89 | `Strict-Transport-Security` header, originally conditional via `if (!isLocalRequest())` | 🔄 Pending cleanup: move to Nginx config, remove PHP-layer `isLocalRequest()` (#89) |
-| IP-level rate limiting | #69 → #84 | `checkRateLimit()` based on file lock + JSON storage, default 30 req/60s | 🔄 Pending cleanup: move to Nginx `limit_req`, remove PHP-layer implementation (#84) |
-| MCP error message sanitization | #71 | `sendMcpError()` returns `Method not found` without exposing internal method names | ✅ Retained |
-| Shell argument defense | #62 | `$width` already `intval()` before interpolating into shell command | ✅ Retained |
+| HSTS force HTTPS | #70 → #89 | `Strict-Transport-Security` header, originally conditional via `if (!isLocalRequest)` | 🔄 Pending cleanup: move to Nginx config, remove PHP-layer `isLocalRequest` (#89) |
+| IP-level rate limiting | #69 → #84 | `checkRateLimit` based on file lock + JSON storage, default 30 req/60s | 🔄 Pending cleanup: move to Nginx `limit_req`, remove PHP-layer implementation (#84) |
+| MCP error message sanitization | #71 | `sendMcpError` returns `Method not found` without exposing internal method names | ✅ Retained |
+| Shell argument defense | #62 | `$width` already `intval` before interpolating into shell command | ✅ Retained |
 
 The following are **product features** and should not be removed:
 
 | Feature | Location | Reason |
 |------|------|------|
 | Footer IP + UA display | `showFooter()` | Spider/crawler tracking |
-| `?debug=1` diagnostic info | Dev helper | Switch to `PHPMAN_DEBUG=true` env var instead of `isLocalRequest()` IP check (#89) |
+| `?debug=1` diagnostic info | Dev helper | Switch to `PHPMAN_DEBUG=true` env var instead of `isLocalRequest` IP check (#89) |
 
 ---
 
@@ -285,9 +285,9 @@ When reviewing code, follow this order:
 
 | Date | Changes |
 |------|----------|
-| 2026-06-09 | v3.7.1: Fix #96 XSS (sources array h()), #107 undefined $expanded, #108 SQL prepared stmt, #109 tldr_cache TTL index, #110 INSERT OR REPLACE comments, #111 ticket status table, #112 CLI CACHE_DB constant; add Ticket Status Summary table |
+| 2026-06-09 | v3.7.1: Fix #96 XSS (sources array h), #107 undefined $expanded, #108 SQL prepared stmt, #109 tldr_cache TTL index, #110 INSERT OR REPLACE comments, #111 ticket status table, #112 CLI CACHE_DB constant; add Ticket Status Summary table |
 | 2026-06-08 | v3.7: Security hardening — #95 SQL parameterize, #98 catch block logging, #100 CACHE_DIR validation, #102 perldoc $width escape, #104 FTS5 sanitize, #105 ETag invalidation, #103 rebuildSearchIndex logging | TLDR cache strategy: SQLite `tldr_cache` with 7-day TTL, negative caching; old file-based `tldr_cache/` deprecated |
-| 2026-06-04 | `isLocalRequest()` deprecation: HSTS/version hiding moved to Nginx config, debug switched to `PHPMAN_DEBUG` env var; `ob_gzhandler` + `checkRateLimit()` marked for cleanup (#84 #89); security hardening table adds status column |
+| 2026-06-04 | `isLocalRequest` deprecation: HSTS/version hiding moved to Nginx config, debug switched to `PHPMAN_DEBUG` env var; `ob_gzhandler` + `checkRateLimit` marked for cleanup (#84 #89); security hardening table adds status column |
 | 2026-06-03 | Security boundary update: rate limiting/compression/security headers positioned as server-layer responsibilities, PHP layer as fallback only; no root-path file generation; closed #66 #72 #76 #77 |
 | 2026-06-03 | v2.3 mobile TOC collapse: narrow screen default collapsed, title row tappable to expand/collapse, fixed `$MOBILE_CSS` global declaration |
 | 2026-06-03 | v2.3 unified search result list format, ri index listification, footer git version (`git describe`), removed standalone `/tldr` route |
@@ -321,7 +321,7 @@ ri <Class#method> ─┐
                    └──→ formatForOutput(json, "mcp")         → MCP
 ```
 
-pydoc/ri reuse the existing `formatManPerlDoc()` / `formatToJSON()` / `formatManPerlDocToMarkdown()` pipeline, differentiated by `$mode` parameter. Code location: phpMan.php line 1717–1938.
+pydoc/ri reuse the existing `formatManPerlDoc()` / `formatToJSON` / `formatManPerlDocToMarkdown` pipeline, differentiated by `$mode` parameter. Code location: phpMan.php (search for relevant function).
 
 ---
 
@@ -329,19 +329,19 @@ pydoc/ri reuse the existing `formatManPerlDoc()` / `formatToJSON()` / `formatMan
 
 | Route | Function | Handler |
 |------|------|----------|
-| `GET /pydoc/{module}/{format}` | Python module docs | `getPydocPage()` |
-| `GET /pydoc/{format}` | Python module index | `getPydocIndex()` |
-| `GET /ri/{Class#method}/{format}` | Ruby class/method docs | `getRiPage()` |
-| `GET /ri/{format}` | Ruby class index | `getRiIndex()` |
+| `GET /pydoc/{module}/{format}` | Python module docs | `getPydocPage` |
+| `GET /pydoc/{format}` | Python module index | `getPydocIndex` |
+| `GET /ri/{Class#method}/{format}` | Ruby class/method docs | `getRiPage` |
+| `GET /ri/{format}` | Ruby class index | `getRiIndex` |
 
 ### Search Cascade
 
 Since v3.6, search always aggregates results from all three sources (no longer only cascaded when apropos is empty):
 
 ```
-getSearchPage()                  → FTS5/apropos (man pages)
-  + getPydocSearchPage()         → pydoc3 -k or FTS5 pydoc index
-  + getRiSearchPage()            → ri command or FTS5 ri index
+getSearchPage                  → FTS5/apropos (man pages)
+  + getPydocSearchPage         → pydoc3 -k or FTS5 pydoc index
+  + getRiSearchPage            → ri command or FTS5 ri index
 ```
 
 Search priority: FTS5 offline index > command-line search > FTS5 per-source search.
@@ -350,14 +350,14 @@ See [04-SEARCH.md](04-SEARCH.md).
 
 ### MCP Auto-Detection
 
-`cli_help` selects document source by naming convention (line 1520–1559):
+`cli_help` selects document source by naming convention (search for relevant function):
 
 | Input feature | Document source | Example |
 |----------|--------|------|
-| Contains `::` | `getPerldocPage()` | `Digest::MD5` |
-| Contains `#` | `getRiPage()` | `Array#map` |
-| Contains `.` (no `::`) | `getPydocPage()` | `json.loads`, `os.path` |
-| Other | `getManPage()` → pydoc fallback → ri fallback | `ls` |
+| Contains `::` | `getPerldocPage` | `Digest::MD5` |
+| Contains `#` | `getRiPage` | `Array#map` |
+| Contains `.` (no `::`) | `getPydocPage` | `json.loads`, `os.path` |
+| Other | `getManPage` → pydoc fallback → ri fallback | `ls` |
 
 ---
 
@@ -397,15 +397,15 @@ FUNCTIONS
 
 ### 3.2 Section Heading Detection
 
-pydoc output uses **ALL CAPS lines** as L1 section headings (`NAME`, `DESCRIPTION`, `CLASSES`, `FUNCTIONS`, `DATA`, etc.), matched by the existing `detectL1Heading()` function via ALL CAPS regex (line 386).
+pydoc output uses **ALL CAPS lines** as L1 section headings (`NAME`, `DESCRIPTION`, `CLASSES`, `FUNCTIONS`, `DATA`, etc.), matched by the existing `detectL1Heading` function via ALL CAPS regex (search for relevant function).
 
-pydoc mode does **not** use the ri-specific RDoc marker detection (line 433–444), instead using the standard man/perldoc L1/L2 detection flow.
+pydoc mode does **not** use the ri-specific RDoc marker detection (search for relevant function), instead using the standard man/perldoc L1/L2 detection flow.
 
 ### 3.3 Class/Function Definition Detection (L2 Sub-sections)
 
-pydoc has two dedicated L2 patterns, handled in `detectL2IndentedPatterns()` (line 363–373):
+pydoc has two dedicated L2 patterns, handled in `detectL2IndentedPatterns()`:
 
-**Class definition** — `detectL2IndentedPatterns()` line 363:
+**Class definition** — `detectL2IndentedPatterns()`:
 ```
     class Name(ParentClass)
 ```
@@ -413,7 +413,7 @@ pydoc has two dedicated L2 patterns, handled in `detectL2IndentedPatterns()` (li
 - Parentheses may contain HTML `<a>` links (parent classes are linked); stripped first with `preg_replace`
 - Extracted as: `['level' => 2, 'text' => 'class Name']`
 
-**Function/method definition** — line 369:
+**Function/method definition**:
 ```
     funcName(args)
 ```
@@ -423,7 +423,7 @@ pydoc has two dedicated L2 patterns, handled in `detectL2IndentedPatterns()` (li
 
 ### 3.4 HTML Link Handling (mode="pydoc")
 
-In `formatManPerlDoc()`, pydoc mode uses a specific link pattern (line 2332–2335):
+In `formatManPerlDoc()`, pydoc mode uses a specific link pattern (search for relevant function):
 
 ```
 pattern: /class (\w+)\((\w+(?:\.\w+)*)\)/
@@ -434,7 +434,7 @@ Parent class references become clickable links: `class JSONDecodeError(ValueErro
 
 ### 3.5 Module Index Format
 
-`getPydocIndex()` runs `pydoc3 modules`, which outputs multi-column text:
+`getPydocIndex` runs `pydoc3 modules`, which outputs multi-column text:
 
 ```
 Please wait ... (calculating module list)
@@ -445,7 +445,7 @@ Bastion             encodings           keyword             ...
 Enter any module name ...
 ```
 
-Parsing strategy (line 1742–1808):
+Parsing strategy (search for relevant function):
 1. Skip header before blank line
 2. Stop at `Enter any module name`
 3. Split multi-column layout on 2+ spaces via `preg_split('/\s{2,}/', ...)`
@@ -454,14 +454,14 @@ Parsing strategy (line 1742–1808):
 
 ### 3.6 Search Format
 
-`getPydocSearchPage()` runs `pydoc3 -k <keyword>`, output format:
+`getPydocSearchPage` runs `pydoc3 -k <keyword>`, output format:
 
 ```
 module_name - Description of the module
 another_module - Another description
 ```
 
-Parsing (line 1863–1922): regex `^(\S+)\s*-\s*(.+)` splits module name and description. Entries without descriptions are listed as plain module names. Results include `name`, `description`, `link` fields.
+Parsing (search for relevant function): regex `^(\S+)\s*-\s*(.+)` splits module name and description. Entries without descriptions are listed as plain module names. Results include `name`, `description`, `link` fields.
 
 ---
 
@@ -498,7 +498,7 @@ Array indexing starts at 0...
 
 ### 4.2 RDoc Marker Heading Detection (ri-Specific)
 
-ri mode uses a **completely independent** heading detection logic, bypassing standard L1/L2 detection. In `detectHeadingType()`, when `$mode === "ri"`, RDoc marker detection is returned directly (line 433–444):
+ri mode uses a **completely independent** heading detection logic, bypassing standard L1/L2 detection. In `detectHeadingType()`, when `$mode === "ri"`, RDoc marker detection is returned directly (search for relevant function):
 
 | Marker | Meaning | Detection Result |
 |------|------|----------|
@@ -517,19 +517,19 @@ Processing flow:
 
 ### 4.3 TOC Label Stripping
 
-ri's RDoc `=` and `==` prefixes are stripped in TOC. In `buildToc()`:
+ri's RDoc `=` and `==` prefixes are stripped in TOC. In `buildToc`:
 
 ```php
-// L1 TOC: strip "= Heading" → "Heading" (line 1652-1653)
+// L1 TOC: strip "= Heading" → "Heading" 
 $label = preg_replace('/^=\s*/', '', $label);
 
-// L2 TOC: strip "== Heading" → "Heading" (line 1663-1664)
+// L2 TOC: strip "== Heading" → "Heading" 
 $label = preg_replace('/^==\s*/', '', $label);
 ```
 
 ### 4.4 HTML Link Handling (mode="ri")
 
-In `formatManPerlDoc()`, ri mode uses two link patterns (line 2336–2342):
+In `formatManPerlDoc()`, ri mode uses two link patterns (search for relevant function):
 
 **Parent class links** (shared with pydoc):
 ```
@@ -549,11 +549,11 @@ Effect:
 
 ### 4.5 Index Format
 
-`getRiIndex()` runs `ri -l`, outputting one class/module name per line (plain text), no special parsing.
+`getRiIndex` runs `ri -l`, outputting one class/module name per line (plain text), no special parsing.
 
 ### 4.6 Search Strategy
 
-ri has **no** native `ri -k` (keyword search), so `getRiSearchPage()` directly runs `ri <query>`. ri has built-in fuzzy matching: if no exact match, it tries partial matching.
+ri has **no** native `ri -k` (keyword search), so `getRiSearchPage` directly runs `ri <query>`. ri has built-in fuzzy matching: if no exact match, it tries partial matching.
 
 First-line filter rules (no-result detection):
 - `Nothing known about` — standard no-result response
@@ -569,17 +569,17 @@ pydoc and ri content processing pipeline is **fully shared** with man/perldoc/in
 
 | Processing Stage | pydoc Specifics | ri Specifics |
 |----------|-------------|-----------|
-| `cleanTerminalOutput()` | No overstrike, passes through | Has overstrike, same as man |
+| `cleanTerminalOutput` | No overstrike, passes through | Has overstrike, same as man |
 | `detectHeadingType()` | Standard L1/L2 + pydoc class/func patterns | Dedicated RDoc marker mode (`=`/`==`) |
 | `formatManPerlDoc()` | pydoc parent class link pattern | ri parent class + `::` constant links |
-| `formatToJSON()` | Standard JSON structuring | Standard JSON structuring |
-| `formatForOutput()` | Standard MCP wrapping | Standard MCP wrapping |
-| `buildToc()` | `=`/`==` prefix stripping | `=`/`==` prefix stripping |
+| `formatToJSON` | Standard JSON structuring | Standard JSON structuring |
+| `formatForOutput` | Standard MCP wrapping | Standard MCP wrapping |
+| `buildToc` | `=`/`==` prefix stripping | `=`/`==` prefix stripping |
 | `fetchOfficialTldr()` | No TLDR (not triggered for pydoc/ri) | No TLDR |
 
-### cleanTerminalOutput()
+### cleanTerminalOutput
 
-Location: phpMan.php line 146–172. Converts overstrike and ANSI sequences in raw terminal output to markdown-style markers:
+Location: phpMan.php (search for relevant function). Converts overstrike and ANSI sequences in raw terminal output to markdown-style markers:
 
 - `X^HX` → `**X**` (bold)
 - `_^HX` → `_X_` (underline)
@@ -602,7 +602,7 @@ When pydoc/ri documentation is not found on the server, external search links ar
 | **ri** | Ruby-Doc | `https://ruby-doc.org/search.html?q={class}` |
 | info | Google | `https://www.google.com/search?q={topic}` |
 
-Code: phpMan.php line 1269–1288.
+Code: phpMan.php (search for relevant function).
 
 ---
 
@@ -617,12 +617,12 @@ Code: phpMan.php line 1269–1288.
 ### 7.2 Why pydoc Reuses Standard Detection
 
 - pydoc output is plain-text ALL CAPS sections, compatible with perldoc's `=head1` format
-- Class/function definitions are handled as L2 sub-sections via extended `detectL2IndentedPatterns`
+- Class/function definitions are handled as L2 sub-sections via extended `detectL2IndentedPatterns()`
 - No need for an independent detection path, reducing maintenance cost
 
 ### 7.3 No Overstrike ≠ No cleanTerminalOutput
 
-pydoc output has no overstrike/ANSI; `cleanTerminalOutput()` is a pass-through. But the unified pipeline ensures format consistency if pydoc output format changes in the future.
+pydoc output has no overstrike/ANSI; `cleanTerminalOutput` is a pass-through. But the unified pipeline ensures format consistency if pydoc output format changes in the future.
 
 ---
 
@@ -632,19 +632,19 @@ pydoc output has no overstrike/ANSI; `cleanTerminalOutput()` is a pass-through. 
 |------|------|------|
 | URL routing dispatch | phpMan.php | 843–866 |
 | MCP auto-detection | phpMan.php | 1520–1559 |
-| `getPydocPage()` | phpMan.php | 1717–1727 |
-| `getRiPage()` | phpMan.php | 1729–1739 |
-| `getPydocIndex()` | phpMan.php | 1741–1808 |
-| `getRiIndex()` | phpMan.php | 1810–1860 |
-| `getPydocSearchPage()` | phpMan.php | 1862–1922 |
-| `getRiSearchPage()` | phpMan.php | 1924–1938 |
+| `getPydocPage` | phpMan.php | 1717–1727 |
+| `getRiPage` | phpMan.php | 1729–1739 |
+| `getPydocIndex` | phpMan.php | 1741–1808 |
+| `getRiIndex` | phpMan.php | 1810–1860 |
+| `getPydocSearchPage` | phpMan.php | 1862–1922 |
+| `getRiSearchPage` | phpMan.php | 1924–1938 |
 | ri heading detection | phpMan.php | 433–444 |
 | pydoc class/func detection | phpMan.php | 363–373 |
 | mode-specific link patterns | phpMan.php | 2331–2353 |
 | TOC label stripping (=/==) | phpMan.php | 1652, 1663 |
 | Not found external links | phpMan.php | 1272–1288 |
-| `cleanTerminalOutput()` | phpMan.php | 146–172 |
+| `cleanTerminalOutput` | phpMan.php | 146–172 |
 | `detectHeadingType()` | phpMan.php | 429–461 |
 | `formatManPerlDoc()` | phpMan.php | 2285–2393 |
-| `formatToJSON()` | phpMan.php | 3100–3338 |
-| `formatForOutput()` | phpMan.php | 2398–2415 |
+| `formatToJSON` | phpMan.php | 3100–3338 |
+| `formatForOutput` | phpMan.php | 2398–2415 |

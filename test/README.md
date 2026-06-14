@@ -2,17 +2,13 @@
 
 ## Known Thresholds & Business Logic
 
-| Logic | Value | Code Location | Test Coverage |
+| Logic | Value | Implementation | Test Coverage |
 |-------|-------|---------------|---------------|
-| TOC sidebar line threshold | >80 raw lines | phpMan.php:660,667 | E2E U11 |
-| TOC requires sections | >1 L1 or L1+L2 children | phpMan.php:680-682 | E2E U11 |
-| Allowed modes | 7: man/perldoc/info/search/copyright/mcp/tldr | phpMan.php:303-311 | Unit normalizeMode |
-| Section validation | `/^[A-Za-z0-9_]+$/` | phpMan.php:326 | Unit normalizeSection |
-| Mobile breakpoint | 1024px | phpMan.php:844 | E2E U09, Regression #8 |
-| Color contrast (bold) | #8B5E00 on #EEEEEE (4.7:1) | phpMan.php:826 | Regression #9 |
-| Color contrast (underline) | #006600 on #EEEEEE (6.2:1) | phpMan.php:827 | Regression #9 |
-| Flag description max length | 80 chars for TOC | phpMan.php:169 | Unit detectHeadingType |
-| Heading text max length | 80 chars | phpMan.php:197 | Unit detectHeadingType |
+| TOC sidebar threshold | `PHPMAN_TOC_THRESHOLD` (80) | `showHeader()` → `<div id="toc-sidebar">` | E2E U11 |
+| TOC requires sections | >1 L1 or L1+L2 children | `buildToc()` | E2E U11 |
+| Allowed modes | 9: man/perldoc/info/search/copyright/mcp/pydoc/ri/.well-known | `normalizeMode()` | Unit normalizeMode |
+| Section validation | `/^[A-Za-z0-9_]+$/` | `normalizeSection()` | Unit normalizeSection |
+| Mobile breakpoint | 1024px | `$MOBILE_CSS` / `@media (max-width:1024px)` | E2E U09, Regression #8 |
 
 ## Test Levels
 
@@ -39,21 +35,21 @@
 
 ## Test Mapping to Requirements
 
-| Requirement | Design Doc | Test File(s) |
-|-------------|-----------|--------------|
-| URL routing & modes | SKILL.md §URL Routing | `unit/test_normalize.php` |
-| Man page rendering | SKILL.md §Architecture | `integration/test_formatter_html.php` |
-| Markdown output | SKILL.md §Format Negotiation | `integration/test_formatter_markdown.php` |
-| JSON output | SKILL.md §JSON Output Format | `integration/test_formatter_json.php` |
-| MCP protocol | SKILL.md §MCP Protocol | `integration/test_formatter_mcp.php`, `TEST_MCP.md` |
-| TLDR generation | SKILL.md §formatTldr | `integration/test_formatter_tldr.php` |
-| Heading detection | SKILL.md §detectHeadingType | `unit/test_detect.php` |
-| Flag parsing | SKILL.md §parseFlagJSON | `unit/test_parseFlag.php` |
-| Overstrike cleaning | SKILL.md §Overstrike pitfalls | `unit/test_overstrike.php` |
-| Security | docs/01-PRODUCT.md §Security | `e2e/test_security.php` |
-| SEO/GEO | SKILL.md §SEO & GEO | `e2e/test_spider_scenarios.php` |
-| Accessibility | SKILL.md §PageSpeed | `test/phpman-regression.sh` |
-| XHTML compliance | SKILL.md §XHTML 1.0 | `test/phpman-regression.sh` #1 |
+| Requirement | Implementation | Test File(s) |
+|-------------|---------------|--------------|
+| URL routing & modes | `normalizeMode/Parameter/Section` + main `switch($mode)` | `unit/test_normalize.php` |
+| Man page rendering | `formatManPerlDoc()` pipeline | `integration/test_formatter_html.php` |
+| Markdown output | `formatManPerlDocToMarkdown()` | `integration/test_formatter_markdown.php` |
+| JSON output | `formatToJSON()` | `integration/test_formatter_json.php` |
+| MCP protocol | `handleMcp()` + `formatForOutput('mcp')` | `integration/test_formatter_mcp.php`, `TEST_MCP.md` |
+| TLDR generation | `fetchOfficialTldr()` + `formatTldr()` | `integration/test_formatter_tldr.php` |
+| Heading detection | `detectHeadingType()` | `unit/test_detect.php` |
+| Flag parsing | `extractFlagsFromSections()` | `unit/test_parseFlag.php` |
+| Overstrike cleaning | `cleanTerminalOutput()` | `unit/test_overstrike.php` |
+| Security | `h()` / `escapeshellarg()` / MCP auth | `e2e/test_security.php` |
+| SEO/robots/spider | `showHeader()` meta + canonical + schema | `e2e/test_spider_scenarios.php` |
+| Validation | W3C XHTML + CSS validators | `test/phpman-regression.sh` |
+| XHTML compliance | XHTML 1.0 Transitional markup | `test/phpman-regression.sh` #1 |
 
 ## Running Tests
 
