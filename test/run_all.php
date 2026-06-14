@@ -90,6 +90,6 @@ echo "   php test/e2e/test_agent_scenarios.php\n";
 echo "   php test/e2e/test_spider_scenarios.php\n";
 echo "   php test/e2e/test_security.php\n";
 echo "\nℹ️  External validation:\n";
-echo "   bash phpman-regression.sh\n";
+echo "   bash test/phpman-regression.sh\n";
 
 exit($totalFail > 0 ? 1 : 0);

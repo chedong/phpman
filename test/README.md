@@ -21,7 +21,7 @@
 | **Unit** | `unit/` | Individual functions (pure logic, no I/O) | Every code change |
 | **Integration** | `integration/` | Format pipelines (input → output) | Formatter changes |
 | **E2E** | `e2e/` | Full request flows against production | Every deploy |
-| **Regression** | `../phpman-regression.sh` | External validators (W3C, UTF-8, etc.) | Every deploy |
+| **Regression** | `phpman-regression.sh` | External validators (W3C, UTF-8, etc.) | Every deploy |
 
 ## Persona-Based Test Coverage
 
@@ -50,10 +50,10 @@
 | Heading detection | SKILL.md §detectHeadingType | `unit/test_detect.php` |
 | Flag parsing | SKILL.md §parseFlagJSON | `unit/test_parseFlag.php` |
 | Overstrike cleaning | SKILL.md §Overstrike pitfalls | `unit/test_overstrike.php` |
-| Security | TEST_CASES.md §Security | `e2e/test_security.php` |
+| Security | docs/01-PRODUCT.md §Security | `e2e/test_security.php` |
 | SEO/GEO | SKILL.md §SEO & GEO | `e2e/test_spider_scenarios.php` |
-| Accessibility | SKILL.md §PageSpeed | `phpman-regression.sh` |
-| XHTML compliance | SKILL.md §XHTML 1.0 | `phpman-regression.sh` #1 |
+| Accessibility | SKILL.md §PageSpeed | `test/phpman-regression.sh` |
+| XHTML compliance | SKILL.md §XHTML 1.0 | `test/phpman-regression.sh` #1 |
 
 ## Running Tests
 
@@ -70,7 +70,7 @@ php test/e2e/test_spider_scenarios.php
 php test/e2e/test_security.php
 
 # Full deploy validation (network required, 10 checks)
-bash phpman-regression.sh
+bash test/phpman-regression.sh
 ```
 
 ## Test Framework

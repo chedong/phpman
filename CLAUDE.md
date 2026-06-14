@@ -22,8 +22,8 @@ php test/e2e/test_spider_scenarios.php
 php test/e2e/test_security.php
 
 # Full deploy validation (network required)
-bash phpman-regression.sh                        # against production
-bash phpman-regression.sh --local http://localhost:8080/phpMan.php   # pre-deploy
+bash test/phpman-regression.sh                        # against production
+bash test/phpman-regression.sh --local http://localhost:8080/phpMan.php   # pre-deploy
 
 # Deploy
 make staging                         # scp to staging (code + CSS only)
