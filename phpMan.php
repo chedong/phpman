@@ -2092,7 +2092,7 @@ function callLLM(string $systemPrompt, string $userMessage): string {
             'User-Agent: phpMan/' . GIT_DESCRIBE,
         ],
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 300,
+        CURLOPT_TIMEOUT => 60,
     ]);
     $response = curl_exec($ch);
     $error = curl_error($ch);
@@ -2104,6 +2104,18 @@ function callLLM(string $systemPrompt, string $userMessage): string {
     }
 
     $data = json_decode($response, true);
+    if ($data === null) {
+        phpManLog("LLM: JSON decode failed: " . substr($response, 0, 500));
+        return '';
+    }
+    // Log API-level errors (quota, auth, etc.)
+    if (!empty($data['error'])) {
+        $errType = $data['error']['type'] ?? 'unknown';
+        $errMsg = $data['error']['message'] ?? 'no message';
+        $errCode = $data['error']['code'] ?? '';
+        phpManLog("LLM: API error [{$errType}] {$errMsg}" . ($errCode ? " (code: {$errCode})" : ""));
+        return '';
+    }
     $content = $data['choices'][0]['message']['content'] ?? '';
     // Fallback: some reasoning models (e.g. deepseek-v4-pro) use reasoning_content
     if ($content === '') {
