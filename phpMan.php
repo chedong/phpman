@@ -2204,6 +2204,8 @@ function enhanceManPage(string $mode, string $name): string {
     $enhancedMd = preg_replace('/^```(?:markdown|md)?\s*\n?/m', '', $enhancedMd);
     $enhancedMd = preg_replace('/\n?```\s*$/m', '', $enhancedMd);
     $enhancedMd = trim($enhancedMd);
+    // Strip man page header like "LS(1)  User Commands  LS(1)"
+    $enhancedMd = preg_replace('/^\[?[\w.-]+\]?\(\d+\w*\)\s+.*\s+\[?[\w.-]+\]?\(\d+\w*\)\s*\n/', '', $enhancedMd);
 
     if ($enhancedMd === '') {
         echo "  [fail] {$mode}/{$name}: empty LLM response\n";
@@ -3378,7 +3380,7 @@ function showFooter (string $validator = "", bool $showNav = false): void {
         "<br />CrawledBy " . $user_agent .
         "<br />" . $validator .
         // Profiling data for debug mode
-        (!empty($GLOBALS["phpman_enhanced"]) ? "<br />Enhanced by LLM: " . h($GLOBALS["phpman_enhanced"]) . " / taotoken.net" : "") .
+        (!empty($GLOBALS["phpman_enhanced"]) ? "<br />Enhanced by LLM: " . h($GLOBALS["phpman_enhanced"]) . " / taotoken.net / " . h(serverValue("HTTP_HOST", "")) . " - <a href=\"" . h(scriptName()) . "/" . h($mode) . "/" . urlencode($parameter) . "/html\">original format</a>" : "") .
         (Profiler::getEnabled() ? profilerHtmlBlock() : "") .
         "</p>" .
         ($showNav ? '<div id="back-to-top"><a href="#top">^_back to top</a></div>' : "") .
