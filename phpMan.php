@@ -3063,9 +3063,24 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 
 	// For man page content, add section anchors and floating TOC
 	if ($isEnhanced) {
-	    // Generate TOC for enhanced content
-	    // Generate TOC from enhanced Markdown ## headings
-	    preg_match_all('/^##\s+(.+)$/m', $enhancedMd, $m); $tocItems = []; foreach ($m[1] as $i => $h) { $id = "section-" . $i; $content = str_replace("<h2>" . h(trim($h)) . "</h2>", "<h2 id=\"".$id."\">" . $h . "</h2>", $content); $tocItems[] = ["id" => $id, "label" => trim($h), "children" => []]; }
+		    // Build TOC from enhanced Markdown: ## L1, ### L2 children
+		    $tocItems = [];
+		    $mdLines = explode("\n", $enhancedMd);
+		    $currentH2 = null;
+		    foreach ($mdLines as $mdLine) {
+		        if (preg_match('/^##\s+(.+)$/', $mdLine, $hm)) {
+		            $h = trim($hm[1]);
+		            $id = "section-" . count($tocItems);
+		            $content = str_replace('<h2>' . h($h) . '</h2>', '<h2 id="' . $id . '">' . h($h) . '</h2>', $content);
+		            $tocItems[] = ["id" => $id, "label" => $h, "children" => []];
+		            $currentH2 = count($tocItems) - 1;
+		        } elseif ($currentH2 !== null && preg_match('/^###\s+(.+)$/', $mdLine, $hm)) {
+		            $h = trim($hm[1]);
+		            $id = "section-" . $currentH2 . "-" . count($tocItems[$currentH2]["children"]);
+		            $content = str_replace('<h3>' . h($h) . '</h3>', '<h3 id="' . $id . '">' . h($h) . '</h3>', $content);
+		            $tocItems[$currentH2]["children"][] = ["id" => $id, "label" => $h];
+		        }
+		    }
 	    $tocSidebar = "";
 	    if ((count($tocItems) > 1 || (count($tocItems) === 1 && !empty($tocItems[0]["children"])))) {
 	        $tocSidebar .= "<div id=\"toc-sidebar\">\n";
