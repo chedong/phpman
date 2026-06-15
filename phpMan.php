@@ -693,7 +693,7 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
     // Wrap in try/catch so a transient lock doesn't crash the request.
     try {
         $db->exec('PRAGMA journal_mode=WAL');
-    } catch (\Exception $e) {
+    } catch (\Throwable $e) {
         phpManLog("cache init WAL: " . $e->getMessage());
     }
     $db->exec('PRAGMA synchronous=NORMAL');
@@ -729,7 +729,7 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
                                   tokenize='unicode61',
                                   content='cache',
                                   content_rowid='id')");
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             phpManLog("FTS5 content table: " . $e->getMessage());
         }
 
@@ -744,7 +744,7 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
                            tokenize='unicode61 tokenchars ''-:''',
                            prefix='1,2,3'
                        )");
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             phpManLog("FTS5 prefix index: " . $e->getMessage());
         }
 
@@ -759,14 +759,6 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
         )");
 
         // LLM emoji enhancement cache — maps section names to emoji characters
-        $db->exec("CREATE TABLE IF NOT EXISTS emoji_cache (
-            mode        TEXT NOT NULL DEFAULT 'man',
-            name        TEXT NOT NULL,
-            section_name TEXT NOT NULL,
-            emoji       TEXT NOT NULL DEFAULT '',
-            enhanced_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-            UNIQUE(mode, name, section_name)
-        )");
 
         // TLDR persistent cache — avoids repeated GitHub/cheat.sh HTTP fetches
         $db->exec("CREATE TABLE IF NOT EXISTS tldr_cache (
@@ -800,7 +792,7 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
                                    tokenize='unicode61 tokenchars ''-:''',
                                    prefix='1,2,3'
                                )");
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     phpManLog("FTS5 meta prefix: " . $e->getMessage());
                 }
                 $db->exec("CREATE TABLE IF NOT EXISTS search_index_meta (
@@ -816,7 +808,7 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
                 // v2 → v3: search_fts.name now stores expanded name; rebuild needed
                 try {
                     $db->exec("DELETE FROM search_fts");
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     phpManLog("FTS5 delete: " . $e->getMessage());
                 }
                 $db->exec("DELETE FROM search_index_meta");
@@ -829,6 +821,20 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
             }
             $db->exec("UPDATE meta SET value = '" . CACHE_SCHEMA_VERSION . "' WHERE key = 'schema_version'");
         }
+    }
+
+    // v4.0: ensure emoji enhancement cache table (idempotent, safe to run always)
+    try {
+        $db->exec("CREATE TABLE IF NOT EXISTS emoji_cache (
+            mode        TEXT NOT NULL DEFAULT 'man',
+            name        TEXT NOT NULL,
+            section_name TEXT NOT NULL,
+            emoji       TEXT NOT NULL DEFAULT '',
+            enhanced_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+            UNIQUE(mode, name, section_name)
+        )");
+    } catch (\Throwable $e) {
+        // Non-critical — enhancement is additive only
     }
 
     return $db;
@@ -1012,7 +1018,7 @@ class PageCache {
             $stmt->bindValue(':section', $section, SQLITE3_TEXT);
             $stmt->bindValue(':title', $title, SQLITE3_TEXT);
             $stmt->execute();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // FTS5 not available — ignore
         }
     }
@@ -1036,7 +1042,7 @@ function cacheOrExecute(string $mode, string $name, string $section, string $for
         try {
             $db = cacheDb();
             $db->exec("DELETE FROM cache WHERE ttl > 0 AND (strftime('%s','now') - updated_at) > ttl");
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             phpManLog("cache TTL cleanup: " . $e->getMessage());
         }
     }
@@ -1072,7 +1078,7 @@ function cacheJsonCanonical(string $mode, string $name, string $section, string 
             try {
                 $db = cacheDb();
                 $db->exec("DELETE FROM cache WHERE ttl > 0 AND (strftime('%s','now') - updated_at) > ttl");
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 phpManLog("cache TTL cleanup: " . $e->getMessage());
             }
         }
@@ -1084,14 +1090,10 @@ function cacheJsonCanonical(string $mode, string $name, string $section, string 
     if ($format === 'json') return $json;
     if ($format === 'mcp') return formatForOutput($json, 'mcp');
 
-    // Forward-convert from JSON for html/markdown
-    $data = json_decode($json, true);
-    if ($data === null) return '';
-
-    if ($format === 'html') return formatJSONToHTML($data);
-    if ($format === 'markdown') return formatJSONToMarkdown($data);
-
-    return $json;
+    // HTML/Markdown: JSON-to-HTML conversion is lossy (no bold,
+    // underline, cross-ref links). Let generator produce native output
+    // with per-format caching for quality.
+    return $generator();
 }
 
 /**
@@ -1307,7 +1309,7 @@ function searchFts(string $parameter, string $section = '', int $limit = 50): ar
         }
 
         return $results;
-    } catch (\Exception $e) {
+    } catch (\Throwable $e) {
         phpManLog("FTS5 search error: " . $e->getMessage());
         return []; // Graceful fallback
     }
@@ -1388,7 +1390,7 @@ function searchFtsBySource(string $parameter, string $source, string $format) {
             $out .= "\n";
         }
         return $out;
-    } catch (\Exception $e) {
+    } catch (\Throwable $e) {
         phpManLog("formatForOutput: " . $e->getMessage());
         return $format === 'json' ? [] : '';
     }
@@ -1807,13 +1809,13 @@ function rebuildSearchIndex(): string {
         try {
             $db->exec("DROP TABLE IF EXISTS search_fts");
             $dropped = true;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             phpManLog("DROP search_fts: " . $e->getMessage());
         }
         if (!$dropped) {
             try {
                 $db->exec("DELETE FROM search_fts");
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 phpManLog("DELETE search_fts: " . $e->getMessage());
             }
         }
@@ -1824,7 +1826,7 @@ function rebuildSearchIndex(): string {
                            tokenize='unicode61 tokenchars ''-:''',
                            prefix='1,2,3'
                        )");
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // FTS5 not available — falls back to apropos
             return "ERROR: FTS5 not available, cannot create search_fts.\n";
         }
@@ -1914,7 +1916,7 @@ function rebuildSearchIndex(): string {
                         $entriesSinceLastLog = 0;
                         $lastLogTime = $now;
                     }
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     $errors++;
                     phpManLog("rebuildFts man: " . $e->getMessage());
                 }
@@ -1988,7 +1990,7 @@ function rebuildSearchIndex(): string {
 
                         $pydocCount++;
                         $total++;
-                    } catch (\Exception $e) {
+                    } catch (\Throwable $e) {
                         $pydocErrors++;
                         $errors++;
                         phpManLog("rebuildFts pydoc: " . $e->getMessage());
@@ -2034,7 +2036,7 @@ function rebuildSearchIndex(): string {
 
                     $riCount++;
                     $total++;
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     $riErrors++;
                     $errors++;
                     phpManLog("rebuildFts ri: " . $e->getMessage());
@@ -2059,7 +2061,7 @@ function rebuildSearchIndex(): string {
         $stmtMeta->execute();
 
         return implode('', $output);
-    } catch (\Exception $e) {
+    } catch (\Throwable $e) {
         phpManLog("rebuildSearchIndex: " . $e->getMessage());
         try { $db->exec("ROLLBACK"); } catch (\Exception $ignored) {}
         return "ERROR: " . $e->getMessage() . "\n";
@@ -2126,7 +2128,21 @@ function callLLM(string $systemPrompt, string $userMessage): string {
  */
 function enhanceManPage(string $mode, string $name): int {
     $cache = new PageCache();
+
+    // Try empty section first, then query for any cached section
     $json = $cache->get($mode, $name, '', 'json');
+    if ($json === null || $json === '###NOT_FOUND###') {
+        $db = cacheDb();
+        $q = $db->prepare("SELECT content FROM cache WHERE mode=:m AND name=:n AND format='json' AND status='found' LIMIT 1");
+        $q->bindValue(':m', $mode, SQLITE3_TEXT);
+        $q->bindValue(':n', $name, SQLITE3_TEXT);
+        $r = $q->execute();
+        $row = $r->fetchArray(SQLITE3_ASSOC);
+        $r->finalize();
+        if ($row && $row['content']) {
+            $json = @gzuncompress($row['content']);
+        }
+    }
     if ($json === null || $json === '###NOT_FOUND###') {
         echo "  [skip] {$mode}/{$name}: no cached JSON\n";
         return 0;
@@ -2147,21 +2163,19 @@ function enhanceManPage(string $mode, string $name): int {
     // Build section name list, skip already-enhanced ones
     $db = cacheDb();
     $toEnhance = [];
-    foreach ($sections as $sec) {
-        $name = $sec['name'] ?? '';
-        if ($name === '') continue;
-        // Check if already enhanced
+    foreach ($sections as $secName => $sec) {
+        if ($secName === '') continue;
         $chk = $db->prepare("SELECT emoji FROM emoji_cache WHERE mode=:m AND name=:n AND section_name=:s");
         $chk->bindValue(':m', $mode, SQLITE3_TEXT);
         $chk->bindValue(':n', $name, SQLITE3_TEXT);
-        $chk->bindValue(':s', $name, SQLITE3_TEXT);
+        $chk->bindValue(':s', $secName, SQLITE3_TEXT);
         $result = $chk->execute();
         if ($result->fetchArray()) {
             $result->finalize();
-            continue; // already enhanced
+            continue;
         }
         $result->finalize();
-        $toEnhance[] = $name;
+        $toEnhance[] = $secName;
     }
 
     if (empty($toEnhance)) {
@@ -2169,7 +2183,6 @@ function enhanceManPage(string $mode, string $name): int {
         return 0;
     }
 
-    // Build LLM prompt
     $sectionList = implode("\n", array_map(function ($s) { return "- {$s}"; }, $toEnhance));
     $systemPrompt = "You are a documentation enhancement assistant. For each section heading below, return a SINGLE emoji that best represents it. Use standard Unicode emoji only. Format your response as a JSON object: {\"SECTION_NAME\": \"emoji\", ...}. Reply with JSON only, no other text.";
     $userMessage = "Map each of these man page section headings to one emoji:\n\n{$sectionList}";
@@ -2180,7 +2193,6 @@ function enhanceManPage(string $mode, string $name): int {
         return 0;
     }
 
-    // Parse LLM response (may contain markdown code fences)
     $llmResponse = preg_replace('/^```(?:json)?\s*\n?/m', '', $llmResponse);
     $llmResponse = preg_replace('/\n?```\s*$/m', '', $llmResponse);
     $emojiMap = json_decode(trim($llmResponse), true);
@@ -2190,7 +2202,6 @@ function enhanceManPage(string $mode, string $name): int {
         return 0;
     }
 
-    // Store emoji mappings
     $count = 0;
     $insert = $db->prepare("INSERT OR IGNORE INTO emoji_cache(mode, name, section_name, emoji) VALUES(:m, :n, :s, :e)");
     foreach ($emojiMap as $sectionName => $emoji) {
@@ -2507,25 +2518,25 @@ switch ( $mode ) {
         if ( $parameter != "" ) {
             // Pre-detect perldoc targets: :: prefix or 3pm/3perl
             if (strpos($parameter, "::") !== false || $section === "3pm" || $section === "3perl") {
-                $content = cacheJsonCanonical('perldoc', $parameter, $section, $format,
-                    function() use ($parameter) { return getPerldocPage($parameter, 'json'); });
+                $content = cacheOrExecute('perldoc', $parameter, $section, $format,
+                    function() use ($parameter, $format) { return getPerldocPage($parameter, $format); });
             } else {
-                $content = cacheJsonCanonical('man', $parameter, $section, $format,
-                    function() use ($parameter, $section) { return getManPage($parameter, $section, 'json'); });
+                $content = cacheOrExecute('man', $parameter, $section, $format,
+                    function() use ($parameter, $section, $format) { return getManPage($parameter, $section, $format); });
             }
 
             // retry lower case if content is empty
             if ( preg_match("/^[A-Z\\._]+$/",$parameter) && trim($content) == ""){
-                $content = cacheJsonCanonical('man', strtolower($parameter), $section, $format,
-                    function() use ($parameter, $section) { return getManPage(strtolower($parameter), $section, 'json'); });
+                $content = cacheOrExecute('man', strtolower($parameter), $section, $format,
+                    function() use ($parameter, $section, $format) { return getManPage(strtolower($parameter), $section, $format); });
             }
 
             //not find command then try perldoc (for perl modules with :: or section 3pm/3perl)
             //before falling back to search
             if (trim($content) == "") {
                 if (strpos($parameter, "::") !== false || $section === "3pm" || $section === "3perl") {
-                    $content = cacheJsonCanonical('perldoc', $parameter, $section, $format,
-                        function() use ($parameter) { return getPerldocPage($parameter, 'json'); });
+                    $content = cacheOrExecute('perldoc', $parameter, $section, $format,
+                        function() use ($parameter, $format) { return getPerldocPage($parameter, $format); });
                 }
             }
 
@@ -2535,7 +2546,7 @@ switch ( $mode ) {
                 $isSearchFallback = true;
                 http_response_code(404);
                 $cache = new PageCache();
-                $cache->set('man', $parameter, $section, 'json', null, 'not_found');
+                $cache->set('man', $parameter, $section, $format, null, 'not_found');
             }
         }
         //redirect to search sections
@@ -2546,12 +2557,11 @@ switch ( $mode ) {
     case "perldoc":
         $check['perldoc'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
-            $content = cacheJsonCanonical('perldoc', $parameter, '', $format,
-                function() use ($parameter) { return getPerldocPage($parameter, 'json'); });
-            // Cache 404 if empty
+            $content = cacheOrExecute('perldoc', $parameter, '', $format,
+                function() use ($parameter, $format) { return getPerldocPage($parameter, $format); });
             if (trim($content) == "") {
                 $cache = new PageCache();
-                $cache->set('perldoc', $parameter, '', 'json', null, 'not_found');
+                $cache->set('perldoc', $parameter, '', $format, null, 'not_found');
             }
         }
         else {
@@ -2567,12 +2577,11 @@ switch ( $mode ) {
     case "info":
         $check['info'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
-            $content = cacheJsonCanonical('info', $parameter, '', $format,
-                function() use ($parameter) { return getInfoPage($parameter, 'json'); });
-            // Cache 404 if empty
+            $content = cacheOrExecute('info', $parameter, '', $format,
+                function() use ($parameter, $format) { return getInfoPage($parameter, $format); });
             if (trim($content) == "") {
                 $cache = new PageCache();
-                $cache->set('info', $parameter, '', 'json', null, 'not_found');
+                $cache->set('info', $parameter, '', $format, null, 'not_found');
             }
         }
         else {
@@ -4555,7 +4564,7 @@ function fetchOfficialTldr(string $command, string $mode = "man", string $sectio
                 return $result;
             }
         }
-    } catch (\Exception $e) {
+    } catch (\Throwable $e) {
         phpManLog("TLDR cache read: " . $e->getMessage());
     }
 
@@ -4579,7 +4588,7 @@ function fetchOfficialTldr(string $command, string $mode = "man", string $sectio
         $stmt->bindValue(':source', $result['source'] ?? 'unknown', SQLITE3_TEXT);
         $stmt->bindValue(':content', json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), SQLITE3_TEXT);
         $stmt->execute();
-    } catch (\Exception $e) {
+    } catch (\Throwable $e) {
         phpManLog("TLDR cache write: " . $e->getMessage());
     }
 
@@ -5015,8 +5024,9 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
             $emojiMap[$erow['section_name']] = $erow['emoji'];
         }
         $eres->finalize();
-    } catch (\Exception $e) {
-        // Enhancement is additive — never break output
+    } catch (\Throwable $e) {
+        // Enhancement is additive — never break output. Emoji cache may
+        // not exist yet when cacheDb() fails (e.g. database locked).
     }
 
     // Add structured sections
