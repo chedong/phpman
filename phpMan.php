@@ -758,6 +758,16 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
             UNIQUE(name, section, source)
         )");
 
+        // LLM emoji enhancement cache — maps section names to emoji characters
+        $db->exec("CREATE TABLE IF NOT EXISTS emoji_cache (
+            mode        TEXT NOT NULL DEFAULT 'man',
+            name        TEXT NOT NULL,
+            section_name TEXT NOT NULL,
+            emoji       TEXT NOT NULL DEFAULT '',
+            enhanced_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+            UNIQUE(mode, name, section_name)
+        )");
+
         // TLDR persistent cache — avoids repeated GitHub/cheat.sh HTTP fetches
         $db->exec("CREATE TABLE IF NOT EXISTS tldr_cache (
             command     TEXT UNIQUE NOT NULL,
@@ -2065,9 +2075,142 @@ if (defined('PHPMAN_TEST_MODE')) {
     return;
 }
 
+// +--------------------------------------------------------------------------------+
+// | LLM Enhancement Engine (v4.0 Phase 3)                                           |
+// +--------------------------------------------------------------------------------+
+
+/**
+ * Call OpenAI-compatible chat completions API.
+ * Returns response text or empty string on failure.
+ */
+function callLLM(string $systemPrompt, string $userMessage): string {
+    if (LLM_API_URL === '' || LLM_API_KEY === '') return '';
+
+    $payload = json_encode([
+        'model' => LLM_MODEL,
+        'messages' => [
+            ['role' => 'system', 'content' => $systemPrompt],
+            ['role' => 'user', 'content' => $userMessage],
+        ],
+        'max_tokens' => (int)LLM_MAX_TOKENS,
+        'temperature' => 0.3,
+    ], JSON_UNESCAPED_UNICODE);
+
+    $ctx = stream_context_create([
+        'http' => [
+            'method' => 'POST',
+            'header' => "Content-Type: application/json\r\n" .
+                        "Authorization: Bearer " . LLM_API_KEY . "\r\n" .
+                        "User-Agent: phpMan/" . GIT_DESCRIBE . "\r\n",
+            'content' => $payload,
+            'timeout' => 30,
+        ],
+    ]);
+
+    $response = @file_get_contents(LLM_API_URL, false, $ctx);
+    if ($response === false) {
+        phpManLog("LLM: API call failed to " . LLM_API_URL);
+        return '';
+    }
+
+    $data = json_decode($response, true);
+    $content = $data['choices'][0]['message']['content'] ?? '';
+    return trim($content);
+}
+
+/**
+ * Enhance a single man/perldoc/info/pydoc/ri page with emoji section headings.
+ * Reads JSON from canonical cache, sends section names to LLM, stores emoji mappings.
+ *
+ * @return int Number of sections enhanced (0 on failure or already enhanced)
+ */
+function enhanceManPage(string $mode, string $name): int {
+    $cache = new PageCache();
+    $json = $cache->get($mode, $name, '', 'json');
+    if ($json === null || $json === '###NOT_FOUND###') {
+        echo "  [skip] {$mode}/{$name}: no cached JSON\n";
+        return 0;
+    }
+
+    $data = json_decode($json, true);
+    if ($data === null) {
+        echo "  [skip] {$mode}/{$name}: invalid JSON\n";
+        return 0;
+    }
+
+    $sections = $data['sections'] ?? [];
+    if (empty($sections)) {
+        echo "  [skip] {$mode}/{$name}: no sections\n";
+        return 0;
+    }
+
+    // Build section name list, skip already-enhanced ones
+    $db = cacheDb();
+    $toEnhance = [];
+    foreach ($sections as $sec) {
+        $name = $sec['name'] ?? '';
+        if ($name === '') continue;
+        // Check if already enhanced
+        $chk = $db->prepare("SELECT emoji FROM emoji_cache WHERE mode=:m AND name=:n AND section_name=:s");
+        $chk->bindValue(':m', $mode, SQLITE3_TEXT);
+        $chk->bindValue(':n', $name, SQLITE3_TEXT);
+        $chk->bindValue(':s', $name, SQLITE3_TEXT);
+        $result = $chk->execute();
+        if ($result->fetchArray()) {
+            $result->finalize();
+            continue; // already enhanced
+        }
+        $result->finalize();
+        $toEnhance[] = $name;
+    }
+
+    if (empty($toEnhance)) {
+        echo "  [done] {$mode}/{$name}: already enhanced\n";
+        return 0;
+    }
+
+    // Build LLM prompt
+    $sectionList = implode("\n", array_map(function ($s) { return "- {$s}"; }, $toEnhance));
+    $systemPrompt = "You are a documentation enhancement assistant. For each section heading below, return a SINGLE emoji that best represents it. Use standard Unicode emoji only. Format your response as a JSON object: {\"SECTION_NAME\": \"emoji\", ...}. Reply with JSON only, no other text.";
+    $userMessage = "Map each of these man page section headings to one emoji:\n\n{$sectionList}";
+
+    $llmResponse = callLLM($systemPrompt, $userMessage);
+    if ($llmResponse === '') {
+        echo "  [fail] {$mode}/{$name}: LLM call failed\n";
+        return 0;
+    }
+
+    // Parse LLM response (may contain markdown code fences)
+    $llmResponse = preg_replace('/^```(?:json)?\s*\n?/m', '', $llmResponse);
+    $llmResponse = preg_replace('/\n?```\s*$/m', '', $llmResponse);
+    $emojiMap = json_decode(trim($llmResponse), true);
+    if (!is_array($emojiMap)) {
+        phpManLog("LLM: failed to parse emoji response for {$mode}/{$name}: " . substr($llmResponse, 0, 200));
+        echo "  [fail] {$mode}/{$name}: unparseable LLM response\n";
+        return 0;
+    }
+
+    // Store emoji mappings
+    $count = 0;
+    $insert = $db->prepare("INSERT OR IGNORE INTO emoji_cache(mode, name, section_name, emoji) VALUES(:m, :n, :s, :e)");
+    foreach ($emojiMap as $sectionName => $emoji) {
+        if (!is_string($emoji) || $emoji === '') continue;
+        $insert->bindValue(':m', $mode, SQLITE3_TEXT);
+        $insert->bindValue(':n', $name, SQLITE3_TEXT);
+        $insert->bindValue(':s', $sectionName, SQLITE3_TEXT);
+        $insert->bindValue(':e', $emoji, SQLITE3_TEXT);
+        $insert->execute();
+        $insert->reset();
+        $count++;
+    }
+
+    echo "  [ok] {$mode}/{$name}: {$count} sections enhanced\n";
+    return $count;
+}
+
 // CLI Mode: handle command-line invocation
 if (PHP_SAPI === 'cli') {
-    $options = getopt('h', ['help', 'build-index', 'build-index-cron']);
+    $options = getopt('h', ['help', 'build-index', 'build-index-cron', 'enhance::']);
 
     if (isset($options['help']) || isset($options['h'])) {
         echo "phpMan — Unix Man Page / Perldoc / Info / pydoc / ri Web Interface\n";
@@ -2075,16 +2218,23 @@ if (PHP_SAPI === 'cli') {
         echo "Usage:\n";
         echo "  php phpMan.php --build-index          Rebuild FTS5 search index\n";
         echo "  php phpMan.php --build-index-cron     Rebuild with timestamp (cron)\n";
+        echo "  php phpMan.php --enhance=mode:name    Enhance section headings with emoji\n";
         echo "  php phpMan.php --help                 Show this help\n\n";
-        echo "FTS5 Search Index:\n";
-        echo "  Builds a full-text search index from three sources:\n";
-        echo "    - apropos -s N .  for man page sections 1-9,n\n";
-        echo "    - pydoc3 modules  for Python 3 standard library + packages\n";
-        echo "    - ri -l           for Ruby core + gem classes\n\n";
-        echo "  Index entries: name (expanded for FTS5) + section + description.\n";
-        echo "  Body content is NOT indexed (avoid fork resource exhaustion).\n\n";
-        echo "  After rebuilding, clear search cache to force fresh results:\n";
-        echo "    sqlite3 " . PHPMAN_CACHE_DB . " \"DELETE FROM cache WHERE mode='search'\"\n\n";
+        echo "LLM Emoji Enhancement:\n";
+        echo "  Enhances man/perldoc/info/pydoc/ri page section headings with emoji\n";
+        echo "  Requires LLM_API_KEY and LLM_API_URL in phpman.config.php\n\n";
+        echo "  Examples:\n";
+        echo "    php phpMan.php --enhance=man:ls\n";
+        echo "    php phpMan.php --enhance=man:ls,tar,grep\n";
+        echo "    php phpMan.php --enhance=perldoc:File::Basename\n";
+        echo "    php phpMan.php --enhance=pydoc:os,json,re\n";
+        echo "    php phpMan.php --enhance=ri:Array,String,File\n\n";
+        echo "  Batch enhance examples (15 typical docs):\n";
+        echo "    php phpMan.php --enhance=man:ls,tar,grep\n";
+        echo "    php phpMan.php --enhance=perldoc:File::Basename,Getopt::Long,Digest::MD5\n";
+        echo "    php phpMan.php --enhance=info:coreutils,bash,make\n";
+        echo "    php phpMan.php --enhance=pydoc:os,json,re\n";
+        echo "    php phpMan.php --enhance=ri:Array,String,File\n\n";
         echo "Cron example (daily at 3am):\n";
         echo "  0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron\n\n";
         echo "Docs: https://github.com/chedong/phpman\n";
@@ -2097,8 +2247,29 @@ if (PHP_SAPI === 'cli') {
     }
     if (isset($options['build-index-cron'])) {
         $result = rebuildSearchIndex();
-        // Cron output: prefix with timestamp
         echo '[' . gmdate('Y-m-d H:i:s') . "]\n" . $result;
+        exit;
+    }
+    if (isset($options['enhance'])) {
+        $spec = $options['enhance'];
+        if ($spec === '' || $spec === false) {
+            echo "ERROR: --enhance requires mode:name(s). Use --help for examples.\n";
+            exit(1);
+        }
+        // Parse mode:name1,name2,...
+        if (!preg_match('/^([a-z]+):(.+)$/', $spec, $m)) {
+            echo "ERROR: format is --enhance=mode:name1,name2. Use --help for examples.\n";
+            exit(1);
+        }
+        $mode = $m[1];
+        $names = explode(',', $m[2]);
+        $total = 0;
+        foreach ($names as $name) {
+            $name = trim($name);
+            if ($name === '') continue;
+            $total += enhanceManPage($mode, $name);
+        }
+        echo "\nDone. {$total} total sections enhanced for " . count($names) . " docs.\n";
         exit;
     }
 }
@@ -4832,6 +5003,22 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
         }
     }
 
+    // Load emoji enhancements for section headings
+    $emojiMap = [];
+    try {
+        $edb = cacheDb();
+        $estmt = $edb->prepare("SELECT section_name, emoji FROM emoji_cache WHERE mode=:m AND name=:n");
+        $estmt->bindValue(':m', $mode, SQLITE3_TEXT);
+        $estmt->bindValue(':n', $parameter, SQLITE3_TEXT);
+        $eres = $estmt->execute();
+        while ($erow = $eres->fetchArray(SQLITE3_ASSOC)) {
+            $emojiMap[$erow['section_name']] = $erow['emoji'];
+        }
+        $eres->finalize();
+    } catch (\Exception $e) {
+        // Enhancement is additive — never break output
+    }
+
     // Add structured sections
     $jsonSections = array();
     foreach ($sections as $sec) {
@@ -4873,6 +5060,10 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
             $subsections[] = $entry;
         }
         $cleanSec["subsections"] = $subsections;
+        // Inject emoji if available
+        if (isset($emojiMap[$sec["name"]])) {
+            $cleanSec["emoji"] = $emojiMap[$sec["name"]];
+        }
         // Use L1 heading name as the key
         $jsonSections[$sec["name"]] = $cleanSec;
     }
