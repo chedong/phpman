@@ -3064,7 +3064,8 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	// For man page content, add section anchors and floating TOC
 	if ($isEnhanced) {
 	    // Generate TOC for enhanced content
-	    preg_match_all(chr(47)."<h2>([^<]+)</h2>".chr(47), $content, $m); $tocItems = []; foreach ($m[1] as $i => $h) { $id = "section-" . $i; $content = str_replace("<h2>" . $h . "</h2>", "<h2 id=\"".$id."\">" . $h . "</h2>", $content); $tocItems[] = ["id" => $id, "label" => $h, "children" => []]; }
+	    // Generate TOC from enhanced Markdown ## headings
+	    preg_match_all('/^##\s+(.+)$/m', $enhancedMd, $m); $tocItems = []; foreach ($m[1] as $i => $h) { $id = "section-" . $i; $content = str_replace("<h2>" . $h . "</h2>", "<h2 id=\"".$id."\">" . $h . "</h2>", $content); $tocItems[] = ["id" => $id, "label" => $h, "children" => []]; }
 	    $tocSidebar = "";
 	    if ((count($tocItems) > 1 || (count($tocItems) === 1 && !empty($tocItems[0]["children"])))) {
 	        $tocSidebar .= "<div id=\"toc-sidebar\">\n";
@@ -3082,7 +3083,7 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	        }
 	        $tocSidebar .= "</div>\n";
 	    }
-	    $anchoredContent = $content; echo $anchoredContent . "\n</div>\n";
+	    echo $content . "\n</div>\n";
 	    echo $tocSidebar;
 	} else {
     // Sidebars are collected and output AFTER content for better SEO
