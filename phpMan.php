@@ -2173,9 +2173,10 @@ function enhanceManPage(string $mode, string $name): string {
 
     $systemPrompt = "You are a Linux documentation emoji-enhancement assistant. Transform plain man page Markdown into an emoji-rich, visually scannable version optimized for both human developers and AI agents.\n\n" .
         "Output rules:\n" .
-        "1. Output ONLY valid Markdown — no code fences, no JSON wrapper, no preamble\n" .
+        "1. Output ONLY valid Markdown — no HTML tags, no code fences, no JSON wrapper, no preamble\n" .
         "2. Preserve ALL original technical information (options, flags, syntax, descriptions)\n" .
-        "3. Do NOT invent new content — only reorganize and decorate existing content\n\n" .
+        "3. Do NOT invent new content — only reorganize and decorate existing content\n" .
+        "4. Use ONLY Markdown formatting: `backticks` for code, **double stars** for bold, [text](url) for links. NEVER use <code>, <b>, <i>, <a> or any HTML tags.\n\n" .
         "Style rules:\n" .
         "- Every ## section heading gets ONE relevant emoji prefix\n" .
         "- ## NAME section: add emoji tagline below heading\n" .
@@ -2258,9 +2259,13 @@ function formatMarkdownToHTML(string $md): string {
         if (preg_match('/^\|.+\|$/', $trimmed)) {
             if (!$inTable) { $out .= "<table>\n"; $inTable = true; }
             if (preg_match('/^\|[\s\-:]+\|$/', $trimmed)) continue; // separator row
-            $cells = array_map('trim', explode('|', trim($trimmed, '|')));
+            // Handle escaped pipes \| in table cells
+            $rowContent = trim($trimmed, '|');
+            $rowContent = str_replace('\|', chr(1), $rowContent);
+            $cells = array_map('trim', explode('|', $rowContent));
             $out .= "<tr>";
             foreach ($cells as $cell) {
+                $cell = str_replace(chr(1), '|', $cell);
                 $tag = $prevBlank ? 'th' : 'td';
                 $out .= "<{$tag}>" . h($cell) . "</{$tag}>";
             }
