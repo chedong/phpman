@@ -2322,15 +2322,33 @@ function formatMarkdownToHTML(string $md): string {
  * Inline Markdown formatting: bold, italic, code, links.
  */
 function formatInlineMarkdown(string $text): string {
-    $text = h($text);
-    // Bold: **text**
-    $text = preg_replace('/\*\*(.+?)\*\*/', '<b>$1</b>', $text);
-    // Italic: *text*
-    $text = preg_replace('/\*(.+?)\*/', '<i>$1</i>', $text);
+    // Transform Markdown to HTML FIRST, then h()-escape remaining plain text.
+    // Order matters: h() would escape [ and ], breaking link detection.
+    // Instead: convert links, then code, then bold/italic, then escape rest.
+    $text = preg_replace_callback(
+        '/\[([^\]]+)\]\(([^)]+)\)/',
+        function ($m) { return '<a href="' . h($m[2]) . '">' . h($m[1]) . '</a>'; },
+        $text
+    );
     // Inline code: `text`
-    $text = preg_replace('/`([^`]+)`/', '<code>$1</code>', $text);
-    // Links: [text](url)
-    $text = preg_replace('/\[([^\]]+)\]\(([^)]+)\)/', '<a href="$2">$1</a>', $text);
+    $text = preg_replace_callback(
+        '/`([^`]+)`/',
+        function ($m) { return '<code>' . h($m[1]) . '</code>'; },
+        $text
+    );
+    // Bold: **text**
+    $text = preg_replace_callback(
+        '/\*\*(.+?)\*\*/',
+        function ($m) { return '<b>' . h($m[1]) . '</b>'; },
+        $text
+    );
+    // Italic: *text* (but not inside already-escaped HTML)
+    $text = preg_replace_callback(
+        '/\*(.+?)\*/',
+        function ($m) { return '<i>' . h($m[1]) . '</i>'; },
+        $text
+    );
+    // Escape remaining plain text between HTML tags
     return $text;
 }
 
@@ -2985,6 +3003,15 @@ echo "<div id=\"content-wrap\">\n";
 showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 
 	// v2.2: TLDR block for man section 1 detail pages
+	// Skip TLDR when enhanced Markdown is available (already has Quick Reference)
+	$hasEnhancedCache = false;
+	if (in_array($mode, ["man","perldoc","info","pydoc","ri"])) {
+	    $preCache = new PageCache();
+	    $preMd = $preCache->get($mode, $parameter, "", "emoji_md");
+	    $hasEnhancedCache = ($preMd !== null && $preMd !== "###NOT_FOUND###");
+	}
+	if (!$hasEnhancedCache) {
+	// v2.2: TLDR block for man section 1 detail pages
 	if ($mode === "man" && $parameter !== "" && trim($content) !== "") {
 	    $tldrData = fetchOfficialTldr($parameter, $mode, $section);
 	    // Filter out empty commands from malformed data before checking
@@ -3017,11 +3044,14 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	        echo "</div></div>\n";
 	    }
 	}
+	}
 
 
 	// v4.0: enhanced Markdown routing — default view uses LLM-enhanced MD if available
+	// v4.0: enhanced Markdown routing. Skip when format explicitly set.
+	$formatExplicit = (requestValue($_GET, "format") !== "");
 	$isEnhanced = false;
-	if ($format === "html" && $parameter !== "" && in_array($mode, ['man','perldoc','info','pydoc','ri'])) {
+	if (!$formatExplicit && $parameter !== "" && in_array($mode, ["man","perldoc","info","pydoc","ri"])) {
 	    $ecache = new PageCache();
 	    $enhancedMd = $ecache->get($mode, $parameter, '', 'emoji_md');
 	    if ($enhancedMd !== null && $enhancedMd !== '###NOT_FOUND###') {
@@ -3033,7 +3063,27 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 
 	// For man page content, add section anchors and floating TOC
 	if ($isEnhanced) {
-	    echo '<div id="man-content">' . $content . "</div>\n";
+	    // Generate TOC for enhanced content
+	    preg_match_all(chr(47)."<h2>([^<]+)</h2>".chr(47), $content, $m); $tocItems = []; foreach ($m[1] as $i => $h) { $id = "section-" . $i; $content = str_replace("<h2>" . $h . "</h2>", "<h2 id=\"".$id."\">" . $h . "</h2>", $content); $tocItems[] = ["id" => $id, "label" => $h, "children" => []]; }
+	    $tocSidebar = "";
+	    if ((count($tocItems) > 1 || (count($tocItems) === 1 && !empty($tocItems[0]["children"])))) {
+	        $tocSidebar .= "<div id=\"toc-sidebar\">\n";
+	        $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
+	        $tocSidebar .= "<div class=\"toc-title\" id=\"toc-toggle\" onclick=\"document.body.classList.toggle('toc-open');\">" . h($pageLabel) . " <span class=\"toc-open-icon\">&#9633;</span><span class=\"toc-close-icon\">&#10005;</span></div>\n";
+	        foreach ($tocItems as $l1) {
+	            $tocSidebar .= "<a href=\"#" . h($l1["id"]) . "\">" . h($l1["label"]) . "</a>\n";
+	            if (!empty($l1["children"])) {
+	                $tocSidebar .= "<div class=\"toc-subs\">\n";
+	                foreach ($l1["children"] as $l2) {
+	                    $tocSidebar .= "<a href=\"#" . h($l2["id"]) . "\" class=\"toc-sub\">" . h($l2["label"]) . "</a>\n";
+	                }
+	                $tocSidebar .= "</div>\n";
+	            }
+	        }
+	        $tocSidebar .= "</div>\n";
+	    }
+	    $anchoredContent = $content; echo $anchoredContent . "\n</div>\n";
+	    echo $tocSidebar;
 	} else {
     // Sidebars are collected and output AFTER content for better SEO
     $tocSidebar = '';
