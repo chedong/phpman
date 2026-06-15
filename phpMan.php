@@ -758,8 +758,6 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
             UNIQUE(name, section, source)
         )");
 
-        // LLM emoji enhancement cache — maps section names to emoji characters
-
         // TLDR persistent cache — avoids repeated GitHub/cheat.sh HTTP fetches
         $db->exec("CREATE TABLE IF NOT EXISTS tldr_cache (
             command     TEXT UNIQUE NOT NULL,
@@ -821,20 +819,6 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
             }
             $db->exec("UPDATE meta SET value = '" . CACHE_SCHEMA_VERSION . "' WHERE key = 'schema_version'");
         }
-    }
-
-    // v4.0: ensure emoji enhancement cache table (idempotent, safe to run always)
-    try {
-        $db->exec("CREATE TABLE IF NOT EXISTS emoji_cache (
-            mode        TEXT NOT NULL DEFAULT 'man',
-            name        TEXT NOT NULL,
-            section_name TEXT NOT NULL,
-            emoji       TEXT NOT NULL DEFAULT '',
-            enhanced_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-            UNIQUE(mode, name, section_name)
-        )");
-    } catch (\Throwable $e) {
-        // Non-critical — enhancement is additive only
     }
 
     return $db;
@@ -2354,6 +2338,31 @@ function formatInlineMarkdown(string $text): string {
     return $text;
 }
 
+/**
+ * Render floating TOC sidebar from tocItems structure.
+ * Each item: {"id": "...", "label": "...", "children": [{"id": "...", "label": "..."}]}
+ * Returns '' when not enough items to warrant a sidebar.
+ */
+function renderTocSidebar(array $tocItems, string $pageLabel): string {
+    if (!(count($tocItems) > 1 || (count($tocItems) === 1 && !empty($tocItems[0]["children"])))) {
+        return '';
+    }
+    $out = "<div id=\"toc-sidebar\">\n";
+    $out .= "<div class=\"toc-title\" id=\"toc-toggle\" onclick=\"document.body.classList.toggle('toc-open');\">" . h($pageLabel) . " <span class=\"toc-open-icon\">&#9633;</span><span class=\"toc-close-icon\">&#10005;</span></div>\n";
+    foreach ($tocItems as $l1) {
+        $out .= "<a href=\"#" . h($l1["id"]) . "\">" . h($l1["label"]) . "</a>\n";
+        if (!empty($l1["children"])) {
+            $out .= "<div class=\"toc-subs\">\n";
+            foreach ($l1["children"] as $l2) {
+                $out .= "<a href=\"#" . h($l2["id"]) . "\" class=\"toc-sub\">" . h($l2["label"]) . "</a>\n";
+            }
+            $out .= "</div>\n";
+        }
+    }
+    $out .= "</div>\n";
+    return $out;
+}
+
 // CLI Mode: handle command-line invocation
 if (PHP_SAPI === 'cli') {
     $options = getopt('h', ['help', 'build-index', 'build-index-cron', 'enhance::']);
@@ -3083,23 +3092,8 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 		            $tocItems[$currentH2]["children"][] = ["id" => $id, "label" => $h];
 		        }
 		    }
-	    $tocSidebar = "";
-	    if ((count($tocItems) > 1 || (count($tocItems) === 1 && !empty($tocItems[0]["children"])))) {
-	        $tocSidebar .= "<div id=\"toc-sidebar\">\n";
-	        $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
-	        $tocSidebar .= "<div class=\"toc-title\" id=\"toc-toggle\" onclick=\"document.body.classList.toggle('toc-open');\">" . h($pageLabel) . " <span class=\"toc-open-icon\">&#9633;</span><span class=\"toc-close-icon\">&#10005;</span></div>\n";
-	        foreach ($tocItems as $l1) {
-	            $tocSidebar .= "<a href=\"#" . h($l1["id"]) . "\">" . h($l1["label"]) . "</a>\n";
-	            if (!empty($l1["children"])) {
-	                $tocSidebar .= "<div class=\"toc-subs\">\n";
-	                foreach ($l1["children"] as $l2) {
-	                    $tocSidebar .= "<a href=\"#" . h($l2["id"]) . "\" class=\"toc-sub\">" . h($l2["label"]) . "</a>\n";
-	                }
-	                $tocSidebar .= "</div>\n";
-	            }
-	        }
-	        $tocSidebar .= "</div>\n";
-	    }
+		    $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
+		    $tocSidebar = renderTocSidebar($tocItems, $pageLabel);
 	    echo $content . "\n</div>\n";
 	    echo $tocSidebar;
 	} else {
@@ -3108,23 +3102,9 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
     if ($mode !== "markdown" && $mode !== "search" && !$isSearchFallback && $parameter !== "" && trim($content) !== "") {
         list($anchoredContent, $tocItems) = addManPageToc($content);
 
-        $hasTocContent = $showNav && (count($tocItems) > 1
-            || (count($tocItems) === 1 && !empty($tocItems[0]['children'])));
-        if ($hasTocContent) {
-            $tocSidebar .= "<div id=\"toc-sidebar\">\n";
+        if ($showNav) {
             $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
-            $tocSidebar .= "<div class=\"toc-title\" id=\"toc-toggle\" onclick=\"document.body.classList.toggle('toc-open');\">" . h($pageLabel) . " <span class=\"toc-open-icon\">&#9633;</span><span class=\"toc-close-icon\">&#10005;</span></div>\n";
-            foreach ($tocItems as $l1) {
-                $tocSidebar .= "<a href=\"#" . h($l1['id']) . "\">" . h($l1['label']) . "</a>\n";
-                if (!empty($l1['children'])) {
-                    $tocSidebar .= "<div class=\"toc-subs\">\n";
-                    foreach ($l1['children'] as $l2) {
-                        $tocSidebar .= "<a href=\"#" . h($l2['id']) . "\" class=\"toc-sub\">" . h($l2['label']) . "</a>\n";
-                    }
-                    $tocSidebar .= "</div>\n";
-                }
-            }
-            $tocSidebar .= "</div>\n";
+            $tocSidebar = renderTocSidebar($tocItems, $pageLabel);
         }
 
         echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
@@ -5213,23 +5193,6 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
         }
     }
 
-    // Load emoji enhancements for section headings
-    $emojiMap = [];
-    try {
-        $edb = cacheDb();
-        $estmt = $edb->prepare("SELECT section_name, emoji FROM emoji_cache WHERE mode=:m AND name=:n");
-        $estmt->bindValue(':m', $mode, SQLITE3_TEXT);
-        $estmt->bindValue(':n', $parameter, SQLITE3_TEXT);
-        $eres = $estmt->execute();
-        while ($erow = $eres->fetchArray(SQLITE3_ASSOC)) {
-            $emojiMap[$erow['section_name']] = $erow['emoji'];
-        }
-        $eres->finalize();
-    } catch (\Throwable $e) {
-        // Enhancement is additive — never break output. Emoji cache may
-        // not exist yet when cacheDb() fails (e.g. database locked).
-    }
-
     // Add structured sections
     $jsonSections = array();
     foreach ($sections as $sec) {
@@ -5271,10 +5234,6 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
             $subsections[] = $entry;
         }
         $cleanSec["subsections"] = $subsections;
-        // Inject emoji if available
-        if (isset($emojiMap[$sec["name"]])) {
-            $cleanSec["emoji"] = $emojiMap[$sec["name"]];
-        }
         // Use L1 heading name as the key
         $jsonSections[$sec["name"]] = $cleanSec;
     }
