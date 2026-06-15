@@ -92,7 +92,7 @@ if (!defined('PHPMAN_BACKUP_DIR')) {
 // Fixed filenames under derived dirs (not configurable)
 define('PHPMAN_CACHE_DB', PHPMAN_CACHE_DIR . '/phpman_cache.db');
 define('PHPMAN_LOG_FILE', PHPMAN_LOG_DIR . '/phpman_error.log');
-define('CACHE_SCHEMA_VERSION', '3');
+define('CACHE_SCHEMA_VERSION', '4');
 
 // Ensure log dir exists, then set error_log target
 if (!is_dir(PHPMAN_LOG_DIR)) @mkdir(PHPMAN_LOG_DIR, 0755, true);
@@ -810,6 +810,10 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
                     phpManLog("FTS5 delete: " . $e->getMessage());
                 }
                 $db->exec("DELETE FROM search_index_meta");
+            } elseif ($row === '3') {
+                // v3 → v4: JSON canonical cache — only 'json' format is cached.
+                // Clear all html/markdown/mcp/raw entries; keep only json/search.
+                $db->exec("DELETE FROM cache WHERE format NOT IN ('json', 'search')");
             } else {
                 $db->exec("DELETE FROM cache");
             }
@@ -1027,6 +1031,116 @@ function cacheOrExecute(string $mode, string $name, string $section, string $for
         }
     }
     return $content;
+}
+
+/**
+ * JSON-canonical cache: always stores JSON format, derives other formats.
+ * Eliminates per-format duplicate caching (html/json/markdown/mcp).
+ *
+ * Generator is called with format='json' — getManPage/getPerldocPage/getInfoPage
+ * already produce JSON directly from shell output (no HTML→JSON parsing needed).
+ *
+ * For non-JSON formats, converts from the cached canonical JSON on cache hit.
+ * For cache miss, the generator produces JSON which is cached AND converted.
+ */
+function cacheJsonCanonical(string $mode, string $name, string $section, string $format, callable $generator): string {
+    $cache = new PageCache();
+
+    // Single cache entry: always format='json'
+    $json = $cache->get($mode, $name, $section, 'json');
+    if ($json === null) {
+        // Cold: generate JSON, cache it
+        $json = $generator();
+        if (trim($json) !== "") {
+            $cache->set($mode, $name, $section, 'json', $json, 'found');
+        } else {
+            $cache->set($mode, $name, $section, 'json', null, 'not_found');
+            return '';
+        }
+        // 1% chance: clean up expired cache entries
+        if (mt_rand(0, 99) === 0) {
+            try {
+                $db = cacheDb();
+                $db->exec("DELETE FROM cache WHERE ttl > 0 AND (strftime('%s','now') - updated_at) > ttl");
+            } catch (\Exception $e) {
+                phpManLog("cache TTL cleanup: " . $e->getMessage());
+            }
+        }
+    }
+
+    if ($json === '###NOT_FOUND###') return '';
+
+    // Return JSON directly for json/mcp formats
+    if ($format === 'json') return $json;
+    if ($format === 'mcp') return formatForOutput($json, 'mcp');
+
+    // Forward-convert from JSON for html/markdown
+    $data = json_decode($json, true);
+    if ($data === null) return '';
+
+    if ($format === 'html') return formatJSONToHTML($data);
+    if ($format === 'markdown') return formatJSONToMarkdown($data);
+
+    return $json;
+}
+
+/**
+ * Render structured JSON back to HTML <pre> block for human reading.
+ */
+function formatJSONToHTML(array $data): string {
+    $out = '';
+    $sections = $data['sections'] ?? [];
+    foreach ($sections as $sec) {
+        $name = h($sec['name'] ?? '');
+        $content = h(trim($sec['content'] ?? ''));
+        if ($name !== '' || $content !== '') {
+            $out .= "<b>{$name}</b>\n";
+            if ($content !== '') $out .= "{$content}\n";
+        }
+        foreach ($sec['subsections'] ?? [] as $sub) {
+            $subName = h($sub['name'] ?? '');
+            $subContent = h(trim($sub['content'] ?? ''));
+            if ($subName !== '') $out .= "  <u>{$subName}</u>\n";
+            if ($subContent !== '') $out .= "{$subContent}\n";
+        }
+        $out .= "\n";
+    }
+    return "<pre>" . rtrim($out) . "</pre>";
+}
+
+/**
+ * Render structured JSON back to Markdown for AI consumption.
+ */
+function formatJSONToMarkdown(array $data): string {
+    $param = $data['parameter'] ?? '';
+    $section = $data['section'] ?? '';
+    $mode = $data['mode'] ?? 'man';
+    $base = baseUrl();
+    $canonical = $base . '/' . $mode . '/' . urlencode($param);
+    if ($section !== '') $canonical .= '/' . urlencode($section);
+    $canonical .= '/markdown';
+
+    $out = "# {$param}" . ($section !== '' ? "({$section})" : '') . "\n\n";
+
+    if (!empty($data['synopsis'])) {
+        $out .= "## SYNOPSIS\n\n```\n{$data['synopsis']}\n```\n\n";
+    }
+
+    foreach ($data['sections'] ?? [] as $sec) {
+        $name = $sec['name'] ?? '';
+        $content = trim($sec['content'] ?? '');
+        if ($name !== '') $out .= "## {$name}\n\n";
+        if ($content !== '') $out .= "{$content}\n\n";
+        foreach ($sec['subsections'] ?? [] as $sub) {
+            $subName = $sub['name'] ?? '';
+            $subContent = trim($sub['content'] ?? '');
+            if ($subName !== '') $out .= "### {$subName}\n\n";
+            if ($subContent !== '') $out .= "{$subContent}\n\n";
+        }
+    }
+
+    $out .= "*Generated by [phpman]({$canonical})*\n";
+    return $out;
 }
 
 // +--------------------------------------------------------------------------------+
@@ -2222,25 +2336,25 @@ switch ( $mode ) {
         if ( $parameter != "" ) {
             // Pre-detect perldoc targets: :: prefix or 3pm/3perl
             if (strpos($parameter, "::") !== false || $section === "3pm" || $section === "3perl") {
-                $content = cacheOrExecute('perldoc', $parameter, $section, $format,
-                    function() use ($parameter, $format) { return getPerldocPage($parameter, $format); });
+                $content = cacheJsonCanonical('perldoc', $parameter, $section, $format,
+                    function() use ($parameter) { return getPerldocPage($parameter, 'json'); });
             } else {
-                $content = cacheOrExecute('man', $parameter, $section, $format,
-                    function() use ($parameter, $section, $format) { return getManPage($parameter, $section, $format); });
+                $content = cacheJsonCanonical('man', $parameter, $section, $format,
+                    function() use ($parameter, $section) { return getManPage($parameter, $section, 'json'); });
             }
 
             // retry lower case if content is empty
             if ( preg_match("/^[A-Z\\._]+$/",$parameter) && trim($content) == ""){
-                $content = cacheOrExecute('man', strtolower($parameter), $section, $format,
-                    function() use ($parameter, $section, $format) { return getManPage(strtolower($parameter), $section, $format); });
+                $content = cacheJsonCanonical('man', strtolower($parameter), $section, $format,
+                    function() use ($parameter, $section) { return getManPage(strtolower($parameter), $section, 'json'); });
             }
 
             //not find command then try perldoc (for perl modules with :: or section 3pm/3perl)
             //before falling back to search
             if (trim($content) == "") {
                 if (strpos($parameter, "::") !== false || $section === "3pm" || $section === "3perl") {
-                    $content = cacheOrExecute('perldoc', $parameter, $section, $format,
-                        function() use ($parameter, $format) { return getPerldocPage($parameter, $format); });
+                    $content = cacheJsonCanonical('perldoc', $parameter, $section, $format,
+                        function() use ($parameter) { return getPerldocPage($parameter, 'json'); });
                 }
             }
 
@@ -2249,9 +2363,8 @@ switch ( $mode ) {
                 $content = getSearchPage($parameter, $section, $format);
                 $isSearchFallback = true;
                 http_response_code(404);
-                // Cache 404 result
                 $cache = new PageCache();
-                $cache->set('man', $parameter, $section, $format, null, 'not_found');
+                $cache->set('man', $parameter, $section, 'json', null, 'not_found');
             }
         }
         //redirect to search sections
@@ -2262,12 +2375,12 @@ switch ( $mode ) {
     case "perldoc":
         $check['perldoc'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
-            $content = cacheOrExecute('perldoc', $parameter, '', $format,
-                function() use ($parameter, $format) { return getPerldocPage($parameter, $format); });
+            $content = cacheJsonCanonical('perldoc', $parameter, '', $format,
+                function() use ($parameter) { return getPerldocPage($parameter, 'json'); });
             // Cache 404 if empty
             if (trim($content) == "") {
                 $cache = new PageCache();
-                $cache->set('perldoc', $parameter, '', $format, null, 'not_found');
+                $cache->set('perldoc', $parameter, '', 'json', null, 'not_found');
             }
         }
         else {
@@ -2283,12 +2396,12 @@ switch ( $mode ) {
     case "info":
         $check['info'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
-            $content = cacheOrExecute('info', $parameter, '', $format,
-                function() use ($parameter, $format) { return getInfoPage($parameter, $format); });
+            $content = cacheJsonCanonical('info', $parameter, '', $format,
+                function() use ($parameter) { return getInfoPage($parameter, 'json'); });
             // Cache 404 if empty
             if (trim($content) == "") {
                 $cache = new PageCache();
-                $cache->set('info', $parameter, '', $format, null, 'not_found');
+                $cache->set('info', $parameter, '', 'json', null, 'not_found');
             }
         }
         else {
