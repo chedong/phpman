@@ -2094,7 +2094,7 @@ function callLLM(string $systemPrompt, string $userMessage): string {
             ['role' => 'system', 'content' => $systemPrompt],
             ['role' => 'user', 'content' => $userMessage],
         ],
-        'max_tokens' => (int)LLM_MAX_TOKENS,
+        'max_tokens' => min((int)LLM_MAX_TOKENS, 16384),
         'temperature' => 0.3,
     ], JSON_UNESCAPED_UNICODE);
 
@@ -2108,7 +2108,7 @@ function callLLM(string $systemPrompt, string $userMessage): string {
             'User-Agent: phpMan/' . GIT_DESCRIBE,
         ],
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 30,
+        CURLOPT_TIMEOUT => 300,
     ]);
     $response = curl_exec($ch);
     $error = curl_error($ch);
@@ -2129,102 +2129,209 @@ function callLLM(string $systemPrompt, string $userMessage): string {
 }
 
 /**
- * Enhance a single man/perldoc/info/pydoc/ri page with emoji section headings.
- * Reads JSON from canonical cache, sends section names to LLM, stores emoji mappings.
+ * Full LLM Markdown enhancement — sends complete man page Markdown to LLM
+ * and caches the emoji-enhanced Markdown output. Used offline via --enhance CLI.
  *
- * @return int Number of sections enhanced (0 on failure or already enhanced)
+ * @return string Enhanced Markdown, or empty string on failure
  */
-function enhanceManPage(string $mode, string $name): int {
+function enhanceManPage(string $mode, string $name): string {
     $cache = new PageCache();
 
-    // Try empty section first, then query for any cached section
-    $json = $cache->get($mode, $name, '', 'json');
-    if ($json === null || $json === '###NOT_FOUND###') {
+    // Check if already enhanced
+    $enhanced = $cache->get($mode, $name, '', 'emoji_md');
+    if ($enhanced !== null && $enhanced !== '###NOT_FOUND###') {
+        echo "  [done] {$mode}/{$name}: already enhanced\n";
+        return $enhanced;
+    }
+
+    // Get the plain Markdown for this page — generate fresh
+    $plainMd = '';
+    switch ($mode) {
+        case 'man':
+            $plainMd = getManPage($name, '', 'markdown');
+            break;
+        case 'perldoc':
+            $plainMd = getPerldocPage($name, 'markdown');
+            break;
+        case 'info':
+            $plainMd = getInfoPage($name, 'markdown');
+            break;
+        case 'pydoc':
+            $plainMd = getPydocPage($name, 'markdown');
+            break;
+        case 'ri':
+            $plainMd = getRiPage($name, 'markdown');
+            break;
+    }
+
+    if (trim($plainMd) === '') {
+        echo "  [skip] {$mode}/{$name}: no markdown content\n";
+        return '';
+    }
+
+    // Truncate very long documents to fit LLM context
+    $maxLen = 16000;
+    if (strlen($plainMd) > $maxLen) {
+        $plainMd = substr($plainMd, 0, $maxLen) . "\n\n...(truncated)";
+    }
+
+    $systemPrompt = "You are a Linux documentation emoji-enhancement assistant. Transform plain man page Markdown into an emoji-rich, visually scannable version optimized for both human developers and AI agents.\n\n" .
+        "Output rules:\n" .
+        "1. Output ONLY valid Markdown — no code fences, no JSON wrapper, no preamble\n" .
+        "2. Preserve ALL original technical information (options, flags, syntax, descriptions)\n" .
+        "3. Do NOT invent new content — only reorganize and decorate existing content\n\n" .
+        "Style rules:\n" .
+        "- Every ## section heading gets ONE relevant emoji prefix\n" .
+        "- ## NAME section: add emoji tagline below heading\n" .
+        "- Add a Quick Reference table after SYNOPSIS with common use cases\n" .
+        "- Group related options into ### subsections with emoji titles\n" .
+        "- Each option row gets a leading emoji\n" .
+        "- Usage examples: each line annotated with emoji comments after #\n" .
+        "- Exit codes section: emoji table\n" .
+        "- SEE ALSO section: each reference gets relevant emoji\n" .
+        "- Keep all original command syntax and flags exactly as-is\n" .
+        "- Emoji should be standard Unicode, widely supported";
+
+    $userMessage = "Transform this man page Markdown into an emoji-enhanced version:\n\n{$plainMd}";
+
+    $enhancedMd = callLLM($systemPrompt, $userMessage);
+    if ($enhancedMd === '') {
+        echo "  [fail] {$mode}/{$name}: LLM call failed\n";
+        return '';
+    }
+
+    // Strip code fences if LLM wrapped output
+    $enhancedMd = preg_replace('/^```(?:markdown|md)?\s*\n?/m', '', $enhancedMd);
+    $enhancedMd = preg_replace('/\n?```\s*$/m', '', $enhancedMd);
+    $enhancedMd = trim($enhancedMd);
+
+    if ($enhancedMd === '') {
+        echo "  [fail] {$mode}/{$name}: empty LLM response\n";
+        return '';
+    }
+
+    // Cache the enhanced Markdown
+    $cache->set($mode, $name, '', 'emoji_md', $enhancedMd, 'found');
+
+    // Store engine info in meta
+    try {
         $db = cacheDb();
-        $q = $db->prepare("SELECT content FROM cache WHERE mode=:m AND name=:n AND format='json' AND status='found' LIMIT 1");
-        $q->bindValue(':m', $mode, SQLITE3_TEXT);
-        $q->bindValue(':n', $name, SQLITE3_TEXT);
-        $r = $q->execute();
-        $row = $r->fetchArray(SQLITE3_ASSOC);
-        $r->finalize();
-        if ($row && $row['content']) {
-            $json = @gzuncompress($row['content']);
-        }
-    }
-    if ($json === null || $json === '###NOT_FOUND###') {
-        echo "  [skip] {$mode}/{$name}: no cached JSON\n";
-        return 0;
-    }
+        $db->exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('llm_enhance_model', '" . LLM_MODEL . "')");
+    } catch (\Throwable $e) {}
 
-    $data = json_decode($json, true);
-    if ($data === null) {
-        echo "  [skip] {$mode}/{$name}: invalid JSON\n";
-        return 0;
-    }
+    echo "  [ok] {$mode}/{$name}: enhanced (" . number_format(strlen($enhancedMd)) . " chars)\n";
+    return $enhancedMd;
+}
 
-    $sections = $data['sections'] ?? [];
-    if (empty($sections)) {
-        echo "  [skip] {$mode}/{$name}: no sections\n";
-        return 0;
-    }
+/**
+ * Simple Markdown-to-HTML converter for enhanced LLM output.
+ * Handles headings, code blocks, bold, links, tables, and lists.
+ */
+function formatMarkdownToHTML(string $md): string {
+    $lines = explode("\n", $md);
+    $out = '';
+    $inCodeBlock = false;
+    $inTable = false;
+    $inList = false;
+    $prevBlank = true;
 
-    // Build section name list, skip already-enhanced ones
-    $db = cacheDb();
-    $toEnhance = [];
-    foreach ($sections as $secName => $sec) {
-        if ($secName === '') continue;
-        $chk = $db->prepare("SELECT emoji FROM emoji_cache WHERE mode=:m AND name=:n AND section_name=:s");
-        $chk->bindValue(':m', $mode, SQLITE3_TEXT);
-        $chk->bindValue(':n', $name, SQLITE3_TEXT);
-        $chk->bindValue(':s', $secName, SQLITE3_TEXT);
-        $result = $chk->execute();
-        if ($result->fetchArray()) {
-            $result->finalize();
+    foreach ($lines as $line) {
+        $trimmed = trim($line);
+
+        // Code block fence
+        if (preg_match('/^```/', $trimmed)) {
+            if ($inCodeBlock) {
+                $out .= "</code></pre>\n";
+                $inCodeBlock = false;
+            } else {
+                $out .= "<pre><code>";
+                $inCodeBlock = true;
+                $prevBlank = false;
+            }
             continue;
         }
-        $result->finalize();
-        $toEnhance[] = $secName;
+
+        if ($inCodeBlock) {
+            $out .= h($line) . "\n";
+            continue;
+        }
+
+        // Table row
+        if (preg_match('/^\|.+\|$/', $trimmed)) {
+            if (!$inTable) { $out .= "<table>\n"; $inTable = true; }
+            if (preg_match('/^\|[\s\-:]+\|$/', $trimmed)) continue; // separator row
+            $cells = array_map('trim', explode('|', trim($trimmed, '|')));
+            $out .= "<tr>";
+            foreach ($cells as $cell) {
+                $tag = $prevBlank ? 'th' : 'td';
+                $out .= "<{$tag}>" . h($cell) . "</{$tag}>";
+            }
+            $out .= "</tr>\n";
+            $prevBlank = false;
+            continue;
+        } else {
+            if ($inTable) { $out .= "</table>\n"; $inTable = false; }
+        }
+
+        // Blank line
+        if ($trimmed === '') {
+            if ($inList) { $out .= "</ul>\n"; $inList = false; }
+            $out .= "\n";
+            $prevBlank = true;
+            continue;
+        }
+
+        // Heading
+        if (preg_match('/^(#{1,4})\s+(.+)/', $trimmed, $m)) {
+            if ($inList) { $out .= "</ul>\n"; $inList = false; }
+            $level = strlen($m[1]) + 1; // h2-h5
+            $out .= "<h{$level}>" . h(trim($m[2])) . "</h{$level}>\n";
+            $prevBlank = false;
+            continue;
+        }
+
+        // Unordered list
+        if (preg_match('/^[\-\*]\s+(.+)/', $trimmed, $m)) {
+            if (!$inList) { $out .= "<ul>\n"; $inList = true; }
+            $out .= "<li>" . formatInlineMarkdown($m[1]) . "</li>\n";
+            $prevBlank = false;
+            continue;
+        }
+
+        // Blockquote
+        if (preg_match('/^>\s*(.*)/', $trimmed, $m)) {
+            $out .= "<blockquote>" . formatInlineMarkdown($m[1]) . "</blockquote>\n";
+            $prevBlank = false;
+            continue;
+        }
+
+        // Regular paragraph
+        if (!$prevBlank) $out .= "<br />\n";
+        $out .= formatInlineMarkdown($trimmed) . "\n";
+        $prevBlank = false;
     }
 
-    if (empty($toEnhance)) {
-        echo "  [done] {$mode}/{$name}: already enhanced\n";
-        return 0;
-    }
+    if ($inCodeBlock) $out .= "</code></pre>\n";
+    if ($inTable) $out .= "</table>\n";
+    if ($inList) $out .= "</ul>\n";
 
-    $sectionList = implode("\n", array_map(function ($s) { return "- {$s}"; }, $toEnhance));
-    $systemPrompt = "You are a documentation enhancement assistant. For each section heading below, return a SINGLE emoji that best represents it. Use standard Unicode emoji only. Format your response as a JSON object: {\"SECTION_NAME\": \"emoji\", ...}. Reply with JSON only, no other text.";
-    $userMessage = "Map each of these man page section headings to one emoji:\n\n{$sectionList}";
+    return $out;
+}
 
-    $llmResponse = callLLM($systemPrompt, $userMessage);
-    if ($llmResponse === '') {
-        echo "  [fail] {$mode}/{$name}: LLM call failed\n";
-        return 0;
-    }
-
-    $llmResponse = preg_replace('/^```(?:json)?\s*\n?/m', '', $llmResponse);
-    $llmResponse = preg_replace('/\n?```\s*$/m', '', $llmResponse);
-    $emojiMap = json_decode(trim($llmResponse), true);
-    if (!is_array($emojiMap)) {
-        phpManLog("LLM: failed to parse emoji response for {$mode}/{$name}: " . substr($llmResponse, 0, 200));
-        echo "  [fail] {$mode}/{$name}: unparseable LLM response\n";
-        return 0;
-    }
-
-    $count = 0;
-    $insert = $db->prepare("INSERT OR IGNORE INTO emoji_cache(mode, name, section_name, emoji) VALUES(:m, :n, :s, :e)");
-    foreach ($emojiMap as $sectionName => $emoji) {
-        if (!is_string($emoji) || $emoji === '') continue;
-        $insert->bindValue(':m', $mode, SQLITE3_TEXT);
-        $insert->bindValue(':n', $name, SQLITE3_TEXT);
-        $insert->bindValue(':s', $sectionName, SQLITE3_TEXT);
-        $insert->bindValue(':e', $emoji, SQLITE3_TEXT);
-        $insert->execute();
-        $insert->reset();
-        $count++;
-    }
-
-    echo "  [ok] {$mode}/{$name}: {$count} sections enhanced\n";
-    return $count;
+/**
+ * Inline Markdown formatting: bold, italic, code, links.
+ */
+function formatInlineMarkdown(string $text): string {
+    $text = h($text);
+    // Bold: **text**
+    $text = preg_replace('/\*\*(.+?)\*\*/', '<b>$1</b>', $text);
+    // Italic: *text*
+    $text = preg_replace('/\*(.+?)\*/', '<i>$1</i>', $text);
+    // Inline code: `text`
+    $text = preg_replace('/`([^`]+)`/', '<code>$1</code>', $text);
+    // Links: [text](url)
+    $text = preg_replace('/\[([^\]]+)\]\(([^)]+)\)/', '<a href="$2">$1</a>', $text);
+    return $text;
 }
 
 // CLI Mode: handle command-line invocation
@@ -2286,9 +2393,9 @@ if (PHP_SAPI === 'cli') {
         foreach ($names as $name) {
             $name = trim($name);
             if ($name === '') continue;
-            $total += enhanceManPage($mode, $name);
+            enhanceManPage($mode, $name);
         }
-        echo "\nDone. {$total} total sections enhanced for " . count($names) . " docs.\n";
+        echo "\nDone. enhanced for " . count($names) . " docs.\n";
         exit;
     }
 }
@@ -2912,22 +3019,19 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	}
 
 
-	// v4.0: inject emoji-enhanced section headings into HTML if available
+	// v4.0: enhanced Markdown routing — default view uses LLM-enhanced MD if available
+	$isEnhanced = false;
 	if ($format === "html" && $parameter !== "" && in_array($mode, ['man','perldoc','info','pydoc','ri'])) {
-	    try {
-	        $edb = cacheDb();
-	        $estmt = $edb->prepare("SELECT section_name, emoji FROM emoji_cache WHERE mode=:m AND name=:n");
-	        $estmt->bindValue(':m', $mode, SQLITE3_TEXT);
-	        $estmt->bindValue(':n', $parameter, SQLITE3_TEXT);
-	        $eres = $estmt->execute();
-	        while ($erow = $eres->fetchArray(SQLITE3_ASSOC)) {
-	            $section = preg_quote(h($erow["section_name"]), '/');
-	            $emoji = $erow["emoji"];
-	            $content = preg_replace('/(<b>' . $section . '<\/b>)/', $emoji . ' $1', $content, 1);
-	        }
-	        $eres->finalize();
-	    } catch (\Throwable $e) {}
+	    $ecache = new PageCache();
+	    $enhancedMd = $ecache->get($mode, $parameter, '', 'emoji_md');
+	    if ($enhancedMd !== null && $enhancedMd !== '###NOT_FOUND###') {
+	        $content = '<div id="man-content">' . formatMarkdownToHTML($enhancedMd) . '</div>';
+	        $isEnhanced = true;
+	        $GLOBALS["phpman_enhanced"] = LLM_MODEL;
+	    }
 	}
+
+	// For man page content, add section anchors and floating TOC
 	// For man page content, add section anchors and floating TOC
     // Sidebars are collected and output AFTER content for better SEO
     $tocSidebar = '';
@@ -3205,6 +3309,7 @@ function showFooter (string $validator = "", bool $showNav = false): void {
         "<br />CrawledBy " . $user_agent .
         "<br />" . $validator .
         // Profiling data for debug mode
+        (!empty($GLOBALS["phpman_enhanced"]) ? "<br />Enhanced by LLM: " . h($GLOBALS["phpman_enhanced"]) . " / taotoken.net" : "") .
         (Profiler::getEnabled() ? profilerHtmlBlock() : "") .
         "</p>" .
         ($showNav ? '<div id="back-to-top"><a href="#top">^_back to top</a></div>' : "") .
