@@ -2098,25 +2098,33 @@ function callLLM(string $systemPrompt, string $userMessage): string {
         'temperature' => 0.3,
     ], JSON_UNESCAPED_UNICODE);
 
-    $ctx = stream_context_create([
-        'http' => [
-            'method' => 'POST',
-            'header' => "Content-Type: application/json\r\n" .
-                        "Authorization: Bearer " . LLM_API_KEY . "\r\n" .
-                        "User-Agent: phpMan/" . GIT_DESCRIBE . "\r\n",
-            'content' => $payload,
-            'timeout' => 30,
+    $ch = curl_init(LLM_API_URL);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $payload,
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . LLM_API_KEY,
+            'User-Agent: phpMan/' . GIT_DESCRIBE,
         ],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 30,
     ]);
+    $response = curl_exec($ch);
+    $error = curl_error($ch);
+    curl_close($ch);
 
-    $response = @file_get_contents(LLM_API_URL, false, $ctx);
-    if ($response === false) {
-        phpManLog("LLM: API call failed to " . LLM_API_URL);
+    if ($response === false || $response === '') {
+        phpManLog("LLM: API call failed: " . ($error ?: 'empty response'));
         return '';
     }
 
     $data = json_decode($response, true);
     $content = $data['choices'][0]['message']['content'] ?? '';
+    // Fallback: some reasoning models (e.g. deepseek-v4-pro) use reasoning_content
+    if ($content === '') {
+        $content = $data['choices'][0]['message']['reasoning_content'] ?? '';
+    }
     return trim($content);
 }
 
@@ -2903,6 +2911,23 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	    }
 	}
 
+
+	// v4.0: inject emoji-enhanced section headings into HTML if available
+	if ($format === "html" && $parameter !== "" && in_array($mode, ['man','perldoc','info','pydoc','ri'])) {
+	    try {
+	        $edb = cacheDb();
+	        $estmt = $edb->prepare("SELECT section_name, emoji FROM emoji_cache WHERE mode=:m AND name=:n");
+	        $estmt->bindValue(':m', $mode, SQLITE3_TEXT);
+	        $estmt->bindValue(':n', $parameter, SQLITE3_TEXT);
+	        $eres = $estmt->execute();
+	        while ($erow = $eres->fetchArray(SQLITE3_ASSOC)) {
+	            $section = preg_quote(h($erow["section_name"]), '/');
+	            $emoji = $erow["emoji"];
+	            $content = preg_replace('/(<b>' . $section . '<\/b>)/', $emoji . ' $1', $content, 1);
+	        }
+	        $eres->finalize();
+	    } catch (\Throwable $e) {}
+	}
 	// For man page content, add section anchors and floating TOC
     // Sidebars are collected and output AFTER content for better SEO
     $tocSidebar = '';
