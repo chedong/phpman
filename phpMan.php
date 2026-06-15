@@ -2284,7 +2284,7 @@ function formatMarkdownToHTML(string $md): string {
         // Heading
         if (preg_match('/^(#{1,4})\s+(.+)/', $trimmed, $m)) {
             if ($inList) { $out .= "</ul>\n"; $inList = false; }
-            $level = strlen($m[1]) + 1; // h2-h5
+            $level = strlen($m[1]); // h2-h5
             $out .= "<h{$level}>" . h(trim($m[2])) . "</h{$level}>\n";
             $prevBlank = false;
             continue;
@@ -3025,14 +3025,16 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	    $ecache = new PageCache();
 	    $enhancedMd = $ecache->get($mode, $parameter, '', 'emoji_md');
 	    if ($enhancedMd !== null && $enhancedMd !== '###NOT_FOUND###') {
-	        $content = '<div id="man-content">' . formatMarkdownToHTML($enhancedMd) . '</div>';
+	        $content = formatMarkdownToHTML($enhancedMd);
 	        $isEnhanced = true;
 	        $GLOBALS["phpman_enhanced"] = LLM_MODEL;
 	    }
 	}
 
 	// For man page content, add section anchors and floating TOC
-	// For man page content, add section anchors and floating TOC
+	if ($isEnhanced) {
+	    echo '<div id="man-content">' . $content . "</div>\n";
+	} else {
     // Sidebars are collected and output AFTER content for better SEO
     $tocSidebar = '';
     if ($mode !== "markdown" && $mode !== "search" && !$isSearchFallback && $parameter !== "" && trim($content) !== "") {
@@ -3065,6 +3067,7 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
     }
     echo "</div>";
     echo $tocSidebar;
+    }
 
 showFooter($VALIDATOR, $showNav);
 
