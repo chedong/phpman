@@ -380,6 +380,8 @@ When reviewing code, follow this order:
 
 | Date | Changes |
 |------|----------|
+| 2026-06-16 | v4.0: LLM emoji enhancement engine — `callLLM()`, `enhanceManPage()`, `formatMarkdownToHTML()`, `formatInlineMarkdown()`, `renderTocSidebar()`; `tools/enhance_page.php` for shared hosting; `--enhance` CLI; cache TOC dedup |
+| 2026-06-16 | fix: structure_regression.php fatal bugs — require path, hasSection() undefined, BSD man detection, MANWIDTH leak, perldoc fallback (#130 #131 #132); Makefile config deploy fix (empty phpman.config.php on first deploy) |
 | 2026-06-09 | v3.7.1: Fix #96 XSS (sources array h), #107 undefined $expanded, #108 SQL prepared stmt, #109 tldr_cache TTL index, #110 INSERT OR REPLACE comments, #111 ticket status table, #112 CLI CACHE_DB constant; add Ticket Status Summary table |
 | 2026-06-08 | v3.7: Security hardening — #95 SQL parameterize, #98 catch block logging, #100 CACHE_DIR validation, #102 perldoc $width escape, #104 FTS5 sanitize, #105 ETag invalidation, #103 rebuildSearchIndex logging | TLDR cache strategy: SQLite `tldr_cache` with 7-day TTL, negative caching; old file-based `tldr_cache/` deprecated |
 | 2026-06-04 | `isLocalRequest` deprecation: HSTS/version hiding moved to Nginx config, debug switched to `PHPMAN_DEBUG` env var; `ob_gzhandler` + `checkRateLimit` marked for cleanup (#84 #89); security hardening table adds status column |

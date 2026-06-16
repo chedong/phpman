@@ -83,12 +83,8 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n
 
 **Phase 1: Structure regression test** (✅)
 - `test/structure_regression.php`: validates JSON section structure fingerprints
-- Tests 5 man + 5 perldoc + 5 pydoc pages for structural invariants:
-  - NAME section must exist
-  - All sections have name + content
-  - Subsections have non-empty names
-  - Flags have flag fields
-  - Mode matches expected
+- Tests 5 man + 5 perldoc + 5 pydoc pages for structural invariants
+- Bug fixes (2026-06-16): require path, BSD man detection, MANWIDTH save/restore, perldoc pod2text fallback (#130 #131 #132)
 - Outputs structure fingerprints for regression baselines
 
 **Phase 2: JSON canonical cache** (✅)
