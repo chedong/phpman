@@ -99,12 +99,14 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n
 - `formatForOutput()` already does JSON→MCP (reuse)
 
 **Phase 3: LLM emoji enhancement** (✅)
-- Full-page Markdown → LLM → emoji-enhanced Markdown (`emoji_md` cache format)
+- Dual-format architecture: 2 LLM calls per document → `emoji_html` (default view) + `emoji_md` (/markdown format)
+- HTML-direct pipeline: rendered HTML → LLM → enhanced HTML with `<h2>`/`<h3>`/`<pre><code>`/`<a>` preserved
+- Markdown pipeline: raw Markdown → LLM → enhanced Markdown (for /markdown format)
 - `enhanceManPage()`: CLI batch mode `php phpMan.php --enhance=man:ls,tar,grep`
 - `callLLM()`: OpenAI-compatible chat completions API (deepseek-v4-pro via taotoken.net)
-- `formatMarkdownToHTML()` / `formatInlineMarkdown()`: Markdown→HTML for enhanced content
-- `renderTocSidebar()`: floating TOC built from enhanced `##`/`###` headings
-- Enhanced HTML is the default view when `emoji_md` cache exists; `?format=html` bypasses
+- No hard max_tokens cap; `finish_reason: "length"` truncation detection + logging
+- `renderTocSidebar()`: floating TOC built from enhanced `<h2>`/`<h3>` HTML tags
+- Enhanced HTML is the default view when `emoji_html` cache exists; `?format=html` bypasses
 - Config: `LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`, `LLM_MAX_TOKENS` via `phpman.config.php`
 - `tools/enhance_page.php`: single-page CLI tool for shared hosts where man(1) can't fork
 - See `docs/01-PRODUCT.md` §2.11 for full design rationale

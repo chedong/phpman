@@ -125,23 +125,30 @@ ri index (`/ri`) is also changed to `<ul>` list. Search/fallback pages use `<div
 
 ### 2.11 LLM Emoji Enhancement (v4.0)
 
-phpMan v4.0 introduces an optional LLM-powered enhancement layer that transforms raw man page Markdown into emoji-rich, visually scannable documentation. The enhancement is **additive** — base HTML/JSON/Markdown/MCP output is unaffected and remains the fallback.
+phpMan v4.0 introduces an optional LLM-powered enhancement layer that transforms raw documentation into emoji-rich, visually scannable versions. The enhancement is **additive** — base HTML/JSON/Markdown/MCP output is unaffected and remains the fallback.
+
+**v4.0 uses a dual-format architecture**: 2 LLM calls per document, producing two independent caches:
+- `emoji_html` — Enhanced HTML served as the **default view**
+- `emoji_md` — Enhanced Markdown served for **/markdown format**
 
 #### 2.11.1 Architecture
 
 ```
-man page → formatManPerlDocToMarkdown() → plain MD
-                                              ↓
-                              callLLM() → emoji-enhanced MD (emoji_md cache)
-                                              ↓
-                              formatMarkdownToHTML() → enhanced HTML
+man page ──→ getManPage($name, '', 'html') → raw HTML (with <pre><code>/<b>/<u>/<a>)
+         │                                       ↓
+         │                           callLLM() → emoji_html cache (default view)
+         │
+         └──→ getManPage($name, '', 'markdown') → raw Markdown
+                                                 ↓
+                                     callLLM() → emoji_md cache (/markdown view)
 ```
 
-- **Input**: Full man page Markdown (truncated to 16,000 chars for LLM context)
-- **Output**: Emoji-enhanced Markdown cached as `emoji_md` format in SQLite
-- **Renderer**: `formatMarkdownToHTML()` + `formatInlineMarkdown()` converts enhanced MD to HTML
-- **TOC**: `renderTocSidebar()` builds floating sidebar from `##`/`###` headings in the enhanced Markdown
-- **Default view**: When `emoji_md` cache exists, enhanced HTML is the default; `?format=html` bypasses to original
+- **Input (HTML path)**: Rendered HTML content block (extracted from `<div id="man-content">` or `<pre>`), truncated to 24,000 chars
+- **Input (Markdown path)**: Full man page Markdown, truncated to 16,000 chars
+- **Output**: Two cache entries per document — `emoji_html` and `emoji_md`
+- **Default view**: When `emoji_html` cache exists, served directly as HTML; `?format=html` or PATH_INFO `/html` bypasses
+- **Markdown view**: `/markdown` format prefers `emoji_md` cache over raw Markdown
+- **TOC**: `renderTocSidebar()` builds floating sidebar from `<h2>`/`<h3>` tags in the enhanced HTML
 
 #### 2.11.2 LLM Integration
 
@@ -152,40 +159,41 @@ Uses OpenAI-compatible chat completions API:
 | `LLM_API_URL` | API endpoint (default: `https://taotoken.net/api/v1/chat/completions`) |
 | `LLM_API_KEY` | Bearer token |
 | `LLM_MODEL` | Model name (e.g. `deepseek-v4-pro`) |
-| `LLM_MAX_TOKENS` | Max completion tokens (capped at 16,384) |
+| `LLM_MAX_TOKENS` | Max completion tokens (no hard cap — passes through directly) |
 
 - `callLLM()`: cURL with 300s timeout, JSON error logging to `phpman_error.log`
-- System prompt enforces: standard Markdown list syntax (`- ` prefix), descriptive emoji (no bullet-like `🔹`), no HTML tags
+- **No hard max_tokens cap**: `LLM_MAX_TOKENS` used directly (was capped at 16,384)
+- **Truncation detection**: `finish_reason: "length"` logged with token usage stats
 - Empty API key = enhancement disabled (offline-safe)
 
-#### 2.11.3 Markdown→HTML Rendering Pipeline
+#### 2.11.3 HTML-Direct Rendering Pipeline
 
-`formatMarkdownToHTML()` is a lightweight custom parser handling:
-- `#`–`####` headings → `<h2>`–`<h5>`
-- `- ` / `* ` unordered lists → `<ul><li>`
-- `|...|` tables → `<table>` (multi-column separator rows supported)
-- ` ``` ` code blocks → `<pre><code>`
-- `>` blockquotes → `<blockquote>`
+The emoji_html path sends rendered HTML to the LLM directly, avoiding the Markdown→HTML conversion round-trip. Key advantages:
+- LLM-selected code blocks are already properly wrapped in `<pre><code>`
+- Cross-reference links (`<a>` tags) are preserved natively
+- Bold/underline formatting (`<b>`, `<u>`) stays intact
+- No regex-based Markdown parsing needed for enhanced content
 
-`formatInlineMarkdown()` handles inline formatting:
-- `**bold**` → `<b>`, `*italic*` → `<i>`
-- `` `code` `` → `<code>`
-- `[text](url)` → `<a>` (with `/markdown|json|mcp` suffix stripped for HTML view)
+**HTML LLM prompt rules**:
+- Output ONLY valid HTML fragment — no `<html>`, `<head>`, `<body>` wrappers
+- Preserve `<pre>`, `<code>`, `<b>`, `<u>`, `<a>` tags
+- `<h2>` section headings with emoji prefix, `<h3>` subsections
+- Quick Reference as `<table>`, options as `<li>` with emoji
+- Code blocks (shell, Perl, Python, Ruby) wrapped in `<pre><code>`
 
-Table cells and bold/italic content use recursive `formatInlineMarkdown()` to support nested formatting (`**`-a`**` → `<b><code>-a</code></b>`).
+**Markdown rendering** (for /markdown format and legacy fallback):
+`formatMarkdownToHTML()` / `formatInlineMarkdown()` are custom lightweight parsers handling headings, lists, tables, code blocks, blockquotes, bold/italic/code/links with recursive nested formatting. Used only for emoji_md → HTML fallback, not in the primary rendering path.
 
 #### 2.11.4 CLI Enhancement: `--enhance`
 
 ```bash
-# Batch mode (runs man command locally)
+# Batch mode — generates BOTH emoji_html and emoji_md (2 LLM calls per doc)
 php phpMan.php --enhance=man:ls,tar,grep
 php phpMan.php --enhance=perldoc:File::Basename,Getopt::Long
-php phpMan.php --enhance=info:coreutils,bash,make
 php phpMan.php --enhance=pydoc:os,json,re
-php phpMan.php --enhance=ri:Array,String,File
 ```
 
-`enhanceManPage()` calls `getManPage(..., 'markdown')` internally, runs `callLLM()`, and caches the result.
+`enhanceManPage()` runs two phases: Phase 1 generates `emoji_md` (Markdown → LLM), Phase 2 generates `emoji_html` (HTML → LLM). Each checks cache first, skips if already enhanced.
 
 #### 2.11.5 Shared Hosting Workaround: `tools/enhance_page.php`
 
@@ -208,15 +216,19 @@ done
 **Key differences from `--enhance`**:
 | Aspect | `--enhance` (CLI) | `tools/enhance_page.php` |
 |--------|-------------------|--------------------------|
-| Markdown source | `shell_exec("man ...")` | HTTP fetch from phpMan web |
+| Content source | `shell_exec("man ...")` | HTTP fetch from phpMan web |
+| Cache format | `emoji_html` + `emoji_md` (dual) | `emoji_md` only |
 | Works under load | ❌ fork fails | ✅ web server handles man |
 | Cache lifecycle | TTL=604800 (7 days) | TTL=0 (permanent) |
-| Max markdown length | 16,000 chars | 12,000 chars |
-| Section handling | Auto-detected | Hardcoded `/1/` (man section 1 only) |
+| Max content length | 24,000 (HTML) / 16,000 (MD) | 12,000 chars |
+| Section handling | Auto-detected | Hardcoded `/1/` (man section 1) |
+| LLM prompt | Synced with phpMan.php system prompt | Independent copy (may drift) |
 
 #### 2.11.6 Format Negotiation
 
 Enhanced pages respect the same 4-tier format priority as regular pages (GET param → PATH_INFO → Accept header → default HTML). Explicit `?format=html` or PATH_INFO `/html` bypasses enhancement to show the original `<pre>` rendering.
+
+The "Enhanced by LLM" credit line in the footer links to the original (un-enhanced) HTML view with the correct section parameter.
 
 ### 2.12 Command Name Case & Platform Differences (Linux vs BSD)
 
@@ -380,6 +392,7 @@ When reviewing code, follow this order:
 
 | Date | Changes |
 |------|----------|
+| 2026-06-16 | v4.0: Dual-format LLM enhancement — emoji_html (HTML-direct, default view) + emoji_md (Markdown, /markdown format); TOC from <h2>/<h3> tags with &amp; fix; max_tokens uncapped; finish_reason truncation logging; showFooter section param in original-format link; tools/enhance_page.php |
 | 2026-06-09 | v3.7.1: Fix #96 XSS (sources array h), #107 undefined $expanded, #108 SQL prepared stmt, #109 tldr_cache TTL index, #110 INSERT OR REPLACE comments, #111 ticket status table, #112 CLI CACHE_DB constant; add Ticket Status Summary table |
 | 2026-06-08 | v3.7: Security hardening — #95 SQL parameterize, #98 catch block logging, #100 CACHE_DIR validation, #102 perldoc $width escape, #104 FTS5 sanitize, #105 ETag invalidation, #103 rebuildSearchIndex logging | TLDR cache strategy: SQLite `tldr_cache` with 7-day TTL, negative caching; old file-based `tldr_cache/` deprecated |
 | 2026-06-04 | `isLocalRequest` deprecation: HSTS/version hiding moved to Nginx config, debug switched to `PHPMAN_DEBUG` env var; `ob_gzhandler` + `checkRateLimit` marked for cleanup (#84 #89); security hardening table adds status column |
