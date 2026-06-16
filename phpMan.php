@@ -2078,7 +2078,7 @@ function callLLM(string $systemPrompt, string $userMessage): string {
             ['role' => 'system', 'content' => $systemPrompt],
             ['role' => 'user', 'content' => $userMessage],
         ],
-        'max_tokens' => min((int)LLM_MAX_TOKENS, 16384),
+        'max_tokens' => (int)LLM_MAX_TOKENS,
         'temperature' => 0.3,
     ], JSON_UNESCAPED_UNICODE);
 
@@ -2121,106 +2121,133 @@ function callLLM(string $systemPrompt, string $userMessage): string {
     if ($content === '') {
         $content = $data['choices'][0]['message']['reasoning_content'] ?? '';
     }
+    // Detect truncation (output exceeded max_tokens)
+    $finishReason = $data['choices'][0]['finish_reason'] ?? '';
+    if ($finishReason === 'length') {
+        phpManLog("LLM: output truncated (finish_reason=length), tokens_used=" . json_encode($data['usage'] ?? []));
+    }
     return trim($content);
 }
 
 /**
- * Full LLM Markdown enhancement — sends complete man page Markdown to LLM
- * and caches the emoji-enhanced Markdown output. Used offline via --enhance CLI.
+ * Full LLM HTML enhancement — sends rendered man page HTML to LLM
+ * and caches the emoji-enhanced HTML output. Used offline via --enhance CLI.
  *
- * @return string Enhanced Markdown, or empty string on failure
+ * @return string Enhanced HTML, or empty string on failure
  */
 function enhanceManPage(string $mode, string $name): string {
     $cache = new PageCache();
 
-    // Check if already enhanced
-    $enhanced = $cache->get($mode, $name, '', 'emoji_md');
-    if ($enhanced !== null && $enhanced !== '###NOT_FOUND###') {
-        echo "  [done] {$mode}/{$name}: already enhanced\n";
-        return $enhanced;
+    // ── Phase 1: emoji_md (Markdown, for /markdown view) ──
+    $enhancedMd = $cache->get($mode, $name, '', 'emoji_md');
+    if ($enhancedMd === null || $enhancedMd === '###NOT_FOUND###') {
+        $plainMd = '';
+        switch ($mode) {
+            case 'man':    $plainMd = getManPage($name, '', 'markdown'); break;
+            case 'perldoc': $plainMd = getPerldocPage($name, 'markdown'); break;
+            case 'info':   $plainMd = getInfoPage($name, 'markdown'); break;
+            case 'pydoc':  $plainMd = getPydocPage($name, 'markdown'); break;
+            case 'ri':     $plainMd = getRiPage($name, 'markdown'); break;
+        }
+        if (trim($plainMd) !== '') {
+            $maxLen = 16000;
+            if (strlen($plainMd) > $maxLen) $plainMd = substr($plainMd, 0, $maxLen) . "\n\n...(truncated)";
+
+            $mdPrompt = "You are a Linux documentation emoji-enhancement assistant. Transform plain man page Markdown into an emoji-rich, visually scannable version optimized for both human developers and AI agents.\n\n" .
+                "Output rules:\n" .
+                "1. Output ONLY valid Markdown — no HTML tags, no code fences, no JSON wrapper, no preamble\n" .
+                "2. Preserve ALL original technical information (options, flags, syntax, descriptions)\n" .
+                "3. Do NOT invent new content — only reorganize and decorate existing content\n" .
+                "4. Use ONLY Markdown formatting: `backticks` for code, **double stars** for bold, [text](url) for links. NEVER use <code>, <b>, <i>, <a> or any HTML tags.\n" .
+                "5. Options and examples MUST use standard Markdown list syntax: start each item with \"- \" (dash+space) followed by content. NEVER use emoji as list markers.\n\n" .
+                "Style rules:\n" .
+                "- Every ## section heading gets ONE relevant emoji prefix\n" .
+                "- ## NAME section: add emoji tagline below heading\n" .
+                "- Add a Quick Reference table after SYNOPSIS with common use cases\n" .
+                "- Group related options into ### subsections with emoji titles\n" .
+                "- Each option row: \"- 📁 `-f`, `--flag`\" — dash+space then descriptive emoji matching the option's purpose\n" .
+                "- Usage examples: each line annotated with emoji comments after #\n" .
+                "- Exit codes section: emoji table\n" .
+                "- SEE ALSO section: each reference gets relevant emoji\n" .
+                "- Keep all original command syntax and flags exactly as-is\n" .
+                "- Emoji should be standard Unicode, widely supported";
+
+            $enhancedMd = callLLM($mdPrompt, "Transform this man page Markdown into an emoji-enhanced version:\n\n{$plainMd}");
+            if ($enhancedMd !== '') {
+                $enhancedMd = preg_replace('/^```(?:markdown|md)?\s*\n?/m', '', $enhancedMd);
+                $enhancedMd = preg_replace('/\n?```\s*$/m', '', $enhancedMd);
+                $enhancedMd = preg_replace('/^\[?[\w.-]+\]?\(\d+\w*\)\s+.*\s+\[?[\w.-]+\]?\(\d+\w*\)\s*\n/', '', $enhancedMd);
+                $enhancedMd = trim($enhancedMd);
+                if ($enhancedMd !== '') {
+                    $cache->set($mode, $name, '', 'emoji_md', $enhancedMd, 'found');
+                    echo "  [md] {$mode}/{$name}: enhanced (" . strlen($enhancedMd) . " chars)\n";
+                }
+            }
+        }
+    } else {
+        echo "  [md] {$mode}/{$name}: already enhanced\n";
     }
 
-    // Get the plain Markdown for this page — generate fresh
-    $plainMd = '';
-    switch ($mode) {
-        case 'man':
-            $plainMd = getManPage($name, '', 'markdown');
-            break;
-        case 'perldoc':
-            $plainMd = getPerldocPage($name, 'markdown');
-            break;
-        case 'info':
-            $plainMd = getInfoPage($name, 'markdown');
-            break;
-        case 'pydoc':
-            $plainMd = getPydocPage($name, 'markdown');
-            break;
-        case 'ri':
-            $plainMd = getRiPage($name, 'markdown');
-            break;
+    // ── Phase 2: emoji_html (HTML, for default view) ──
+    $enhancedHtml = $cache->get($mode, $name, '', 'emoji_html');
+    if ($enhancedHtml === null || $enhancedHtml === '###NOT_FOUND###') {
+        $rawHtml = '';
+        switch ($mode) {
+            case 'man':    $rawHtml = getManPage($name, '', 'html'); break;
+            case 'perldoc': $rawHtml = getPerldocPage($name, 'html'); break;
+            case 'info':   $rawHtml = getInfoPage($name, 'html'); break;
+            case 'pydoc':  $rawHtml = getPydocPage($name, 'html'); break;
+            case 'ri':     $rawHtml = getRiPage($name, 'html'); break;
+        }
+        if (trim($rawHtml) !== '') {
+            // Extract just the man-content block
+            if (preg_match('#<div id="man-content">(.+?)</div>#s', $rawHtml, $m)) {
+                $rawHtml = $m[1];
+            } elseif (preg_match('#<pre>(.+?)</pre>#s', $rawHtml, $m)) {
+                $rawHtml = $m[1];
+            }
+            $maxLen = 24000;
+            if (strlen($rawHtml) > $maxLen) $rawHtml = substr($rawHtml, 0, $maxLen) . "\n\n...(truncated)";
+
+            $htmlPrompt = "You are a Linux documentation enhancement assistant. Transform man page HTML into an emoji-rich, visually scannable version.\n\n" .
+                "Output rules:\n" .
+                "1. Output ONLY valid HTML fragment — no <html>, <head>, <body> tags, no code fences, no preamble\n" .
+                "2. Preserve ALL original technical information (options, flags, syntax, descriptions)\n" .
+                "3. Do NOT invent new content — only reorganize and decorate existing content\n" .
+                "4. Keep existing <pre>, <code>, <b>, <u> tags — they contain real command syntax\n" .
+                "5. Preserve <a> links (cross-references like date(1), man page links)\n\n" .
+                "Style rules:\n" .
+                "- Wrap each section heading in <h2> with ONE relevant emoji prefix\n" .
+                "- NAME section: add emoji tagline below heading\n" .
+                "- Add a Quick Reference <table> after SYNOPSIS\n" .
+                "- Group related options into <h3> subsections with emoji titles\n" .
+                "- Option rows: <li> with emoji prefix. Use meaningful emoji: 📁 files, 📋 format, ⏱️ time/sort, 🎨 color, 🔗 links, 🛡️ security\n" .
+                "- Code blocks (shell commands, Perl, Python, Ruby) MUST be wrapped in <pre><code>...</code></pre>\n" .
+                "- Exit codes: emoji <table>\n" .
+                "- SEE ALSO: each reference gets relevant emoji\n" .
+                "- Keep all original command syntax and flags exactly as-is\n" .
+                "- Emoji should be standard Unicode, widely supported";
+
+            $enhancedHtml = callLLM($htmlPrompt, "Transform this man page HTML into an emoji-enhanced version:\n\n{$rawHtml}");
+            if ($enhancedHtml !== '') {
+                $enhancedHtml = preg_replace('/^```(?:html)?\s*\n?/m', '', $enhancedHtml);
+                $enhancedHtml = preg_replace('/\n?```\s*$/m', '', $enhancedHtml);
+                $enhancedHtml = preg_replace('#^<!DOCTYPE[^>]*>\s*#i', '', $enhancedHtml);
+                $enhancedHtml = preg_replace('#</?html[^>]*>#i', '', $enhancedHtml);
+                $enhancedHtml = preg_replace('#</?body[^>]*>#i', '', $enhancedHtml);
+                $enhancedHtml = preg_replace('#</?head[^>]*>.*?</head>#is', '', $enhancedHtml);
+                $enhancedHtml = trim($enhancedHtml);
+                if ($enhancedHtml !== '') {
+                    $cache->set($mode, $name, '', 'emoji_html', $enhancedHtml, 'found');
+                    echo "  [html] {$mode}/{$name}: enhanced (" . strlen($enhancedHtml) . " chars)\n";
+                }
+            }
+        }
+    } else {
+        echo "  [html] {$mode}/{$name}: already enhanced\n";
     }
 
-    if (trim($plainMd) === '') {
-        echo "  [skip] {$mode}/{$name}: no markdown content\n";
-        return '';
-    }
-
-    // Truncate very long documents to fit LLM context
-    $maxLen = 16000;
-    if (strlen($plainMd) > $maxLen) {
-        $plainMd = substr($plainMd, 0, $maxLen) . "\n\n...(truncated)";
-    }
-
-    $systemPrompt = "You are a Linux documentation emoji-enhancement assistant. Transform plain man page Markdown into an emoji-rich, visually scannable version optimized for both human developers and AI agents.\n\n" .
-        "Output rules:\n" .
-        "1. Output ONLY valid Markdown — no HTML tags, no code fences, no JSON wrapper, no preamble\n" .
-        "2. Preserve ALL original technical information (options, flags, syntax, descriptions)\n" .
-        "3. Do NOT invent new content — only reorganize and decorate existing content\n" .
-        "4. Use ONLY Markdown formatting: `backticks` for code, **double stars** for bold, [text](url) for links. NEVER use <code>, <b>, <i>, <a> or any HTML tags.\n" .
-        "5. Options and examples MUST use standard Markdown list syntax: start each item with \"- \" (dash+space) followed by content. NEVER use emoji as list markers.\n\n" .
-        "Style rules:\n" .
-        "- Every ## section heading gets ONE relevant emoji prefix\n" .
-        "- ## NAME section: add emoji tagline below heading\n" .
-        "- Add a Quick Reference table after SYNOPSIS with common use cases\n" .
-        "- Group related options into ### subsections with emoji titles\n" .
-        "- Each option row: \"- 📁 `-f`, `--flag`\" — dash+space then descriptive emoji matching the option's purpose. Do NOT use bullet-like emoji (🔹🔸▪️▫️➡️). Use meaningful ones: 📁 for files, 📋 for format, ⏱️ for time/sort, 🎨 for color, 🔗 for links, 🛡️ for security, etc.\n" .
-        "- Usage examples: each line annotated with emoji comments after #\n" .
-        "- Exit codes section: emoji table\n" .
-        "- SEE ALSO section: each reference gets relevant emoji\n" .
-        "- Keep all original command syntax and flags exactly as-is\n" .
-        "- Emoji should be standard Unicode, widely supported";
-
-    $userMessage = "Transform this man page Markdown into an emoji-enhanced version:\n\n{$plainMd}";
-
-    $enhancedMd = callLLM($systemPrompt, $userMessage);
-    if ($enhancedMd === '') {
-        echo "  [fail] {$mode}/{$name}: LLM call failed\n";
-        return '';
-    }
-
-    // Strip code fences if LLM wrapped output
-    $enhancedMd = preg_replace('/^```(?:markdown|md)?\s*\n?/m', '', $enhancedMd);
-    $enhancedMd = preg_replace('/\n?```\s*$/m', '', $enhancedMd);
-    $enhancedMd = trim($enhancedMd);
-    // Strip man page header like "LS(1)  User Commands  LS(1)"
-    $enhancedMd = preg_replace('/^\[?[\w.-]+\]?\(\d+\w*\)\s+.*\s+\[?[\w.-]+\]?\(\d+\w*\)\s*\n/', '', $enhancedMd);
-
-    if ($enhancedMd === '') {
-        echo "  [fail] {$mode}/{$name}: empty LLM response\n";
-        return '';
-    }
-
-    // Cache the enhanced Markdown
-    $cache->set($mode, $name, '', 'emoji_md', $enhancedMd, 'found');
-
-    // Store engine info in meta
-    try {
-        $db = cacheDb();
-        $db->exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('llm_enhance_model', '" . LLM_MODEL . "')");
-    } catch (\Throwable $e) {}
-
-    echo "  [ok] {$mode}/{$name}: enhanced (" . number_format(strlen($enhancedMd)) . " chars)\n";
-    return $enhancedMd;
+    return $enhancedHtml ?? '';
 }
 
 /**
@@ -2898,6 +2925,14 @@ if ($format === "markdown") {
         }
         $content .= "\n\n<!-- profile:\n" . implode("\n", $lines) . "\n  total: {$total}ms\n-->\n";
     }
+    // v4.0: enhanced Markdown for /markdown format — prefer emoji_md cache
+    if ($parameter !== "" && isset($mode) && in_array($mode, ["man","perldoc","info","pydoc","ri"])) {
+        $mdcache = new PageCache();
+        $enhancedMd = $mdcache->get($mode, $parameter, '', 'emoji_md');
+        if ($enhancedMd !== null && $enhancedMd !== '###NOT_FOUND###') {
+            $content = $enhancedMd;
+        }
+    }
     echo "# " . $PHPMAN_TITLE . "\n\n" . $content;
     exit;
 }
@@ -3042,7 +3077,7 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	$hasEnhancedCache = false;
 	if (in_array($mode, ["man","perldoc","info","pydoc","ri"])) {
 	    $preCache = new PageCache();
-	    $preMd = $preCache->get($mode, $parameter, "", "emoji_md");
+	    $preMd = $preCache->get($mode, $parameter, "", "emoji_html");
 	    $hasEnhancedCache = ($preMd !== null && $preMd !== "###NOT_FOUND###");
 	}
 	if (!$hasEnhancedCache) {
@@ -3082,41 +3117,52 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	}
 
 
-	// v4.0: enhanced Markdown routing — default view uses LLM-enhanced MD if available
-	// v4.0: enhanced Markdown routing. Skip when format explicitly set.
+	// v4.0: enhanced HTML routing — default view uses LLM-enhanced MD if available
+	// v4.0: enhanced HTML routing. Skip when format explicitly set.
 	$formatExplicit = (requestValue($_GET, "format") !== "") || (serverValue("PATH_INFO") !== "" && preg_match("#/(html|markdown|json|mcp)$#", serverValue("PATH_INFO")));
 	$isEnhanced = false;
 	if (!$formatExplicit && $parameter !== "" && in_array($mode, ["man","perldoc","info","pydoc","ri"])) {
 	    $ecache = new PageCache();
-	    $enhancedMd = $ecache->get($mode, $parameter, '', 'emoji_md');
-	    if ($enhancedMd !== null && $enhancedMd !== '###NOT_FOUND###') {
-	        $content = formatMarkdownToHTML($enhancedMd);
+	    $enhancedHtml = $ecache->get($mode, $parameter, '', 'emoji_html');
+	    if ($enhancedHtml !== null && $enhancedHtml !== '###NOT_FOUND###') {
+	        $content = $enhancedHtml;
 	        $isEnhanced = true;
 	        $GLOBALS["phpman_enhanced"] = LLM_MODEL;
 	    }
 	}
 
 	// For man page content, add section anchors and floating TOC
-	if ($isEnhanced) {
-		    // Build TOC from enhanced Markdown: ## L1, ### L2 children
-		    $tocItems = [];
-		    $mdLines = explode("\n", $enhancedMd);
-		    $currentH2 = null;
-		    foreach ($mdLines as $mdLine) {
-		        if (preg_match('/^##\s+(.+)$/', $mdLine, $hm)) {
-		            $h = trim($hm[1]);
-		            $id = "section-" . count($tocItems);
-		            $content = str_replace('<h2>' . h($h) . '</h2>', '<h2 id="' . $id . '">' . h($h) . '</h2>', $content);
-		            $tocItems[] = ["id" => $id, "label" => $h, "children" => []];
-		            $currentH2 = count($tocItems) - 1;
-		        } elseif ($currentH2 !== null && preg_match('/^###\s+(.+)$/', $mdLine, $hm)) {
-		            $h = trim($hm[1]);
-		            $id = "section-" . $currentH2 . "-" . count($tocItems[$currentH2]["children"]);
-		            $content = str_replace('<h3>' . h($h) . '</h3>', '<h3 id="' . $id . '">' . h($h) . '</h3>', $content);
-		            $tocItems[$currentH2]["children"][] = ["id" => $id, "label" => $h];
-		        }
-		    }
-		    $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
+	if ($isEnhanced && $enhancedHtml !== null) {
+		    // Build TOC from enhanced HTML: <h2> L1, <h3> L2 children
+            $tocItems = [];
+            $currentH2 = null;
+            if (preg_match_all('#<(h2|h3)>(.+?)</\1>#i', $content, $hm, PREG_SET_ORDER)) {
+                foreach ($hm as $m) {
+                    $tag = strtolower($m[1]);
+                    $h = html_entity_decode(trim(strip_tags($m[2])), ENT_QUOTES, 'UTF-8');
+                    if ($tag === 'h2') {
+                        $id = "section-" . count($tocItems);
+                        $content = preg_replace(
+                            '#<h2>' . preg_quote($m[2], '#') . '</h2>#',
+                            '<h2 id="' . $id . '">' . $m[2] . '</h2>',
+                            $content,
+                            1
+                        );
+                        $tocItems[] = ["id" => $id, "label" => $h, "children" => []];
+                        $currentH2 = count($tocItems) - 1;
+                    } elseif ($tag === 'h3' && $currentH2 !== null) {
+                        $id = "section-" . $currentH2 . "-" . count($tocItems[$currentH2]["children"]);
+                        $content = preg_replace(
+                            '#<h3>' . preg_quote($m[2], '#') . '</h3>#',
+                            '<h3 id="' . $id . '">' . $m[2] . '</h3>',
+                            $content,
+                            1
+                        );
+                        $tocItems[$currentH2]["children"][] = ["id" => $id, "label" => $h];
+                    }
+                }
+            }
+            $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
 		    $tocSidebar = renderTocSidebar($tocItems, $pageLabel);
 	    echo $content . "\n</div>\n";
 	    echo $tocSidebar;
@@ -3141,7 +3187,7 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
     echo $tocSidebar;
     }
 
-showFooter($VALIDATOR, $showNav, $mode, $parameter);
+showFooter($VALIDATOR, $showNav, $mode, $parameter, $section);
 
 
 // +--------------------------------------------------------------------------------+
@@ -3363,7 +3409,7 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
 }
 
 //show footer
-function showFooter (string $validator = "", bool $showNav = false, string $mode = "", string $parameter = ""): void {
+function showFooter (string $validator = "", bool $showNav = false, string $mode = "", string $parameter = "", string $section = ""): void {
     $script_name = h(scriptName());
     $remote_addr = h(serverValue("REMOTE_ADDR", "unknown"));
     $user_agent = h(serverValue("HTTP_USER_AGENT", "unknown"));
@@ -3383,8 +3429,8 @@ function showFooter (string $validator = "", bool $showNav = false, string $mode
         date("Y-m-d H:i") . " @" . $remote_addr .
         "<br />CrawledBy " . $user_agent .
         "<br />" . $validator .
-        // Profiling data for debug mode
-        (!empty($GLOBALS["phpman_enhanced"]) ? "<br />Enhanced by LLM: " . h($GLOBALS["phpman_enhanced"]) . " / taotoken.net / " . h(serverValue("HTTP_HOST", "")) . " - <a href=\"" . h(scriptName()) . "/" . h($mode) . "/" . urlencode((string)$parameter) . "/html\">original format</a>" : "") .
+        // v4.0: show LLM enhancement credit when emoji cache is active
+        (!empty($GLOBALS["phpman_enhanced"]) ? "<br />Enhanced by LLM: " . h($GLOBALS["phpman_enhanced"]) . " / taotoken.net / " . h(serverValue("HTTP_HOST", "")) . " - <a href=\"" . h(scriptName()) . "/" . h($mode) . "/" . urlencode((string)$parameter) . ($section !== "" ? "/" . h($section) : "") . "/html\">original format</a>" : "") .
         (Profiler::getEnabled() ? profilerHtmlBlock() : "") .
         "</p>" .
         ($showNav ? '<div id="back-to-top"><a href="#top">^_back to top</a></div>' : "") .
