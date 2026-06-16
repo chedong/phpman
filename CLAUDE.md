@@ -15,6 +15,9 @@ make test                           # php -l phpMan.php
 # Unit + integration tests (no network, instant)
 php test/run_all.php
 
+# Structure regression test (no network, validates JSON fingerprints)
+php test/structure_regression.php
+
 # E2E tests (need network)
 php test/e2e/test_user_scenarios.php
 php test/e2e/test_agent_scenarios.php

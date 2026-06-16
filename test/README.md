@@ -16,6 +16,7 @@
 |-------|-----------|--------|----------|
 | **Unit** | `unit/` | Individual functions (pure logic, no I/O) | Every code change |
 | **Integration** | `integration/` | Format pipelines (input → output) | Formatter changes |
+| **Structure** | `structure_regression.php` | JSON section fingerprints across man/perldoc/pydoc | Before v4.0 refactors |
 | **E2E** | `e2e/` | Full request flows against production | Every deploy |
 | **Regression** | `phpman-regression.sh` | External validators (W3C, UTF-8, etc.) | Every deploy |
 
@@ -50,6 +51,7 @@
 | SEO/robots/spider | `showHeader()` meta + canonical + schema | `e2e/test_spider_scenarios.php` |
 | Validation | W3C XHTML + CSS validators | `test/phpman-regression.sh` |
 | XHTML compliance | XHTML 1.0 Transitional markup | `test/phpman-regression.sh` #1 |
+| Structure regression | `formatToJSON()` output invariants | `test/structure_regression.php` |
 
 ## Running Tests
 
@@ -57,6 +59,9 @@
 # Unit + Integration (no network, instant)
 # 133 tests
 php test/run_all.php
+
+# Structure regression (no network, validates JSON fingerprints)
+php test/structure_regression.php
 
 # E2E tests (requires network)
 # ~72 tests across 4 files
