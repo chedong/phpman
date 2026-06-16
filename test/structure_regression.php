@@ -8,7 +8,7 @@ declare(strict_types=1);
  */
 define('PHPMAN_TEST_MODE', true);
 require_once __DIR__ . '/test_helper.php';
-require_once __DIR__ . '/../../phpMan.php';
+require_once __DIR__ . '/../phpMan.php';
 
 /**
  * Extract section structure fingerprint from JSON data.
@@ -41,32 +41,6 @@ function jsonStructureFingerprint(array $jsonData): string {
 }
 
 /**
- * Build JSON for a given mode/command/section.
- */
-function fetchJson(string $mode, string $parameter, string $section = ''): array {
-    $format = 'html'; // getPage functions return HTML internally; we call formatToJSON directly
-    $lines = [];
-
-    switch ($mode) {
-        case 'man':
-            $raw = getManPage($parameter, $section, 'html');
-            break;
-        case 'perldoc':
-            $raw = getPerldocPage($parameter, 'html');
-            break;
-        case 'pydoc':
-            $raw = getPydocPage($parameter, 'html');
-            break;
-        default:
-            return ['sections' => [], 'error' => "unknown mode: $mode"];
-    }
-
-    // Re-parse: call formatToJSON with the raw command output
-    $json = formatToJSONFromRaw($mode, $parameter, $section);
-    return json_decode($json, true) ?? ['sections' => [], 'error' => 'json decode failed'];
-}
-
-/**
  * Get JSON directly by running the command and calling formatToJSON.
  */
 function formatToJSONFromRaw(string $mode, string $parameter, string $section = ''): string {
@@ -92,19 +66,30 @@ function execAndGetLines(string $mode, string $parameter, string $section = ''):
     $cmd = '';
     switch ($mode) {
         case 'man':
-            $old = getenv('MANROFFOPT');
+            $oldManroffopt = getenv('MANROFFOPT');
+            $oldManwidth = getenv('MANWIDTH');
             putenv("MANROFFOPT=-rLL=100n");
-            $cmd = "man -Tutf8 " . escapeshellarg($section) . " " . escapeshellarg($parameter) . " 2>/dev/null";
-            // BSD fallback
+            $cmd = "man -Tutf8 ";
+            if ($section !== "") {
+                $cmd .= escapeshellarg($section) . " ";
+            }
+            $cmd .= escapeshellarg($parameter) . " 2>/dev/null";
             $out = [];
             exec($cmd, $out, $code);
-            if ($code !== 0 || empty($out)) {
+            $firstLine = count($out) > 0 ? trim($out[0]) : "";
+            if ($code !== 0 || empty($out) ||
+                preg_match('/\b(illegal|unknown|invalid)\s+option\b/i', $firstLine)) {
                 putenv("MANWIDTH=100");
-                $cmd = "man " . escapeshellarg($section) . " " . escapeshellarg($parameter) . " 2>/dev/null";
+                $cmd = "man ";
+                if ($section !== "") {
+                    $cmd .= escapeshellarg($section) . " ";
+                }
+                $cmd .= escapeshellarg($parameter) . " 2>/dev/null";
                 $out = [];
                 exec($cmd, $out, $code);
             }
-            putenv("MANROFFOPT=" . ($old ?: ''));
+            putenv("MANROFFOPT" . ($oldManroffopt !== false ? "=" . $oldManroffopt : ""));
+            putenv("MANWIDTH" . ($oldManwidth !== false ? "=" . $oldManwidth : ""));
             return $out;
         case 'perldoc':
             $cmd = "perldoc " . escapeshellarg($parameter) . " 2>/dev/null";
@@ -113,13 +98,16 @@ function execAndGetLines(string $mode, string $parameter, string $section = ''):
                 $cmd = "perldoc -f " . escapeshellarg($parameter) . " 2>/dev/null";
                 $out = []; exec($cmd, $out);
             }
-            // Use pod2text pipeline for width control
+            // Use pod2text pipeline for width control when available
             if (!empty($out)) {
                 $locCmd = "perldoc -l " . escapeshellarg($parameter) . " 2>/dev/null | head -1";
                 $loc = trim(shell_exec($locCmd) ?? '');
                 if ($loc !== '') {
                     $podCmd = "pod2text -w 100 " . escapeshellarg($loc) . " 2>/dev/null";
-                    $out = []; exec($podCmd, $out);
+                    $podOut = []; exec($podCmd, $podOut);
+                    if (!empty($podOut)) {
+                        $out = $podOut;
+                    }
                 }
             }
             return $out;
@@ -198,7 +186,11 @@ foreach ($testCases as $i => $tc) {
         $errors = [];
 
         // 1. Must have NAME section
-        if (!hasSection($data, 'NAME')) {
+        $hasName = false;
+        foreach ($data['sections'] as $sec) {
+            if (($sec['name'] ?? '') === 'NAME') { $hasName = true; break; }
+        }
+        if (!$hasName) {
             $errors[] = 'missing NAME section';
         }
 
