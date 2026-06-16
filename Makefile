@@ -68,11 +68,18 @@ test:
 _deploy-code:
 	@echo "=== Preparing staging server ==="
 	@echo "--- Configuring staging home: ~/.phpman_test (debug ON) ---"
-	sed -e "s|// define('PHPMAN_HOME'.*\.phpman_test.*|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|" \
-	    -e "s|// define('PHPMAN_DEBUG'.*|define('PHPMAN_DEBUG', true);|" \
-		phpman.config.php.example | \
-	ssh -p $(TEST_PORT) $(TEST_HOST) \
-		"cat > $(TEST_PATH)/phpman.config.php && chmod 644 $(TEST_PATH)/phpman.config.php && echo 'Updated phpman.config.php'"
+	@ssh -p $(TEST_PORT) $(TEST_HOST) " \
+		if [ -f $(TEST_PATH)/phpman.config.php ]; then \
+			sed -i \"s|define('PHPMAN_HOME',.*|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|\" $(TEST_PATH)/phpman.config.php; \
+			sed -i \"s|// define('PHPMAN_DEBUG'.*|define('PHPMAN_DEBUG', true);|\" $(TEST_PATH)/phpman.config.php; \
+			sed -i \"s|define('PHPMAN_DEBUG',[[:space:]]*false.*|define('PHPMAN_DEBUG', true);|\" $(TEST_PATH)/phpman.config.php; \
+			echo 'Updated phpman.config.php (preserved existing)'; \
+		else \
+			sed -e \"s|// define('PHPMAN_HOME'.*\\.phpman_test.*|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|\" \
+			    -e \"s|// define('PHPMAN_DEBUG'.*|define('PHPMAN_DEBUG', true);|\" \
+				phpman.config.php.example | \
+			cat > $(TEST_PATH)/phpman.config.php && chmod 644 $(TEST_PATH)/phpman.config.php && echo 'Created phpman.config.php'; \
+		fi"
 	sed "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" $(FILE) | \
 		ssh -p $(TEST_PORT) $(TEST_HOST) "cat > $(TEST_PATH)/$(FILE)"; \
 	scp -P $(TEST_PORT) $(CSS_FILE) $(TEST_HOST):$(TEST_PATH)/$(CSS_FILE); \

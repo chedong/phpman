@@ -603,7 +603,7 @@ function getSafeHost (): string {
  */
 function baseUrl(): string {
     $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "http";
-    $script_path = isset($_SERVER['SCRIPT_NAME']) ? $_SERVER['SCRIPT_NAME'] : "phpMan.php";
+    $script_path = isset($_SERVER['SCRIPT_NAME']) ? $_SERVER['SCRIPT_NAME'] : "/phpMan.php";
     return $proto . "://" . getSafeHost() . $script_path;
 }
 
@@ -2092,7 +2092,7 @@ function callLLM(string $systemPrompt, string $userMessage): string {
             'User-Agent: phpMan/' . GIT_DESCRIBE,
         ],
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 60,
+        CURLOPT_TIMEOUT => 300,
     ]);
     $response = curl_exec($ch);
     $error = curl_error($ch);
@@ -2176,13 +2176,14 @@ function enhanceManPage(string $mode, string $name): string {
         "1. Output ONLY valid Markdown — no HTML tags, no code fences, no JSON wrapper, no preamble\n" .
         "2. Preserve ALL original technical information (options, flags, syntax, descriptions)\n" .
         "3. Do NOT invent new content — only reorganize and decorate existing content\n" .
-        "4. Use ONLY Markdown formatting: `backticks` for code, **double stars** for bold, [text](url) for links. NEVER use <code>, <b>, <i>, <a> or any HTML tags.\n\n" .
+        "4. Use ONLY Markdown formatting: `backticks` for code, **double stars** for bold, [text](url) for links. NEVER use <code>, <b>, <i>, <a> or any HTML tags.\n" .
+        "5. Options and examples MUST use standard Markdown list syntax: start each item with \"- \" (dash+space) followed by content. NEVER use emoji as list markers.\n\n" .
         "Style rules:\n" .
         "- Every ## section heading gets ONE relevant emoji prefix\n" .
         "- ## NAME section: add emoji tagline below heading\n" .
         "- Add a Quick Reference table after SYNOPSIS with common use cases\n" .
         "- Group related options into ### subsections with emoji titles\n" .
-        "- Each option row gets a leading emoji\n" .
+        "- Each option row: \"- 📁 `-f`, `--flag`\" — dash+space then descriptive emoji matching the option's purpose. Do NOT use bullet-like emoji (🔹🔸▪️▫️➡️). Use meaningful ones: 📁 for files, 📋 for format, ⏱️ for time/sort, 🎨 for color, 🔗 for links, 🛡️ for security, etc.\n" .
         "- Usage examples: each line annotated with emoji comments after #\n" .
         "- Exit codes section: emoji table\n" .
         "- SEE ALSO section: each reference gets relevant emoji\n" .
@@ -2258,7 +2259,7 @@ function formatMarkdownToHTML(string $md): string {
         // Table row
         if (preg_match('/^\|.+\|$/', $trimmed)) {
             if (!$inTable) { $out .= "<table>\n"; $inTable = true; }
-            if (preg_match('/^\|[\s\-:]+\|$/', $trimmed)) continue; // separator row
+            if (preg_match('/^\|[\s\-:|]+\|$/', $trimmed)) continue; // separator row
             // Handle escaped pipes \| in table cells
             $rowContent = trim($trimmed, '|');
             $rowContent = str_replace('\|', chr(1), $rowContent);
@@ -2267,7 +2268,7 @@ function formatMarkdownToHTML(string $md): string {
             foreach ($cells as $cell) {
                 $cell = str_replace(chr(1), '|', $cell);
                 $tag = $prevBlank ? 'th' : 'td';
-                $out .= "<{$tag}>" . h($cell) . "</{$tag}>";
+                $out .= "<{$tag}>" . formatInlineMarkdown($cell) . "</{$tag}>";
             }
             $out .= "</tr>\n";
             $prevBlank = false;
@@ -2330,7 +2331,13 @@ function formatInlineMarkdown(string $text): string {
     // Instead: convert links, then code, then bold/italic, then escape rest.
     $text = preg_replace_callback(
         '/\[([^\]]+)\]\(([^)]+)\)/',
-        function ($m) { return '<a href="' . h($m[2]) . '">' . h($m[1]) . '</a>'; },
+        function ($m) {
+            $href = $m[2];
+            // Strip format suffixes in HTML context — /markdown links in markdown
+            // are correct for md/json views; in HTML view we want clean URLs.
+            $href = preg_replace('#/(markdown|json|mcp)$#', '', $href);
+            return '<a href="' . h($href) . '">' . h($m[1]) . '</a>';
+        },
         $text
     );
     // Inline code: `text`
@@ -2342,13 +2349,13 @@ function formatInlineMarkdown(string $text): string {
     // Bold: **text**
     $text = preg_replace_callback(
         '/\*\*(.+?)\*\*/',
-        function ($m) { return '<b>' . h($m[1]) . '</b>'; },
+        function ($m) { return '<b>' . formatInlineMarkdown($m[1]) . '</b>'; },
         $text
     );
     // Italic: *text* (but not inside already-escaped HTML)
     $text = preg_replace_callback(
         '/\*(.+?)\*/',
-        function ($m) { return '<i>' . h($m[1]) . '</i>'; },
+        function ($m) { return '<i>' . formatInlineMarkdown($m[1]) . '</i>'; },
         $text
     );
     // Escape remaining plain text between HTML tags
@@ -3134,7 +3141,7 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
     echo $tocSidebar;
     }
 
-showFooter($VALIDATOR, $showNav);
+showFooter($VALIDATOR, $showNav, $mode, $parameter);
 
 
 // +--------------------------------------------------------------------------------+
@@ -3356,7 +3363,7 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
 }
 
 //show footer
-function showFooter (string $validator = "", bool $showNav = false): void {
+function showFooter (string $validator = "", bool $showNav = false, string $mode = "", string $parameter = ""): void {
     $script_name = h(scriptName());
     $remote_addr = h(serverValue("REMOTE_ADDR", "unknown"));
     $user_agent = h(serverValue("HTTP_USER_AGENT", "unknown"));
@@ -3377,7 +3384,7 @@ function showFooter (string $validator = "", bool $showNav = false): void {
         "<br />CrawledBy " . $user_agent .
         "<br />" . $validator .
         // Profiling data for debug mode
-        (!empty($GLOBALS["phpman_enhanced"]) ? "<br />Enhanced by LLM: " . h($GLOBALS["phpman_enhanced"]) . " / taotoken.net / " . h(serverValue("HTTP_HOST", "")) . " - <a href=\"" . h(scriptName()) . "/" . h($mode) . "/" . urlencode($parameter) . "/html\">original format</a>" : "") .
+        (!empty($GLOBALS["phpman_enhanced"]) ? "<br />Enhanced by LLM: " . h($GLOBALS["phpman_enhanced"]) . " / taotoken.net / " . h(serverValue("HTTP_HOST", "")) . " - <a href=\"" . h(scriptName()) . "/" . h($mode) . "/" . urlencode((string)$parameter) . "/html\">original format</a>" : "") .
         (Profiler::getEnabled() ? profilerHtmlBlock() : "") .
         "</p>" .
         ($showNav ? '<div id="back-to-top"><a href="#top">^_back to top</a></div>' : "") .
