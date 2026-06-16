@@ -20,7 +20,7 @@ git push origin v3.6.3
 ```
 v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 (in progress)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-man/perldoc/info   pydoc3/ri        Config overridables   JSON canonical cache
+man/perldoc/info   pydoc3/ri        Config overridables   LLM emoji enhancement
 MCP Server         structured out   Underscore link fix   LLM emoji enhancement
 JSON API           Search cascade   man7.org fallback     Code split
 TLDR endpoint      FTS5 3-source    Docs restructured     i18n
@@ -87,12 +87,7 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n
 - Bug fixes (2026-06-16): require path, BSD man detection, MANWIDTH save/restore, perldoc pod2text fallback (#130 #131 #132)
 - Outputs structure fingerprints for regression baselines
 
-**Phase 2: JSON canonical cache** (⏸️ code defined, not wired)
-- `cacheJsonCanonical()`, `formatJSONToHTML()`, `formatJSONToMarkdown()` are defined
-- Dispatch switch still uses per-format `cacheOrExecute()` — Phase 2 not activated
-- Current strategy: per-format caching (html/json/markdown/mcp) + LLM emoji_md overlay
-
-**Phase 3: LLM emoji enhancement** (✅)
+**Phase 2: LLM emoji enhancement** (✅)
 - Full-page Markdown → LLM → emoji-enhanced Markdown (`emoji_md` cache format)
 - `enhanceManPage()`: CLI batch mode `php phpMan.php --enhance=man:ls,tar,grep`
 - `callLLM()`: OpenAI-compatible chat completions API (deepseek-v4-pro via taotoken.net)
@@ -103,6 +98,6 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n
 - `tools/enhance_page.php`: single-page CLI tool for shared hosts where man(1) can't fork
 - See `docs/01-PRODUCT.md` §2.11 for full design rationale
 
-**Phase 4: Code split** (planned)
+**Phase 3: Code split** (planned)
 - `src/Source/` + `src/Formatter/` + `src/Cache/` + `src/Config/`
 - Single-file entry point preserved

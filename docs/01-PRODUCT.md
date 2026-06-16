@@ -139,20 +139,20 @@ RENDERING (line 3037+):
   content = cacheOrExecute result (traditional per-format view)
 
   if emoji_md cache exists && !format_explicit:
-    content = formatMarkdownToHTML(emoji_md)  ← enhanced overlay
+    content = formatMarkdownToHTML(emoji_md)  ← enhanced overlay, real-time render
 
 OFFLINE ENHANCEMENT (separate path, not request-time):
   getManPage(..., 'markdown') → plain MD
                                       ↓
-                        callLLM() → emoji-enhanced MD (emoji_md cache)
+                        callLLM() → emoji-enhanced MD → emoji_md cache (only cache format)
                                       ↓
-                        formatMarkdownToHTML() → enhanced HTML (request-time)
+           [request-time]: formatMarkdownToHTML(emoji_md) → enhanced HTML (NOT cached)
 ```
 
 - **Base cache**: Per-format via `cacheOrExecute()` — html/json/markdown/mcp each cached independently
-- **LLM cache**: `emoji_md` format, separate from base cache, written offline via `--enhance` CLI or `tools/enhance_page.php`
-- **Request-time**: Base cache hit → check emoji_md → if exists, render enhanced HTML; else show traditional `<pre>` view
-- **Renderer**: `formatMarkdownToHTML()` + `formatInlineMarkdown()` converts enhanced MD to HTML
+- **LLM cache**: Only `emoji_md` format. Enhanced HTML is NOT cached — it's rendered live from `emoji_md` on every request via `formatMarkdownToHTML()`
+- **Request-time**: Base cache hit → check emoji_md → if exists, render enhanced HTML on-the-fly; else show traditional `<pre>` view
+- **Renderer**: `formatMarkdownToHTML()` + `formatInlineMarkdown()` converts enhanced MD to HTML at request time
 - **TOC**: `renderTocSidebar()` builds floating sidebar from `##`/`###` headings in enhanced Markdown
 - **Default view**: When `emoji_md` cache exists, enhanced HTML is default; `?format=html` or PATH_INFO `/html` bypasses
 
@@ -394,6 +394,7 @@ When reviewing code, follow this order:
 | Date | Changes |
 |------|----------|
 | 2026-06-16 | v4.0: LLM emoji enhancement engine — `callLLM()`, `enhanceManPage()`, `formatMarkdownToHTML()`, `formatInlineMarkdown()`, `renderTocSidebar()`; `tools/enhance_page.php` for shared hosting; `--enhance` CLI; cache TOC dedup |
+| 2026-06-16 | cleanup: removed dead `cacheJsonCanonical()`, `formatJSONToHTML()`, `formatJSONToMarkdown()` — per-format `cacheOrExecute()` is the sole cache strategy; clarified LLM enhancement caches only `emoji_md`, enhanced HTML is real-time rendered |
 | 2026-06-16 | fix: structure_regression.php fatal bugs — require path, hasSection() undefined, BSD man detection, MANWIDTH leak, perldoc fallback (#130 #131 #132); Makefile config deploy fix (empty phpman.config.php on first deploy) |
 | 2026-06-09 | v3.7.1: Fix #96 XSS (sources array h), #107 undefined $expanded, #108 SQL prepared stmt, #109 tldr_cache TTL index, #110 INSERT OR REPLACE comments, #111 ticket status table, #112 CLI CACHE_DB constant; add Ticket Status Summary table |
 | 2026-06-08 | v3.7: Security hardening — #95 SQL parameterize, #98 catch block logging, #100 CACHE_DIR validation, #102 perldoc $width escape, #104 FTS5 sanitize, #105 ETag invalidation, #103 rebuildSearchIndex logging | TLDR cache strategy: SQLite `tldr_cache` with 7-day TTL, negative caching; old file-based `tldr_cache/` deprecated |
