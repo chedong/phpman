@@ -130,18 +130,31 @@ phpMan v4.0 introduces an optional LLM-powered enhancement layer that transforms
 #### 2.11.1 Architecture
 
 ```
-man page → formatManPerlDocToMarkdown() → plain MD
-                                              ↓
-                              callLLM() → emoji-enhanced MD (emoji_md cache)
-                                              ↓
-                              formatMarkdownToHTML() → enhanced HTML
+REQUEST FLOW (per-format caching + LLM overlay):
+  cacheOrExecute(mode, name, section, FORMAT, generator)
+    → generator() → shell out (man/perldoc/pydoc/ri)
+    → cached per-format: html | markdown | json | mcp (separate rows)
+
+RENDERING (line 3037+):
+  content = cacheOrExecute result (traditional per-format view)
+
+  if emoji_md cache exists && !format_explicit:
+    content = formatMarkdownToHTML(emoji_md)  ← enhanced overlay
+
+OFFLINE ENHANCEMENT (separate path, not request-time):
+  getManPage(..., 'markdown') → plain MD
+                                      ↓
+                        callLLM() → emoji-enhanced MD (emoji_md cache)
+                                      ↓
+                        formatMarkdownToHTML() → enhanced HTML (request-time)
 ```
 
-- **Input**: Full man page Markdown (truncated to 16,000 chars for LLM context)
-- **Output**: Emoji-enhanced Markdown cached as `emoji_md` format in SQLite
+- **Base cache**: Per-format via `cacheOrExecute()` — html/json/markdown/mcp each cached independently
+- **LLM cache**: `emoji_md` format, separate from base cache, written offline via `--enhance` CLI or `tools/enhance_page.php`
+- **Request-time**: Base cache hit → check emoji_md → if exists, render enhanced HTML; else show traditional `<pre>` view
 - **Renderer**: `formatMarkdownToHTML()` + `formatInlineMarkdown()` converts enhanced MD to HTML
-- **TOC**: `renderTocSidebar()` builds floating sidebar from `##`/`###` headings in the enhanced Markdown
-- **Default view**: When `emoji_md` cache exists, enhanced HTML is the default; `?format=html` bypasses to original
+- **TOC**: `renderTocSidebar()` builds floating sidebar from `##`/`###` headings in enhanced Markdown
+- **Default view**: When `emoji_md` cache exists, enhanced HTML is default; `?format=html` or PATH_INFO `/html` bypasses
 
 #### 2.11.2 LLM Integration
 

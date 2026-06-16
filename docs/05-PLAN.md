@@ -87,12 +87,10 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n
 - Bug fixes (2026-06-16): require path, BSD man detection, MANWIDTH save/restore, perldoc pod2text fallback (#130 #131 #132)
 - Outputs structure fingerprints for regression baselines
 
-**Phase 2: JSON canonical cache** (✅)
-- Refactor cache to store only JSON format
-- Derive HTML/Markdown/MCP from JSON (forward generation, no reverse parsing)
-- New functions: `formatJSONToHTML()`, `formatJSONToMarkdown()`
-- Cache key: `mode/command/section` → single JSON entry
-- `formatForOutput()` already does JSON→MCP (reuse)
+**Phase 2: JSON canonical cache** (⏸️ code defined, not wired)
+- `cacheJsonCanonical()`, `formatJSONToHTML()`, `formatJSONToMarkdown()` are defined
+- Dispatch switch still uses per-format `cacheOrExecute()` — Phase 2 not activated
+- Current strategy: per-format caching (html/json/markdown/mcp) + LLM emoji_md overlay
 
 **Phase 3: LLM emoji enhancement** (✅)
 - Full-page Markdown → LLM → emoji-enhanced Markdown (`emoji_md` cache format)

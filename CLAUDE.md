@@ -48,7 +48,9 @@ The test framework is minimal (no PHPUnit): `assert_equals`, `assert_contains`, 
 
 **Format negotiation** (4-tier priority): GET param → PATH_INFO segment → Accept header → default HTML. Supported: `html`, `markdown`, `json`, `mcp`. The `formatForOutput()` function converts the JSON intermediate representation to the requested format.
 
-**Content pipeline** — Each get*Page function shells out to the system command, captures raw lines, and passes them through `formatManPerlDoc()` which converts overstrike sequences (man) and ANSI escapes (perldoc) to HTML. For JSON/Markdown/MCP output, the HTML result is parsed again through `formatToJSON()` or `formatManPerlDocToMarkdown()`.
+**Content pipeline** — Each get*Page function shells out to the system command, captures raw lines, and passes them through `formatManPerlDoc()` which converts overstrike sequences (man) and ANSI escapes (perldoc) to HTML. For JSON output, raw lines go through `formatToJSON()`. For Markdown, `formatManPerlDocToMarkdown()`. Results are cached per-format via `cacheOrExecute()` (html/json/markdown/mcp = 4 separate cache rows per page).
+
+**Cache strategy** — Per-format caching via `cacheOrExecute()`: each (mode, name, section, format) is a separate SQLite cache row. `PageCache` class handles get/set with transparent gzip compression. Cache TTL cleanup runs on 1% of cache misses. The Phase 2 `cacheJsonCanonical()` function (JSON-first with derived formats) is defined but not yet wired into the dispatch switch — currently dead code.
 
 **Heading detection** — `detectHeadingType()` handles 4 patterns: ALL_CAPS L1, indented title-case L2, bold option flags L2, and `=head2`-style L2. Order matters: L2 patterns must be checked before L1 to avoid misclassifying subheadings.
 
