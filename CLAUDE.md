@@ -53,6 +53,8 @@ The test framework is minimal (no PHPUnit): `assert_equals`, `assert_contains`, 
 
 **TLDR** — TLDR cheatsheets are embedded inline in man page detail pages. `fetchOfficialTldr()` fetches from tldr-pages GitHub raw (primary) or cheat.sh (fallback), caches in SQLite `tldr_cache` table with 7-day TTL. No LLM/API key needed. The old `/tldr` route is removed.
 
+**LLM Enhancement (v4.0)** — Optional LLM-powered emoji enhancement layer. `enhanceManPage()` sends full man page Markdown to an OpenAI-compatible API, caches enhanced Markdown as `emoji_md` format. `callLLM()` handles the API call with 300s timeout and error logging. `formatMarkdownToHTML()` / `formatInlineMarkdown()` render enhanced Markdown to HTML. `renderTocSidebar()` builds floating TOC from enhanced headings. Enhanced HTML is the default view when cache exists; `?format=html` bypasses. On shared hosts where `man` can't fork under load, use `tools/enhance_page.php` to fetch Markdown via HTTP and write cache directly. See `docs/01-PRODUCT.md` §2.11 for full design.
+
 ## Key design rules
 
 - **Single-file deployment by design** — no Composer, no autoload. Code splits (v3.0 roadmap) must preserve a single-file entry point.

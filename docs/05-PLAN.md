@@ -79,9 +79,9 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n
 
 ## Planned
 
-### v4.0 — Architecture Upgrade (in progress)
+### v4.0 — Architecture Upgrade (✅ released 2026-06-15)
 
-**Phase 1: Structure regression test** (✅ 2026-06-15)
+**Phase 1: Structure regression test** (✅)
 - `test/structure_regression.php`: validates JSON section structure fingerprints
 - Tests 5 man + 5 perldoc + 5 pydoc pages for structural invariants:
   - NAME section must exist
@@ -91,19 +91,23 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n
   - Mode matches expected
 - Outputs structure fingerprints for regression baselines
 
-**Phase 2: JSON canonical cache** (planned)
+**Phase 2: JSON canonical cache** (✅)
 - Refactor cache to store only JSON format
 - Derive HTML/Markdown/MCP from JSON (forward generation, no reverse parsing)
 - New functions: `formatJSONToHTML()`, `formatJSONToMarkdown()`
 - Cache key: `mode/command/section` → single JSON entry
 - `formatForOutput()` already does JSON→MCP (reuse)
 
-**Phase 3: LLM enhancement** (planned)
-- Emoji-enriched section headings via Claude API
-- Chinese summaries for man page descriptions
-- `LLM_API_KEY` / `LLM_API_URL` / `LLM_MODEL` config via `phpman.config.php`
-- Offline mode: LLM disabled when API key is empty
-- Enhancement is additive (base JSON still works without LLM)
+**Phase 3: LLM emoji enhancement** (✅)
+- Full-page Markdown → LLM → emoji-enhanced Markdown (`emoji_md` cache format)
+- `enhanceManPage()`: CLI batch mode `php phpMan.php --enhance=man:ls,tar,grep`
+- `callLLM()`: OpenAI-compatible chat completions API (deepseek-v4-pro via taotoken.net)
+- `formatMarkdownToHTML()` / `formatInlineMarkdown()`: Markdown→HTML for enhanced content
+- `renderTocSidebar()`: floating TOC built from enhanced `##`/`###` headings
+- Enhanced HTML is the default view when `emoji_md` cache exists; `?format=html` bypasses
+- Config: `LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`, `LLM_MAX_TOKENS` via `phpman.config.php`
+- `tools/enhance_page.php`: single-page CLI tool for shared hosts where man(1) can't fork
+- See `docs/01-PRODUCT.md` §2.11 for full design rationale
 
 **Phase 4: Code split** (planned)
 - `src/Source/` + `src/Formatter/` + `src/Cache/` + `src/Config/`

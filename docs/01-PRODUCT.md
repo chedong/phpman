@@ -123,7 +123,102 @@ ri index (`/ri`) is also changed to `<ul>` list. Search/fallback pages use `<div
 
 `make deploy`/`make release` injects `git describe --tags --always --dirty` into the `GIT_DESCRIBE` constant via `sed` + ssh pipe. Footer displays `phpMan v2.3-5-g1cea00a`. Local dev defaults to `local`.
 
-### 2.11 Command Name Case & Platform Differences (Linux vs BSD)
+### 2.11 LLM Emoji Enhancement (v4.0)
+
+phpMan v4.0 introduces an optional LLM-powered enhancement layer that transforms raw man page Markdown into emoji-rich, visually scannable documentation. The enhancement is **additive** — base HTML/JSON/Markdown/MCP output is unaffected and remains the fallback.
+
+#### 2.11.1 Architecture
+
+```
+man page → formatManPerlDocToMarkdown() → plain MD
+                                              ↓
+                              callLLM() → emoji-enhanced MD (emoji_md cache)
+                                              ↓
+                              formatMarkdownToHTML() → enhanced HTML
+```
+
+- **Input**: Full man page Markdown (truncated to 16,000 chars for LLM context)
+- **Output**: Emoji-enhanced Markdown cached as `emoji_md` format in SQLite
+- **Renderer**: `formatMarkdownToHTML()` + `formatInlineMarkdown()` converts enhanced MD to HTML
+- **TOC**: `renderTocSidebar()` builds floating sidebar from `##`/`###` headings in the enhanced Markdown
+- **Default view**: When `emoji_md` cache exists, enhanced HTML is the default; `?format=html` bypasses to original
+
+#### 2.11.2 LLM Integration
+
+Uses OpenAI-compatible chat completions API:
+
+| Config | Purpose |
+|--------|---------|
+| `LLM_API_URL` | API endpoint (default: `https://taotoken.net/api/v1/chat/completions`) |
+| `LLM_API_KEY` | Bearer token |
+| `LLM_MODEL` | Model name (e.g. `deepseek-v4-pro`) |
+| `LLM_MAX_TOKENS` | Max completion tokens (capped at 16,384) |
+
+- `callLLM()`: cURL with 300s timeout, JSON error logging to `phpman_error.log`
+- System prompt enforces: standard Markdown list syntax (`- ` prefix), descriptive emoji (no bullet-like `🔹`), no HTML tags
+- Empty API key = enhancement disabled (offline-safe)
+
+#### 2.11.3 Markdown→HTML Rendering Pipeline
+
+`formatMarkdownToHTML()` is a lightweight custom parser handling:
+- `#`–`####` headings → `<h2>`–`<h5>`
+- `- ` / `* ` unordered lists → `<ul><li>`
+- `|...|` tables → `<table>` (multi-column separator rows supported)
+- ` ``` ` code blocks → `<pre><code>`
+- `>` blockquotes → `<blockquote>`
+
+`formatInlineMarkdown()` handles inline formatting:
+- `**bold**` → `<b>`, `*italic*` → `<i>`
+- `` `code` `` → `<code>`
+- `[text](url)` → `<a>` (with `/markdown|json|mcp` suffix stripped for HTML view)
+
+Table cells and bold/italic content use recursive `formatInlineMarkdown()` to support nested formatting (`**`-a`**` → `<b><code>-a</code></b>`).
+
+#### 2.11.4 CLI Enhancement: `--enhance`
+
+```bash
+# Batch mode (runs man command locally)
+php phpMan.php --enhance=man:ls,tar,grep
+php phpMan.php --enhance=perldoc:File::Basename,Getopt::Long
+php phpMan.php --enhance=info:coreutils,bash,make
+php phpMan.php --enhance=pydoc:os,json,re
+php phpMan.php --enhance=ri:Array,String,File
+```
+
+`enhanceManPage()` calls `getManPage(..., 'markdown')` internally, runs `callLLM()`, and caches the result.
+
+#### 2.11.5 Shared Hosting Workaround: `tools/enhance_page.php`
+
+**Problem**: On shared hosting (e.g., DreamHost), the `man` command spawns 5+ subprocesses (zsoelim → manconv → preconv → tbl → groff). Under high system load (load average 25+), `fork()` fails with `Resource temporarily unavailable`. Direct `man ls` works, but PHP's `shell_exec("man ls")` fails because the PHP process already consumes memory, leaving insufficient resources for the man pipeline fork chain.
+
+The web server (Apache/mod_fcgid) can still serve man pages because its worker processes have different resource limits and the pages are cached after first request.
+
+**Solution**: `tools/enhance_page.php` fetches the Markdown from the running phpMan web instance via HTTP, sends it to the LLM, and writes the enhanced result directly into the SQLite cache — bypassing the `man` fork entirely.
+
+```bash
+# Requires PHPMAN_BASE_URL env var or defaults to http://localhost:8080/phpMan.php
+PHPMAN_BASE_URL=https://test.chedong.com/phpMan.php php tools/enhance_page.php man ls
+
+# Batch enhance via shell loop
+for cmd in ls tar grep; do
+  php tools/enhance_page.php man $cmd
+done
+```
+
+**Key differences from `--enhance`**:
+| Aspect | `--enhance` (CLI) | `tools/enhance_page.php` |
+|--------|-------------------|--------------------------|
+| Markdown source | `shell_exec("man ...")` | HTTP fetch from phpMan web |
+| Works under load | ❌ fork fails | ✅ web server handles man |
+| Cache lifecycle | TTL=604800 (7 days) | TTL=0 (permanent) |
+| Max markdown length | 16,000 chars | 12,000 chars |
+| Section handling | Auto-detected | Hardcoded `/1/` (man section 1 only) |
+
+#### 2.11.6 Format Negotiation
+
+Enhanced pages respect the same 4-tier format priority as regular pages (GET param → PATH_INFO → Accept header → default HTML). Explicit `?format=html` or PATH_INFO `/html` bypasses enhancement to show the original `<pre>` rendering.
+
+### 2.12 Command Name Case & Platform Differences (Linux vs BSD)
 
 phpMan's `normalizeParameter()` routing preserves original case in command names (no `strtolower`), relying on downstream systems to handle it.
 
@@ -647,4 +742,10 @@ pydoc output has no overstrike/ANSI; `cleanTerminalOutput` is a pass-through. Bu
 | `detectHeadingType()` | phpMan.php | 429–461 |
 | `formatManPerlDoc()` | phpMan.php | 2285–2393 |
 | `formatToJSON` | phpMan.php | 3100–3338 |
-| `formatForOutput` | phpMan.php | 2398–2415 |
+| `enhanceManPage()` | phpMan.php | 2133 |
+| `callLLM()` | phpMan.php | 2072 |
+| `formatMarkdownToHTML()` | phpMan.php | 2229 |
+| `formatInlineMarkdown()` | phpMan.php | 2328 |
+| `renderTocSidebar()` | phpMan.php | 2363 |
+| `showFooter()` enhanced link | phpMan.php | 3387 |
+| `tools/enhance_page.php` | tools/enhance_page.php | — |
