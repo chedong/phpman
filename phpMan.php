@@ -3069,7 +3069,7 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	    $ecache = new PageCache();
 	    $enhancedHtml = $ecache->get($mode, $parameter, '', 'emoji_html');
 	    if ($enhancedHtml !== null && $enhancedHtml !== '###NOT_FOUND###') {
-	        $content = $enhancedHtml;
+	        $content = cleanEmojiHtml($enhancedHtml);
 	        $isEnhanced = true;
 	        $GLOBALS["phpman_enhanced"] = LLM_MODEL;
 	    }
