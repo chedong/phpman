@@ -12,6 +12,7 @@
  *
  * Usage:
  *   php tools/batch_enhance.php --status         # Show enhancement progress
+ *   php tools/batch_enhance.php --status --stop   # Show status, then stop running batch
  *   php tools/batch_enhance.php --dry-run        # Show plan without LLM calls
  *   php tools/batch_enhance.php --mode=man        # Only man pages
  *   php tools/batch_enhance.php --mode=man,perldoc # Multiple modes
@@ -35,11 +36,11 @@ if (PHP_SAPI !== 'cli') {
     die("CLI only\n");
 }
 
-$opts = getopt('hy', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status']);
+$opts = getopt('hy', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status', 'stop', 'pid-file:']);
 
 // No options → show help
 $hasActionOpt = false;
-foreach (['help','h','yes','y','dry-run','status'] as $k) {
+foreach (['help','h','yes','y','dry-run','status','stop'] as $k) {
     if (isset($opts[$k])) { $hasActionOpt = true; break; }
 }
 if (!$hasActionOpt && !isset($opts['mode']) && !isset($opts['limit']) &&
@@ -54,6 +55,7 @@ if (isset($opts['help']) || isset($opts['h'])) {
     echo "  php tools/batch_enhance.php [options]\n\n";
     echo "Options:\n";
     echo "  --status           Show emoji enhancement progress per mode\n";
+    echo "  --stop             Stop a running batch (reads PID from --pid-file)\n";
     echo "  --dry-run          Show what would be done, no LLM calls\n";
     echo "  --yes, -y          Skip confirmation prompt (for cron/SSH)\n";
     echo "  --mode=<m>         Filter: man, perldoc, info, pydoc, ri (comma-separated)\n";
@@ -62,6 +64,7 @@ if (isset($opts['help']) || isset($opts['h'])) {
     echo "  --resume-from=<n>  Skip first N entries\n";
     echo "  --skip-errors      Continue on error instead of aborting\n";
     echo "  --cached-first     Sort: entries with HTML cache first\n";
+    echo "  --pid-file=<path>  Write PID to file (auto: PHPMAN_HOME/logs/batch_enhance.pid)\n";
     echo "  --help             Show this help\n";
     exit;
 }
@@ -80,12 +83,71 @@ if (!defined('PHPMAN_HOME') || PHPMAN_HOME === '') {
 }
 
 $dbPath = rtrim(PHPMAN_HOME, '/') . '/db/phpman_cache.db';
+$logsDir = rtrim(PHPMAN_HOME, '/') . '/logs';
+$pidFile = $opts['pid-file'] ?? ($logsDir . '/batch_enhance.pid');
+
+// ── Stop mode ──
+$stopMode = isset($opts['stop']);
+if ($stopMode) {
+    // Status first if requested
+    if (isset($opts['status'])) {
+        showStatus($dbPath);
+        echo "\n";
+    }
+    if (!file_exists($pidFile)) {
+        echo "No PID file found at {$pidFile}\n";
+        echo "No batch_enhance appears to be running.\n";
+        exit(0);
+    }
+    $pid = (int)trim(file_get_contents($pidFile));
+    echo "PID file: {$pidFile}\n";
+    echo "PID: {$pid}\n";
+    if ($pid > 0) {
+        // Check if process actually exists
+        if (posix_kill($pid, 0)) {
+            posix_kill($pid, SIGTERM);
+            echo "Sent SIGTERM to PID {$pid}. Waiting...\n";
+            sleep(2);
+            if (posix_kill($pid, 0)) {
+                posix_kill($pid, SIGKILL);
+                echo "Process didn't stop — sent SIGKILL.\n";
+            } else {
+                echo "Process stopped.\n";
+            }
+        } else {
+            echo "Process {$pid} not found — removing stale PID file.\n";
+        }
+    }
+    @unlink($pidFile);
+    echo "PID file removed.\n";
+    exit(0);
+}
+
+// ── SSL verification skip for localhost ──
+// (Not needed for batch, but keep for reference)
+// stream_context_set_default(['ssl' => ['verify_peer' => false, 'verify_peer_name' => false]]);
 
 // ── Status mode ──
 $statusMode = isset($opts['status']);
 if ($statusMode) {
     showStatus($dbPath);
     exit;
+}
+
+// ── PID file (write after we know we're really running) ──
+if (!is_dir($logsDir)) @mkdir($logsDir, 0755, true);
+$ownPid = getmypid();
+if ($ownPid) {
+    file_put_contents($pidFile, (string)$ownPid);
+    // Clean up on exit (normal or error)
+    register_shutdown_function(function () use ($pidFile, $ownPid) {
+        if (file_exists($pidFile) && (int)file_get_contents($pidFile) === $ownPid) {
+            @unlink($pidFile);
+        }
+    });
+    echo "PID {$ownPid} → {$pidFile}\n";
+    echo "  Stop with: php tools/batch_enhance.php --stop\n";
+    echo "            php tools/batch_enhance.php --status --stop\n";
 }
 
 foreach (['LLM_API_URL', 'LLM_API_KEY', 'LLM_MODEL', 'LLM_MAX_TOKENS'] as $c) {
