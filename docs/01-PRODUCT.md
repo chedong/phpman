@@ -40,7 +40,25 @@ phpMan is deployed as a single `phpMan.php` file by design:
 - **Backward compatibility**: users from the SourceForge era may run on older PHP versions
 - Future code splits (v3.0 roadmap) will be gradual, preserving the single-file entry point
 
-### 2.3 XHTML 1.0 Transitional
+### 2.3 Minimal Webroot (Public File Surface)
+
+phpMan's webroot should contain **only the minimum files necessary for public HTTP service**: `phpMan.php`, `phpman.css`, and optionally `phpman.config.php`.
+
+**What must NOT be in the webroot**:
+
+| File/Dir | Why not |
+|----------|---------|
+| `tools/` | CLI-only utilities (e.g. `batch_enhance.php`) — have `PHP_SAPI !== 'cli'` guards but shouldn't be HTTP-accessible at all |
+| `test/` | Test files — may leak internal paths, test data, or expose attack surfaces |
+| `docs/` | Design documents — internal architecture info, not for public consumption |
+| `.deploy.mk` | Deployment credentials — SSH host/port/path, already gitignored |
+| `.git/` | Git metadata — source history, commit messages, working tree |
+
+**Principle**: Any file in the webroot is one misconfiguration away from being publicly readable. CLI tools, tests, and internal documentation belong in the install directory (`~/.phpman/`) or the git clone, never in the webroot. Deployment scripts (Makefile, install.sh) must only copy the allowlist of public files (`phpMan.php`, `phpman.css`).
+
+**Code location**: `Makefile` (`_deploy-code` scp lines), `install.sh` (`do_deploy_webroot()` cp lines)
+
+### 2.4 XHTML 1.0 Transitional
 
 phpMan maintains XHTML 1.0 Transitional compliance, not upgrading to HTML5:
 
@@ -48,7 +66,7 @@ phpMan maintains XHTML 1.0 Transitional compliance, not upgrading to HTML5:
 - No HTML5 semantic tags (`<nav>`, `<section>`, etc.)
 - External links keep minimal URL parameters
 
-### 2.4 TLDR Cache Strategy
+### 2.5 TLDR Cache Strategy
 
 TLDR results are persistently cached in the SQLite `tldr_cache` table (7-day TTL):
 
@@ -57,7 +75,7 @@ TLDR results are persistently cached in the SQLite `tldr_cache` table (7-day TTL
 - Includes negative caching: 404/not_found commands are cached to avoid repeated HTTP requests
 - Old file-based `tldr_cache/` directory is deprecated and no longer used
 
-### 2.5 Info Mode Setext Heading Detection
+### 2.6 Info Mode Setext Heading Detection
 
 GNU info pages use Setext-style underline headings:
 
@@ -71,7 +89,7 @@ GNU info pages use Setext-style underline headings:
 
 **Code location**: `detectHeadingType()`, `formatManPerlDoc()`
 
-### 2.6 Tokyo Night Dark Theme
+### 2.7 Tokyo Night Dark Theme
 
 v2.3 adopted Tokyo Night color scheme, unifying visual style across all modes (man/perldoc/info/pydoc/ri):
 
@@ -87,13 +105,13 @@ v2.3 adopted Tokyo Night color scheme, unifying visual style across all modes (m
 
 CSS unified globally: `body`/`pre` share font family and size, `<b>`/`<u>` colors no longer differ by mode.
 
-### 2.7 Format Links on Detail Pages Only
+### 2.8 Format Links on Detail Pages Only
 
 Markdown | JSON | MCP format links only appear on detail pages (with actual content) in the search bar row. Index pages and no-result pages do not show format links.
 
 **Code location**: `showForm()`
 
-### 2.8 H1 Breadcrumb + Title Format
+### 2.9 H1 Breadcrumb + Title Format
 
 Detail page H1 and `<title>` use a unified breadcrumb format:
 
@@ -107,7 +125,7 @@ phpMan > man > ls(1)
 
 **Issue**: #65
 
-### 2.9 Unified Search Result List Format
+### 2.10 Unified Search Result List Format
 
 Search (apropos) and pydoc3 keyword results use unified `<ul><li>` list format, replacing `<pre>` + `<br />` line breaks:
 
@@ -119,11 +137,11 @@ Search (apropos) and pydoc3 keyword results use unified `<ul><li>` list format, 
 
 ri index (`/ri`) is also changed to `<ul>` list. Search/fallback pages use `<div id="man-content">` instead of `<pre>`.
 
-### 2.10 Footer Git Version Number
+### 2.11 Footer Git Version Number
 
 `make deploy`/`make release` injects `git describe --tags --always --dirty` into the `GIT_DESCRIBE` constant via `sed` + ssh pipe. Footer displays `phpMan v2.3-5-g1cea00a`. Local dev defaults to `local`.
 
-### 2.11 LLM Emoji Enhancement (v4.0)
+### 2.12 LLM Emoji Enhancement (v4.0)
 
 phpMan v4.0 introduces an optional LLM-powered enhancement layer that transforms raw documentation into emoji-rich, visually scannable versions. The enhancement is **additive** — base HTML/JSON/Markdown/MCP output is unaffected and remains the fallback.
 
@@ -267,7 +285,7 @@ Enhanced pages respect the same 4-tier format priority as regular pages (GET par
 
 The "Enhanced by LLM" credit line in the footer links to the original (un-enhanced) HTML view with the correct section parameter.
 
-### 2.12 Command Name Case & Platform Differences (Linux vs BSD)
+### 2.13 Command Name Case & Platform Differences (Linux vs BSD)
 
 phpMan's `normalizeParameter()` routing preserves original case in command names (no `strtolower`), relying on downstream systems to handle it.
 
@@ -307,7 +325,7 @@ phpMan.php/man/RUBY/1
 
 **Design principle**: phpMan's "trust system calls, defend external APIs" asymmetry is core to understanding the routing design. System command compatibility is guaranteed by each platform; external API calls must be explicitly normalized by phpMan.
 
-### 2.12 TOC Display Strategy on Mobile
+### 2.14 TOC Display Strategy on Mobile
 
 - **Wide screen (>1024px)**: TOC sidebar fixed to right, expanded by default, no toggle button
 - **Narrow screen (≤1024px)**: TOC collapsed by default, showing only the title row (e.g. `tar(1) □`), tap title row to expand/collapse
@@ -316,7 +334,7 @@ phpMan.php/man/RUBY/1
 - **Implementation**: `body.toc-open` class toggle, pure CSS, inline onclick JS with no external dependencies
 
 
-### 2.13 Project Structure: Makefile vs install.sh
+### 2.15 Project Structure: Makefile vs install.sh
 
 phpMan provides two deployment tools for two different audiences:
 
