@@ -2046,8 +2046,6 @@ function enhanceManPage(string $mode, string $name): string {
             case 'ri':     $plainMd = getRiPage($name, 'markdown'); break;
         }
         if (trim($plainMd) !== '') {
-            $maxLen = 16000;
-            if (strlen($plainMd) > $maxLen) $plainMd = substr($plainMd, 0, $maxLen) . "\n\n...(truncated)";
 
             $mdPrompt = "You are a Linux documentation emoji-enhancement assistant. Transform plain man page Markdown into an emoji-rich, visually scannable version optimized for both human developers and AI agents.\n\n" .
                 "Output rules:\n" .
@@ -2102,8 +2100,6 @@ function enhanceManPage(string $mode, string $name): string {
             } elseif (preg_match('#<pre>(.+?)</pre>#s', $rawHtml, $m)) {
                 $rawHtml = $m[1];
             }
-            $maxLen = 24000;
-            if (strlen($rawHtml) > $maxLen) $rawHtml = substr($rawHtml, 0, $maxLen) . "\n\n...(truncated)";
 
             $htmlPrompt = "You are a Linux documentation enhancement assistant. Transform man page HTML into an emoji-rich, visually scannable version.\n\n" .
                 "Output rules:\n" .

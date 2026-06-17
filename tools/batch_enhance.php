@@ -366,11 +366,6 @@ foreach ($entries as $idx => $e) {
             continue;
         }
 
-        $maxLen = 16000;
-        if (strlen($plainMd) > $maxLen) {
-            $plainMd = substr($plainMd, 0, $maxLen) . "\n\n...(truncated)";
-        }
-
         echo "  Calling LLM for emoji_md (" . strlen($plainMd) . " chars md input)...\n";
         $enhancedMd = callLLM(getMdSystemPrompt(), $plainMd);
         $lastLlmTime = time();
@@ -398,11 +393,6 @@ foreach ($entries as $idx => $e) {
             $errors++;
             if (!$skipErrors) break;
             continue;
-        }
-
-        $maxLen = 24000;
-        if (strlen($rawHtml) > $maxLen) {
-            $rawHtml = substr($rawHtml, 0, $maxLen) . "\n\n...(truncated)";
         }
 
         echo "  Calling LLM for emoji_html (" . strlen($rawHtml) . " chars html input)...\n";
