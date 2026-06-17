@@ -14,6 +14,8 @@
  *   php tools/batch_enhance.php --status         # Show enhancement progress
  *   php tools/batch_enhance.php --status --stop   # Show status, then stop running batch
  *   php tools/batch_enhance.php --rebuild       # Force re-enhance already-done entries
+ *   php tools/batch_enhance.php --mode=man --parameter=ls;tar;gzip  # Specific pages
+ *   php tools/batch_enhance.php --rebuild --parameter=CGI::FormBuilder # Force redo one
  *   php tools/batch_enhance.php --dry-run        # Show plan without LLM calls
  *   php tools/batch_enhance.php --mode=man        # Only man pages
  *   php tools/batch_enhance.php --mode=man,perldoc # Multiple modes
@@ -37,7 +39,7 @@ if (PHP_SAPI !== 'cli') {
     die("CLI only\n");
 }
 
-$opts = getopt('hyr', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild']);
+$opts = getopt('hyr', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:']);
 
 // No options → show help
 $hasActionOpt = false;
@@ -58,6 +60,9 @@ if (isset($opts['help']) || isset($opts['h'])) {
     echo "  --status           Show emoji enhancement progress per mode\n";
     echo "  --stop             Stop a running batch (reads PID from --pid-file)\n";
     echo "  --rebuild, -r      Force re-enhance even if emoji cache exists\n";
+    echo "  --section=<s>      Manual section (e.g. '1', '3pm') for --parameter targets\n";
+    echo "  --parameter=<p>    Specific pages to enhance (semicolon-separated)\n";
+    echo "                      Requires --mode. Example: --mode=man --parameter=ls;tar\n";
     echo "  --dry-run          Show what would be done, no LLM calls\n";
     echo "  --yes, -y          Skip confirmation prompt (for cron/SSH)\n";
     echo "  --mode=<m>         Filter: man, perldoc, info, pydoc, ri (comma-separated)\n";
@@ -180,6 +185,8 @@ $resumeFrom   = isset($opts['resume-from']) ? (int)$opts['resume-from'] : 0;
 $skipErrors   = isset($opts['skip-errors']);
 $cachedFirst  = isset($opts['cached-first']);
 $rebuild      = isset($opts['rebuild']) || isset($opts['r']);
+$sectionFilter = $opts['section'] ?? '';
+$paramList     = $opts['parameter'] ?? '';
 $doMd         = ($formatOpt === 'md' || $formatOpt === 'both');
 $doHtml       = ($formatOpt === 'html' || $formatOpt === 'both');
 
@@ -200,6 +207,26 @@ $db->busyTimeout(10000);
 $entries = [];
 $seen = [];
 
+if ($paramList !== '') {
+    // ── Direct parameter mode: enhance specific pages ──
+    $params = array_filter(explode(';', $paramList), fn($s) => trim($s) !== '');
+    if (empty($params)) {
+        fwrite(STDERR, "ERROR: --parameter list is empty\n");
+        exit(1);
+    }
+    // Default to man if no mode filter specified
+    $targetModes = $modeFilter ?: ['man'];
+    if (count($targetModes) > 1) {
+        fwrite(STDERR, "ERROR: --parameter requires a single --mode (got: " . implode(',', $targetModes) . ")\n");
+        exit(1);
+    }
+    $targetMode = $targetModes[0];
+    $section = $sectionFilter; // may be ''
+    foreach ($params as $p) {
+        $entries[] = ['mode' => $targetMode, 'name' => trim($p), 'section' => $section];
+    }
+    echo "Target mode: {$targetMode}, " . count($params) . " page(s): " . implode(', ', $params) . "\n";
+} else {
 // 1. From search_index_meta (man — canonical post-build-index list)
 $metaRes = $db->query("SELECT name, section, source FROM search_index_meta ORDER BY source, name");
 while ($row = $metaRes->fetchArray(SQLITE3_ASSOC)) {
@@ -221,6 +248,7 @@ foreach ($cacheModes as $cm) {
         $seen[$key] = true;
         $entries[] = ['mode' => $cm, 'name' => $row['name'], 'section' => ''];
     }
+}
 }
 
 $total = count($entries);
