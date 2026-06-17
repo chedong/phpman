@@ -11,6 +11,7 @@
  * Rate-limited: minimum 2 minutes between LLM calls to respect API quotas.
  *
  * Usage:
+ *   php tools/batch_enhance.php --status         # Show enhancement progress
  *   php tools/batch_enhance.php --dry-run        # Show plan without LLM calls
  *   php tools/batch_enhance.php --mode=man        # Only man pages
  *   php tools/batch_enhance.php --mode=man,perldoc # Multiple modes
@@ -34,12 +35,25 @@ if (PHP_SAPI !== 'cli') {
     die("CLI only\n");
 }
 
-$opts = getopt('hy', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first']);
+$opts = getopt('hy', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status']);
+
+// No options → show help
+$hasActionOpt = false;
+foreach (['help','h','yes','y','dry-run','status'] as $k) {
+    if (isset($opts[$k])) { $hasActionOpt = true; break; }
+}
+if (!$hasActionOpt && !isset($opts['mode']) && !isset($opts['limit']) &&
+    !isset($opts['format']) && !isset($opts['resume-from']) &&
+    !isset($opts['skip-errors']) && !isset($opts['cached-first'])) {
+    $opts['help'] = true;
+}
+
 if (isset($opts['help']) || isset($opts['h'])) {
     echo "batch_enhance.php — Offline batch LLM emoji enhancement\n\n";
     echo "Usage:\n";
     echo "  php tools/batch_enhance.php [options]\n\n";
     echo "Options:\n";
+    echo "  --status           Show emoji enhancement progress per mode\n";
     echo "  --dry-run          Show what would be done, no LLM calls\n";
     echo "  --yes, -y          Skip confirmation prompt (for cron/SSH)\n";
     echo "  --mode=<m>         Filter: man, perldoc, info, pydoc, ri (comma-separated)\n";
@@ -60,7 +74,21 @@ if (!file_exists($configFile)) {
 }
 require $configFile;
 
-foreach (['LLM_API_URL', 'LLM_API_KEY', 'LLM_MODEL', 'LLM_MAX_TOKENS', 'PHPMAN_HOME'] as $c) {
+if (!defined('PHPMAN_HOME') || PHPMAN_HOME === '') {
+    fwrite(STDERR, "ERROR: PHPMAN_HOME not configured\n");
+    exit(1);
+}
+
+$dbPath = rtrim(PHPMAN_HOME, '/') . '/db/phpman_cache.db';
+
+// ── Status mode ──
+$statusMode = isset($opts['status']);
+if ($statusMode) {
+    showStatus($dbPath);
+    exit;
+}
+
+foreach (['LLM_API_URL', 'LLM_API_KEY', 'LLM_MODEL', 'LLM_MAX_TOKENS'] as $c) {
     if (!defined($c) || constant($c) === '') {
         fwrite(STDERR, "ERROR: $c not configured in phpman.config.php\n");
         exit(1);
@@ -512,4 +540,72 @@ function getHtmlSystemPrompt(): string {
         "7. Add descriptive emoji to option descriptions and list items\n" .
         "8. Keep the original HTML structure intact\n" .
         "9. Emoji should be standard Unicode, widely supported";
+}
+
+function showStatus(string $dbPath): void {
+    if (!file_exists($dbPath)) {
+        echo "No cache DB found at {$dbPath}\n";
+        echo "Run php phpMan.php first to initialize the cache.\n";
+        exit(0);
+    }
+    $db = new SQLite3($dbPath);
+    $db->enableExceptions(true);
+
+    $modes = ['man', 'perldoc', 'info', 'pydoc', 'ri'];
+    echo "\n" . str_repeat('=', 70) . "\n";
+    echo "  phpMan Emoji Enhancement Status\n";
+    echo str_repeat('=', 70) . "\n\n";
+
+    $totalAll = 0; $totalMd = 0; $totalHtml = 0;
+
+    foreach ($modes as $mode) {
+        $total = $db->querySingle("SELECT COUNT(*) FROM cache WHERE mode='{$mode}' AND format='html' AND name != '__index__'");
+        if ($total === null) $total = 0;
+
+        $md = $db->querySingle("SELECT COUNT(*) FROM cache WHERE mode='{$mode}' AND format='emoji_md' AND name != '__index__'");
+        $html = $db->querySingle("SELECT COUNT(*) FROM cache WHERE mode='{$mode}' AND format='emoji_html' AND name != '__index__'");
+
+        $total = (int)$total;
+        $md = (int)$md;
+        $html = (int)$html;
+
+        $totalAll += $total;
+        $totalMd += $md;
+        $totalHtml += $html;
+
+        $mdPct = $total > 0 ? sprintf('%5.1f%%', $md / $total * 100) : '   N/A';
+        $htmlPct = $total > 0 ? sprintf('%5.1f%%', $html / $total * 100) : '   N/A';
+
+        printf("  %-10s  html: %5d  emoji_md: %5d (%s)  emoji_html: %5d (%s)\n",
+            $mode, $total, $md, $mdPct, $html, $htmlPct);
+
+        // Show last 3 enhanced for this mode
+        if ($md > 0 || $html > 0) {
+            $recent = $db->query(
+                "SELECT name, format, updated_at FROM cache " .
+                "WHERE mode='{$mode}' AND format IN ('emoji_md','emoji_html') " .
+                "ORDER BY updated_at DESC LIMIT 3"
+            );
+            while ($r = $recent->fetchArray(SQLITE3_ASSOC)) {
+                $ts = date('m-d H:i', (int)$r['updated_at']);
+                printf("    %-8s %-30s %s\n", $r['format'], $r['name'], $ts);
+            }
+        }
+        echo "\n";
+    }
+
+    echo str_repeat('-', 70) . "\n";
+    printf("  %-10s  html: %5d  emoji_md: %5d (%5.1f%%)  emoji_html: %5d (%5.1f%%)\n",
+        'TOTAL', $totalAll, $totalMd,
+        $totalAll > 0 ? $totalMd / $totalAll * 100 : 0,
+        $totalHtml,
+        $totalAll > 0 ? $totalHtml / $totalAll * 100 : 0
+    );
+    $remaining = ($totalAll * 2) - $totalMd - $totalHtml;
+    $estMin = ceil(($remaining * 2) / 60);
+    printf("  Remaining LLM calls: ~%d (%d md + %d html), est. ~%dm (@2min/call)\n",
+        $remaining, $totalAll - $totalMd, $totalAll - $totalHtml, $estMin);
+    echo str_repeat('=', 70) . "\n";
+
+    $db->close();
 }
