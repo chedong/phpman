@@ -595,6 +595,11 @@ function cleanLlmOutput(string $content): string {
     $content = preg_replace('/^\[?[\w.-]+\]?\(\d+\w*\)\s+.*\s+\[?[\w.-]+\]?\(\d+\w*\)\s*\n/', '', $content);
     // Fix LLM heading mistakes: <h1> → <h2>
     $content = preg_replace('#<(/?)h1\b([^>]*)>#i', '<$1h2$2>', $content);
+    // Remove full-document wrappers: LLM sometimes outputs <!DOCTYPE html><html>...
+    $content = preg_replace('#^<!DOCTYPE[^>]*>\s*#i', '', $content);
+    $content = preg_replace('#</?html[^>]*>#i', '', $content);
+    $content = preg_replace('#</?head[^>]*>.*?</head>#is', '', $content);
+    $content = preg_replace('#</?body[^>]*>#i', '', $content);
     // XSS defense: strip unsafe HTML tags from LLM output
     $safeTags = '<h2><h3><h4><h5><h6><p><br><b><u><i><em><strong><a>'
               . '<pre><code><table><thead><tbody><tr><td><th><ul><ol><li>'
