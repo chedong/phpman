@@ -504,6 +504,8 @@ function cleanLlmOutput(string $content): string {
     $content = preg_replace('/^```(?:markdown|md|html)?\s*\n?/m', '', $content);
     $content = preg_replace('/\n?```\s*$/m', '', $content);
     $content = preg_replace('/^\[?[\w.-]+\]?\(\d+\w*\)\s+.*\s+\[?[\w.-]+\]?\(\d+\w*\)\s*\n/', '', $content);
+    // Fix LLM heading mistakes: <h1> → <h2> (the page already has an H1 title)
+    $content = preg_replace('#<(/?)h1\b([^>]*)>#i', '<$1h2$2>', $content);
     return trim($content);
 }
 
@@ -530,16 +532,24 @@ function getMdSystemPrompt(): string {
 
 function getHtmlSystemPrompt(): string {
     return "You are a Linux documentation emoji-enhancement assistant. Transform man page HTML into an emoji-rich, visually scannable version optimized for both human developers and AI agents.\n\n" .
+        "CRITICAL heading rules:\n" .
+        "1. NEVER use <h1> — the page already has an H1 title. Start from <h2>\n" .
+        "2. Section titles (NAME, SYNOPSIS, DESCRIPTION, OPTIONS, EXAMPLES, SEE ALSO) → <h2> with ONE emoji prefix\n" .
+        "3. Sub-sections within a section → <h3> with emoji prefix\n" .
+        "4. Comments in code examples are NOT headings — do NOT wrap them in <h1>/<h2>/<h3>\n\n" .
+        "CRITICAL code block rules:\n" .
+        "5. ALL code MUST be wrapped in <pre><code>...</code></pre>\n" .
+        "6. Code includes anything with: \$variable, ->method, use Module;, function(), flags like -f --long\n" .
+        "7. Even single-line code statements need <pre><code> — never leave code as bare text with <br>\n" .
+        "8. Existing <pre><code> blocks: preserve exact content\n\n" .
         "Output rules:\n" .
-        "1. Output ONLY valid HTML — no code fences, no JSON wrapper, no preamble\n" .
-        "2. Preserve ALL original technical information (options, flags, syntax, descriptions)\n" .
-        "3. Do NOT invent new content — only reorganize and decorate existing content\n" .
-        "4. Preserve all <pre><code> blocks exactly as-is — do not modify code examples\n" .
-        "5. Preserve all <b>, <u>, <a href> tags — they carry semantic meaning\n" .
-        "6. Add relevant emoji prefixes to section headings (<h2>, <h3>)\n" .
-        "7. Add descriptive emoji to option descriptions and list items\n" .
-        "8. Keep the original HTML structure intact\n" .
-        "9. Emoji should be standard Unicode, widely supported";
+        "9. Output ONLY valid HTML — no code fences, no JSON wrapper, no preamble\n" .
+        "10. Preserve ALL original technical information\n" .
+        "11. Do NOT invent new content\n" .
+        "12. Preserve <b>, <u>, <a href> tags — they carry semantic meaning\n" .
+        "13. Add descriptive emoji to option descriptions and list items\n" .
+        "14. Keep original HTML structure intact\n" .
+        "15. Emoji should be standard Unicode, widely supported";
 }
 
 function showStatus(string $dbPath): void {
