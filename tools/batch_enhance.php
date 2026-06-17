@@ -364,7 +364,7 @@ foreach ($entries as $idx => $e) {
     $htmlOk = $e['_html'];
     if (!$htmlOk) {
         echo "  Fetching HTML from phpMan...\n";
-        list($fetched, $httpCode) = httpGetWithStatus($baseUrl, $mode, $name, 'html', $httpTimeout);
+        list($fetched, $httpCode) = httpGetWithStatus($baseUrl, $mode, $name, $section, 'html', $httpTimeout);
         if ($fetched === false || $httpCode >= 400) {
             echo "  ERROR: Failed to fetch HTML for {$label} (HTTP {$httpCode})\n";
             $errors++;
@@ -386,7 +386,7 @@ foreach ($entries as $idx => $e) {
     if ($doMd && !$mdOk) {
         $lastLlmTime = waitForRateLimit($lastLlmTime, $rateLimitSec);
 
-        list($plainMd, $mdHttpCode) = httpGetWithStatus($baseUrl, $mode, $name, 'markdown', $httpTimeout);
+        list($plainMd, $mdHttpCode) = httpGetWithStatus($baseUrl, $mode, $name, $section, 'markdown', $httpTimeout);
         if ($plainMd === false || $mdHttpCode >= 400 || trim($plainMd) === '') {
             echo "  ERROR: Failed to fetch Markdown for {$label} (HTTP {$mdHttpCode})\n";
             $errors++;
@@ -415,7 +415,7 @@ foreach ($entries as $idx => $e) {
     if ($doHtml && !$htmlEOk) {
         $lastLlmTime = waitForRateLimit($lastLlmTime, $rateLimitSec);
 
-        list($rawHtml, $htmlHttpCode) = httpGetWithStatus($baseUrl, $mode, $name, 'html', $httpTimeout);
+        list($rawHtml, $htmlHttpCode) = httpGetWithStatus($baseUrl, $mode, $name, $section, 'html', $httpTimeout);
         if ($rawHtml === false || $htmlHttpCode >= 400 || trim($rawHtml) === '') {
             echo "  ERROR: Failed to fetch HTML for {$label} (HTTP {$htmlHttpCode})\n";
             $errors++;
@@ -496,8 +496,8 @@ function writeCache(SQLite3 $db, string $mode, string $name, string $section, st
     $stmt->execute();
 }
 
-function httpGetWithStatus(string $baseUrl, string $mode, string $name, string $format, int $timeout): array {
-    $url = $baseUrl . '/' . $mode . '/' . urlencode($name) . '/1/' . $format;
+function httpGetWithStatus(string $baseUrl, string $mode, string $name, string $section, string $format, int $timeout): array {
+    $url = $baseUrl . '/' . $mode . '/' . urlencode($name) . '/' . ($section ?: '1') . '/' . $format;
     $ctx = stream_context_create([
         'http' => [
             'method' => 'GET',
