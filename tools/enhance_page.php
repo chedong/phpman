@@ -9,7 +9,8 @@
  * (e.g. shared hosting under load) but the web frontend is still alive.
  *
  * Usage:
- *   php tools/enhance_page.php man ls
+ *   php tools/enhance_page.php man ls           # man section 1 (default)
+ *   php tools/enhance_page.php man crontab 5    # man section 5
  *   php tools/enhance_page.php perldoc File::Basename
  *   php tools/enhance_page.php pydoc os
  *
@@ -26,14 +27,16 @@ if (PHP_SAPI !== 'cli') {
 }
 
 if ($argc < 3) {
-    fwrite(STDERR, "Usage: php tools/enhance_page.php <mode> <name>\n");
+    fwrite(STDERR, "Usage: php tools/enhance_page.php <mode> <name> [section]\n");
     fwrite(STDERR, "  mode: man | perldoc | info | pydoc | ri\n");
     fwrite(STDERR, "  name: command or module name\n");
+    fwrite(STDERR, "  section: numeric (default: 1 for man, empty for others)\n");
     exit(1);
 }
 
 $mode = $argv[1];
 $name = $argv[2];
+$section = $argv[3] ?? ($mode === 'man' ? '1' : '');
 
 // Load config
 $configFile = __DIR__ . '/../phpman.config.php';
@@ -52,7 +55,8 @@ foreach (['LLM_API_URL', 'LLM_API_KEY', 'LLM_MODEL', 'LLM_MAX_TOKENS', 'PHPMAN_H
 }
 
 $baseUrl = getenv('PHPMAN_BASE_URL') ?: 'http://localhost:8080/phpMan.php';
-$url = rtrim($baseUrl, '/') . '/' . $mode . '/' . urlencode($name) . '/1/markdown';
+$sectionPath = ($section !== '') ? '/' . $section : '';
+$url = rtrim($baseUrl, '/') . '/' . $mode . '/' . urlencode($name) . $sectionPath . '/markdown';
 
 echo "Fetching: $url\n";
 $plainMd = @file_get_contents($url);
@@ -159,7 +163,7 @@ $stmt = $db->prepare(
 );
 $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
 $stmt->bindValue(':name', $name, SQLITE3_TEXT);
-$stmt->bindValue(':section', '', SQLITE3_TEXT);
+$stmt->bindValue(':section', $section, SQLITE3_TEXT);
 $stmt->bindValue(':format', 'emoji_md', SQLITE3_TEXT);
 $stmt->bindValue(':content', $compressed, SQLITE3_BLOB);
 $stmt->bindValue(':len', strlen($content), SQLITE3_INTEGER);
