@@ -1711,10 +1711,12 @@ function rebuildSearchIndex(): string {
         $db->exec("DELETE FROM search_index_meta");
         $output[] = "Cleared existing search index.\n";
 
-        // Invalidate all page caches — FTS5 index rebuild makes cached search
+        // Invalidate page caches — FTS5 index rebuild makes cached search
         // results and man-page search-fallthrough entries stale.
-        $db->exec("DELETE FROM cache");
-        $output[] = "Cleared page cache.\n";
+        // Preserve emoji_md/emoji_html — LLM-enhanced content is expensive
+        // to regenerate (48+ days) and isn't search-index-dependent.
+        $db->exec("DELETE FROM cache WHERE format NOT IN ('emoji_md', 'emoji_html')");
+        $output[] = "Cleared page cache (emoji enhancements preserved).\n";
 
         // Wrap inserts in a transaction to prevent WAL bloat
         $db->exec("BEGIN IMMEDIATE");

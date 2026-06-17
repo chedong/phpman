@@ -109,6 +109,8 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n
 - Enhanced HTML is the default view when `emoji_html` cache exists; `?format=html` bypasses
 - Config: `LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`, `LLM_MAX_TOKENS` via `phpman.config.php`
 - `tools/enhance_page.php`: single-page CLI tool for shared hosts where man(1) can't fork
+- `tools/batch_enhance.php`: offline batch enhancement — auto-discovers ~35K entries from search_index_meta + cache, 2-min rate limiting, resilient resume, `--cached-first` sort, idempotent per-entry cache writes (2026-06-17)
+- `DELETE FROM cache` now preserves emoji_md/emoji_html during reindex (2026-06-17)
 - See `docs/01-PRODUCT.md` §2.11 for full design rationale
 
 **Phase 4: Code split** (planned)

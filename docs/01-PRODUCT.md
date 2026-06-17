@@ -195,7 +195,7 @@ php phpMan.php --enhance=pydoc:os,json,re
 
 `enhanceManPage()` runs two phases: Phase 1 generates `emoji_md` (Markdown → LLM), Phase 2 generates `emoji_html` (HTML → LLM). Each checks cache first, skips if already enhanced.
 
-#### 2.11.5 Shared Hosting Workaround: `tools/enhance_page.php`
+#### 2.11.5 Single-Page CLI: `tools/enhance_page.php`
 
 **Problem**: On shared hosting (e.g., DreamHost), the `man` command spawns 5+ subprocesses (zsoelim → manconv → preconv → tbl → groff). Under high system load (load average 25+), `fork()` fails with `Resource temporarily unavailable`. Direct `man ls` works, but PHP's `shell_exec("man ls")` fails because the PHP process already consumes memory, leaving insufficient resources for the man pipeline fork chain.
 
@@ -207,24 +207,61 @@ The web server (Apache/mod_fcgid) can still serve man pages because its worker p
 # Requires PHPMAN_BASE_URL env var or defaults to http://localhost:8080/phpMan.php
 PHPMAN_BASE_URL=https://test.chedong.com/phpMan.php php tools/enhance_page.php man ls
 
-# Batch enhance via shell loop
+# Batch enhance via shell loop (NOT recommended — use batch_enhance.php instead)
 for cmd in ls tar grep; do
   php tools/enhance_page.php man $cmd
 done
 ```
 
-**Key differences from `--enhance`**:
-| Aspect | `--enhance` (CLI) | `tools/enhance_page.php` |
-|--------|-------------------|--------------------------|
-| Content source | `shell_exec("man ...")` | HTTP fetch from phpMan web |
-| Cache format | `emoji_html` + `emoji_md` (dual) | `emoji_md` only |
-| Works under load | ❌ fork fails | ✅ web server handles man |
-| Cache lifecycle | TTL=604800 (7 days) | TTL=0 (permanent) |
-| Max content length | 24,000 (HTML) / 16,000 (MD) | 12,000 chars |
-| Section handling | Auto-detected | Hardcoded `/1/` (man section 1) |
-| LLM prompt | Synced with phpMan.php system prompt | Independent copy (may drift) |
+#### 2.11.6 Offline Batch Enhancement: `tools/batch_enhance.php`
 
-#### 2.11.6 Format Negotiation
+Bulk emoji enhancement for all indexed pages. Designed for long-running background execution on staging/production servers.
+
+**Entry discovery**: Reads from `search_index_meta` (man pages from `--build-index-cron`) + cache-discovered perldoc/info/pydoc/ri entries — total ~35K entries on a typical server.
+
+**Execution flow per entry**:
+1. Check emoji cache → skip if already enhanced (idempotent resume)
+2. Check HTML cache → if missing, fetch HTML via the phpMan web instance (auto-caches to `html` format)
+3. Call LLM → write `emoji_md` and/or `emoji_html` to SQLite cache
+4. Wait 120s between LLM calls (rate limit for API quotas)
+
+```bash
+# Dry-run preview
+php tools/batch_enhance.php --dry-run
+
+# Full batch: emoji_md only, HTML-cached entries first (fast path)
+nohup php tools/batch_enhance.php --cached-first --skip-errors --yes --format=md \
+  > logs/batch_enhance_md.log 2>&1 &
+
+# After md pass: emoji_html only
+nohup php tools/batch_enhance.php --cached-first --skip-errors --yes --format=html \
+  > logs/batch_enhance_html.log 2>&1 &
+
+# Filter by mode, limit entries
+php tools/batch_enhance.php --mode=man,perldoc --limit=100 --dry-run
+```
+
+**Key features**:
+- **Resilient resume**: Every enhanced entry written to SQLite immediately; stopping/restarting auto-skips cached entries
+- **Rate limiting**: Configurable 120s minimum between LLM calls (respects API quotas)
+- **Sort strategy**: `--cached-first` prioritizes entries with existing HTML cache (no HTTP fetch needed)
+- **Error handling**: `--skip-errors` continues past failures; 404s and empty pages are logged and skipped
+- **Progress tracking**: Per-10-entry progress reports with elapsed time and ETA
+- **Timeline**: ~35K entries × 2 min/call ≈ 48 days for single format, ~97 days for both formats on a single server
+
+**Key differences from `--enhance` and `enhance_page.php`**:
+| Aspect | `--enhance` (CLI) | `tools/enhance_page.php` | `tools/batch_enhance.php` |
+|--------|-------------------|--------------------------|---------------------------|
+| Content source | `shell_exec("man ...")` | HTTP fetch from phpMan web | HTTP fetch from phpMan web |
+| Cache format | `emoji_html` + `emoji_md` (dual) | `emoji_md` only | `emoji_md` + `emoji_html` (configurable) |
+| Entry discovery | Manual name list | Single name per invocation | Auto-discover from index + cache |
+| Works under load | No (fork fails) | Yes (web server handles man) | Yes (web server handles man) |
+| Rate limiting | None | Manual (shell loop) | Built-in 120s between calls |
+| Resume support | Cache-based skip | Manual tracking | Auto-skip + offset resume |
+| Scale | ~10 entries | 1 entry per run | 35K entries, ~48 days |
+| Execution mode | CLI one-shot | CLI one-shot | CLI long-running (nohup/cron) |
+
+#### 2.11.7 Format Negotiation
 
 Enhanced pages respect the same 4-tier format priority as regular pages (GET param → PATH_INFO → Accept header → default HTML). Explicit `?format=html` or PATH_INFO `/html` bypasses enhancement to show the original `<pre>` rendering.
 
@@ -392,6 +429,7 @@ When reviewing code, follow this order:
 
 | Date | Changes |
 |------|----------|
+| 2026-06-17 | v4.0: `tools/batch_enhance.php` — offline batch LLM enhancement with auto-discovery from search index + cache, 2-min rate limiting, resilient resume, dual-format support (§2.11.6) |
 | 2026-06-16 | v4.0: Dual-format LLM enhancement — emoji_html (HTML-direct, default view) + emoji_md (Markdown, /markdown format); TOC from <h2>/<h3> tags with &amp; fix; max_tokens uncapped; finish_reason truncation logging; showFooter section param in original-format link; tools/enhance_page.php |
 | 2026-06-09 | v3.7.1: Fix #96 XSS (sources array h), #107 undefined $expanded, #108 SQL prepared stmt, #109 tldr_cache TTL index, #110 INSERT OR REPLACE comments, #111 ticket status table, #112 CLI CACHE_DB constant; add Ticket Status Summary table |
 | 2026-06-08 | v3.7: Security hardening — #95 SQL parameterize, #98 catch block logging, #100 CACHE_DIR validation, #102 perldoc $width escape, #104 FTS5 sanitize, #105 ETag invalidation, #103 rebuildSearchIndex logging | TLDR cache strategy: SQLite `tldr_cache` with 7-day TTL, negative caching; old file-based `tldr_cache/` deprecated |
@@ -762,3 +800,4 @@ pydoc output has no overstrike/ANSI; `cleanTerminalOutput` is a pass-through. Bu
 | `renderTocSidebar()` | phpMan.php | 2363 |
 | `showFooter()` enhanced link | phpMan.php | 3387 |
 | `tools/enhance_page.php` | tools/enhance_page.php | — |
+| `tools/batch_enhance.php` | tools/batch_enhance.php | — |

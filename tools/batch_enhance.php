@@ -1,0 +1,515 @@
+#!/usr/bin/env php
+<?php
+/**
+ * batch_enhance.php — Offline batch LLM emoji enhancement for all indexed pages.
+ *
+ * Iterates entries from search_index_meta (man) plus perldoc/info/pydoc/ri
+ * from the cache table, checks HTML cache status, fetches HTML via the
+ * running phpMan web instance if missing, then calls LLM to generate
+ * emoji-enhanced versions (emoji_md + emoji_html).
+ *
+ * Rate-limited: minimum 2 minutes between LLM calls to respect API quotas.
+ *
+ * Usage:
+ *   php tools/batch_enhance.php --dry-run        # Show plan without LLM calls
+ *   php tools/batch_enhance.php --mode=man        # Only man pages
+ *   php tools/batch_enhance.php --mode=man,perldoc # Multiple modes
+ *   php tools/batch_enhance.php --limit=10        # Process max 10 entries
+ *   php tools/batch_enhance.php --format=html     # Enhance emoji_html only
+ *   php tools/batch_enhance.php --format=md       # Enhance emoji_md only
+ *   php tools/batch_enhance.php --format=both     # Both formats (default)
+ *   php tools/batch_enhance.php --yes             # Skip confirmation prompt
+ *   php tools/batch_enhance.php --skip-errors     # Continue on error
+ *   php tools/batch_enhance.php --cached-first    # Prioritize HTML-cached entries
+ *
+ * Requires phpman.config.php with LLM_API_URL, LLM_API_KEY, LLM_MODEL,
+ * LLM_MAX_TOKENS, and PHPMAN_HOME (for the cache DB path).
+ *
+ * The target phpMan instance URL defaults to PHPMAN_BASE_URL env var,
+ * falling back to 'http://localhost:8080/phpMan.php'.
+ */
+
+if (PHP_SAPI !== 'cli') {
+    http_response_code(400);
+    die("CLI only\n");
+}
+
+$opts = getopt('hy', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first']);
+if (isset($opts['help']) || isset($opts['h'])) {
+    echo "batch_enhance.php — Offline batch LLM emoji enhancement\n\n";
+    echo "Usage:\n";
+    echo "  php tools/batch_enhance.php [options]\n\n";
+    echo "Options:\n";
+    echo "  --dry-run          Show what would be done, no LLM calls\n";
+    echo "  --yes, -y          Skip confirmation prompt (for cron/SSH)\n";
+    echo "  --mode=<m>         Filter: man, perldoc, info, pydoc, ri (comma-separated)\n";
+    echo "  --limit=<n>        Max entries to process (default: unlimited)\n";
+    echo "  --format=<f>       html, md, or both (default: both)\n";
+    echo "  --resume-from=<n>  Skip first N entries\n";
+    echo "  --skip-errors      Continue on error instead of aborting\n";
+    echo "  --cached-first     Sort: entries with HTML cache first\n";
+    echo "  --help             Show this help\n";
+    exit;
+}
+
+// ── Load config ──
+$configFile = __DIR__ . '/../phpman.config.php';
+if (!file_exists($configFile)) {
+    fwrite(STDERR, "ERROR: phpman.config.php not found at $configFile\n");
+    exit(1);
+}
+require $configFile;
+
+foreach (['LLM_API_URL', 'LLM_API_KEY', 'LLM_MODEL', 'LLM_MAX_TOKENS', 'PHPMAN_HOME'] as $c) {
+    if (!defined($c) || constant($c) === '') {
+        fwrite(STDERR, "ERROR: $c not configured in phpman.config.php\n");
+        exit(1);
+    }
+}
+
+$baseUrl = getenv('PHPMAN_BASE_URL') ?: 'http://localhost:8080/phpMan.php';
+$baseUrl = rtrim($baseUrl, '/');
+
+$dryRun       = isset($opts['dry-run']);
+$autoYes      = isset($opts['yes']) || isset($opts['y']);
+$modeFilter   = [];
+if (isset($opts['mode'])) {
+    $raw = is_array($opts['mode']) ? $opts['mode'] : [$opts['mode']];
+    foreach ($raw as $m) {
+        foreach (explode(',', $m) as $part) {
+            $part = trim($part);
+            if ($part !== '') $modeFilter[] = $part;
+        }
+    }
+}
+$limit        = isset($opts['limit']) ? (int)$opts['limit'] : 0;
+$formatOpt    = $opts['format'] ?? 'both';
+$resumeFrom   = isset($opts['resume-from']) ? (int)$opts['resume-from'] : 0;
+$skipErrors   = isset($opts['skip-errors']);
+$cachedFirst  = isset($opts['cached-first']);
+$doMd         = ($formatOpt === 'md' || $formatOpt === 'both');
+$doHtml       = ($formatOpt === 'html' || $formatOpt === 'both');
+
+$rateLimitSec = 120; // 2 minutes between LLM calls
+$httpTimeout  = 60;  // HTTP fetch timeout for phpMan pages
+
+// ── Connect to cache DB ──
+$dbPath = rtrim(PHPMAN_HOME, '/') . '/db/phpman_cache.db';
+if (!file_exists($dbPath)) {
+    fwrite(STDERR, "ERROR: cache DB not found at $dbPath\n");
+    exit(1);
+}
+$db = new SQLite3($dbPath);
+$db->enableExceptions(true);
+$db->busyTimeout(10000);
+
+// ── Discover entries ──
+$entries = [];
+$seen = [];
+
+// 1. From search_index_meta (man — canonical post-build-index list)
+$metaRes = $db->query("SELECT name, section, source FROM search_index_meta ORDER BY source, name");
+while ($row = $metaRes->fetchArray(SQLITE3_ASSOC)) {
+    $mode = $row['source']; // 'man'
+    if ($modeFilter && !in_array($mode, $modeFilter)) continue;
+    $key = $mode . '|' . $row['name'];
+    $seen[$key] = true;
+    $entries[] = ['mode' => $mode, 'name' => $row['name'], 'section' => $row['section']];
+}
+
+// 2. Cache-only modes (perldoc, info, pydoc, ri) — discover from cache table
+$cacheModes = ['perldoc', 'info', 'pydoc', 'ri'];
+foreach ($cacheModes as $cm) {
+    if ($modeFilter && !in_array($cm, $modeFilter)) continue;
+    $res = $db->query("SELECT DISTINCT name FROM cache WHERE mode='{$cm}' AND name != '__index__' ORDER BY name");
+    while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
+        $key = $cm . '|' . $row['name'];
+        if (isset($seen[$key])) continue;
+        $seen[$key] = true;
+        $entries[] = ['mode' => $cm, 'name' => $row['name'], 'section' => ''];
+    }
+}
+
+$total = count($entries);
+echo "Found {$total} entries total\n";
+
+// ── Annotate with cache status ──
+foreach ($entries as $i => $e) {
+    $entries[$i]['_html']     = cacheExists($db, $e['mode'], $e['name'], 'html');
+    $entries[$i]['_emoji_md'] = cacheExists($db, $e['mode'], $e['name'], 'emoji_md');
+    $entries[$i]['_emoji_html'] = cacheExists($db, $e['mode'], $e['name'], 'emoji_html');
+}
+
+// Sort: cached-first puts entries with HTML cache (but without emoji) at the front
+if ($cachedFirst) {
+    usort($entries, function($a, $b) {
+        $aReady = $a['_html'] && (!$doMd || !$a['_emoji_md'] || !$doHtml || !$a['_emoji_html']);
+        $bReady = $b['_html'] && (!$doMd || !$b['_emoji_md'] || !$doHtml || !$b['_emoji_html']);
+        // HTML-cached + needs enhance > needs both > already done
+        $aScore = ($a['_html'] ? 1 : 0) + (($doMd && !$a['_emoji_md']) || ($doHtml && !$a['_emoji_html']) ? 1 : 0);
+        $bScore = ($b['_html'] ? 1 : 0) + (($doMd && !$b['_emoji_md']) || ($doHtml && !$b['_emoji_html']) ? 1 : 0);
+        return $bScore - $aScore;
+    });
+    echo "Sorted: HTML-cached entries first.\n";
+}
+
+// Filter by limit + resume
+if ($resumeFrom > 0) {
+    $entries = array_slice($entries, $resumeFrom);
+    echo "Resuming from offset {$resumeFrom}: " . count($entries) . " remaining\n";
+}
+if ($limit > 0 && count($entries) > $limit) {
+    $entries = array_slice($entries, 0, $limit);
+    echo "Limited to {$limit} entries\n";
+}
+
+// ── Summary stats ──
+$hasHtmlCache = 0; $hasEmojiMd = 0; $hasEmojiHtml = 0; $needsHtml = 0; $needsEmoji = 0;
+foreach ($entries as $e) {
+    if ($e['_html']) $hasHtmlCache++;
+    if ($e['_emoji_md']) $hasEmojiMd++;
+    if ($e['_emoji_html']) $hasEmojiHtml++;
+    if (!$e['_html']) $needsHtml++;
+    $needEmoji = ($doMd && !$e['_emoji_md']) || ($doHtml && !$e['_emoji_html']);
+    if ($needEmoji) $needsEmoji++;
+}
+
+echo str_repeat('-', 60) . "\n";
+echo sprintf("%-30s %s\n", "HTML cache exists:",   "{$hasHtmlCache}/{$total}");
+echo sprintf("%-30s %s\n", "emoji_md exists:",     "{$hasEmojiMd}/{$total}");
+echo sprintf("%-30s %s\n", "emoji_html exists:",   "{$hasEmojiHtml}/{$total}");
+echo sprintf("%-30s %s\n", "Need HTML fetch:",     "{$needsHtml}");
+echo sprintf("%-30s %s\n", "Need LLM enhance:",    "{$needsEmoji}");
+echo sprintf("%-30s %s\n", "Rate limit:",          "{$rateLimitSec}s between calls");
+echo sprintf("%-30s %s\n", "Dry run:",             $dryRun ? 'YES' : 'no');
+echo str_repeat('-', 60) . "\n";
+
+if ($dryRun) {
+    echo "\nDry run — no changes made.\n";
+    echo "Run without --dry-run to execute.\n";
+    exit;
+}
+
+if ($needsEmoji === 0) {
+    echo "\nAll entries already enhanced. Nothing to do.\n";
+    exit;
+}
+
+// Estimate time
+$estCalls = 0;
+foreach ($entries as $e) {
+    if ($doMd && !$e['_emoji_md']) $estCalls++;
+    if ($doHtml && !$e['_emoji_html']) $estCalls++;
+}
+$estMin = ceil(($estCalls * $rateLimitSec) / 60);
+$estHr = floor($estMin / 60);
+$estMinRem = $estMin % 60;
+$estStr = $estHr > 0 ? "{$estHr}h {$estMinRem}m" : "{$estMin}m";
+echo "Estimated: {$estCalls} LLM calls, ~{$estStr}\n\n";
+
+// ── Confirm ──
+if (!$autoYes) {
+    echo "Press Enter to start (Ctrl+C to abort)...";
+    fgets(STDIN);
+}
+
+// ── Process ──
+$processed = 0;
+$enhanced = 0;
+$errors = 0;
+$lastLlmTime = 0;
+$startTime = time();
+$totalEntries = count($entries);
+
+foreach ($entries as $idx => $e) {
+    $mode = $e['mode'];
+    $name = $e['name'];
+    $section = $e['section'];
+    $label = "{$mode}/{$name}";
+    $entryNum = $idx + 1;
+
+    echo "\n[" . date('H:i:s') . "] [{$entryNum}/{$totalEntries}] {$label}\n";
+
+    $mdOk   = $e['_emoji_md'];
+    $htmlEOk = $e['_emoji_html'];
+
+    // ── Ensure HTML cache exists ──
+    $htmlOk = $e['_html'];
+    if (!$htmlOk) {
+        echo "  Fetching HTML from phpMan...\n";
+        list($fetched, $httpCode) = httpGetWithStatus($baseUrl, $mode, $name, 'html', $httpTimeout);
+        if ($fetched === false || $httpCode >= 400) {
+            echo "  ERROR: Failed to fetch HTML for {$label} (HTTP {$httpCode})\n";
+            $errors++;
+            if (!$skipErrors) {
+                echo "  Aborting. Use --skip-errors to continue on failure.\n";
+                break;
+            }
+            continue;
+        }
+        // The web request should have cached the HTML. Verify:
+        $htmlOk = cacheExists($db, $mode, $name, 'html');
+        if (!$htmlOk) {
+            writeCache($db, $mode, $name, '', 'html', $fetched, 'found');
+        }
+        echo "  HTML cached (" . strlen($fetched) . " chars)\n";
+    }
+
+    // ── Phase 1: emoji_md ──
+    if ($doMd && !$mdOk) {
+        $lastLlmTime = waitForRateLimit($lastLlmTime, $rateLimitSec);
+
+        list($plainMd, $mdHttpCode) = httpGetWithStatus($baseUrl, $mode, $name, 'markdown', $httpTimeout);
+        if ($plainMd === false || $mdHttpCode >= 400 || trim($plainMd) === '') {
+            echo "  ERROR: Failed to fetch Markdown for {$label} (HTTP {$mdHttpCode})\n";
+            $errors++;
+            if (!$skipErrors) break;
+            continue;
+        }
+
+        $maxLen = 16000;
+        if (strlen($plainMd) > $maxLen) {
+            $plainMd = substr($plainMd, 0, $maxLen) . "\n\n...(truncated)";
+        }
+
+        echo "  Calling LLM for emoji_md (" . strlen($plainMd) . " chars md input)...\n";
+        $enhancedMd = callLLM(getMdSystemPrompt(), $plainMd);
+        $lastLlmTime = time();
+
+        if ($enhancedMd !== '') {
+            $enhancedMd = cleanLlmOutput($enhancedMd);
+            writeCache($db, $mode, $name, '', 'emoji_md', $enhancedMd, 'found');
+            echo "  [md] {$label}: enhanced (" . strlen($enhancedMd) . " chars)\n";
+            $enhanced++;
+        } else {
+            echo "  [md] {$label}: LLM returned empty — skipping\n";
+            $errors++;
+        }
+    } elseif ($doMd) {
+        echo "  [md] already enhanced, skipping\n";
+    }
+
+    // ── Phase 2: emoji_html ──
+    if ($doHtml && !$htmlEOk) {
+        $lastLlmTime = waitForRateLimit($lastLlmTime, $rateLimitSec);
+
+        list($rawHtml, $htmlHttpCode) = httpGetWithStatus($baseUrl, $mode, $name, 'html', $httpTimeout);
+        if ($rawHtml === false || $htmlHttpCode >= 400 || trim($rawHtml) === '') {
+            echo "  ERROR: Failed to fetch HTML for {$label} (HTTP {$htmlHttpCode})\n";
+            $errors++;
+            if (!$skipErrors) break;
+            continue;
+        }
+
+        $maxLen = 24000;
+        if (strlen($rawHtml) > $maxLen) {
+            $rawHtml = substr($rawHtml, 0, $maxLen) . "\n\n...(truncated)";
+        }
+
+        echo "  Calling LLM for emoji_html (" . strlen($rawHtml) . " chars html input)...\n";
+        $enhancedHtml = callLLM(getHtmlSystemPrompt(), $rawHtml);
+        $lastLlmTime = time();
+
+        if ($enhancedHtml !== '') {
+            $enhancedHtml = cleanLlmOutput($enhancedHtml);
+            writeCache($db, $mode, $name, '', 'emoji_html', $enhancedHtml, 'found');
+            echo "  [html] {$label}: enhanced (" . strlen($enhancedHtml) . " chars)\n";
+            $enhanced++;
+        } else {
+            echo "  [html] {$label}: LLM returned empty — skipping\n";
+            $errors++;
+        }
+    } elseif ($doHtml) {
+        echo "  [html] already enhanced, skipping\n";
+    }
+
+    $processed++;
+
+    // Progress report every 10 entries
+    if ($processed > 0 && $processed % 10 === 0) {
+        $elapsed = time() - $startTime;
+        $rate = $processed > 0 ? round($elapsed / $processed, 1) : 0;
+        $eta = $processed > 0 ? round(($totalEntries - $idx - 1) * $rate / 60, 1) : 0;
+        echo "  --- Progress: {$processed} done, {$enhanced} enhanced, {$errors} errors, " .
+             round($elapsed/60, 1) . "min elapsed (~{$rate}s/item, ETA {$eta}min) ---\n";
+    }
+}
+
+// ── Final report ──
+$elapsed = time() - $startTime;
+echo "\n" . str_repeat('=', 60) . "\n";
+echo "Done. {$processed} processed, {$enhanced} enhanced, {$errors} errors " .
+     "in " . round($elapsed/60, 1) . " minutes.\n";
+
+// ────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────────────────────────────────────
+
+function cacheExists(SQLite3 $db, string $mode, string $name, string $format): bool {
+    static $mem = [];
+    $key = "{$mode}|{$name}|{$format}";
+    if (array_key_exists($key, $mem)) return $mem[$key];
+
+    $stmt = $db->prepare(
+        "SELECT 1 FROM cache WHERE mode=:mode AND name=:name AND section='' AND format=:format AND status='found'"
+    );
+    $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
+    $stmt->bindValue(':name', $name, SQLITE3_TEXT);
+    $stmt->bindValue(':format', $format, SQLITE3_TEXT);
+    $res = $stmt->execute();
+    $exists = ($res->fetchArray() !== false);
+    $res->finalize();
+    $mem[$key] = $exists;
+    return $exists;
+}
+
+function writeCache(SQLite3 $db, string $mode, string $name, string $section, string $format, string $content, string $status): void {
+    $compressed = gzcompress($content);
+    $stmt = $db->prepare(
+        "INSERT OR REPLACE INTO cache (mode, name, section, format, content, content_len, status, ttl, created_at, updated_at)
+         VALUES (:mode, :name, :section, :format, :content, :len, :status, 0, strftime('%s','now'), strftime('%s','now'))"
+    );
+    $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
+    $stmt->bindValue(':name', $name, SQLITE3_TEXT);
+    $stmt->bindValue(':section', $section, SQLITE3_TEXT);
+    $stmt->bindValue(':format', $format, SQLITE3_TEXT);
+    $stmt->bindValue(':content', $compressed, SQLITE3_BLOB);
+    $stmt->bindValue(':len', strlen($content), SQLITE3_INTEGER);
+    $stmt->bindValue(':status', $status, SQLITE3_TEXT);
+    $stmt->execute();
+}
+
+function httpGetWithStatus(string $baseUrl, string $mode, string $name, string $format, int $timeout): array {
+    $url = $baseUrl . '/' . $mode . '/' . urlencode($name) . '/1/' . $format;
+    $ctx = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'timeout' => $timeout,
+            'header' => "User-Agent: phpMan/batch-enhance\r\n",
+        ],
+    ]);
+    $body = @file_get_contents($url, false, $ctx);
+    $httpCode = 0;
+    if (isset($http_response_header)) {
+        foreach ($http_response_header as $h) {
+            if (preg_match('#^HTTP/\d+\.\d+\s+(\d+)#', $h, $m)) {
+                $httpCode = (int)$m[1];
+                break;
+            }
+        }
+    }
+    return [$body, $httpCode];
+}
+
+function waitForRateLimit(int $lastCallTime, int $minInterval): int {
+    $elapsed = time() - $lastCallTime;
+    if ($lastCallTime > 0 && $elapsed < $minInterval) {
+        $wait = $minInterval - $elapsed;
+        echo "  Rate limit: waiting {$wait}s...";
+        for ($i = $wait; $i > 0; $i--) {
+            if ($i % 30 === 0 || $i <= 10) echo " {$i}s";
+            sleep(1);
+        }
+        echo "\n";
+    }
+    return time();
+}
+
+function callLLM(string $systemPrompt, string $userMessage): string {
+    $payload = json_encode([
+        'model' => LLM_MODEL,
+        'messages' => [
+            ['role' => 'system', 'content' => $systemPrompt],
+            ['role' => 'user', 'content' => $userMessage],
+        ],
+        'max_tokens' => min((int)LLM_MAX_TOKENS, 16384),
+        'temperature' => 0.3,
+    ], JSON_UNESCAPED_UNICODE);
+
+    $ch = curl_init(LLM_API_URL);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $payload,
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . LLM_API_KEY,
+            'User-Agent: phpMan/batch-enhance',
+        ],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 300,
+    ]);
+    $response = curl_exec($ch);
+    $error = curl_error($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($response === false || $response === '') {
+        fwrite(STDERR, "  LLM HTTP {$httpCode}: " . ($error ?: 'empty response') . "\n");
+        return '';
+    }
+
+    $data = json_decode($response, true);
+    if ($data === null) {
+        fwrite(STDERR, "  LLM JSON decode failed\n");
+        return '';
+    }
+    if (!empty($data['error'])) {
+        $errMsg = $data['error']['message'] ?? 'unknown';
+        fwrite(STDERR, "  LLM API error: {$errMsg}\n");
+        return '';
+    }
+
+    $content = $data['choices'][0]['message']['content'] ?? '';
+    if ($content === '') {
+        $content = $data['choices'][0]['message']['reasoning_content'] ?? '';
+    }
+
+    $finishReason = $data['choices'][0]['finish_reason'] ?? '';
+    if ($finishReason === 'length') {
+        fwrite(STDERR, "  LLM: output truncated (finish_reason=length)\n");
+    }
+    return trim($content);
+}
+
+function cleanLlmOutput(string $content): string {
+    $content = trim($content);
+    $content = preg_replace('/^```(?:markdown|md|html)?\s*\n?/m', '', $content);
+    $content = preg_replace('/\n?```\s*$/m', '', $content);
+    $content = preg_replace('/^\[?[\w.-]+\]?\(\d+\w*\)\s+.*\s+\[?[\w.-]+\]?\(\d+\w*\)\s*\n/', '', $content);
+    return trim($content);
+}
+
+function getMdSystemPrompt(): string {
+    return "You are a Linux documentation emoji-enhancement assistant. Transform plain man page Markdown into an emoji-rich, visually scannable version optimized for both human developers and AI agents.\n\n" .
+        "Output rules:\n" .
+        "1. Output ONLY valid Markdown — no HTML tags, no code fences, no JSON wrapper, no preamble\n" .
+        "2. Preserve ALL original technical information (options, flags, syntax, descriptions)\n" .
+        "3. Do NOT invent new content — only reorganize and decorate existing content\n" .
+        "4. Use ONLY Markdown formatting: `backticks` for code, **double stars** for bold, [text](url) for links. NEVER use <code>, <b>, <i>, <a> or any HTML tags.\n" .
+        "5. Options and examples MUST use standard Markdown list syntax: start each item with \"- \" (dash+space) followed by content. NEVER use emoji as list markers.\n\n" .
+        "Style rules:\n" .
+        "- Every ## section heading gets ONE relevant emoji prefix\n" .
+        "- ## NAME section: add emoji tagline below heading\n" .
+        "- Add a Quick Reference table after SYNOPSIS with common use cases\n" .
+        "- Group related options into ### subsections with emoji titles\n" .
+        "- Each option row: \"- 📁 `-f`, `--flag`\" — dash+space then descriptive emoji matching the option's purpose. Do NOT use bullet-like emoji (🔹🔸▪️▫️➡️). Use meaningful ones: 📁 for files, 📋 for format, ⏱️ for time/sort, 🎨 for color, 🔗 for links, 🛡️ for security, etc.\n" .
+        "- Usage examples: each line annotated with emoji comments after #\n" .
+        "- Exit codes section: emoji table\n" .
+        "- SEE ALSO section: each reference gets relevant emoji\n" .
+        "- Keep all original command syntax and flags exactly as-is\n" .
+        "- Emoji should be standard Unicode, widely supported";
+}
+
+function getHtmlSystemPrompt(): string {
+    return "You are a Linux documentation emoji-enhancement assistant. Transform man page HTML into an emoji-rich, visually scannable version optimized for both human developers and AI agents.\n\n" .
+        "Output rules:\n" .
+        "1. Output ONLY valid HTML — no code fences, no JSON wrapper, no preamble\n" .
+        "2. Preserve ALL original technical information (options, flags, syntax, descriptions)\n" .
+        "3. Do NOT invent new content — only reorganize and decorate existing content\n" .
+        "4. Preserve all <pre><code> blocks exactly as-is — do not modify code examples\n" .
+        "5. Preserve all <b>, <u>, <a href> tags — they carry semantic meaning\n" .
+        "6. Add relevant emoji prefixes to section headings (<h2>, <h3>)\n" .
+        "7. Add descriptive emoji to option descriptions and list items\n" .
+        "8. Keep the original HTML structure intact\n" .
+        "9. Emoji should be standard Unicode, widely supported";
+}

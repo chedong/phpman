@@ -11,7 +11,7 @@ Single `phpman_cache.db` file containing page cache + FTS5 full-text search inde
 
 | Table | Type | Rows (production) | Purpose |
 |---|------|:---:|------|
-| `cache` | Regular | ~38K | Page content cache (man/perldoc/pydoc/ri rendered output) |
+| `cache` | Regular | ~38K | Page content cache (man/perldoc/pydoc/ri rendered output + emoji_md/emoji_html) |
 | `cache_fts` | FTS5 virtual (content) | — | Cached page title index (linked to cache.id) |
 | `search_fts` | FTS5 virtual (standalone) | 13,835 | Offline full-text search index (man+pydoc+ri) |
 | `search_index_meta` | Regular | 13,835 | Index entry metadata (dedup, sort, stats) |
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS cache (
     mode        TEXT NOT NULL,              -- 'man'|'perldoc'|'info'|'pydoc'|'ri'|'search'
     name        TEXT NOT NULL,              -- command/module name (e.g. 'ls', 'File::Basename')
     section     TEXT NOT NULL DEFAULT '',   -- '1'~'9','3pm','n','pydoc','ri' or ''
-    format      TEXT NOT NULL,              -- 'html'|'markdown'|'json'|'mcp'
+    format      TEXT NOT NULL,              -- 'html'|'markdown'|'json'|'mcp'|'emoji_md'|'emoji_html'
     content     BLOB,                       -- gzcompress() compressed rendered output
     content_len INTEGER NOT NULL DEFAULT 0, -- uncompressed byte size
     status      TEXT NOT NULL DEFAULT 'found'
@@ -53,6 +53,7 @@ CREATE INDEX idx_cache_expiry  ON cache(updated_at) WHERE ttl > 0;
 - **Cache key**: (mode, name, section, format) uniquely identifies a cached entry
 - **Compression**: PHP `gzcompress()`, SQLite BLOB storage, ~70% average compression ratio
 - **TTL**: found entries 604800s (7 days), not_found entries 86400s (1 day). Expired entries auto-deleted on `get()`
+- **LLM enhancement formats** (`emoji_md`, `emoji_html`): Written with TTL=0 (permanent, no auto-expiry). Generated offline by `tools/batch_enhance.php` or online by `enhanceManPage()`. Preserved across `--build-index-cron` runs (reindex skips emoji formats to avoid wasting 48+ days of LLM work).
 - **Auto-cleanup**: `cacheOrExecute()` has 1% probability of triggering `DELETE FROM cache WHERE expired`
 - **search mode**: Not written to `cache_fts` index, no hits counting, emits `<meta name="robots" content="noindex">`
 
@@ -232,7 +233,23 @@ php phpMan.php --build-index
 0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron
 ```
 
-### 10.2 Cache Cleanup
+### 10.2 LLM Emoji Enhancement (Batch)
+
+```bash
+# Dry-run preview
+php tools/batch_enhance.php --dry-run
+
+# Full batch (md only, HTML-cached first)
+nohup php tools/batch_enhance.php --cached-first --skip-errors --yes --format=md \
+  > logs/batch_enhance_md.log 2>&1 &
+
+# Single page (CLI)
+php tools/enhance_page.php man ls
+```
+
+See `docs/01-PRODUCT.md` §2.11.5–2.11.6 for full design.
+
+### 10.3 Cache Cleanup
 
 ```bash
 # Full reset (delete DB file; next request auto-creates)
@@ -245,7 +262,7 @@ sqlite3 ~/.phpman/db/phpman_cache.db "DELETE FROM cache WHERE mode='search'"
 sqlite3 ~/.phpman/db/phpman_cache.db "DELETE FROM cache WHERE ttl > 0 AND (strftime('%s','now') - updated_at) > ttl"
 ```
 
-### 10.3 Defragmentation
+### 10.4 Defragmentation
 
 After extended operation, many INSERT/DELETEs may cause fragmentation. VACUUM rewrites the entire database file:
 
@@ -255,7 +272,7 @@ sqlite3 ~/.phpman/db/phpman_cache.db "PRAGMA journal_mode=DELETE; VACUUM;"
 
 Best results when run after rebuilding the FTS5 index (DROP+CREATE clears old index, then VACUUM reclaims space).
 
-### 10.4 Related Docs
+### 10.5 Related Docs
 
 - [SEARCH_FTS5_DESIGN.md](SEARCH_FTS5_DESIGN.md) — FTS5 full-text search design (v4/v3.6.2)
 - [PYDOC_RI_DESIGN.md](PYDOC_RI_DESIGN.md) — pydoc3 / ri document format parsing design
