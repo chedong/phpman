@@ -18,13 +18,13 @@ git push origin v3.6.3
 ## Version Roadmap
 
 ```
-v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 (in progress)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-man/perldoc/info   pydoc3/ri        Config overridables   JSON canonical cache
-MCP Server         structured out   Underscore link fix   LLM emoji enhancement
-JSON API           Search cascade   man7.org fallback     Code split
-TLDR endpoint      FTS5 3-source    Docs restructured     i18n
-                                   Structure regr test   AI translation
+v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 (current)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+man/perldoc/info   pydoc3/ri        Config overridables   JSON canonical cache   batch PID/stop
+MCP Server         structured out   Underscore link fix   LLM emoji enhancement   XSS hardening
+JSON API           Search cascade   man7.org fallback     Code split             --parameter mode
+TLDR endpoint      FTS5 3-source    Docs restructured     i18n                   minimal webroot
+                                   Structure regr test   AI translation          install.sh MCP key
 ```
 
 ---
@@ -116,3 +116,36 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n
 **Phase 4: Code split** (planned)
 - `src/Source/` + `src/Formatter/` + `src/Cache/` + `src/Config/`
 - Single-file entry point preserved
+
+### v4.1 — Tooling & Security Hardening (current, 2026-06-17)
+
+**batch_enhance.php lifecycle**:
+- `--pid-file` + `--stop`: PID-based process management, safe kill via SIGTERM→SIGKILL
+- `--status`: per-mode emoji enhancement progress with counts, percentages, recent entries
+- `--rebuild` / `-r`: force re-enhance even if emoji cache exists
+- `--parameter=<name1;name2>` + `--section=<s>`: single/multi-page enhancement (supersedes `tools/enhance_page.php`)
+- `--parameter` + `--mode`: target specific pages across any documentation source
+- No-arg invocation defaults to `--help`
+
+**Security hardening**:
+- `formatInlineMarkdown()` XSS fix: `h()`-escape all output, restore safe tags (`<a>`, `<code>`, `<b>`, `<i>`)
+- `cleanEmojiHtml()` / `cleanLlmOutput()`: `strip_tags()` with safe allowlist as XSS defense-in-depth
+- LLM prompts: explicit XSS prevention rule — escape bare `<` `>` outside allowed HTML tags
+- v3→v4 migration: `NOT IN` list includes `emoji_md`, `emoji_html` to preserve LLM caches
+
+**Design & docs**:
+- Minimal webroot principle: only `phpMan.php` + `phpman.css` + config in public path (`01-PRODUCT.md` §2.3)
+- `tools/` moved out of webroot on staging/production
+- install.sh `--webroot` auto-generates `MCP_API_KEY` (random 32-char hex)
+- README restructured: install.sh first, MCP agent config moved lower
+- Removed `tools/enhance_page.php` — superseded by `batch_enhance.php --parameter`
+
+**Cleanup**:
+- Removed all `maxLen` input truncation — LLM models handle full pages natively
+- Dead constant `PHPMAN_FLAG_DESC_MAX_LEN` removed
+- `formatMarkdownToHTML()` regex `#{1,4}` → `#{2,5}` (skips h1, matches h2-h6)
+- Makefile auto-creates `~/.phpman/phpman.config.php` → webroot symlink on deploy
+- All 10 stale worktree branches purged from GitHub
+- 7 open issues closed: #128, #133–#141
+
+---
