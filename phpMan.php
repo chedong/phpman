@@ -2158,10 +2158,20 @@ function enhanceManPage(string $mode, string $name): string {
 /**
  * Post-process LLM-generated emoji HTML to fix common mistakes:
  * - Stray <h1> tags → <h2> (page already has H1 title from breadcrumb)
+ * - Strip dangerous HTML tags as XSS defense-in-depth
  */
 function cleanEmojiHtml(string $html): string {
     // Fix: <h1> → <h2> — LLM sometimes ignores the "never use h1" rule
     $html = preg_replace('#<(/?)h1\b([^>]*)>#i', '<$1h2$2>', $html);
+
+    // XSS defense: strip any tag not in the safe allowlist.
+    // LLM output may contain unescaped code like <input>, <form>, <script>
+    // that browsers would interpret as real HTML.
+    $safeTags = '<h2><h3><h4><h5><h6><p><br><b><u><i><em><strong><a>'
+              . '<pre><code><table><thead><tbody><tr><td><th><ul><ol><li>'
+              . '<div><span><hr><blockquote><sup><sub><small><del>';
+    $html = strip_tags($html, $safeTags);
+
     return $html;
 }
 
