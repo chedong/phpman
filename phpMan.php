@@ -2046,8 +2046,6 @@ function enhanceManPage(string $mode, string $name): string {
             case 'ri':     $plainMd = getRiPage($name, 'markdown'); break;
         }
         if (trim($plainMd) !== '') {
-            $maxLen = 16000;
-            if (strlen($plainMd) > $maxLen) $plainMd = substr($plainMd, 0, $maxLen) . "\n\n...(truncated)";
 
             $mdPrompt = "You are a Linux documentation emoji-enhancement assistant. Transform plain man page Markdown into an emoji-rich, visually scannable version optimized for both human developers and AI agents.\n\n" .
                 "Output rules:\n" .
@@ -2102,8 +2100,6 @@ function enhanceManPage(string $mode, string $name): string {
             } elseif (preg_match('#<pre>(.+?)</pre>#s', $rawHtml, $m)) {
                 $rawHtml = $m[1];
             }
-            $maxLen = 24000;
-            if (strlen($rawHtml) > $maxLen) $rawHtml = substr($rawHtml, 0, $maxLen) . "\n\n...(truncated)";
 
             $htmlPrompt = "You are a Linux documentation enhancement assistant. Transform man page HTML into an emoji-rich, visually scannable version.\n\n" .
                 "Output rules:\n" .
@@ -2122,6 +2118,13 @@ function enhanceManPage(string $mode, string $name): string {
                 "- Code includes anything with: \$variable, ->method, use Module;, function(), #!/bin, flags like -f --long\n" .
                 "- Even single-line code statements need <pre><code> wrapping — never leave code as bare text with <br>\n" .
                 "- Existing <pre><code> blocks: preserve exact content, only add emoji comments AFTER the closing </pre>\n\n" .
+                "SECURITY — XSS prevention (this is CRITICAL):\n" .
+                "- ANY < or > character NOT part of a standard HTML tag (<h2>, <h3>, <p>, <br>,\n" .
+                "  <b>, <u>, <a>, <pre>, <code>, <table>, <tr>, <td>, <th>, <ul>, <ol>, <li>,\n" .
+                "  <div>, <span>, <em>, <strong>, <hr>, <blockquote>) MUST be escaped as &lt; &gt;\n" .
+                "- Example: print qq(<input name=\"x\">) → print qq(&lt;input name=\"x\"&gt;)\n" .
+                "- Before final output, scan your ENTIRE response for bare < or > outside allowed\n" .
+                "  tags. If you find any, fix them. Missing this creates a real XSS vulnerability.\n\n" .
                 "Style rules:\n" .
                 "- NAME section: add emoji tagline below heading\n" .
                 "- Add a Quick Reference <table> after SYNOPSIS\n" .
