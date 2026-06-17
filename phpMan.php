@@ -812,8 +812,8 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
                 $db->exec("DELETE FROM search_index_meta");
             } elseif ($row === '3') {
                 // v3 → v4: per-format caching migration.
-                // Clear all html/markdown/mcp/raw entries; keep only json/search.
-                $db->exec("DELETE FROM cache WHERE format NOT IN ('json', 'search')");
+                // Clear all html/markdown/mcp/raw entries; keep only json/search/emoji.
+                $db->exec("DELETE FROM cache WHERE format NOT IN ('json', 'search', 'emoji_md', 'emoji_html')");
             } else {
                 $db->exec("DELETE FROM cache");
             }
@@ -2314,6 +2314,15 @@ function formatInlineMarkdown(string $text): string {
         $text
     );
     // Escape remaining plain text between HTML tags
+    $text = h($text);
+    // Restore markdown-generated safe HTML tags
+    $text = str_replace(
+        ['&lt;a ', '&lt;/a&gt;', '&lt;code&gt;', '&lt;/code&gt;',
+         '&lt;b&gt;', '&lt;/b&gt;', '&lt;i&gt;', '&lt;/i&gt;'],
+        ['<a ', '</a>', '<code>', '</code>',
+         '<b>', '</b>', '<i>', '</i>'],
+        $text
+    );
     return $text;
 }
 
