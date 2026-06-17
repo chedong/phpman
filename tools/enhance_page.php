@@ -66,18 +66,6 @@ if ($plainMd === false || trim($plainMd) === '') {
 }
 echo "Markdown: " . strlen($plainMd) . " chars\n";
 
-// Truncate very long documents to fit LLM context
-$maxLen = 12000;
-if (strlen($plainMd) > $maxLen) {
-    $plainMd = substr($plainMd, 0, $maxLen) . "\n\n...(truncated)";
-    echo "Truncated to: " . strlen($plainMd) . " chars\n";
-}
-
-$systemPrompt = "You are a Linux documentation emoji-enhancement assistant. Transform plain man page Markdown into an emoji-rich, visually scannable version optimized for both human developers and AI agents.\n\n" .
-    "Output rules:\n" .
-    "1. Output ONLY valid Markdown — no HTML tags, no code fences, no JSON wrapper, no preamble\n" .
-    "2. Preserve ALL original technical information (options, flags, syntax, descriptions)\n" .
-    "3. Do NOT invent new content — only reorganize and decorate existing content\n" .
     "4. Use ONLY Markdown formatting: `backticks` for code, **double stars** for bold, [text](url) for links. NEVER use <code>, <b>, <i>, <a> or any HTML tags.\n" .
     "5. Options and examples MUST use standard Markdown list syntax: start each item with \"- \" (dash+space) followed by content. NEVER use emoji as list markers.\n\n" .
     "Style rules:\n" .
