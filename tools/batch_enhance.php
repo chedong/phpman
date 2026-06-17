@@ -377,7 +377,7 @@ foreach ($entries as $idx => $e) {
         // The web request should have cached the HTML. Verify:
         $htmlOk = cacheExists($db, $mode, $name, 'html');
         if (!$htmlOk) {
-            writeCache($db, $mode, $name, '', 'html', $fetched, 'found');
+            writeCache($db, $mode, $name, $section, 'html', $fetched, 'found');
         }
         echo "  HTML cached (" . strlen($fetched) . " chars)\n";
     }
@@ -497,7 +497,7 @@ function writeCache(SQLite3 $db, string $mode, string $name, string $section, st
 }
 
 function httpGetWithStatus(string $baseUrl, string $mode, string $name, string $section, string $format, int $timeout): array {
-    $url = $baseUrl . '/' . $mode . '/' . urlencode($name) . '/' . ($section ?: '1') . '/' . $format;
+    $url = $baseUrl . '/' . $mode . '/' . urlencode($name) . '/' . ($section !== '' ? $section : '1') . '/' . $format;
     $ctx = stream_context_create([
         'http' => [
             'method' => 'GET',
@@ -600,6 +600,13 @@ function cleanLlmOutput(string $content): string {
     $content = preg_replace('#</?html[^>]*>#i', '', $content);
     $content = preg_replace('#</?head[^>]*>.*?</head>#is', '', $content);
     $content = preg_replace('#</?body[^>]*>#i', '', $content);
+    // Remove <script>/<style>/<meta>/<link>/<title> with content.
+    // strip_tags() removes tags but LEAVES text, leaking JSON-LD/CSS.
+    $content = preg_replace('#<script[^>]*>.*?</script>#is', '', $content);
+    $content = preg_replace('#<style[^>]*>.*?</style>#is', '', $content);
+    $content = preg_replace('#<meta[^>]*>#i', '', $content);
+    $content = preg_replace('#<link[^>]*>#i', '', $content);
+    $content = preg_replace('#<title[^>]*>.*?</title>#is', '', $content);
     // XSS defense: strip unsafe HTML tags from LLM output
     $safeTags = '<h2><h3><h4><h5><h6><p><br><b><u><i><em><strong><a>'
               . '<pre><code><table><thead><tbody><tr><td><th><ul><ol><li>'
