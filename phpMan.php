@@ -2241,9 +2241,9 @@ function formatMarkdownToHTML(string $md): string {
         }
 
         // Heading
-        if (preg_match('/^(#{1,4})\s+(.+)/', $trimmed, $m)) {
+        if (preg_match('/^(#{2,5})\s+(.+)/', $trimmed, $m)) {
             if ($inList) { $out .= "</ul>\n"; $inList = false; }
-            $level = strlen($m[1]); // h2-h5
+            $level = strlen($m[1]); // starts at h2 (5 hashes = h6 max)
             $out .= "<h{$level}>" . h(trim($m[2])) . "</h{$level}>\n";
             $prevBlank = false;
             continue;
