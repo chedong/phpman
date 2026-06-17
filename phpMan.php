@@ -2112,13 +2112,20 @@ function enhanceManPage(string $mode, string $name): string {
                 "3. Do NOT invent new content — only reorganize and decorate existing content\n" .
                 "4. Keep existing <pre>, <code>, <b>, <u> tags — they contain real command syntax\n" .
                 "5. Preserve <a> links (cross-references like date(1), man page links)\n\n" .
+                "CRITICAL heading rules:\n" .
+                "- NEVER use <h1> — the page already has an H1 title. Start from <h2>\n" .
+                "- Section titles (NAME, SYNOPSIS, DESCRIPTION, OPTIONS, EXAMPLES, SEE ALSO) → <h2> with ONE emoji prefix\n" .
+                "- Sub-sections within a section → <h3> with emoji prefix\n" .
+                "- Comments in code examples are NOT headings — do NOT wrap them in <h1>/<h2>/<h3>\n\n" .
+                "Code block rules:\n" .
+                "- ALL code (shell commands, Perl, Python, Ruby, config) MUST be wrapped in <pre><code>...</code></pre>\n" .
+                "- Code includes anything with: \$variable, ->method, use Module;, function(), #!/bin, flags like -f --long\n" .
+                "- Even single-line code statements need <pre><code> wrapping — never leave code as bare text with <br>\n" .
+                "- Existing <pre><code> blocks: preserve exact content, only add emoji comments AFTER the closing </pre>\n\n" .
                 "Style rules:\n" .
-                "- Wrap each section heading in <h2> with ONE relevant emoji prefix\n" .
                 "- NAME section: add emoji tagline below heading\n" .
                 "- Add a Quick Reference <table> after SYNOPSIS\n" .
-                "- Group related options into <h3> subsections with emoji titles\n" .
                 "- Option rows: <li> with emoji prefix. Use meaningful emoji: 📁 files, 📋 format, ⏱️ time/sort, 🎨 color, 🔗 links, 🛡️ security\n" .
-                "- Code blocks (shell commands, Perl, Python, Ruby) MUST be wrapped in <pre><code>...</code></pre>\n" .
                 "- Exit codes: emoji <table>\n" .
                 "- SEE ALSO: each reference gets relevant emoji\n" .
                 "- Keep all original command syntax and flags exactly as-is\n" .
@@ -2132,6 +2139,8 @@ function enhanceManPage(string $mode, string $name): string {
                 $enhancedHtml = preg_replace('#</?html[^>]*>#i', '', $enhancedHtml);
                 $enhancedHtml = preg_replace('#</?body[^>]*>#i', '', $enhancedHtml);
                 $enhancedHtml = preg_replace('#</?head[^>]*>.*?</head>#is', '', $enhancedHtml);
+                // Post-process: fix LLM heading mistakes
+                $enhancedHtml = cleanEmojiHtml($enhancedHtml);
                 $enhancedHtml = trim($enhancedHtml);
                 if ($enhancedHtml !== '') {
                     $cache->set($mode, $name, '', 'emoji_html', $enhancedHtml, 'found');
@@ -2144,6 +2153,16 @@ function enhanceManPage(string $mode, string $name): string {
     }
 
     return $enhancedHtml ?? '';
+}
+
+/**
+ * Post-process LLM-generated emoji HTML to fix common mistakes:
+ * - Stray <h1> tags → <h2> (page already has H1 title from breadcrumb)
+ */
+function cleanEmojiHtml(string $html): string {
+    // Fix: <h1> → <h2> — LLM sometimes ignores the "never use h1" rule
+    $html = preg_replace('#<(/?)h1\b([^>]*)>#i', '<$1h2$2>', $html);
+    return $html;
 }
 
 /**
