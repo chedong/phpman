@@ -2167,6 +2167,13 @@ function cleanEmojiHtml(string $html): string {
     // Fix: <h1> → <h2> — LLM sometimes ignores the "never use h1" rule
     $html = preg_replace('#<(/?)h1\b([^>]*)>#i', '<$1h2$2>', $html);
 
+    // Strip full-document wrappers: LLM output or old cache may contain
+    // <!DOCTYPE html><html><head>...<body> which nests inside phpMan's own HTML
+    $html = preg_replace('#^<!DOCTYPE[^>]*>\s*#i', '', $html);
+    $html = preg_replace('#</?html[^>]*>#i', '', $html);
+    $html = preg_replace('#</?head[^>]*>.*?</head>#is', '', $html);
+    $html = preg_replace('#</?body[^>]*>#i', '', $html);
+
     // XSS defense: strip any tag not in the safe allowlist.
     // LLM output may contain unescaped code like <input>, <form>, <script>
     // that browsers would interpret as real HTML.
