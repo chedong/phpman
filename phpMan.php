@@ -2174,6 +2174,14 @@ function cleanEmojiHtml(string $html): string {
     $html = preg_replace('#</?head[^>]*>.*?</head>#is', '', $html);
     $html = preg_replace('#</?body[^>]*>#i', '', $html);
 
+    // Remove <script>/<style>/<meta>/<link>/<title> with content.
+    // strip_tags() removes tags but LEAVES text, leaking JSON-LD/CSS.
+    $html = preg_replace('#<script[^>]*>.*?</script>#is', '', $html);
+    $html = preg_replace('#<style[^>]*>.*?</style>#is', '', $html);
+    $html = preg_replace('#<meta[^>]*>#i', '', $html);
+    $html = preg_replace('#<link[^>]*>#i', '', $html);
+    $html = preg_replace('#<title[^>]*>.*?</title>#is', '', $html);
+
     // XSS defense: strip any tag not in the safe allowlist.
     // LLM output may contain unescaped code like <input>, <form>, <script>
     // that browsers would interpret as real HTML.
