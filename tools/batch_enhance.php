@@ -13,6 +13,7 @@
  * Usage:
  *   php tools/batch_enhance.php --status         # Show enhancement progress
  *   php tools/batch_enhance.php --status --stop   # Show status, then stop running batch
+ *   php tools/batch_enhance.php --rebuild       # Force re-enhance already-done entries
  *   php tools/batch_enhance.php --dry-run        # Show plan without LLM calls
  *   php tools/batch_enhance.php --mode=man        # Only man pages
  *   php tools/batch_enhance.php --mode=man,perldoc # Multiple modes
@@ -36,7 +37,7 @@ if (PHP_SAPI !== 'cli') {
     die("CLI only\n");
 }
 
-$opts = getopt('hy', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status', 'stop', 'pid-file:']);
+$opts = getopt('hyr', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild']);
 
 // No options → show help
 $hasActionOpt = false;
@@ -56,6 +57,7 @@ if (isset($opts['help']) || isset($opts['h'])) {
     echo "Options:\n";
     echo "  --status           Show emoji enhancement progress per mode\n";
     echo "  --stop             Stop a running batch (reads PID from --pid-file)\n";
+    echo "  --rebuild, -r      Force re-enhance even if emoji cache exists\n";
     echo "  --dry-run          Show what would be done, no LLM calls\n";
     echo "  --yes, -y          Skip confirmation prompt (for cron/SSH)\n";
     echo "  --mode=<m>         Filter: man, perldoc, info, pydoc, ri (comma-separated)\n";
@@ -177,6 +179,7 @@ $formatOpt    = $opts['format'] ?? 'both';
 $resumeFrom   = isset($opts['resume-from']) ? (int)$opts['resume-from'] : 0;
 $skipErrors   = isset($opts['skip-errors']);
 $cachedFirst  = isset($opts['cached-first']);
+$rebuild      = isset($opts['rebuild']) || isset($opts['r']);
 $doMd         = ($formatOpt === 'md' || $formatOpt === 'both');
 $doHtml       = ($formatOpt === 'html' || $formatOpt === 'both');
 
@@ -225,9 +228,15 @@ echo "Found {$total} entries total\n";
 
 // ── Annotate with cache status ──
 foreach ($entries as $i => $e) {
-    $entries[$i]['_html']     = cacheExists($db, $e['mode'], $e['name'], 'html');
-    $entries[$i]['_emoji_md'] = cacheExists($db, $e['mode'], $e['name'], 'emoji_md');
-    $entries[$i]['_emoji_html'] = cacheExists($db, $e['mode'], $e['name'], 'emoji_html');
+    if ($rebuild) {
+        $entries[$i]['_html']       = cacheExists($db, $e['mode'], $e['name'], 'html');
+        $entries[$i]['_emoji_md']   = false;
+        $entries[$i]['_emoji_html'] = false;
+    } else {
+        $entries[$i]['_html']       = cacheExists($db, $e['mode'], $e['name'], 'html');
+        $entries[$i]['_emoji_md']   = cacheExists($db, $e['mode'], $e['name'], 'emoji_md');
+        $entries[$i]['_emoji_html'] = cacheExists($db, $e['mode'], $e['name'], 'emoji_html');
+    }
 }
 
 // Sort: cached-first puts entries with HTML cache (but without emoji) at the front
