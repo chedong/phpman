@@ -575,8 +575,13 @@ function cleanLlmOutput(string $content): string {
     $content = preg_replace('/^```(?:markdown|md|html)?\s*\n?/m', '', $content);
     $content = preg_replace('/\n?```\s*$/m', '', $content);
     $content = preg_replace('/^\[?[\w.-]+\]?\(\d+\w*\)\s+.*\s+\[?[\w.-]+\]?\(\d+\w*\)\s*\n/', '', $content);
-    // Fix LLM heading mistakes: <h1> → <h2> (the page already has an H1 title)
+    // Fix LLM heading mistakes: <h1> → <h2>
     $content = preg_replace('#<(/?)h1\b([^>]*)>#i', '<$1h2$2>', $content);
+    // XSS defense: strip unsafe HTML tags from LLM output
+    $safeTags = '<h2><h3><h4><h5><h6><p><br><b><u><i><em><strong><a>'
+              . '<pre><code><table><thead><tbody><tr><td><th><ul><ol><li>'
+              . '<div><span><hr><blockquote><sup><sub><small><del>';
+    $content = strip_tags($content, $safeTags);
     return trim($content);
 }
 
