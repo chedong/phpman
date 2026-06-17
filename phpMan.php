@@ -2122,6 +2122,13 @@ function enhanceManPage(string $mode, string $name): string {
                 "- Code includes anything with: \$variable, ->method, use Module;, function(), #!/bin, flags like -f --long\n" .
                 "- Even single-line code statements need <pre><code> wrapping — never leave code as bare text with <br>\n" .
                 "- Existing <pre><code> blocks: preserve exact content, only add emoji comments AFTER the closing </pre>\n\n" .
+                "SECURITY — XSS prevention (this is CRITICAL):\n" .
+                "- ANY < or > character NOT part of a standard HTML tag (<h2>, <h3>, <p>, <br>,\n" .
+                "  <b>, <u>, <a>, <pre>, <code>, <table>, <tr>, <td>, <th>, <ul>, <ol>, <li>,\n" .
+                "  <div>, <span>, <em>, <strong>, <hr>, <blockquote>) MUST be escaped as &lt; &gt;\n" .
+                "- Example: print qq(<input name=\"x\">) → print qq(&lt;input name=\"x\"&gt;)\n" .
+                "- Before final output, scan your ENTIRE response for bare < or > outside allowed\n" .
+                "  tags. If you find any, fix them. Missing this creates a real XSS vulnerability.\n\n" .
                 "Style rules:\n" .
                 "- NAME section: add emoji tagline below heading\n" .
                 "- Add a Quick Reference <table> after SYNOPSIS\n" .

@@ -618,14 +618,21 @@ function getHtmlSystemPrompt(): string {
         "6. Code includes anything with: \$variable, ->method, use Module;, function(), flags like -f --long\n" .
         "7. Even single-line code statements need <pre><code> — never leave code as bare text with <br>\n" .
         "8. Existing <pre><code> blocks: preserve exact content\n\n" .
+        "CRITICAL XSS prevention:\n" .
+        "9. ANY < or > NOT part of an allowed HTML tag (<h2>, <h3>, <p>, <br>,\n" .
+        "   <b>, <u>, <a>, <pre>, <code>, <table>, <tr>, <td>, <th>, <ul>, <ol>,\n" .
+        "   <li>, <div>, <span>, <em>, <strong>, <hr>, <blockquote>) MUST be escaped\n" .
+        "   as &lt; and &gt;. Example: print qq(<input>) → print qq(&lt;input&gt;)\n" .
+        "10. Before output, scan your entire response. Fix any bare < or > outside\n" .
+        "    allowed tags. This is a SECURITY requirement.\n\n" .
         "Output rules:\n" .
-        "9. Output ONLY valid HTML — no code fences, no JSON wrapper, no preamble\n" .
-        "10. Preserve ALL original technical information\n" .
-        "11. Do NOT invent new content\n" .
-        "12. Preserve <b>, <u>, <a href> tags — they carry semantic meaning\n" .
-        "13. Add descriptive emoji to option descriptions and list items\n" .
-        "14. Keep original HTML structure intact\n" .
-        "15. Emoji should be standard Unicode, widely supported";
+        "11. Output ONLY valid HTML — no code fences, no JSON wrapper, no preamble\n" .
+        "12. Preserve ALL original technical information\n" .
+        "13. Do NOT invent new content\n" .
+        "14. Preserve <b>, <u>, <a href> tags — they carry semantic meaning\n" .
+        "15. Add descriptive emoji to option descriptions and list items\n" .
+        "16. Keep original HTML structure intact\n" .
+        "17. Emoji should be standard Unicode, widely supported";
 }
 
 function showStatus(string $dbPath): void {
