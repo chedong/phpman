@@ -8,9 +8,21 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - `--help` CLI help for phpMan.php (`php phpMan.php --help`)
+- `tools/batch_enhance.php --status` — per-mode emoji enhancement progress
+- install.sh `--webroot` auto-generates `MCP_API_KEY` for public-facing deployments
+- install.sh `--help` pipe syntax examples (`curl ... | bash -s -- --webroot`)
 
 ### Removed
-- `rebuild-index.php` — superseded by `php phpMan.php --build-index` (which has dedup guard, lowercase expansion, DROP+DELETE fallback)
+- `rebuild-index.php` — superseded by `php phpMan.php --build-index`
+- Dead constant `PHPMAN_FLAG_DESC_MAX_LEN` (never referenced)
+- Old clone-based "Quick Start" from README (superseded by install.sh)
+
+### Changed
+- **README restructure**: install.sh first, MCP agent config moved lower
+- **Minimal webroot principle** (`docs/01-PRODUCT.md` §2.3): only phpMan.php + phpman.css + config in webroot
+- `docs/DESIGN.md` restructured into numbered docs (`01-PRODUCT.md`, `03-CACHE.md`, etc.)
+- install.sh URL: `main/` → `master/` branch
+- batch_enhance.php: no-arg defaults to `--help`
 
 ### Fixed
 - FTS5 rebuild DROP TABLE fallback: if DROP fails, falls back to DELETE FROM
