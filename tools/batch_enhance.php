@@ -4,9 +4,9 @@
  * batch_enhance.php — Offline batch LLM emoji enhancement for all indexed pages.
  *
  * Iterates entries from search_index_meta (man) plus perldoc/info/pydoc/ri
- * from the cache table, checks HTML cache status, fetches HTML via the
- * running phpMan web instance if missing, then calls LLM to generate
- * emoji-enhanced versions (emoji_md + emoji_html).
+ * from the cache table, generates HTML/markdown via phpMan's own formatting
+ * functions (completely offline, no HTTP dependency), then calls LLM to
+ * generate emoji-enhanced versions (emoji_md + emoji_html).
  *
  * Rate-limited: minimum 2 minutes between LLM calls to respect API quotas.
  *
@@ -38,6 +38,10 @@ if (PHP_SAPI !== 'cli') {
     http_response_code(400);
     die("CLI only\n");
 }
+
+// ── Load phpMan core (offline — no HTTP, no web server needed) ──
+if (!defined('PHPMAN_NO_CLI_DISPATCH')) define('PHPMAN_NO_CLI_DISPATCH', true);
+require_once __DIR__ . '/../phpMan.php';
 
 $opts = getopt('hyr', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:']);
 
@@ -164,9 +168,6 @@ foreach (['LLM_API_URL', 'LLM_API_KEY', 'LLM_MODEL', 'LLM_MAX_TOKENS'] as $c) {
     }
 }
 
-$baseUrl = getenv('PHPMAN_BASE_URL') ?: 'http://localhost:8080/phpMan.php';
-$baseUrl = rtrim($baseUrl, '/');
-
 $dryRun       = isset($opts['dry-run']);
 $autoYes      = isset($opts['yes']) || isset($opts['y']);
 $modeFilter   = [];
@@ -191,9 +192,8 @@ $doMd         = ($formatOpt === 'md' || $formatOpt === 'both');
 $doHtml       = ($formatOpt === 'html' || $formatOpt === 'both');
 
 $rateLimitSec = 120; // 2 minutes between LLM calls
-$httpTimeout  = 60;  // HTTP fetch timeout for phpMan pages
 
-// ── Connect to cache DB ──
+// ── Connect to cache DB for discovery queries ──
 $dbPath = rtrim(PHPMAN_HOME, '/') . '/db/phpman_cache.db';
 if (!file_exists($dbPath)) {
     fwrite(STDERR, "ERROR: cache DB not found at $dbPath\n");
@@ -255,15 +255,20 @@ $total = count($entries);
 echo "Found {$total} entries total\n";
 
 // ── Annotate with cache status ──
+$cacheCheck = new PageCache();
 foreach ($entries as $i => $e) {
+    $cachedHtml = $cacheCheck->get($e['mode'], $e['name'], '', 'html');
+    $htmlOk = ($cachedHtml !== null && $cachedHtml !== '###NOT_FOUND###');
     if ($rebuild) {
-        $entries[$i]['_html']       = cacheExists($db, $e['mode'], $e['name'], 'html');
+        $entries[$i]['_html']       = $htmlOk;
         $entries[$i]['_emoji_md']   = false;
         $entries[$i]['_emoji_html'] = false;
     } else {
-        $entries[$i]['_html']       = cacheExists($db, $e['mode'], $e['name'], 'html');
-        $entries[$i]['_emoji_md']   = cacheExists($db, $e['mode'], $e['name'], 'emoji_md');
-        $entries[$i]['_emoji_html'] = cacheExists($db, $e['mode'], $e['name'], 'emoji_html');
+        $cachedMd = $cacheCheck->get($e['mode'], $e['name'], '', 'emoji_md');
+        $cachedEmHtml = $cacheCheck->get($e['mode'], $e['name'], '', 'emoji_html');
+        $entries[$i]['_html']       = $htmlOk;
+        $entries[$i]['_emoji_md']   = ($cachedMd !== null && $cachedMd !== '###NOT_FOUND###');
+        $entries[$i]['_emoji_html'] = ($cachedEmHtml !== null && $cachedEmHtml !== '###NOT_FOUND###');
     }
 }
 
@@ -360,48 +365,33 @@ foreach ($entries as $idx => $e) {
     $mdOk   = $e['_emoji_md'];
     $htmlEOk = $e['_emoji_html'];
 
-    // ── Ensure HTML cache exists ──
-    // Cache hits: body HTML already stored by phpMan (clean, no chrome).
-    // Cache misses: trigger web fetch to let phpMan generate + cache.
-    // Non-existent pages (404/empty): skip enhancement, write NOT_FOUND.
+    // ── Phase 0: ensure HTML cache (offline, direct function call) ──
     $htmlOk = $e['_html'];
     if (!$htmlOk) {
-        echo "  Priming HTML cache via phpMan...\n";
-        list($fetched, $httpCode) = httpGetWithStatus($baseUrl, $mode, $name, $section, 'html', $httpTimeout);
-        if ($httpCode === 404 || ($fetched !== false && stripos($fetched, 'No manual entry') !== false)) {
-            // Page doesn't exist on this system — mark NOT_FOUND, skip forever
-            writeCache($db, $mode, $name, $section, 'html', '', 'not_found');
-            echo "  Skipped: no manual entry for {$label}\n";
+        echo "  Generating HTML via phpMan...\n";
+        $genFn = contentGenerator($mode, $name, $section, 'html');
+        $generated = cacheOrExecute($mode, $name, $section, 'html', $genFn);
+        if ($generated === '') {
+            echo "  Skipped: no content for {$label}\n";
             continue;
         }
-        if ($fetched === false || $httpCode >= 400) {
-            echo "  ERROR: Failed to prime HTML for {$label} (HTTP {$httpCode})\n";
-            $errors++;
-            if (!$skipErrors) {
-                echo "  Aborting. Use --skip-errors to continue on failure.\n";
-                break;
-            }
-            continue;
-        }
-        // phpMan's cacheOrExecute() writes body-only HTML to cache.
-        // Verify it landed (or write fallback):
-        $htmlOk = cacheExists($db, $mode, $name, 'html');
-        if ($htmlOk) {
-            echo "  HTML cached via phpMan\n";
-        } else {
-            writeCache($db, $mode, $name, $section, 'html', $fetched, 'found');
-            echo "  HTML cached from HTTP response (" . strlen($fetched) . " chars)\n";
-        }
+        $htmlOk = true;
+        echo "  HTML cached (" . strlen($generated) . " chars)\n";
     }
 
     // ── Phase 1: emoji_md ──
     if ($doMd && !$mdOk) {
         $lastLlmTime = waitForRateLimit($lastLlmTime, $rateLimitSec);
 
-        // Read markdown directly from cache DB (no HTTP roundtrip)
-        $plainMd = readCacheContent($db, $mode, $name, 'markdown');
-        if ($plainMd === null || trim($plainMd) === '') {
-            echo "  ERROR: Markdown not in cache for {$label} — run with --cached-first or fetch HTML first\n";
+        $pcache = new PageCache();
+        $plainMd = $pcache->get($mode, $name, '', 'markdown');
+        if ($plainMd === null || $plainMd === '###NOT_FOUND###' || trim($plainMd) === '') {
+            // Generate markdown on demand
+            $genFn = contentGenerator($mode, $name, $section, 'markdown');
+            $plainMd = cacheOrExecute($mode, $name, $section, 'markdown', $genFn);
+        }
+        if ($plainMd === '' || $plainMd === null) {
+            echo "  ERROR: No markdown for {$label}\n";
             $errors++;
             if (!$skipErrors) break;
             continue;
@@ -412,8 +402,10 @@ foreach ($entries as $idx => $e) {
         $lastLlmTime = time();
 
         if ($enhancedMd !== '') {
-            $enhancedMd = cleanLlmOutput($enhancedMd);
-            writeCache($db, $mode, $name, '', 'emoji_md', $enhancedMd, 'found');
+            $enhancedMd = trim($enhancedMd);
+            $enhancedMd = preg_replace('/^```(?:markdown|md)?\s*\n?/m', '', $enhancedMd);
+            $enhancedMd = preg_replace('/\n?```\s*$/m', '', $enhancedMd);
+            $pcache->set($mode, $name, '', 'emoji_md', $enhancedMd, 'found');
             echo "  [md] {$label}: enhanced (" . strlen($enhancedMd) . " chars)\n";
             $enhanced++;
         } else {
@@ -428,10 +420,14 @@ foreach ($entries as $idx => $e) {
     if ($doHtml && !$htmlEOk) {
         $lastLlmTime = waitForRateLimit($lastLlmTime, $rateLimitSec);
 
-        // Read HTML directly from cache DB (no HTTP roundtrip, clean body-only content)
-        $rawHtml = readCacheContent($db, $mode, $name, 'html');
-        if ($rawHtml === null || trim($rawHtml) === '') {
-            echo "  ERROR: HTML not in cache for {$label} — run with --cached-first or fetch HTML first\n";
+        $pcache = new PageCache();
+        $rawHtml = $pcache->get($mode, $name, '', 'html');
+        if ($rawHtml === null || $rawHtml === '###NOT_FOUND###' || trim($rawHtml) === '') {
+            $genFn = contentGenerator($mode, $name, $section, 'html');
+            $rawHtml = cacheOrExecute($mode, $name, $section, 'html', $genFn);
+        }
+        if ($rawHtml === '' || $rawHtml === null) {
+            echo "  ERROR: No HTML for {$label}\n";
             $errors++;
             if (!$skipErrors) break;
             continue;
@@ -442,8 +438,8 @@ foreach ($entries as $idx => $e) {
         $lastLlmTime = time();
 
         if ($enhancedHtml !== '') {
-            $enhancedHtml = cleanLlmOutput($enhancedHtml);
-            writeCache($db, $mode, $name, '', 'emoji_html', $enhancedHtml, 'found');
+            $enhancedHtml = cleanEmojiHtml($enhancedHtml);
+            $pcache->set($mode, $name, '', 'emoji_html', $enhancedHtml, 'found');
             echo "  [html] {$label}: enhanced (" . strlen($enhancedHtml) . " chars)\n";
             $enhanced++;
         } else {
@@ -476,83 +472,15 @@ echo "Done. {$processed} processed, {$enhanced} enhanced, {$errors} errors " .
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
-function cacheExists(SQLite3 $db, string $mode, string $name, string $format): bool {
-    static $mem = [];
-    $key = "{$mode}|{$name}|{$format}";
-    if (array_key_exists($key, $mem)) return $mem[$key];
-
-    $stmt = $db->prepare(
-        "SELECT 1 FROM cache WHERE mode=:mode AND name=:name AND section='' AND format=:format AND status='found'"
-    );
-    $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
-    $stmt->bindValue(':name', $name, SQLITE3_TEXT);
-    $stmt->bindValue(':format', $format, SQLITE3_TEXT);
-    $res = $stmt->execute();
-    $exists = ($res->fetchArray() !== false);
-    $res->finalize();
-    $mem[$key] = $exists;
-    return $exists;
-}
-
-function readCacheContent(SQLite3 $db, string $mode, string $name, string $format): ?string {
-    static $mem = [];
-    $key = "{$mode}|{$name}|{$format}";
-    if (array_key_exists($key, $mem)) return $mem[$key];
-
-    $stmt = $db->prepare(
-        "SELECT content FROM cache WHERE mode=:mode AND name=:name AND section='' AND format=:format AND status='found'"
-    );
-    $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
-    $stmt->bindValue(':name', $name, SQLITE3_TEXT);
-    $stmt->bindValue(':format', $format, SQLITE3_TEXT);
-    $res = $stmt->execute();
-    $row = $res->fetchArray(SQLITE3_ASSOC);
-    $res->finalize();
-    if ($row && $row['content'] !== null) {
-        $decompressed = gzuncompress($row['content']);
-        $mem[$key] = $decompressed;
-        return $decompressed;
-    }
-    $mem[$key] = null;
-    return null;
-}
-
-function writeCache(SQLite3 $db, string $mode, string $name, string $section, string $format, string $content, string $status): void {
-    $compressed = gzcompress($content);
-    $stmt = $db->prepare(
-        "INSERT OR REPLACE INTO cache (mode, name, section, format, content, content_len, status, ttl, created_at, updated_at)
-         VALUES (:mode, :name, :section, :format, :content, :len, :status, 0, strftime('%s','now'), strftime('%s','now'))"
-    );
-    $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
-    $stmt->bindValue(':name', $name, SQLITE3_TEXT);
-    $stmt->bindValue(':section', $section, SQLITE3_TEXT);
-    $stmt->bindValue(':format', $format, SQLITE3_TEXT);
-    $stmt->bindValue(':content', $compressed, SQLITE3_BLOB);
-    $stmt->bindValue(':len', strlen($content), SQLITE3_INTEGER);
-    $stmt->bindValue(':status', $status, SQLITE3_TEXT);
-    $stmt->execute();
-}
-
-function httpGetWithStatus(string $baseUrl, string $mode, string $name, string $section, string $format, int $timeout): array {
-    $url = $baseUrl . '/' . $mode . '/' . urlencode($name) . '/' . ($section !== '' ? $section : '1') . '/' . $format;
-    $ctx = stream_context_create([
-        'http' => [
-            'method' => 'GET',
-            'timeout' => $timeout,
-            'header' => "User-Agent: phpMan/batch-enhance\r\n",
-        ],
-    ]);
-    $body = @file_get_contents($url, false, $ctx);
-    $httpCode = 0;
-    if (isset($http_response_header)) {
-        foreach ($http_response_header as $h) {
-            if (preg_match('#^HTTP/\d+\.\d+\s+(\d+)#', $h, $m)) {
-                $httpCode = (int)$m[1];
-                break;
-            }
-        }
-    }
-    return [$body, $httpCode];
+function contentGenerator(string $mode, string $name, string $section, string $format): callable {
+    return match ($mode) {
+        'man'     => fn() => getManPage($name, $section, $format),
+        'perldoc' => fn() => getPerldocPage($name, $format),
+        'info'    => fn() => getInfoPage($name, $format),
+        'pydoc'   => fn() => getPydocPage($name, $format),
+        'ri'      => fn() => getRiPage($name, $format),
+        default   => fn() => '',
+    };
 }
 
 function waitForRateLimit(int $lastCallTime, int $minInterval): int {
@@ -567,89 +495,6 @@ function waitForRateLimit(int $lastCallTime, int $minInterval): int {
         echo "\n";
     }
     return time();
-}
-
-function callLLM(string $systemPrompt, string $userMessage): string {
-    $payload = json_encode([
-        'model' => LLM_MODEL,
-        'messages' => [
-            ['role' => 'system', 'content' => $systemPrompt],
-            ['role' => 'user', 'content' => $userMessage],
-        ],
-        'max_tokens' => min((int)LLM_MAX_TOKENS, 16384),
-        'temperature' => 0.3,
-    ], JSON_UNESCAPED_UNICODE);
-
-    $ch = curl_init(LLM_API_URL);
-    curl_setopt_array($ch, [
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => $payload,
-        CURLOPT_HTTPHEADER => [
-            'Content-Type: application/json',
-            'Authorization: Bearer ' . LLM_API_KEY,
-            'User-Agent: phpMan/batch-enhance',
-        ],
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 300,
-    ]);
-    $response = curl_exec($ch);
-    $error = curl_error($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($response === false || $response === '') {
-        fwrite(STDERR, "  LLM HTTP {$httpCode}: " . ($error ?: 'empty response') . "\n");
-        return '';
-    }
-
-    $data = json_decode($response, true);
-    if ($data === null) {
-        fwrite(STDERR, "  LLM JSON decode failed\n");
-        return '';
-    }
-    if (!empty($data['error'])) {
-        $errMsg = $data['error']['message'] ?? 'unknown';
-        fwrite(STDERR, "  LLM API error: {$errMsg}\n");
-        return '';
-    }
-
-    $content = $data['choices'][0]['message']['content'] ?? '';
-    if ($content === '') {
-        $content = $data['choices'][0]['message']['reasoning_content'] ?? '';
-    }
-
-    $finishReason = $data['choices'][0]['finish_reason'] ?? '';
-    if ($finishReason === 'length') {
-        fwrite(STDERR, "  LLM: output truncated (finish_reason=length)\n");
-    }
-    return trim($content);
-}
-
-function cleanLlmOutput(string $content): string {
-    $content = trim($content);
-    $content = preg_replace('/^```(?:markdown|md|html)?\s*\n?/m', '', $content);
-    $content = preg_replace('/\n?```\s*$/m', '', $content);
-    $content = preg_replace('/^\[?[\w.-]+\]?\(\d+\w*\)\s+.*\s+\[?[\w.-]+\]?\(\d+\w*\)\s*\n/', '', $content);
-    // Fix LLM heading mistakes: <h1> → <h2>
-    $content = preg_replace('#<(/?)h1\b([^>]*)>#i', '<$1h2$2>', $content);
-    // Remove full-document wrappers: LLM sometimes outputs <!DOCTYPE html><html>...
-    $content = preg_replace('#^<!DOCTYPE[^>]*>\s*#i', '', $content);
-    $content = preg_replace('#</?html[^>]*>#i', '', $content);
-    $content = preg_replace('#</?head[^>]*>.*?</head>#is', '', $content);
-    $content = preg_replace('#</?body[^>]*>#i', '', $content);
-    // Remove <script>/<style>/<meta>/<link>/<title> with content.
-    // strip_tags() removes tags but LEAVES text, leaking JSON-LD/CSS.
-    $content = preg_replace('#<script[^>]*>.*?</script>#is', '', $content);
-    $content = preg_replace('#<style[^>]*>.*?</style>#is', '', $content);
-    $content = preg_replace('#<meta[^>]*>#i', '', $content);
-    $content = preg_replace('#<link[^>]*>#i', '', $content);
-    $content = preg_replace('#<title[^>]*>.*?</title>#is', '', $content);
-    // XSS defense: strip unsafe HTML tags from LLM output
-    $safeTags = '<h2><h3><h4><h5><h6><p><br><b><u><i><em><strong><a>'
-              . '<pre><code><table><thead><tbody><tr><td><th><ul><ol><li>'
-              . '<div><span><hr><blockquote><sup><sub><small><del>';
-    $content = strip_tags($content, $safeTags);
-    return trim($content);
 }
 
 function getMdSystemPrompt(): string {

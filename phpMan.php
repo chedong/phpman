@@ -2367,7 +2367,7 @@ function renderTocSidebar(array $tocItems, string $pageLabel): string {
 }
 
 // CLI Mode: handle command-line invocation
-if (PHP_SAPI === 'cli') {
+if (PHP_SAPI === 'cli' && !defined('PHPMAN_NO_CLI_DISPATCH')) {
     $options = getopt('h', ['help', 'build-index', 'build-index-cron', 'enhance::']);
 
     if (isset($options['help']) || isset($options['h'])) {
@@ -2431,6 +2431,9 @@ if (PHP_SAPI === 'cli') {
         exit;
     }
 }
+
+// Web-only below this point: skip when included from batch scripts
+if (defined('PHPMAN_NO_CLI_DISPATCH')) return;
 
 // Web handler: ?build-index triggers search index rebuild (admin use, local only)
 $buildIndexRequested = requestValue($_GET, 'build-index') !== '';
