@@ -126,6 +126,9 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `--parameter=<name1;name2>` + `--section=<s>`: single/multi-page enhancement (supersedes `tools/enhance_page.php`)
 - `--parameter` + `--mode`: target specific pages across any documentation source
 - No-arg invocation defaults to `--help`
+- **Fully offline** (2026-06-18): `require_once`'s phpMan.php, calls `getManPage()`/`getPerldocPage()`/etc. directly, uses shared `PageCache` and `callLLM()` — zero HTTP dependency
+- **Non-existent page skip**: 404 / `No manual entry` pages are written to cache as `not_found` and skipped permanently
+- **Section-aware fetch**: `httpGetWithStatus()` → direct function calls with correct `$section` parameter (fixes #137 variant in batch_enhance)
 
 **Security hardening**:
 - `formatInlineMarkdown()` XSS fix: `h()`-escape all output, restore safe tags (`<a>`, `<code>`, `<b>`, `<i>`)
