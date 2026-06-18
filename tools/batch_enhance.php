@@ -361,12 +361,14 @@ foreach ($entries as $idx => $e) {
     $htmlEOk = $e['_emoji_html'];
 
     // ── Ensure HTML cache exists ──
+    // Cache hits: body HTML already stored by phpMan (clean, no chrome).
+    // Cache misses: trigger web fetch to let phpMan generate + cache.
     $htmlOk = $e['_html'];
     if (!$htmlOk) {
-        echo "  Fetching HTML from phpMan...\n";
+        echo "  Priming HTML cache via phpMan...\n";
         list($fetched, $httpCode) = httpGetWithStatus($baseUrl, $mode, $name, $section, 'html', $httpTimeout);
         if ($fetched === false || $httpCode >= 400) {
-            echo "  ERROR: Failed to fetch HTML for {$label} (HTTP {$httpCode})\n";
+            echo "  ERROR: Failed to prime HTML for {$label} (HTTP {$httpCode})\n";
             $errors++;
             if (!$skipErrors) {
                 echo "  Aborting. Use --skip-errors to continue on failure.\n";
@@ -374,21 +376,27 @@ foreach ($entries as $idx => $e) {
             }
             continue;
         }
-        // The web request should have cached the HTML. Verify:
+        // phpMan's cacheOrExecute() writes body-only HTML to cache.
+        // Verify it landed:
         $htmlOk = cacheExists($db, $mode, $name, 'html');
-        if (!$htmlOk) {
+        if ($htmlOk) {
+            echo "  HTML cached via phpMan\n";
+        } else {
+            // Rare: phpMan didn't cache it (e.g., exec failure).
+            // Store the fetched content as fallback.
             writeCache($db, $mode, $name, $section, 'html', $fetched, 'found');
+            echo "  HTML cached from HTTP response (" . strlen($fetched) . " chars)\n";
         }
-        echo "  HTML cached (" . strlen($fetched) . " chars)\n";
     }
 
     // ── Phase 1: emoji_md ──
     if ($doMd && !$mdOk) {
         $lastLlmTime = waitForRateLimit($lastLlmTime, $rateLimitSec);
 
-        list($plainMd, $mdHttpCode) = httpGetWithStatus($baseUrl, $mode, $name, $section, 'markdown', $httpTimeout);
-        if ($plainMd === false || $mdHttpCode >= 400 || trim($plainMd) === '') {
-            echo "  ERROR: Failed to fetch Markdown for {$label} (HTTP {$mdHttpCode})\n";
+        // Read markdown directly from cache DB (no HTTP roundtrip)
+        $plainMd = readCacheContent($db, $mode, $name, 'markdown');
+        if ($plainMd === null || trim($plainMd) === '') {
+            echo "  ERROR: Markdown not in cache for {$label} — run with --cached-first or fetch HTML first\n";
             $errors++;
             if (!$skipErrors) break;
             continue;
@@ -415,9 +423,10 @@ foreach ($entries as $idx => $e) {
     if ($doHtml && !$htmlEOk) {
         $lastLlmTime = waitForRateLimit($lastLlmTime, $rateLimitSec);
 
-        list($rawHtml, $htmlHttpCode) = httpGetWithStatus($baseUrl, $mode, $name, $section, 'html', $httpTimeout);
-        if ($rawHtml === false || $htmlHttpCode >= 400 || trim($rawHtml) === '') {
-            echo "  ERROR: Failed to fetch HTML for {$label} (HTTP {$htmlHttpCode})\n";
+        // Read HTML directly from cache DB (no HTTP roundtrip, clean body-only content)
+        $rawHtml = readCacheContent($db, $mode, $name, 'html');
+        if ($rawHtml === null || trim($rawHtml) === '') {
+            echo "  ERROR: HTML not in cache for {$label} — run with --cached-first or fetch HTML first\n";
             $errors++;
             if (!$skipErrors) break;
             continue;
@@ -478,6 +487,29 @@ function cacheExists(SQLite3 $db, string $mode, string $name, string $format): b
     $res->finalize();
     $mem[$key] = $exists;
     return $exists;
+}
+
+function readCacheContent(SQLite3 $db, string $mode, string $name, string $format): ?string {
+    static $mem = [];
+    $key = "{$mode}|{$name}|{$format}";
+    if (array_key_exists($key, $mem)) return $mem[$key];
+
+    $stmt = $db->prepare(
+        "SELECT content FROM cache WHERE mode=:mode AND name=:name AND section='' AND format=:format AND status='found'"
+    );
+    $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
+    $stmt->bindValue(':name', $name, SQLITE3_TEXT);
+    $stmt->bindValue(':format', $format, SQLITE3_TEXT);
+    $res = $stmt->execute();
+    $row = $res->fetchArray(SQLITE3_ASSOC);
+    $res->finalize();
+    if ($row && $row['content'] !== null) {
+        $decompressed = gzuncompress($row['content']);
+        $mem[$key] = $decompressed;
+        return $decompressed;
+    }
+    $mem[$key] = null;
+    return null;
 }
 
 function writeCache(SQLite3 $db, string $mode, string $name, string $section, string $format, string $content, string $status): void {
