@@ -84,7 +84,8 @@ _deploy-code:
 		ssh -p $(TEST_PORT) $(TEST_HOST) "cat > $(TEST_PATH)/$(FILE)"; \
 	scp -P $(TEST_PORT) $(CSS_FILE) $(TEST_HOST):$(TEST_PATH)/$(CSS_FILE); \
 	ssh -p $(TEST_PORT) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE)"; \
-		ssh -p $(TEST_PORT) $(TEST_HOST) "ln -sf $(TEST_PATH)/phpman.config.php \$$HOME/.phpman_test/phpman.config.php"
+		ssh -p $(TEST_PORT) $(TEST_HOST) "ln -sf $(TEST_PATH)/phpman.config.php \$$HOME/.phpman_test/phpman.config.php"; \
+		ssh -p $(TEST_PORT) $(TEST_HOST) "ln -sf $(TEST_PATH)/$(FILE) \$$HOME/.phpman_test/$(FILE)"
 	@echo ""
 	@echo "=== Deployed to staging ($(GIT_TAG)) ==="
 	@echo "$(TEST_URL)"
@@ -109,7 +110,8 @@ _release-code:
 		phpman.config.php.example | \
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"test -f $(DEMO_PATH)/phpman.config.php && cat > /dev/null || cat > $(DEMO_PATH)/phpman.config.php && chmod 644 $(DEMO_PATH)/phpman.config.php && echo 'Created phpman.config.php'"; \
-		ssh -p $(DEMO_PORT) $(DEMO_HOST) "ln -sf $(DEMO_PATH)/phpman.config.php \$$HOME/.phpman/phpman.config.php"
+		ssh -p $(DEMO_PORT) $(DEMO_HOST) "ln -sf $(DEMO_PATH)/phpman.config.php \$$HOME/.phpman/phpman.config.php"; \
+			ssh -p $(DEMO_PORT) $(DEMO_HOST) "ln -sf $(DEMO_PATH)/$(FILE) \$$HOME/.phpman/$(FILE)"
 	@TIMESTAMP=$$(date +%Y%m%d-%H%M%S); \
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"mkdir -p \"\$$HOME/.phpman/backups\" && cp $(DEMO_PATH)/$(FILE) \"\$$HOME/.phpman/backups/$(FILE).$${TIMESTAMP}.bak\" 2>/dev/null || true"; \

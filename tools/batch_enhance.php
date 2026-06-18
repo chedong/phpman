@@ -85,9 +85,9 @@ if (!file_exists($configFile)) {
 require $configFile;
 
 // ── Load phpMan core (offline — no HTTP, no web server needed) ──
-// configFile is a symlink to webroot — phpMan.php lives there too.
+// Makefile deploys phpMan.php → webroot AND symlinks into PHPMAN_HOME.
 define('PHPMAN_NO_CLI_DISPATCH', true);
-require_once dirname(realpath($configFile)) . '/phpMan.php';
+require_once rtrim(PHPMAN_HOME, '/') . '/phpMan.php';
 
 if (!defined('PHPMAN_HOME') || PHPMAN_HOME === '') {
     fwrite(STDERR, "ERROR: PHPMAN_HOME not configured\n");
