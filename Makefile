@@ -50,9 +50,10 @@ endif
 FILE ?= phpMan.php
 CSS_FILE ?= phpman.css
 
-.PHONY: test staging staging-reindex release release-reindex reindex reindex-staging rollback verify logcheck package upload-release clean cache-flush cache-flush-staging cache-stats _deploy-code _release-code
+.PHONY: test staging staging-reindex release release-reindex reindex reindex-staging rollback verify logcheck package upload-release clean cache-flush cache-flush-staging cache-stats tag _deploy-code _release-code
 
-GIT_TAG := $(shell git describe --tags --always --dirty 2>/dev/null || echo "local")
+GIT_TAG     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "local")
+GIT_VERSION := $(shell (git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0") | sed 's/^v//')
 
 # Resolve remote $HOME so config gets the literal path (mod_fcgid may not set HOME)
 STAGING_HOME := $(shell ssh -p $(TEST_PORT) $(TEST_HOST) 'echo $$HOME')
@@ -80,7 +81,8 @@ _deploy-code:
 				$(TEST_PATH)/phpman.config.php.example | \
 			cat > $(TEST_PATH)/phpman.config.php && chmod 644 $(TEST_PATH)/phpman.config.php && echo 'Created phpman.config.php'; \
 		fi"
-	sed "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" $(FILE) | \
+	sed -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
+	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) | \
 		ssh -p $(TEST_PORT) $(TEST_HOST) "cat > $(TEST_PATH)/$(FILE)"; \
 	scp -P $(TEST_PORT) $(CSS_FILE) $(TEST_HOST):$(TEST_PATH)/$(CSS_FILE); \
 	ssh -p $(TEST_PORT) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE)"; \
@@ -118,7 +120,8 @@ _release-code:
 	echo "=== Pruning old backups (keeping last 5) ==="; \
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"ls -1t \"\$$HOME/.phpman/backups/$(FILE).\"*.bak 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true"; \
-	sed "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" $(FILE) | \
+	sed -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
+	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) | \
 		ssh -p $(DEMO_PORT) $(DEMO_HOST) "cat > $(DEMO_PATH)/$(FILE)"; \
 	scp -P $(DEMO_PORT) $(CSS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(CSS_FILE); \
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(CSS_FILE)"; \
@@ -190,6 +193,18 @@ logcheck:
 		"test -f '$(DEMO_ACCESS_LOG)' && echo '$(DEMO_ACCESS_LOG):' && (tail -100 '$(DEMO_ACCESS_LOG)' | grep -E '\" (5[0-9][0-9]) ' || echo '(no 5xx in recent requests)') || echo '(access log not configured or not found)'"
 	@echo ""
 	@echo "=== Log check complete ==="
+
+# ─── Version tagging ───
+
+tag:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Usage: make tag VERSION=4.1.0"; \
+		echo "Current: $(GIT_VERSION)"; \
+		exit 1; \
+	fi
+	git tag -a "v$(VERSION)" -m "v$(VERSION)"
+	git push origin "v$(VERSION)"
+	@echo "Tagged and pushed v$(VERSION)"
 
 # ─── Cache management ───
 

@@ -14,11 +14,12 @@
 // define('PHPMAN_LOG_DIR', '/path/to/custom/logs');
 // define('PHPMAN_BACKUP_DIR', '/path/to/custom/backups');
 
-// --- LLM (v3.0 TLDR, reserved) ---
+// --- LLM Enhancement (v4.0) ---
 // define('LLM_API_KEY', '');
 // define('LLM_API_URL', '');
 // define('LLM_MODEL', '');
 // define('LLM_MAX_TOKENS', 4096);
+// define('PHPMAN_ENHANCE_MAX_CHARS', 32000);  // max chars for LLM-enhanced output
 
 // --- MCP Authentication (#97) ---
 // Set a secret key to require X-API-Key header on all MCP requests.

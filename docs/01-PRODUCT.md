@@ -161,12 +161,15 @@ man page ──→ getManPage($name, '', 'html') → raw HTML (with <pre><code>/
                                      callLLM() → emoji_md cache (/markdown view)
 ```
 
-- **Input (HTML path)**: Rendered HTML content block (extracted from `<div id="man-content">` or `<pre>`), truncated to 24,000 chars
-- **Input (Markdown path)**: Full man page Markdown, truncated to 16,000 chars
+- **Input (HTML path)**: Rendered HTML content block (extracted from `<div id="man-content">` or `<pre>`), full document, no truncation (v4.2)
+- **Input (Markdown path)**: Full man page Markdown, no truncation (v4.2)
+- **Output size**: Controlled by `PHPMAN_ENHANCE_MAX_CHARS` (default 32,000) in prompt instruction (v4.2)
 - **Output**: Two cache entries per document — `emoji_html` and `emoji_md`
 - **Default view**: When `emoji_html` cache exists, served directly as HTML; `?format=html` or PATH_INFO `/html` bypasses
 - **Markdown view**: `/markdown` format prefers `emoji_md` cache over raw Markdown
-- **TOC**: `renderTocSidebar()` builds floating sidebar from `<h2>`/`<h3>` tags in the enhanced HTML
+- **TOC**: `renderTocSidebar()` builds floating sidebar from `<h2>`/`<h3>` tags (v4.2: regex fixed to match tags with `id="..."` attributes)
+- **Code blocks (v4.2)**: JS in `showFooter()` wraps all `#content-wrap pre` in `.code-block` div with `📋 Copy` button top-right. Tokyo Night styling: `#1f2335` bg, italic font, rounded border
+- **Prompt rules (v4.2)**: forbid `<a>` inside `<pre><code>`, forbid emoji as list markers, preserve original structure, condense output under configurable limit
 
 #### 2.11.2 LLM Integration
 
@@ -447,6 +450,7 @@ When reviewing code, follow this order:
 
 | Date | Changes |
 |------|----------|
+| 2026-06-18 | v4.2: Copy button UX — JS wraps `#content-wrap pre` with 📋 Copy (Tokyo Night `#1f2335` bg, italic, rounded); Prompt v2 — forbid `<a>` in code, forbid emoji markers, preserve structure; `PHPMAN_ENHANCE_MAX_CHARS` (32K); TOC regex fix for attributed headings; Makefile version auto-sync from git tag; input truncation removed |
 | 2026-06-17 | v4.0: `tools/batch_enhance.php` — offline batch LLM enhancement with auto-discovery from search index + cache, 2-min rate limiting, resilient resume, dual-format support (§2.11.6) |
 | 2026-06-16 | v4.0: Dual-format LLM enhancement — emoji_html (HTML-direct, default view) + emoji_md (Markdown, /markdown format); TOC from <h2>/<h3> tags with &amp; fix; max_tokens uncapped; finish_reason truncation logging; showFooter section param in original-format link; tools/enhance_page.php |
 | 2026-06-09 | v3.7.1: Fix #96 XSS (sources array h), #107 undefined $expanded, #108 SQL prepared stmt, #109 tldr_cache TTL index, #110 INSERT OR REPLACE comments, #111 ticket status table, #112 CLI CACHE_DB constant; add Ticket Status Summary table |

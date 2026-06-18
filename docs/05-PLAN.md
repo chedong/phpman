@@ -18,13 +18,13 @@ git push origin v3.6.3
 ## Version Roadmap
 
 ```
-v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 (current)
+v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 → v4.2 (current)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-man/perldoc/info   pydoc3/ri        Config overridables   JSON canonical cache   batch PID/stop
-MCP Server         structured out   Underscore link fix   LLM emoji enhancement   XSS hardening
-JSON API           Search cascade   man7.org fallback     Code split             --parameter mode
-TLDR endpoint      FTS5 3-source    Docs restructured     i18n                   minimal webroot
-                                   Structure regr test   AI translation          install.sh MCP key
+man/perldoc/info   pydoc3/ri        Config overridables   JSON canonical cache   batch PID/stop    Copy button UX
+MCP Server         structured out   Underscore link fix   LLM emoji enhancement   XSS hardening     Prompt v2 tuning
+JSON API           Search cascade   man7.org fallback     Code split             --parameter mode  ENHANCE_MAX_CHARS
+TLDR endpoint      FTS5 3-source    Docs restructured     i18n                   minimal webroot   TOC regex fix
+                                   Structure regr test   AI translation          install.sh MCP key Makefile version sync
 ```
 
 ---
@@ -150,5 +150,31 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - Makefile auto-creates `~/.phpman/phpman.config.php` → webroot symlink on deploy
 - All 10 stale worktree branches purged from GitHub
 - 7 open issues closed: #128, #133–#141
+
+### v4.2 — UX Polish & Prompt Tuning (2026-06-18)
+
+**Code block copy button**:
+- JS in `showFooter()` wraps all `#content-wrap pre` in `<div class="code-block">` with `📋 Copy` button top-right
+- Click copies code text to clipboard, shows `✓ Copied!` feedback (1.5s)
+- Tokyo Night styling: `#1f2335` background, `italic` font, `#292e42` border, `border-radius:4px`
+- Button visible on hover (desktop), always visible (mobile)
+
+**Prompt v2 optimization**:
+- Removed "Add a Quick Reference table" / "Exit codes section" — only if already in original
+- Forbid `<a>` links inside `<pre><code>` blocks (breaks copy functionality)
+- Forbid emoji as list/bullet markers (🔹🔸▪️) — use standard `<ul><li>` with emoji in text
+- Strengthened structure preservation: PRIMARY goal is keeping original heading hierarchy
+- Output size control: `PHPMAN_ENHANCE_MAX_CHARS` (default 32,000) in prompt instruction
+- Removed all input truncation — LLM sees full documents
+
+**TOC fix**:
+- Enhanced TOC regex changed from `#<(h2|h3)>(.+?)</\1>#i` to `#<(h2|h3)\b[^>]*>(.+?)</\1>#i`
+- Now matches LLM-generated headings with `id="..."` attributes
+
+**Makefile version sync**:
+- `PHPMAN_VERSION` auto-replaced from `git describe --tags --abbrev=0` during deploy
+- New `make tag VERSION=4.2.0` convenience target
+
+**New config override**: `PHPMAN_ENHANCE_MAX_CHARS` (default 32,000)
 
 ---
