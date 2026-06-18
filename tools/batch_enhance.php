@@ -363,10 +363,17 @@ foreach ($entries as $idx => $e) {
     // ── Ensure HTML cache exists ──
     // Cache hits: body HTML already stored by phpMan (clean, no chrome).
     // Cache misses: trigger web fetch to let phpMan generate + cache.
+    // Non-existent pages (404/empty): skip enhancement, write NOT_FOUND.
     $htmlOk = $e['_html'];
     if (!$htmlOk) {
         echo "  Priming HTML cache via phpMan...\n";
         list($fetched, $httpCode) = httpGetWithStatus($baseUrl, $mode, $name, $section, 'html', $httpTimeout);
+        if ($httpCode === 404 || ($fetched !== false && stripos($fetched, 'No manual entry') !== false)) {
+            // Page doesn't exist on this system — mark NOT_FOUND, skip forever
+            writeCache($db, $mode, $name, $section, 'html', '', 'not_found');
+            echo "  Skipped: no manual entry for {$label}\n";
+            continue;
+        }
         if ($fetched === false || $httpCode >= 400) {
             echo "  ERROR: Failed to prime HTML for {$label} (HTTP {$httpCode})\n";
             $errors++;
@@ -377,13 +384,11 @@ foreach ($entries as $idx => $e) {
             continue;
         }
         // phpMan's cacheOrExecute() writes body-only HTML to cache.
-        // Verify it landed:
+        // Verify it landed (or write fallback):
         $htmlOk = cacheExists($db, $mode, $name, 'html');
         if ($htmlOk) {
             echo "  HTML cached via phpMan\n";
         } else {
-            // Rare: phpMan didn't cache it (e.g., exec failure).
-            // Store the fetched content as fallback.
             writeCache($db, $mode, $name, $section, 'html', $fetched, 'found');
             echo "  HTML cached from HTTP response (" . strlen($fetched) . " chars)\n";
         }
