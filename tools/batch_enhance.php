@@ -39,7 +39,7 @@ if (PHP_SAPI !== 'cli') {
     die("CLI only\n");
 }
 
-$opts = getopt('hyr', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:']);
+$opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast']);
 
 // No options → show help
 $hasActionOpt = false;
@@ -186,6 +186,7 @@ $formatOpt    = $opts['format'] ?? 'both';
 $resumeFrom   = isset($opts['resume-from']) ? (int)$opts['resume-from'] : 0;
 $skipErrors   = isset($opts['skip-errors']);
 $cachedFirst  = isset($opts['cached-first']);
+$fastMode     = isset($opts['fast']) || isset($opts['f']);
 $rebuild      = isset($opts['rebuild']) || isset($opts['r']);
 $sectionFilter = $opts['section'] ?? '';
 $paramList     = $opts['parameter'] ?? '';
@@ -382,7 +383,7 @@ foreach ($entries as $idx => $e) {
 
     // ── Phase 1: emoji_md ──
     if ($doMd && !$mdOk) {
-        $lastLlmTime = waitForRateLimit($lastLlmTime, $rateLimitSec);
+        $lastLlmTime = $fastMode ? 0 : waitForRateLimit($lastLlmTime, $rateLimitSec);
 
         $pcache = new PageCache();
         $plainMd = $pcache->get($mode, $name, '', 'markdown');
@@ -419,7 +420,7 @@ foreach ($entries as $idx => $e) {
 
     // ── Phase 2: emoji_html ──
     if ($doHtml && !$htmlEOk) {
-        $lastLlmTime = waitForRateLimit($lastLlmTime, $rateLimitSec);
+        $lastLlmTime = $fastMode ? 0 : waitForRateLimit($lastLlmTime, $rateLimitSec);
 
         $pcache = new PageCache();
         $rawHtml = $pcache->get($mode, $name, '', 'html');
