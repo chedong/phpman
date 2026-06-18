@@ -39,10 +39,6 @@ if (PHP_SAPI !== 'cli') {
     die("CLI only\n");
 }
 
-// ── Load phpMan core (offline — no HTTP, no web server needed) ──
-if (!defined('PHPMAN_NO_CLI_DISPATCH')) define('PHPMAN_NO_CLI_DISPATCH', true);
-require_once __DIR__ . '/../phpMan.php';
-
 $opts = getopt('hyr', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:']);
 
 // No options → show help
@@ -87,6 +83,11 @@ if (!file_exists($configFile)) {
     exit(1);
 }
 require $configFile;
+
+// ── Load phpMan core (offline — no HTTP, no web server needed) ──
+// configFile is a symlink to webroot — phpMan.php lives there too.
+define('PHPMAN_NO_CLI_DISPATCH', true);
+require_once dirname(realpath($configFile)) . '/phpMan.php';
 
 if (!defined('PHPMAN_HOME') || PHPMAN_HOME === '') {
     fwrite(STDERR, "ERROR: PHPMAN_HOME not configured\n");
