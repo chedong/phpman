@@ -2073,7 +2073,8 @@ function getMdEnhancePrompt(): string {
         "- SEE ALSO section: each reference gets relevant emoji\n" .
         "- Keep all original command syntax and flags exactly as-is\n" .
         "- Emoji should be standard Unicode, widely supported\n" .
-        "- ONLY add a Quick Reference or Exit Codes section if the original document already contains that information\n" .
+        "- 🚀 Quick Reference: ALWAYS include a ## 🚀 Quick Reference section as the second section (right after NAME). Format as bullet list: \"- `command` — description\". If the input already has a TLDR/Quick Reference block, preserve and emoji-enhance it. If not, generate one from the content — this is the most important section for AI agents and users needing quick lookup.\n" .
+        "- Exit Codes: add an ## 🚪 Exit Codes section ONLY if the original document explicitly lists exit codes\n" .
         "- Condense output to under " . number_format(PHPMAN_ENHANCE_MAX_CHARS) . " characters — summarize verbatim repetition, prefer tight formatting";
 }
 
@@ -2114,8 +2115,9 @@ function getHtmlEnhancePrompt(): string {
         "18. Add descriptive emoji to option descriptions and list item text\n" .
         "19. Keep original HTML structure and section ordering intact\n" .
         "20. Emoji should be standard Unicode, widely supported\n" .
-        "21. Only create tables (Quick Reference, Exit Codes) if the original document already contains that same information\n" .
-        "22. IMPORTANT: Condense your output to under " . number_format(PHPMAN_ENHANCE_MAX_CHARS) . " characters. Preserve key sections but summarize/combine verbatim repetition. Prefer tight formatting over verbosity.";
+        "21. 🚀 Quick Reference: ALWAYS create a <h2>🚀 Quick Reference</h2> section as the second section (right after NAME). Use a <table> with columns Use Case | Command | Description. If the input contains a TLDR block, preserve and emoji-enhance it. If not, generate common use cases from the content — this is critical for AI agents and quick human lookup.\n" .
+        "22. Exit Codes: add an <h2>🚪 Exit Codes</h2> section ONLY if the original document explicitly lists exit codes\n" .
+        "23. IMPORTANT: Condense your output to under " . number_format(PHPMAN_ENHANCE_MAX_CHARS) . " characters. Preserve key sections but summarize/combine verbatim repetition. Prefer tight formatting over verbosity.";
 }
 
 /**
@@ -2140,9 +2142,22 @@ function enhanceManPage(string $mode, string $name): string {
         }
         if (trim($plainMd) !== '') {
 
+            // Fetch TLDR for man pages — inject as Quick Reference seed
             $mdPrompt = getMdEnhancePrompt();
+            $mdUserMessage = "Transform this man page Markdown into an emoji-enhanced version:\n\n";
+            if ($mode === 'man') {
+                $tldrData = fetchOfficialTldr($name, $mode, '');
+                if (!empty($tldrData['examples'])) {
+                    $mdUserMessage .= "## TLDR / Quick Reference (from tldr-pages)\n";
+                    foreach (array_slice($tldrData['examples'], 0, 8) as $ex) {
+                        $mdUserMessage .= "- `{$ex['command']}` — {$ex['description']}\n";
+                    }
+                    $mdUserMessage .= "\n";
+                }
+            }
+            $mdUserMessage .= $plainMd;
 
-            $enhancedMd = callLLM($mdPrompt, "Transform this man page Markdown into an emoji-enhanced version:\n\n{$plainMd}");
+            $enhancedMd = callLLM($mdPrompt, $mdUserMessage);
             if ($enhancedMd !== '') {
                 $enhancedMd = preg_replace('/^```(?:markdown|md)?\s*\n?/m', '', $enhancedMd);
                 $enhancedMd = preg_replace('/\n?```\s*$/m', '', $enhancedMd);
@@ -2180,8 +2195,22 @@ function enhanceManPage(string $mode, string $name): string {
             // Instead, prompt instructs LLM to keep output under limit.
 
             $htmlPrompt = getHtmlEnhancePrompt();
+            $htmlUserMessage = "Transform this man page HTML into an emoji-enhanced version:\n\n";
+            if ($mode === 'man') {
+                $tldrData = fetchOfficialTldr($name, $mode, '');
+                if (!empty($tldrData['examples'])) {
+                    $htmlUserMessage .= "<h2>TLDR / Quick Reference (from tldr-pages)</h2>\n<table>\n";
+                    foreach (array_slice($tldrData['examples'], 0, 8) as $ex) {
+                        $desc = h($ex['description'] ?? '');
+                        $cmd = h($ex['command'] ?? '');
+                        $htmlUserMessage .= "<tr><td>{$cmd}</td><td>{$desc}</td></tr>\n";
+                    }
+                    $htmlUserMessage .= "</table>\n\n";
+                }
+            }
+            $htmlUserMessage .= $rawHtml;
 
-            $enhancedHtml = callLLM($htmlPrompt, "Transform this man page HTML into an emoji-enhanced version:\n\n{$rawHtml}");
+            $enhancedHtml = callLLM($htmlPrompt, $htmlUserMessage);
             if ($enhancedHtml !== '') {
                 $enhancedHtml = preg_replace('/^```(?:html)?\s*\n?/m', '', $enhancedHtml);
                 $enhancedHtml = preg_replace('/\n?```\s*$/m', '', $enhancedHtml);
