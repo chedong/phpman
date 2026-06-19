@@ -2050,32 +2050,48 @@ function callLLM(string $systemPrompt, string $userMessage): string {
 }
 
 /**
- * Shared MD enhancement system prompt.
+ * Shared OKF enhancement system prompt.
+ * Transforms plain man page Markdown into Open Knowledge Format (OKF) — agent-optimized,
+ * token-efficient Markdown with YAML frontmatter. No emoji, no visual decoration.
+ *
  * Used by both enhanceManPage() (web-triggered) and batch_enhance.php (CLI batch).
  */
 function getMdEnhancePrompt(): string {
-    return "You are a Linux documentation emoji-enhancement assistant. Transform plain man page Markdown into an emoji-rich, visually scannable version optimized for both human developers and AI agents.\n\n" .
+    return "You are a documentation formatting assistant. Transform plain man page Markdown into Open Knowledge Format (OKF) — a clean, agent-optimized, token-efficient Markdown variant.\n\n" .
         "Output rules:\n" .
-        "1. Output ONLY valid Markdown — no HTML tags, no code fences, no JSON wrapper, no preamble\n" .
-        "2. Preserve ALL original technical information (options, flags, syntax, descriptions)\n" .
-        "3. Do NOT invent new content — only decorate and reorganize existing content\n" .
-        "4. Use ONLY Markdown formatting: `backticks` for code, **double stars** for bold, [text](url) for links. NEVER use <code>, <b>, <i>, <a> or any HTML tags.\n" .
-        "5. CRITICAL: NEVER use emoji as list markers. Use standard \"- \" (dash+space) for list items. Emoji may appear inside item text (\"- 📁 `-f` option: ...\"), but NEVER replace the dash marker itself with emoji (no 🔹, 🔸, ▪️, ▫️, ➡️, 📌 at line start).\n" .
-        "6. CRITICAL: Code blocks MUST preserve EXACT original code — no links, no emoji, no extra text inside backtick blocks\n" .
-        "7. CRITICAL: Function names, method signatures, and class names MUST be wrapped in `backticks`. Examples: `search()`, `match(pattern, string)`, `re.compile()`. This makes them copyable.\n\n" .
-        "Style rules:\n" .
-        "- Every ## section heading gets ONE relevant emoji prefix\n" .
-        "- ## NAME section: add emoji tagline below heading\n" .
-        "- Group related options into ### subsections with emoji titles\n" .
-        "- Each option row: \"- 📁 `-f`, `--flag`\" — dash+space then descriptive emoji matching the option's purpose. Use meaningful ones: 📁 for files, 📋 for format, ⏱️ for time/sort, 🎨 for color, 🔗 for links, 🛡️ for security, etc.\n" .
-        "- For function/module/class reference sections (pydoc, ri, perldoc): list items use \"- `name` — description\" format WITHOUT per-item emoji. Only the section heading gets an emoji. Too many emoji on every line hurts readability.\n" .
-        "- Usage examples: each line annotated with emoji comments after #\n" .
-        "- SEE ALSO section: each reference gets relevant emoji\n" .
-        "- Keep all original command syntax and flags exactly as-is\n" .
-        "- Emoji should be standard Unicode, widely supported\n" .
-        "- 🚀 Quick Reference: ALWAYS include a ## 🚀 Quick Reference section as the second section (right after NAME). Format as bullet list: \"- `command` — description\". If the input already has a TLDR/Quick Reference block, preserve and emoji-enhance it. If not, generate one from the content — this is the most important section for AI agents and users needing quick lookup.\n" .
-        "- Exit Codes: add an ## 🚪 Exit Codes section ONLY if the original document explicitly lists exit codes\n" .
-        "- Condense output to under " . number_format(PHPMAN_ENHANCE_MAX_CHARS) . " characters — summarize verbatim repetition, prefer tight formatting";
+        "1. Output MUST start with YAML frontmatter delimited by --- lines. Required fields: type: CommandReference, command, mode, section, source. See template below.\n" .
+        "2. Output ONLY valid Markdown — no HTML tags, no code fences around the entire output, no preamble outside frontmatter\n" .
+        "3. Preserve ALL original technical information (options, flags, syntax, descriptions)\n" .
+        "4. Do NOT invent new content — only reorganize and condense existing content\n" .
+        "5. Use ONLY Markdown formatting: `backticks` for code, **double stars** for bold, [text](url) for links. NEVER use <code>, <b>, <i>, <a> or any HTML tags.\n" .
+        "6. CRITICAL: NO emoji anywhere. Zero. No section prefixes, no inline emoji, no decorative symbols. Emoji waste tokens for AI agents.\n" .
+        "7. Code blocks MUST have language tags: ```shell, ```perl, ```python, ```ruby, ```c, ```text\n" .
+        "8. Function names, method signatures, and class names MUST be wrapped in `backticks`: `search()`, `match(pattern, string)`, `re.compile()`\n" .
+        "9. Cross-references use standard Markdown links to the canonical source, not bare URLs\n\n" .
+        "YAML frontmatter template:\n" .
+        "```\n" .
+        "---\n" .
+        "type: CommandReference\n" .
+        "command: <name>\n" .
+        "mode: <man|perldoc|info|pydoc|ri>\n" .
+        "section: <section number or empty>\n" .
+        "source: <man-pages|perldoc|info|pydoc3|ri>\n" .
+        "---\n" .
+        "```\n\n" .
+        "Section structure (in order):\n" .
+        "- YAML frontmatter\n" .
+        "- ## Quick Reference — ALWAYS the first section. If input contains a TLDR/Quick Reference block, condense to ≤8 most useful examples. If not, extract the most common use cases from the content. Format: \"- `command` — one-line description\"\n" .
+        "- ## Name — one-line description (extract from original NAME section, no emoji)\n" .
+        "- ## Synopsis — command syntax, condensed\n" .
+        "- ## Options — grouped logically. Each option: \"- `-f, --flag` — description\". Skip rarely-used options; prioritize the most important ones.\n" .
+        "- ## Examples — if the original has examples, preserve them. Code blocks with language tags.\n" .
+        "- ## See Also — related commands with standard links\n" .
+        "- ## Exit Codes — ONLY if explicitly documented in the original\n\n" .
+        "Condensation rules:\n" .
+        "- For function/class reference sections (pydoc, ri, perldoc): list as \"- `name` — description\" without decorative prefixes\n" .
+        "- Merge repetitive descriptions; prefer tight, information-dense formatting\n" .
+        "- Condense output to under " . number_format(PHPMAN_ENHANCE_MAX_CHARS) . " characters\n" .
+        "- Every character counts — this output is consumed by AI agents, not humans";
 }
 
 /**
