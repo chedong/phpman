@@ -86,7 +86,8 @@ _deploy-code:
 		ssh -p $(TEST_PORT) $(TEST_HOST) "cat > $(TEST_PATH)/$(FILE)"; \
 	scp -P $(TEST_PORT) $(CSS_FILE) $(TEST_HOST):$(TEST_PATH)/$(CSS_FILE); \
 	scp -P $(TEST_PORT) -r cli $(TEST_HOST):$(STAGING_HOME)/.phpman_test/; \
-	ssh -p $(TEST_PORT) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE) && chmod +x \$$HOME/.phpman_test/cli/*.php"; \
+	scp -P $(TEST_PORT) -r tools $(TEST_HOST):$(STAGING_HOME)/.phpman_test/; \
+	ssh -p $(TEST_PORT) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE) && chmod +x \$$HOME/.phpman_test/cli/*.php \$$HOME/.phpman_test/tools/*.php"; \
 		ssh -p $(TEST_PORT) $(TEST_HOST) "ln -sf $(TEST_PATH)/phpman.config.php \$$HOME/.phpman_test/phpman.config.php"; \
 		ssh -p $(TEST_PORT) $(TEST_HOST) "ln -sf $(TEST_PATH)/$(FILE) \$$HOME/.phpman_test/$(FILE)"
 	@echo ""
@@ -126,7 +127,8 @@ _release-code:
 		ssh -p $(DEMO_PORT) $(DEMO_HOST) "cat > $(DEMO_PATH)/$(FILE)"; \
 	scp -P $(DEMO_PORT) $(CSS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(CSS_FILE); \
 	scp -P $(DEMO_PORT) -r cli $(DEMO_HOST):$(DEMO_HOME)/.phpman/; \
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(CSS_FILE) && chmod +x \$$HOME/.phpman/cli/*.php"; \
+	scp -P $(DEMO_PORT) -r tools $(DEMO_HOST):$(DEMO_HOME)/.phpman/; \
+	ssh -p $(DEMO_PORT) $(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(CSS_FILE) && chmod +x \$$HOME/.phpman/cli/*.php \$$HOME/.phpman/tools/*.php"; \
 	echo ""; \
 	echo "=== Deployed to production ==="; \
 	echo "$(DEMO_URL)"; \
