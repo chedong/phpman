@@ -557,6 +557,7 @@ function detectHeadingType (string $line, string $mode = "man", ?string $nextLin
 
     // info mode: Setext-style underline headings (text on current line, underline on next)
     // H1: *****  H2: =====  H3: -----
+    // NOTE: falls through to generic L1/L2 detection below if no underline match.
     if ($mode === "info" && $nextLine !== null) {
         $trimmedNext = trim($nextLine);
         $len = strlen($trimmedNext);
@@ -570,7 +571,7 @@ function detectHeadingType (string $line, string $mode = "man", ?string $nextLin
                 }
             }
         }
-        return null;
+        // Fall through to generic detection below — not all info pages use Setext.
     }
 
     // L2 strategies (checked first — more specific patterns take priority)
@@ -2014,24 +2015,25 @@ function callLLM(string $systemPrompt, string $userMessage): string {
     ]);
     $response = curl_exec($ch);
     $error = curl_error($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
     if ($response === false || $response === '') {
-        phpManLog("LLM: API call failed: " . ($error ?: 'empty response'));
+        phpManLog("LLM: API call failed [HTTP " . ($httpCode ?: '0') . "]: " . ($error ?: 'empty response'));
         return '';
     }
 
     $data = json_decode($response, true);
     if ($data === null) {
-        phpManLog("LLM: JSON decode failed (" . strlen($response) . " bytes response)");
+        phpManLog("LLM: JSON decode failed [HTTP {$httpCode}] (" . strlen($response) . " bytes response)");
         return '';
     }
-    // Log API-level errors (quota, auth, etc.)
+    // Log API-level errors (quota, auth, etc.) with HTTP status for context
     if (!empty($data['error'])) {
         $errType = $data['error']['type'] ?? 'unknown';
         $errMsg = $data['error']['message'] ?? 'no message';
         $errCode = $data['error']['code'] ?? '';
-        phpManLog("LLM: API error [{$errType}] {$errMsg}" . ($errCode ? " (code: {$errCode})" : ""));
+        phpManLog("LLM: API error [HTTP {$httpCode}] [{$errType}] {$errMsg}" . ($errCode ? " (code: {$errCode})" : ""));
         return '';
     }
     $content = $data['choices'][0]['message']['content'] ?? '';
@@ -2059,12 +2061,14 @@ function getMdEnhancePrompt(): string {
         "3. Do NOT invent new content — only decorate and reorganize existing content\n" .
         "4. Use ONLY Markdown formatting: `backticks` for code, **double stars** for bold, [text](url) for links. NEVER use <code>, <b>, <i>, <a> or any HTML tags.\n" .
         "5. CRITICAL: NEVER use emoji as list markers. Use standard \"- \" (dash+space) for list items. Emoji may appear inside item text (\"- 📁 `-f` option: ...\"), but NEVER replace the dash marker itself with emoji (no 🔹, 🔸, ▪️, ▫️, ➡️, 📌 at line start).\n" .
-        "6. CRITICAL: Code blocks MUST preserve EXACT original code — no links, no emoji, no extra text inside backtick blocks\n\n" .
+        "6. CRITICAL: Code blocks MUST preserve EXACT original code — no links, no emoji, no extra text inside backtick blocks\n" .
+        "7. CRITICAL: Function names, method signatures, and class names MUST be wrapped in `backticks`. Examples: `search()`, `match(pattern, string)`, `re.compile()`. This makes them copyable.\n\n" .
         "Style rules:\n" .
         "- Every ## section heading gets ONE relevant emoji prefix\n" .
         "- ## NAME section: add emoji tagline below heading\n" .
         "- Group related options into ### subsections with emoji titles\n" .
         "- Each option row: \"- 📁 `-f`, `--flag`\" — dash+space then descriptive emoji matching the option's purpose. Use meaningful ones: 📁 for files, 📋 for format, ⏱️ for time/sort, 🎨 for color, 🔗 for links, 🛡️ for security, etc.\n" .
+        "- For function/module/class reference sections (pydoc, ri, perldoc): list items use \"- `name` — description\" format WITHOUT per-item emoji. Only the section heading gets an emoji. Too many emoji on every line hurts readability.\n" .
         "- Usage examples: each line annotated with emoji comments after #\n" .
         "- SEE ALSO section: each reference gets relevant emoji\n" .
         "- Keep all original command syntax and flags exactly as-is\n" .
@@ -2094,22 +2098,24 @@ function getHtmlEnhancePrompt(): string {
         "CRITICAL list formatting:\n" .
         "10. Use standard <ul><li> or <ol><li> for ALL lists. Emoji may appear inside <li> text content, but NEVER replace the list structure with emoji-only lines.\n" .
         "11. NEVER use emoji characters (🔹, 🔸, ▪️, ▫️, ➡️, 📌, 🟢) as visual bullet replacements at the start of paragraphs — always use proper HTML list tags.\n\n" .
+        "CRITICAL function/class reference formatting:\n" .
+        "12. For function, method, and class reference sections (pydoc modules, ruby ri classes, perldoc function lists): use <li><code>name(args)</code> — description</li> format WITHOUT per-item emoji. Function names MUST be in <code> tags for copyability. Emoji-per-item in long lists hurts scannability — only the section heading needs an emoji.\n\n" .
         "CRITICAL XSS prevention:\n" .
-        "12. ANY < or > NOT part of an allowed HTML tag (<h2>, <h3>, <p>, <br>,\n" .
+        "13. ANY < or > NOT part of an allowed HTML tag (<h2>, <h3>, <p>, <br>,\n" .
         "    <b>, <u>, <a>, <pre>, <code>, <table>, <tr>, <td>, <th>, <ul>, <ol>,\n" .
         "    <li>, <div>, <span>, <em>, <strong>, <hr>, <blockquote>) MUST be escaped\n" .
         "    as &lt; and &gt;. Example: print qq(<input>) → print qq(&lt;input&gt;)\n" .
-        "13. Before output, scan your entire response. Fix any bare < or > outside\n" .
+        "14. Before output, scan your entire response. Fix any bare < or > outside\n" .
         "    allowed tags. This is a SECURITY requirement.\n\n" .
         "Output rules:\n" .
-        "14. Output ONLY valid HTML — no code fences, no JSON wrapper, no preamble\n" .
-        "15. Preserve ALL original technical information — do NOT create new sections or content\n" .
-        "16. Preserve <b>, <u>, <a href> tags from the original — they carry semantic meaning. But do NOT add new <a> links inside code blocks.\n" .
-        "17. Add descriptive emoji to option descriptions and list item text\n" .
-        "18. Keep original HTML structure and section ordering intact\n" .
-        "19. Emoji should be standard Unicode, widely supported\n" .
-        "20. Only create tables (Quick Reference, Exit Codes) if the original document already contains that same information\n" .
-        "21. IMPORTANT: Condense your output to under " . number_format(PHPMAN_ENHANCE_MAX_CHARS) . " characters. Preserve key sections but summarize/combine verbatim repetition. Prefer tight formatting over verbosity.";
+        "15. Output ONLY valid HTML — no code fences, no JSON wrapper, no preamble\n" .
+        "16. Preserve ALL original technical information — do NOT create new sections or content\n" .
+        "17. Preserve <b>, <u>, <a href> tags from the original — they carry semantic meaning. But do NOT add new <a> links inside code blocks.\n" .
+        "18. Add descriptive emoji to option descriptions and list item text\n" .
+        "19. Keep original HTML structure and section ordering intact\n" .
+        "20. Emoji should be standard Unicode, widely supported\n" .
+        "21. Only create tables (Quick Reference, Exit Codes) if the original document already contains that same information\n" .
+        "22. IMPORTANT: Condense your output to under " . number_format(PHPMAN_ENHANCE_MAX_CHARS) . " characters. Preserve key sections but summarize/combine verbatim repetition. Prefer tight formatting over verbosity.";
 }
 
 /**
@@ -2233,8 +2239,11 @@ function cleanEmojiHtml(string $html): string {
 
     // #147: XSS defense-in-depth — strip_tags preserves event handlers on allowed tags.
     // Post-process: remove on* attributes and neutralize javascript: URIs.
-    $html = preg_replace('/\bon\w+\s*=\s*"[^"]*"/i', '', $html);
-    $html = preg_replace('/href\s*=\s*"javascript:/i', 'href="#"', $html);
+    $html = preg_replace(
+        ['/\bon\w+\s*=\s*"[^"]*"/i', '/href\s*=\s*"javascript:/i'],
+        ['', 'href="#"'],
+        $html
+    );
 
     return $html;
 }
@@ -2264,71 +2273,12 @@ function renderTocSidebar(array $tocItems, string $pageLabel): string {
     return $out;
 }
 
-// CLI Mode: handle command-line invocation
-if (PHP_SAPI === 'cli' && !defined('PHPMAN_NO_CLI_DISPATCH')) {
-    $options = getopt('h', ['help', 'build-index', 'build-index-cron', 'enhance::']);
-
-    if (isset($options['help']) || isset($options['h'])) {
-        echo "phpMan — Unix Man Page / Perldoc / Info / pydoc / ri Web Interface\n";
-        echo "Version: " . GIT_DESCRIBE . "\n\n";
-        echo "Usage:\n";
-        echo "  php phpMan.php --build-index          Rebuild FTS5 search index\n";
-        echo "  php phpMan.php --build-index-cron     Rebuild with timestamp (cron)\n";
-        echo "  php phpMan.php --enhance=mode:name    Enhance section headings with emoji\n";
-        echo "  php phpMan.php --help                 Show this help\n\n";
-        echo "LLM Emoji Enhancement:\n";
-        echo "  Enhances man/perldoc/info/pydoc/ri page section headings with emoji\n";
-        echo "  Requires LLM_API_KEY and LLM_API_URL in phpman.config.php\n\n";
-        echo "  Examples:\n";
-        echo "    php phpMan.php --enhance=man:ls\n";
-        echo "    php phpMan.php --enhance=man:ls,tar,grep\n";
-        echo "    php phpMan.php --enhance=perldoc:File::Basename\n";
-        echo "    php phpMan.php --enhance=pydoc:os,json,re\n";
-        echo "    php phpMan.php --enhance=ri:Array,String,File\n\n";
-        echo "  Batch enhance examples (15 typical docs):\n";
-        echo "    php phpMan.php --enhance=man:ls,tar,grep\n";
-        echo "    php phpMan.php --enhance=perldoc:File::Basename,Getopt::Long,Digest::MD5\n";
-        echo "    php phpMan.php --enhance=info:coreutils,bash,make\n";
-        echo "    php phpMan.php --enhance=pydoc:os,json,re\n";
-        echo "    php phpMan.php --enhance=ri:Array,String,File\n\n";
-        echo "Cron example (daily at 3am):\n";
-        echo "  0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron\n\n";
-        echo "Docs: https://github.com/chedong/phpman\n";
-        exit;
-    }
-
-    if (isset($options['build-index'])) {
-        echo rebuildSearchIndex();
-        exit;
-    }
-    if (isset($options['build-index-cron'])) {
-        $result = rebuildSearchIndex();
-        echo '[' . gmdate('Y-m-d H:i:s') . "]\n" . $result;
-        exit;
-    }
-    if (isset($options['enhance'])) {
-        $spec = $options['enhance'];
-        if ($spec === '' || $spec === false) {
-            echo "ERROR: --enhance requires mode:name(s). Use --help for examples.\n";
-            exit(1);
-        }
-        // Parse mode:name1,name2,...
-        if (!preg_match('/^([a-z]+):(.+)$/', $spec, $m)) {
-            echo "ERROR: format is --enhance=mode:name1,name2. Use --help for examples.\n";
-            exit(1);
-        }
-        $mode = $m[1];
-        $names = explode(',', $m[2]);
-        $total = 0;
-        foreach ($names as $name) {
-            $name = trim($name);
-            if ($name === '') continue;
-            enhanceManPage($mode, $name);
-        }
-        echo "\nDone. enhanced for " . count($names) . " docs.\n";
-        exit;
-    }
-}
+// CLI Mode: command-line tools have been split into standalone scripts.
+// Use these instead of the old phpMan.php -- flags:
+//   php cli/build-index.php           Search index rebuild
+//   php cli/build-index.php --cron    Index rebuild with timestamp
+//   php cli/enhance.php man:ls        LLM emoji enhancement
+//   php tools/batch_enhance.php        Full batch enhance (rate-limited, resumable)
 
 // Web-only below this point: skip when included from batch scripts
 if (defined('PHPMAN_NO_CLI_DISPATCH')) return;
@@ -2986,26 +2936,24 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
 	}
 
 	// For man page content, add section anchors and floating TOC
-	if ($isEnhanced && $enhancedCacheContent !== null) {
+	if ($isEnhanced) {
 		    // Build TOC from enhanced HTML: <h2> L1, <h3> L2 children
             // #144: single-pass preg_replace_callback instead of O(n×m) repeated scans
             $tocItems = [];
             $currentH2 = null;
             $h2Count = 0;
-            $h3Counts = [];
             $content = preg_replace_callback(
                 '#<(h2|h3)\b[^>]*>(.+?)</\1>#i',
-                function ($m) use (&$tocItems, &$currentH2, &$h2Count, &$h3Counts) {
+                function ($m) use (&$tocItems, &$currentH2, &$h2Count) {
                     $tag = strtolower($m[1]);
                     $label = html_entity_decode(trim(strip_tags($m[2])), ENT_QUOTES, 'UTF-8');
                     if ($tag === 'h2') {
                         $id = "section-" . $h2Count++;
                         $tocItems[] = ["id" => $id, "label" => $label, "children" => []];
                         $currentH2 = count($tocItems) - 1;
-                        $h3Counts[$currentH2] = 0;
                         return '<h2 id="' . $id . '">' . $m[2] . '</h2>';
                     } elseif ($tag === 'h3' && $currentH2 !== null) {
-                        $subIdx = $h3Counts[$currentH2]++;
+                        $subIdx = count($tocItems[$currentH2]["children"]);
                         $id = "section-" . $currentH2 . "-" . $subIdx;
                         $tocItems[$currentH2]["children"][] = ["id" => $id, "label" => $label];
                         return '<h3 id="' . $id . '">' . $m[2] . '</h3>';
@@ -3286,7 +3234,7 @@ function showFooter (string $validator = "", bool $showNav = false, string $mode
         (Profiler::getEnabled() ? profilerHtmlBlock() : "") .
         "</p>" .
         ($showNav ? '<div id="back-to-top"><a href="#top">^_back to top</a></div>' : "") .
-        "<script>!function(){var t=document.querySelectorAll('#content-wrap pre');t.length&&t.forEach(function(e){var n=e.parentElement,o=document.createElement('div');o.className='code-block',n.insertBefore(o,e),o.appendChild(e);var c=document.createElement('button');c.className='copy-btn',c.textContent='📋 Copy',c.title='Copy code to clipboard',c.onclick=function(){var d=e.querySelector('code');navigator.clipboard.writeText((d||e).textContent).then(function(){c.textContent='✓ Copied!',c.classList.add('copied'),setTimeout(function(){c.textContent='📋 Copy',c.classList.remove('copied')},1500)})},o.appendChild(c)})}();</script>" .
+        "<script>!function(){var t=document.querySelectorAll('#content-wrap pre code');t.length&&t.forEach(function(e){var n=e.parentElement,o=document.createElement('div');o.className='code-block',n.insertBefore(o,e),o.appendChild(e);var c=document.createElement('button');c.className='copy-btn',c.textContent='📋 Copy',c.title='Copy code to clipboard',c.onclick=function(){navigator.clipboard.writeText(e.textContent).then(function(){c.textContent='✓ Copied!',c.classList.add('copied'),setTimeout(function(){c.textContent='📋 Copy',c.classList.remove('copied')},1500)})},o.appendChild(c)})}();</script>" .
         "</body></html>";
 }
 

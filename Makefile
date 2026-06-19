@@ -85,7 +85,8 @@ _deploy-code:
 	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) | \
 		ssh -p $(TEST_PORT) $(TEST_HOST) "cat > $(TEST_PATH)/$(FILE)"; \
 	scp -P $(TEST_PORT) $(CSS_FILE) $(TEST_HOST):$(TEST_PATH)/$(CSS_FILE); \
-	ssh -p $(TEST_PORT) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE)"; \
+	scp -P $(TEST_PORT) -r cli $(TEST_HOST):$(STAGING_HOME)/.phpman_test/; \
+	ssh -p $(TEST_PORT) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE) && chmod +x \$$HOME/.phpman_test/cli/*.php"; \
 		ssh -p $(TEST_PORT) $(TEST_HOST) "ln -sf $(TEST_PATH)/phpman.config.php \$$HOME/.phpman_test/phpman.config.php"; \
 		ssh -p $(TEST_PORT) $(TEST_HOST) "ln -sf $(TEST_PATH)/$(FILE) \$$HOME/.phpman_test/$(FILE)"
 	@echo ""
@@ -98,7 +99,7 @@ staging: test _deploy-code
 staging-reindex: test _deploy-code
 	@echo "=== Rebuilding staging search index ==="
 	ssh -p $(TEST_PORT) $(TEST_HOST) \
-		"cd $(TEST_PATH) && php $(FILE) --build-index-cron"
+		"cd $(STAGING_HOME)/.phpman_test && php cli/build-index.php --cron"
 	@echo "=== Staging index rebuild complete ==="
 
 # ─── Production ───
@@ -124,7 +125,8 @@ _release-code:
 	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) | \
 		ssh -p $(DEMO_PORT) $(DEMO_HOST) "cat > $(DEMO_PATH)/$(FILE)"; \
 	scp -P $(DEMO_PORT) $(CSS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(CSS_FILE); \
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(CSS_FILE)"; \
+	scp -P $(DEMO_PORT) -r cli $(DEMO_HOST):$(DEMO_HOME)/.phpman/; \
+	ssh -p $(DEMO_PORT) $(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(CSS_FILE) && chmod +x \$$HOME/.phpman/cli/*.php"; \
 	echo ""; \
 	echo "=== Deployed to production ==="; \
 	echo "$(DEMO_URL)"; \
@@ -137,7 +139,7 @@ release: test _release-code
 release-reindex: test _release-code
 	@echo "=== Rebuilding production search index ==="
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"cd $(DEMO_PATH) && php $(FILE) --build-index-cron"
+		"cd $(DEMO_HOME)/.phpman && php cli/build-index.php --cron"
 	@echo "=== Production index rebuild complete ==="
 
 # ─── Standalone search index rebuild (no code push) ───
@@ -145,13 +147,13 @@ release-reindex: test _release-code
 reindex:
 	@echo "=== Rebuilding production search index (no code push) ==="
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"cd $(DEMO_PATH) && php $(FILE) --build-index-cron"
+		"cd $(DEMO_HOME)/.phpman && php cli/build-index.php --cron"
 	@echo "=== Done ==="
 
 reindex-staging:
 	@echo "=== Rebuilding staging search index (no code push) ==="
 	ssh -p $(TEST_PORT) $(TEST_HOST) \
-		"cd $(TEST_PATH) && php $(FILE) --build-index-cron"
+		"cd $(STAGING_HOME)/.phpman_test && php cli/build-index.php --cron"
 	@echo "=== Done ==="
 
 # ─── Rollback ───

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-phpMan is a single-file PHP web app (~4800 lines, `phpMan.php`) that wraps Unix `man`, `perldoc`, `info`, `pydoc3`, `ri`, and `apropos` commands into HTML, Markdown, JSON, and MCP responses. It also runs as an MCP Server for AI agent integration.
+phpMan is a single-file PHP web app (~5650 lines, `phpMan.php`) that wraps Unix `man`, `perldoc`, `info`, `pydoc3`, `ri`, and `apropos` commands into HTML, Markdown, JSON, and MCP responses. It also runs as an MCP Server for AI agent integration. CLI tools (search index rebuild, batch LLM enhancement) are in `cli/` and `tools/`.
 
 ## Build / test / deploy
 
@@ -38,6 +38,26 @@ make logcheck                        # tail server logs after release
 ```
 
 The test framework is minimal (no PHPUnit): `assert_equals`, `assert_contains`, `assert_match`. Tests load `phpMan.php` with `define('PHPMAN_TEST_MODE', true)` to skip runtime execution and only define functions.
+
+## CLI tools
+
+CLI functionality has been split into standalone scripts under `cli/`:
+
+```bash
+# Search index
+php cli/build-index.php              # Rebuild FTS5 search index
+php cli/build-index.php --cron       # Rebuild with UTC timestamp
+
+# LLM emoji enhancement
+php cli/enhance.php man:ls           # Single page
+php cli/enhance.php man:ls,tar,grep  # Comma-separated batch
+php tools/batch_enhance.php --help   # Full batch (rate-limited, resumable)
+```
+
+All CLI scripts load config from `phpman.config.php` in the project root, then require
+`phpMan.php` via `PHPMAN_HOME` with `PHPMAN_NO_CLI_DISPATCH` defined to skip web
+dispatch. The old `php phpMan.php --build-index` / `--build-index-cron` / `--enhance`
+flags are removed.
 
 ## Architecture
 

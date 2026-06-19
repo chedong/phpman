@@ -21,6 +21,23 @@
 // define('LLM_MAX_TOKENS', 4096);
 // define('PHPMAN_ENHANCE_MAX_CHARS', 32000);  // max chars for LLM-enhanced output
 
+// --- Fallback LLM (v4.2.2) ---
+// Optional: multiple fallback endpoints tried in order when primary fails
+// with 5xx/429/timeout. Each entry must have url, key, model.
+// Leave empty array or comment out to skip fallback entirely.
+// define('LLM_FALLBACKS', [
+//     [
+//         'url'   => 'https://api.openai.com/v1/chat/completions',
+//         'key'   => 'sk-xxx',
+//         'model' => 'gpt-4o-mini',
+//     ],
+//     [
+//         'url'   => 'https://api.anthropic.com/v1/messages',
+//         'key'   => 'sk-yyy',
+//         'model' => 'claude-haiku-4-5',
+//     ],
+// ]);
+
 // --- MCP Authentication (#97) ---
 // Set a secret key to require X-API-Key header on all MCP requests.
 // Leave empty to allow unauthenticated access (default, for local/trusted networks).

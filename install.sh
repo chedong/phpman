@@ -211,7 +211,7 @@ do_install() {
 
     echo "→ Building FTS5 search index (man + pydoc3 + ri) ..."
     echo "  (this may take 1–2 minutes on first run)"
-    php phpMan.php --build-index
+    php cli/build-index.php
 
     generate_config "$INSTALL_DIR"
 
@@ -245,7 +245,7 @@ do_update() {
     git pull --ff-only
 
     echo "→ Rebuilding FTS5 search index..."
-    php phpMan.php --build-index
+    php cli/build-index.php
 
     if [ -n "$WEBROOT" ]; then
         do_deploy_webroot "$WEBROOT"
@@ -268,7 +268,7 @@ do_reindex() {
     fi
 
     echo "→ Rebuilding search index..."
-    php "$INSTALL_DIR/phpMan.php" --build-index
+    php "$INSTALL_DIR/cli/build-index.php"
     echo -e "${GREEN}✓ Index rebuilt.${NC}"
 }
 

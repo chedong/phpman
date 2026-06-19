@@ -33,9 +33,18 @@ Then open **http://localhost:45678/** in your browser.
 >
 > After first launch, build the FTS5 search index for full-text search:
 > ```bash
-> cd ~/.phpman && php phpMan.php --build-index
+> cd ~/.phpman && php cli/build-index.php
+> ```
+>
+> Batch LLM emoji enhancement (optional — requires API key):
+> ```bash
+> php tools/batch_enhance.php --help
 > ```
 
+
+## Screenshot
+
+[![phpMan Screenshot](https://sourceforge.net/p/phpunixman/screenshot/phpman_screenshot-5d0e2fc2.png)](https://sourceforge.net/p/phpunixman/screenshot/phpman_screenshot-5d0e2fc2.png)
 
 ---
 
@@ -579,7 +588,7 @@ See [docs/PLAN.md](docs/PLAN.md) for the full project plan:
 
 On shared servers, Ruby gems are typically installed in system directories (e.g. `/usr/lib/x86_64-linux-gnu/rubygems-integration/` or `/usr/share/rubygems-integration/all/gems/`). The `gem rdoc` command fails silently because it cannot write to those directories, and `ri` finds no gem documentation. This means `ri -l` won't list gem classes like `JSON::Ext::Parser`, `ActiveSupport::JSON`, etc., and phpMan's FTS5 search won't index them.
 
-The solution is to use `rdoc --ri` to generate ri data into `~/.local/share/rdoc/`, which `ri` scans by default. After generating, run `php phpMan.php --build-index` to rebuild the FTS5 search index with the new ri entries.
+The solution is to use `rdoc --ri` to generate ri data into `~/.local/share/rdoc/`, which `ri` scans by default. After generating, run `php cli/build-index.php` to rebuild the FTS5 search index with the new ri entries.
 
 ### One-Command Setup
 
@@ -644,7 +653,7 @@ Then for system-installed gems, manually run the `rdoc --ri` command above after
 Rebuild the FTS5 search index so phpMan's search includes the new ri entries:
 
 ```bash
-php /path/to/phpMan.php --build-index
+php /path/to/phpman/cli/build-index.php
 ```
 
 This adds the newly discovered ri classes to `search_fts`, making them searchable alongside man pages and pydoc modules.
@@ -841,18 +850,18 @@ The search engine uses a SQLite FTS5 index built from system `apropos`, `pydoc3`
 Rebuild the index when search results become stale or after installing new packages:
 
 ```bash
-# Rebuild index (interactive)
-php phpMan.php --build-index
+# Rebuild index
+php cli/build-index.php
 
 # Rebuild index (cron mode with timestamp)
-php phpMan.php --build-index-cron
+php cli/build-index.php --cron
 
-# Show help
-php phpMan.php --help
+# Show batch enhance help
+php tools/batch_enhance.php --help
 ```
 
 Cron example (daily at 3am):
-  0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron
+  0 3 * * * /usr/bin/php /path/to/phpman/cli/build-index.php --cron
 
 The script clears search_fts + search_index_meta + stale search cache, then
 rebuilds from scratch via `apropos -s N .` for man pages, `pydoc3 modules` for

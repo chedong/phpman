@@ -111,12 +111,26 @@ if ($stopMode) {
         echo "No batch_enhance appears to be running.\n";
         exit(0);
     }
-    $pid = (int)trim(file_get_contents($pidFile));
+    $pidContent = trim(file_get_contents($pidFile));
     echo "PID file: {$pidFile}\n";
-    echo "PID: {$pid}\n";
+    // #148: PID file format: "PID START_TIME" — validate both to prevent TOCTOU signal race.
+    $parts = explode(' ', $pidContent, 2);
+    $pid = (int)$parts[0];
+    $startTime = isset($parts[1]) ? (int)$parts[1] : 0;
+    echo "PID: {$pid}, start time: {$startTime}\n";
     if ($pid > 0) {
-        // Check if process actually exists
-        if (posix_kill($pid, 0)) {
+        // Check if process actually exists AND has matching start time
+        $procStart = 0;
+        $statFile = "/proc/{$pid}/stat";
+        if (file_exists($statFile)) {
+            $stat = file_get_contents($statFile);
+            if ($stat && preg_match('/^\d+\s+\([^)]+\)\s+\w+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)/', $stat, $m)) {
+                $procStart = (int)$m[1];
+            }
+        }
+        if ($startTime > 0 && $procStart > 0 && $procStart !== $startTime) {
+            echo "PID {$pid} is recycled (start time mismatch: expected {$startTime}, got {$procStart}) — will NOT signal. Removing stale PID file.\n";
+        } elseif (posix_kill($pid, 0)) {
             posix_kill($pid, SIGTERM);
             echo "Sent SIGTERM to PID {$pid}. Waiting...\n";
             sleep(2);
@@ -150,16 +164,50 @@ if ($statusMode) {
 if (!is_dir($logsDir)) @mkdir($logsDir, 0755, true);
 $ownPid = getmypid();
 if ($ownPid) {
-    file_put_contents($pidFile, (string)$ownPid);
-    // Clean up on exit (normal or error)
-    register_shutdown_function(function () use ($pidFile, $ownPid) {
-        if (file_exists($pidFile) && (int)file_get_contents($pidFile) === $ownPid) {
-            @unlink($pidFile);
+    // #148: flock() mutex + existing PID check to prevent race conditions.
+    $pidFh = fopen($pidFile, 'c+');
+    if ($pidFh && flock($pidFh, LOCK_EX | LOCK_NB)) {
+        // Check if an existing process is still alive
+        $existing = trim(stream_get_contents($pidFh));
+        if ($existing !== '') {
+            $parts = explode(' ', $existing, 2);
+            $oldPid = (int)$parts[0];
+            if ($oldPid > 0 && posix_kill($oldPid, 0)) {
+                fwrite(STDERR, "ERROR: Another batch_enhance is already running (PID {$oldPid}). Use --stop first or wait.\n");
+                flock($pidFh, LOCK_UN);
+                fclose($pidFh);
+                exit(1);
+            }
+            ftruncate($pidFh, 0);
+            rewind($pidFh);
         }
-    });
-    echo "PID {$ownPid} → {$pidFile}\n";
-    echo "  Stop with: php tools/batch_enhance.php --stop\n";
-    echo "            php tools/batch_enhance.php --status --stop\n";
+        // Store "PID START_TIME" for signal safety (#148)
+        // Use /proc/uptime for Linux; fall back to time() on macOS/non-Linux.
+        $startTime = 0;
+        $uptimeFile = '/proc/uptime';
+        if (file_exists($uptimeFile)) {
+            $uptime = (int)file_get_contents($uptimeFile);
+            $bootTime = (int)shell_exec('cat /proc/stat 2>/dev/null | grep btime | awk ' . "'{print \$2}'") ?: 0;
+            $startTime = $bootTime + $uptime;
+        } else {
+            $startTime = time(); // fallback for non-Linux (macOS, BSD)
+        }
+        fwrite($pidFh, $ownPid . ' ' . $startTime);
+        fflush($pidFh);
+        // Clean up on exit (normal or error)
+        register_shutdown_function(function () use ($pidFh, $pidFile, $ownPid) {
+            flock($pidFh, LOCK_UN);
+            fclose($pidFh);
+            @unlink($pidFile);
+        });
+        echo "PID {$ownPid} (start {$startTime}) → {$pidFile}\n";
+        echo "  Stop with: php tools/batch_enhance.php --stop\n";
+        echo "            php tools/batch_enhance.php --status --stop\n";
+    } else {
+        fwrite(STDERR, "ERROR: Cannot acquire lock on {$pidFile} — another instance may be starting.\n");
+        if ($pidFh) fclose($pidFh);
+        exit(1);
+    }
 }
 
 foreach (['LLM_API_URL', 'LLM_API_KEY', 'LLM_MODEL', 'LLM_MAX_TOKENS'] as $c) {
@@ -240,10 +288,13 @@ while ($row = $metaRes->fetchArray(SQLITE3_ASSOC)) {
 }
 
 // 2. Cache-only modes (perldoc, info, pydoc, ri) — discover from cache table
-$cacheModes = ['perldoc', 'info', 'pydoc', 'ri'];
+// Man pages come from search_index_meta, not the cache table.
+$cacheModes = array_values(array_diff(PHPMAN_CONTENT_MODES, ['man']));
 foreach ($cacheModes as $cm) {
     if ($modeFilter && !in_array($cm, $modeFilter)) continue;
-    $res = $db->query("SELECT DISTINCT name FROM cache WHERE mode='{$cm}' AND name != '__index__' ORDER BY name");
+    $stmtDisc = $db->prepare("SELECT DISTINCT name FROM cache WHERE mode=:mode AND name != '__index__' ORDER BY name");
+    $stmtDisc->bindValue(':mode', $cm, SQLITE3_TEXT);
+    $res = $stmtDisc->execute();
     while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
         $key = $cm . '|' . $row['name'];
         if (isset($seen[$key])) continue;
@@ -260,7 +311,7 @@ echo "Found {$total} entries total\n";
 $cacheCheck = new PageCache();
 foreach ($entries as $i => $e) {
     $cachedHtml = $cacheCheck->get($e['mode'], $e['name'], '', 'html');
-    $htmlOk = ($cachedHtml !== null && $cachedHtml !== '###NOT_FOUND###');
+    $htmlOk = ($cachedHtml !== null && !PageCache::isNotFound($cachedHtml));
     if ($rebuild) {
         $entries[$i]['_html']       = $htmlOk;
         $entries[$i]['_emoji_md']   = false;
@@ -269,8 +320,8 @@ foreach ($entries as $i => $e) {
         $cachedMd = $cacheCheck->get($e['mode'], $e['name'], '', 'emoji_md');
         $cachedEmHtml = $cacheCheck->get($e['mode'], $e['name'], '', 'emoji_html');
         $entries[$i]['_html']       = $htmlOk;
-        $entries[$i]['_emoji_md']   = ($cachedMd !== null && $cachedMd !== '###NOT_FOUND###');
-        $entries[$i]['_emoji_html'] = ($cachedEmHtml !== null && $cachedEmHtml !== '###NOT_FOUND###');
+        $entries[$i]['_emoji_md']   = ($cachedMd !== null && !PageCache::isNotFound($cachedMd));
+        $entries[$i]['_emoji_html'] = ($cachedEmHtml !== null && !PageCache::isNotFound($cachedEmHtml));
     }
 }
 
@@ -354,6 +405,8 @@ $errors = 0;
 $lastLlmTime = 0;
 $startTime = time();
 $totalEntries = count($entries);
+$consecutiveFailures = 0;
+$maxConsecutiveFailures = 3;
 
 foreach ($entries as $idx => $e) {
     $mode = $e['mode'];
@@ -387,7 +440,7 @@ foreach ($entries as $idx => $e) {
 
         $pcache = new PageCache();
         $plainMd = $pcache->get($mode, $name, '', 'markdown');
-        if ($plainMd === null || $plainMd === '###NOT_FOUND###' || trim($plainMd) === '') {
+        if ($plainMd === null || PageCache::isNotFound($plainMd) || trim($plainMd) === '') {
             // Generate markdown on demand
             $genFn = contentGenerator($mode, $name, $section, 'markdown');
             $plainMd = cacheOrExecute($mode, $name, $section, 'markdown', $genFn);
@@ -400,7 +453,7 @@ foreach ($entries as $idx => $e) {
         }
 
         echo "  Calling LLM for emoji_md (" . strlen($plainMd) . " chars md input)...\n";
-        $enhancedMd = callLLM(getMdSystemPrompt(), $plainMd);
+        $enhancedMd = callLLM(getMdEnhancePrompt(), $plainMd);
         $lastLlmTime = time();
 
         if ($enhancedMd !== '') {
@@ -410,9 +463,16 @@ foreach ($entries as $idx => $e) {
             $pcache->set($mode, $name, '', 'emoji_md', $enhancedMd, 'found');
             echo "  [md] {$label}: enhanced (" . strlen($enhancedMd) . " chars)\n";
             $enhanced++;
+            $consecutiveFailures = 0;
         } else {
-            echo "  [md] {$label}: LLM returned empty — skipping\n";
+            $consecutiveFailures++;
+            echo "  [md] {$label}: LLM returned empty — skipping ({$consecutiveFailures}/{$maxConsecutiveFailures} consecutive)\n";
             $errors++;
+            if ($consecutiveFailures >= $maxConsecutiveFailures) {
+                echo "\nERROR: {$maxConsecutiveFailures} consecutive LLM failures — aborting.\n";
+                echo "  Check phpman_error.log for details. Resume with --resume-from=" . ($entryNum - 1) . "\n";
+                break;
+            }
         }
     } elseif ($doMd) {
         echo "  [md] already enhanced, skipping\n";
@@ -424,7 +484,7 @@ foreach ($entries as $idx => $e) {
 
         $pcache = new PageCache();
         $rawHtml = $pcache->get($mode, $name, '', 'html');
-        if ($rawHtml === null || $rawHtml === '###NOT_FOUND###' || trim($rawHtml) === '') {
+        if ($rawHtml === null || PageCache::isNotFound($rawHtml) || trim($rawHtml) === '') {
             $genFn = contentGenerator($mode, $name, $section, 'html');
             $rawHtml = cacheOrExecute($mode, $name, $section, 'html', $genFn);
         }
@@ -436,7 +496,7 @@ foreach ($entries as $idx => $e) {
         }
 
         echo "  Calling LLM for emoji_html (" . strlen($rawHtml) . " chars html input)...\n";
-        $enhancedHtml = callLLM(getHtmlSystemPrompt(), $rawHtml);
+        $enhancedHtml = callLLM(getHtmlEnhancePrompt(), $rawHtml);
         $lastLlmTime = time();
 
         if ($enhancedHtml !== '') {
@@ -444,9 +504,16 @@ foreach ($entries as $idx => $e) {
             $pcache->set($mode, $name, '', 'emoji_html', $enhancedHtml, 'found');
             echo "  [html] {$label}: enhanced (" . strlen($enhancedHtml) . " chars)\n";
             $enhanced++;
+            $consecutiveFailures = 0;
         } else {
-            echo "  [html] {$label}: LLM returned empty — skipping\n";
+            $consecutiveFailures++;
+            echo "  [html] {$label}: LLM returned empty — skipping ({$consecutiveFailures}/{$maxConsecutiveFailures} consecutive)\n";
             $errors++;
+            if ($consecutiveFailures >= $maxConsecutiveFailures) {
+                echo "\nERROR: {$maxConsecutiveFailures} consecutive LLM failures — aborting.\n";
+                echo "  Check phpman_error.log for details. Resume with --resume-from=" . ($entryNum - 1) . "\n";
+                break;
+            }
         }
     } elseif ($doHtml) {
         echo "  [html] already enhanced, skipping\n";
@@ -499,55 +566,6 @@ function waitForRateLimit(int $lastCallTime, int $minInterval): int {
     return time();
 }
 
-function getMdSystemPrompt(): string {
-    return "You are a Linux documentation emoji-enhancement assistant. Transform plain man page Markdown into an emoji-rich, visually scannable version optimized for both human developers and AI agents.\n\n" .
-        "Output rules:\n" .
-        "1. Output ONLY valid Markdown — no HTML tags, no code fences, no JSON wrapper, no preamble\n" .
-        "2. Preserve ALL original technical information (options, flags, syntax, descriptions)\n" .
-        "3. Do NOT invent new content — only reorganize and decorate existing content\n" .
-        "4. Use ONLY Markdown formatting: `backticks` for code, **double stars** for bold, [text](url) for links. NEVER use <code>, <b>, <i>, <a> or any HTML tags.\n" .
-        "5. Options and examples MUST use standard Markdown list syntax: start each item with \"- \" (dash+space) followed by content. NEVER use emoji as list markers.\n\n" .
-        "Style rules:\n" .
-        "- Every ## section heading gets ONE relevant emoji prefix\n" .
-        "- ## NAME section: add emoji tagline below heading\n" .
-        "- Add a Quick Reference table after SYNOPSIS with common use cases\n" .
-        "- Group related options into ### subsections with emoji titles\n" .
-        "- Each option row: \"- 📁 `-f`, `--flag`\" — dash+space then descriptive emoji matching the option's purpose. Do NOT use bullet-like emoji (🔹🔸▪️▫️➡️). Use meaningful ones: 📁 for files, 📋 for format, ⏱️ for time/sort, 🎨 for color, 🔗 for links, 🛡️ for security, etc.\n" .
-        "- Usage examples: each line annotated with emoji comments after #\n" .
-        "- Exit codes section: emoji table\n" .
-        "- SEE ALSO section: each reference gets relevant emoji\n" .
-        "- Keep all original command syntax and flags exactly as-is\n" .
-        "- Emoji should be standard Unicode, widely supported";
-}
-
-function getHtmlSystemPrompt(): string {
-    return "You are a Linux documentation emoji-enhancement assistant. Transform man page HTML into an emoji-rich, visually scannable version optimized for both human developers and AI agents.\n\n" .
-        "CRITICAL heading rules:\n" .
-        "1. NEVER use <h1> — the page already has an H1 title. Start from <h2>\n" .
-        "2. Section titles (NAME, SYNOPSIS, DESCRIPTION, OPTIONS, EXAMPLES, SEE ALSO) → <h2> with ONE emoji prefix\n" .
-        "3. Sub-sections within a section → <h3> with emoji prefix\n" .
-        "4. Comments in code examples are NOT headings — do NOT wrap them in <h1>/<h2>/<h3>\n\n" .
-        "CRITICAL code block rules:\n" .
-        "5. ALL code MUST be wrapped in <pre><code>...</code></pre>\n" .
-        "6. Code includes anything with: \$variable, ->method, use Module;, function(), flags like -f --long\n" .
-        "7. Even single-line code statements need <pre><code> — never leave code as bare text with <br>\n" .
-        "8. Existing <pre><code> blocks: preserve exact content\n\n" .
-        "CRITICAL XSS prevention:\n" .
-        "9. ANY < or > NOT part of an allowed HTML tag (<h2>, <h3>, <p>, <br>,\n" .
-        "   <b>, <u>, <a>, <pre>, <code>, <table>, <tr>, <td>, <th>, <ul>, <ol>,\n" .
-        "   <li>, <div>, <span>, <em>, <strong>, <hr>, <blockquote>) MUST be escaped\n" .
-        "   as &lt; and &gt;. Example: print qq(<input>) → print qq(&lt;input&gt;)\n" .
-        "10. Before output, scan your entire response. Fix any bare < or > outside\n" .
-        "    allowed tags. This is a SECURITY requirement.\n\n" .
-        "Output rules:\n" .
-        "11. Output ONLY valid HTML — no code fences, no JSON wrapper, no preamble\n" .
-        "12. Preserve ALL original technical information\n" .
-        "13. Do NOT invent new content\n" .
-        "14. Preserve <b>, <u>, <a href> tags — they carry semantic meaning\n" .
-        "15. Add descriptive emoji to option descriptions and list items\n" .
-        "16. Keep original HTML structure intact\n" .
-        "17. Emoji should be standard Unicode, widely supported";
-}
 
 function showStatus(string $dbPath): void {
     if (!file_exists($dbPath)) {
@@ -558,19 +576,31 @@ function showStatus(string $dbPath): void {
     $db = new SQLite3($dbPath);
     $db->enableExceptions(true);
 
-    $modes = ['man', 'perldoc', 'info', 'pydoc', 'ri'];
+    $modes = PHPMAN_CONTENT_MODES;
     echo "\n" . str_repeat('=', 70) . "\n";
     echo "  phpMan Emoji Enhancement Status\n";
     echo str_repeat('=', 70) . "\n\n";
 
     $totalAll = 0; $totalMd = 0; $totalHtml = 0;
 
+    $stmtCount = $db->prepare("SELECT COUNT(*) FROM cache WHERE mode=:mode AND format=:format AND name != '__index__'");
     foreach ($modes as $mode) {
-        $total = $db->querySingle("SELECT COUNT(*) FROM cache WHERE mode='{$mode}' AND format='html' AND name != '__index__'");
+        $stmtCount->bindValue(':mode', $mode, SQLITE3_TEXT);
+        $stmtCount->bindValue(':format', 'html', SQLITE3_TEXT);
+        $result = $stmtCount->execute();
+        $total = $result->fetchArray(SQLITE3_NUM)[0];
+        $result->finalize();
         if ($total === null) $total = 0;
 
-        $md = $db->querySingle("SELECT COUNT(*) FROM cache WHERE mode='{$mode}' AND format='emoji_md' AND name != '__index__'");
-        $html = $db->querySingle("SELECT COUNT(*) FROM cache WHERE mode='{$mode}' AND format='emoji_html' AND name != '__index__'");
+        $stmtCount->bindValue(':format', 'emoji_md', SQLITE3_TEXT);
+        $result = $stmtCount->execute();
+        $md = $result->fetchArray(SQLITE3_NUM)[0];
+        $result->finalize();
+
+        $stmtCount->bindValue(':format', 'emoji_html', SQLITE3_TEXT);
+        $result = $stmtCount->execute();
+        $html = $result->fetchArray(SQLITE3_NUM)[0];
+        $result->finalize();
 
         $total = (int)$total;
         $md = (int)$md;
@@ -588,11 +618,13 @@ function showStatus(string $dbPath): void {
 
         // Show last 3 enhanced for this mode
         if ($md > 0 || $html > 0) {
-            $recent = $db->query(
+            $stmtRecent = $db->prepare(
                 "SELECT name, format, updated_at FROM cache " .
-                "WHERE mode='{$mode}' AND format IN ('emoji_md','emoji_html') " .
+                "WHERE mode=:mode AND format IN ('emoji_md','emoji_html') " .
                 "ORDER BY updated_at DESC LIMIT 3"
             );
+            $stmtRecent->bindValue(':mode', $mode, SQLITE3_TEXT);
+            $recent = $stmtRecent->execute();
             while ($r = $recent->fetchArray(SQLITE3_ASSOC)) {
                 $ts = date('m-d H:i', (int)$r['updated_at']);
                 printf("    %-8s %-30s %s\n", $r['format'], $r['name'], $ts);
