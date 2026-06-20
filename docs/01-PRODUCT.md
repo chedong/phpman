@@ -238,7 +238,7 @@ done
 
 Bulk emoji enhancement for all indexed pages. Designed for long-running background execution on staging/production servers.
 
-**Entry discovery**: Reads from `search_index_meta` (man pages from `--build-index-cron`) + cache-discovered perldoc/info/pydoc/ri entries — total ~35K entries on a typical server.
+**Entry discovery**: Reads from `search_index_meta` (man pages from `cli/build-index.php --cron`) + cache-discovered perldoc/info/pydoc/ri entries — total ~35K entries on a typical server.
 
 **Execution flow per entry**:
 1. Check emoji cache → skip if already enhanced (idempotent resume)

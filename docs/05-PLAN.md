@@ -18,13 +18,13 @@ git push origin v3.6.3
 ## Version Roadmap
 
 ```
-v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 → v4.2 (current)
+v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 → v4.2 → v4.3 → v4.4 (planned)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-man/perldoc/info   pydoc3/ri        Config overridables   JSON canonical cache   batch PID/stop    Copy button UX
-MCP Server         structured out   Underscore link fix   LLM emoji enhancement   XSS hardening     Prompt v2 tuning
-JSON API           Search cascade   man7.org fallback     Code split             --parameter mode  ENHANCE_MAX_CHARS
-TLDR endpoint      FTS5 3-source    Docs restructured     i18n                   minimal webroot   TOC regex fix
-                                   Structure regr test   AI translation          install.sh MCP key Makefile version sync
+man/perldoc/info   pydoc3/ri        Config overridables   JSON canonical cache   batch PID/stop    Copy button UX   OKF Markdown   Code Split
+MCP Server         structured out   Underscore link fix   LLM emoji enhancement   XSS hardening     Prompt v2 tuning   PHPMAN_BASE_URL  thin dispatcher
+JSON API           Search cascade   man7.org fallback     Code split (design)     --parameter mode  ENHANCE_MAX_CHARS  URL hardening   src/ layout
+TLDR endpoint      FTS5 3-source    Docs restructured     i18n                   minimal webroot   TOC regex fix      format purity    bootstrap.php
+                                   Structure regr test   AI translation          install.sh MCP key Makefile version sync  ?build-index removal  ~80-line entry point
 ```
 
 ---
@@ -53,7 +53,7 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - **FTS5 dedup guard**: meta check before INSERT prevents duplicate index rows
 - **Cache TTL**: found entries 7 days, auto-cleanup (1% chance per request)
 - **`--help` CLI**: `php phpMan.php --help` with usage and sources
-- **Removed**: `rebuild-index.php` (superseded by `php phpMan.php --build-index`)
+- **Removed**: `rebuild-index.php` (superseded by `php cli/build-index.php`)
 
 ### v2.3 (released)
 
@@ -176,5 +176,324 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - New `make tag VERSION=4.2.0` convenience target
 
 **New config override**: `PHPMAN_ENHANCE_MAX_CHARS` (default 32,000)
+
+---
+
+### v4.3 — OKF Markdown & PHP_BASE_URL Hardening (2026-06-18 → 2026-06-20)
+
+**v4.3.0 — Open Knowledge Format for enhanced Markdown**:
+- Switched enhanced Markdown output to OKF markup conventions:
+  - `@H2@` / `@H3@` section markers for unambiguous heading parsing
+  - `@PRE_START@` / `@PRE_END@` code block boundaries
+  - `@LINK_START@` / `@LINK_END@` link wrappers, `@BOLD@` emphasis
+- Prompt updated to forbid `<pre><code>` nesting in Quick Ref sections (use `<code>` only)
+- `cleanEmojiHtml()` updated to handle OKF-structured enhanced content
+- Fix: deploy `tools/` alongside `cli/` in Makefile staging/release targets
+
+**v4.3.1 — Cache version tracking + nested HTML fix**:
+- `CACHE_FORMAT_VERSION` stamp on every cache entry for format migration safety
+- Fixed nested HTML in enhanced output (double-wrapped `<div>` / `<code>` blocks)
+- Fixed broken `localhost` links in enhanced MD — converted to relative paths
+- `showStatus()` merged `--stats` into `--status` with per-mode sample URLs
+
+**v4.3.2–v4.3.7 — URL hardening chain**:
+- v4.3.2: Merged `--stats` into `--status` with random enhanced sample URLs
+- v4.3.3: Replaced CLI-local filesystem paths in enhanced HTML with web URLs (`scriptName()`)
+- v4.3.4: Switched `PHPMAN_BASE_URL` from `getenv()` to `define()` constant (deploy-time injection)
+- v4.3.5: Extended CLI link fix to also match relative `phpMan.php` paths
+- v4.3.6: Made `scriptName()` use `PHPMAN_BASE_URL` globally (not `SCRIPT_NAME`), fixing all `baseUrl()` call sites
+- v4.3.7: Fixed table CSS overflow + prompt tuning (`<code>` not `<pre><code>` in Quick Ref)
+
+**Ongoing (working tree, uncommitted)**:
+- Removed inline `?build-index` web handler — index rebuild is now CLI-only via `php cli/build-index.php`
+- Markdown output format purity: `getSearchPage()` returns pure Markdown list items (`- `) instead of `<ul>`/`<li>` HTML wrappers
+- Added `## apropos` subheading in Markdown format search results
+- `--status` sample labeling: now shows `Enhanced samples (N/T pages, emoji_html → default view)`
+- CLAUDE.md: documented "Output format purity" design rule
+
+---
+
+### v4.4 — Code Split: Phase 4 Architecture (design)
+
+**Goal**: Split the ~5650-line `phpMan.php` monolith into focused source files
+while preserving a single-file web entry point. Minimize web output: only
+`phpMan.php` + `phpman.css` in the webroot.
+
+**Principles**:
+1. **Single entry point preserved** — `phpMan.php` stays in webroot, thin
+   dispatcher (~80 lines): config load → bootstrap require → dispatch
+2. **All logic in PHPMAN_HOME** — `~/.phpman/src/` outside webroot
+3. **No Composer, no autoloader** — manual `require_once` via `bootstrap.php`
+4. **Backward compatible** — same URLs, same output, same test mode
+   (`define('PHPMAN_TEST_MODE', true)` before require)
+5. **Each file ~150–400 lines**, single responsibility
+6. **PHPMAN_NO_CLI_DISPATCH** still works — CLI tools require `bootstrap.php`
+   directly
+
+**Target file tree**:
+
+```
+PHPMAN_HOME/                       # ~/.phpman (outside webroot)
+├── src/
+│   ├── bootstrap.php              # require all src files in dependency order
+│   ├── config.php                 # PHPMAN_* default constants (defined() guard)
+│   ├── util.php                   # h(), serverValue(), baseUrl(), scriptName(),
+│   │                              #   getSafeHost(), isLocalRequest(), requestValue()
+│   ├── log.php                    # phpManLog()
+│   ├── cache.php                  # cacheDb(), PageCache class, schema migrations
+│   ├── search_index.php           # rebuildSearchIndex(), expandNameForFts(),
+│   │                              #   buildFtsQuery(), indexAproposLines()
+│   ├── source_man.php             # getManPage(), getManIndex()
+│   ├── source_perldoc.php         # getPerldocPage()
+│   ├── source_info.php            # getInfoPage()
+│   ├── source_pydoc.php           # getPydocPage()
+│   ├── source_ri.php              # getRiPage()
+│   ├── source_search.php          # getSearchPage(), searchFtsBySource(),
+│   │                              #   parseAproposLines(), renderGroupedResults()
+│   ├── format_html.php            # formatManPerlDoc(), overstrike/ANSI → HTML
+│   ├── format_markdown.php        # formatManPerlDocToMarkdown(),
+│   │                              #   formatInlineMarkdown()
+│   ├── format_json.php            # formatToJSON(), detectHeadingType()
+│   ├── format_mcp.php             # formatForOutput() MCP wrapping
+│   ├── format_common.php          # cleanTerminalOutput(), shared helpers
+│   ├── enhance.php                # enhanceManPage(), callLLM(), cleanEmojiHtml(),
+│   │                              #   getMdEnhancePrompt(), getHtmlEnhancePrompt()
+│   ├── tldr.php                   # fetchOfficialTldr(), tldr cache logic
+│   ├── web_header.php             # showHeader() — HTTP headers, SEO meta, CSS
+│   ├── web_footer.php             # showFooter() — footer HTML, JS, profiling
+│   ├── web_router.php             # URL dispatch: normalizeMode/Parameter/Section,
+│   │                              #   format negotiation, switch($mode) routing
+│   └── mcp_server.php             # handleMcp(), handleWellKnown()
+├── cli/                           # CLI tools (deploy alongside src/)
+│   ├── build-index.php
+│   └── enhance.php
+├── tools/                         # Batch/admin tools
+│   └── batch_enhance.php
+├── db/                            # SQLite databases
+└── logs/                          # Error logs, PID files
+
+webroot/                           # Public-facing — minimal attack surface
+├── phpMan.php                     # Thin dispatcher (~80 lines)
+└── phpman.css                     # Stylesheet
+```
+
+**Entry point (`phpMan.php`)**:
+
+```php
+<?php
+// Thin dispatcher — all logic in PHPMAN_HOME/src/
+define('PHPMAN_WEBROOT', __DIR__);
+
+// Load config (may override PHPMAN_HOME)
+$configFile = PHPMAN_WEBROOT . '/phpman.config.php';
+if (file_exists($configFile)) require $configFile;
+
+// Resolve PHPMAN_HOME
+if (!defined('PHPMAN_HOME') || PHPMAN_HOME === '') {
+    $home = getenv('HOME') ?: '/tmp';
+    define('PHPMAN_HOME', $home . '/.phpman');
+}
+
+// Load all source files (test mode: only define functions, skip dispatch)
+require PHPMAN_HOME . '/src/bootstrap.php';
+
+// CLI tools define PHPMAN_NO_CLI_DISPATCH to skip web dispatch
+if (defined('PHPMAN_NO_CLI_DISPATCH')) return;
+
+// Dispatch web request
+require PHPMAN_HOME . '/src/web_router.php';
+```
+
+**Dependency order** (`bootstrap.php`):
+
+```php
+<?php
+// Load in dependency order: no circular dependencies
+require __DIR__ . '/config.php';        // constants first
+require __DIR__ . '/util.php';          // h(), serverValue() — used everywhere
+require __DIR__ . '/log.php';           // phpManLog()
+require __DIR__ . '/cache.php';         // cacheDb(), PageCache
+require __DIR__ . '/search_index.php';  // depends on cache.php
+require __DIR__ . '/format_common.php'; // shared formatting helpers
+require __DIR__ . '/format_html.php';   // depends on format_common.php
+require __DIR__ . '/format_markdown.php';
+require __DIR__ . '/format_json.php';
+require __DIR__ . '/format_mcp.php';
+require __DIR__ . '/source_man.php';    // depends on formatters
+require __DIR__ . '/source_perldoc.php';
+require __DIR__ . '/source_info.php';
+require __DIR__ . '/source_pydoc.php';
+require __DIR__ . '/source_ri.php';
+require __DIR__ . '/source_search.php';
+require __DIR__ . '/enhance.php';       // depends on sources + formatters
+require __DIR__ . '/tldr.php';
+require __DIR__ . '/mcp_server.php';
+require __DIR__ . '/web_header.php';
+require __DIR__ . '/web_footer.php';
+// web_router.php is loaded by phpMan.php after bootstrap
+```
+
+**Key design decisions**:
+
+- **Not a class hierarchy** — functions remain functions. Each "class" is a
+  file. This keeps the code grep-friendly and avoids OOP tax in a procedural
+  codebase that has function-scoped caching and shared state via constants.
+- **`PageCache` stays a class** — already well-encapsulated, no change needed.
+- **Tests unchanged** — `define('PHPMAN_TEST_MODE', true)` before requiring
+  bootstrap.php loads all functions without running the web dispatch. Every
+  test file replaces `require 'phpMan.php'` with `require PHPMAN_HOME .
+  '/src/bootstrap.php'`.
+- **Config overridables unchanged** — `defined()` guard pattern in `config.php`.
+- **Deploy unchanged** — Makefile `sed` for PHPMAN_VERSION + `scp` phpMan.php
+  + phpman.css to webroot, `scp -r cli tools src` to PHPMAN_HOME.
+- **Single-file constraint met** — webroot has 1 PHP file (phpMan.php).
+  All logic is outside webroot, unreachable via HTTP.
+
+### Configuration & Deployment Architecture
+
+Three config layers, loaded in order — earlier layers define constants first,
+later layers respect `defined()` guards:
+
+```
+┌── phpman.config.php      ← user-edited, lives in webroot
+│   define('PHPMAN_HOME', '/home/user/.phpman');
+│   define('LLM_API_KEY', 'sk-...');
+│
+├── src/config.php         ← defaults (not user-edited), in PHPMAN_HOME/src/
+│   if (!defined('PHPMAN_WIDTH'))  define('PHPMAN_WIDTH', 100);
+│   if (!defined('PHPMAN_HOME'))   define('PHPMAN_HOME', '~/.phpman');
+│
+├── .deploy.mk             ← maintainer SSH config (never deployed)
+│   TEST_HOST = chedong@staging.example.com
+│   DEMO_HOST = chedong@chedong.com
+│
+└── Makefile tag           ← writes PHPMAN_VERSION into phpMan.php before git tag
+```
+
+**Loading order on every request**:
+
+```
+phpMan.php (webroot, ~50 lines)
+│
+├─1. require phpman.config.php     ← user overrides (PHPMAN_HOME, LLM keys)
+│
+├─2. require bootstrap.php
+│   └── require src/config.php     ← fills in remaining defaults (defined() guards)
+│   └── require src/util.php       ← h(), baseUrl(), scriptName()
+│   └── require src/log.php
+│   └── require src/cache.php      ← cacheDb(): auto-creates DB + tables if missing
+│   └── ... all other src/ files ...
+│
+├─3. if (PHPMAN_NO_CLI_DISPATCH) return;   ← CLI tools exit here
+├─4. if (PHPMAN_TEST_MODE) return;         ← tests exit here
+│
+└─5. require web_router.php        ← dispatch switch($mode)
+```
+
+**Why two config files?** `phpman.config.php` is user-facing — one file to edit for
+LLM keys, debug mode, custom paths. `src/config.php` is internal — provides defaults
+for everything the user didn't override. They never conflict because of the
+`defined()` guard pattern.
+
+#### Installation Flow
+
+```
+User runs:  curl ... | bash                        (install.sh)
+
+1. git clone → ~/.phpman/                          ← full repo (includes src/)
+2. php cli/build-index.php                          ← initial FTS5 index build
+3. generate_config ~/.phpman/phpman.config.php      ← config with PHPMAN_HOME
+4. if --webroot /var/www/html:
+     cp ~/.phpman/phpMan.php   → /var/www/html/    ← single-file dispatcher
+     cp ~/.phpman/phpman.css   → /var/www/html/
+     generate_config /var/www/html/phpman.config.php ← webroot config + MCP_API_KEY
+
+Result:
+  webroot:  phpMan.php  phpman.css  phpman.config.php
+  ~/.phpman: src/ cli/ tools/ db/ logs/  phpman.config.php
+```
+
+#### Update Flow
+
+```
+Maintainer: make tag VERSION=4.4.0                 (local)
+  1. sed 's/PHPMAN_VERSION.*/4.4.0/' phpMan.php     ← write version into file
+  2. git commit -m "v4.4.0: bump PHPMAN_VERSION"     ← commit (repo always current)
+  3. git tag -a v4.4.0 -m "v4.4.0"                  ← annotated tag
+  4. git push origin master v4.4.0                    ← push commit + tag
+
+Maintainer: make release                            (deploy to prod)
+  1. make test                                       ← syntax check
+  2. sed GIT_DESCRIBE + PHPMAN_VERSION in phpMan.php ← stamp exact version
+  3. scp phpMan.php + phpman.css → webroot
+  4. scp -r cli/ tools/ src/ → PHPMAN_HOME
+  5. make logcheck                                   ← tail error logs
+
+Maintainer: make release-reindex                    (deploy + rebuild index)
+  Same as release, then:
+  ssh ... "cd ~/.phpman && php cli/build-index.php --cron"
+
+User:      install.sh --update                      (self-update)
+  1. cd ~/.phpman && git pull --ff-only
+  2. php cli/build-index.php                         ← reindex after code update
+```
+
+#### Offline Initialization (first request after fresh install)
+
+```
+Browser:  GET /phpMan.php/man/ls
+
+phpMan.php:
+  1. require phpman.config.php          → PHPMAN_HOME = '/home/user/.phpman'
+  2. require bootstrap.php              → loads all functions
+  3. require web_router.php             → dispatch
+
+web_router.php:
+  4. normalizeMode('man')               → 'man'
+  5. normalizeParameter('ls')          → 'ls'
+  6. call getManPage('ls', '', 'html')
+
+getManPage() (src/source_man.php):
+  7. PageCache::get('man','ls','','html')  → null (no cache yet)
+  8. cacheDb() auto-creates:
+     - PHPMAN_CACHE_DIR directory
+     - phpman_cache.db SQLite file
+     - cache, tldr_cache, search_fts, search_index_meta, meta tables
+  9. exec('man ls 2>/dev/null')        ← fork system command
+  10. formatManPerlDoc($rawLines)      ← overstrike → HTML
+  11. PageCache::set(...)               ← cache for next request
+  12. return HTML
+
+No manual init needed. cacheDb() lazily bootstraps everything on first use.
+The only offline step: cli/build-index.php (populates FTS5 search index).
+```
+
+**.deploy.mk role**: maintainer-only SSH config (never committed, never deployed).
+Provides server addresses, paths, log locations to Makefile:
+
+```
+.deploy.mk          →    Makefile           →    Target server
+────────────────────────────────────────────────────────────────
+TEST_HOST           →    scp -P TEST_PORT   →    $TEST_PATH/phpMan.php
+DEMO_HOST           →    scp -P DEMO_PORT   →    $DEMO_PATH/phpMan.php
+DEMO_ERROR_LOG      →    ssh ... tail       →    post-release logcheck
+```
+
+No `.deploy.mk` = Makefile exits with error. Users who deploy via `install.sh`
+never touch this file.
+
+**Migration plan**:
+1. Create `src/` directory structure
+2. Move functions file by file, verifying tests after each move
+3. Write `bootstrap.php` with require order
+4. Replace `phpMan.php` body with thin dispatcher
+5. Update Makefile to deploy `src/` alongside `cli/` and `tools/`
+6. Regression: `make test` + `test/phpman-regression.sh`
+
+**Risk mitigation**:
+- Each extraction is a pure move (no refactoring during split)
+- Tests gate every step
+- Rollback: keep existing monolithic `phpMan.php` as `phpMan.php.mono` until
+  validation complete
 
 ---

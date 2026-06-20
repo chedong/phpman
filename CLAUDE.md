@@ -87,4 +87,5 @@ flags are removed.
 - **`?debug=1`** only shows sensitive details when `isLocalRequest()` returns true (REMOTE_ADDR is 127.0.0.1, ::1, or empty).
 - **Config overridables** — `PHPMAN_WIDTH`, `PHPMAN_TOC_THRESHOLD`, `PHPMAN_GZIP_MIN_BYTES`, `PHPMAN_TLDR_MAX_EXAMPLES`, `PHPMAN_ENHANCE_MAX_CHARS`, `PHPMAN_HOME_TITLE`, `PHPMAN_PROJECT_NAME` use `defined()` guard pattern, overridable via `phpman.config.php`.
 - **Cap word style** for new code: functionNames, variableNames, arrayKeys. Existing code uses mixed styles — match the surrounding convention.
+- **Output format purity** — each format must produce self-consistent output with no cross-format contamination. Markdown output MUST NOT contain HTML tags (`<ul>`, `<li>`, `<a>`) — use pure Markdown (`- ` list items, `[text](url)` links). JSON MUST be valid parseable JSON. HTML MUST be XHTML 1.0 Transitional compliant.
 - **`h()` and `serverValue()`** are the canonical helpers for HTML escaping and reading `$_SERVER`. Use them instead of direct access.

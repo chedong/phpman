@@ -96,10 +96,10 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
 
 ```bash
 # CLI
-php phpMan.php --build-index
+php cli/build-index.php
 
 # Cron (daily)
-0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron
+0 3 * * * /usr/bin/php /path/to/phpman/cli/build-index.php --cron
 ```
 
 Rebuild flow: `DROP TABLE search_fts` → `CREATE` → `DELETE FROM search_index_meta` → `INSERT` man pages (apropos) → `INSERT` pydoc3 modules → `INSERT` ri classes. On DROP failure, falls back to `DELETE FROM` before CREATE.
@@ -227,10 +227,10 @@ PRAGMA foreign_keys = ON;         -- foreign key constraints
 
 ```bash
 # CLI full rebuild (run after production deploy)
-php phpMan.php --build-index
+php cli/build-index.php
 
 # Cron daily rebuild
-0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron
+0 3 * * * /usr/bin/php /path/to/phpman/cli/build-index.php --cron
 ```
 
 ### 10.2 LLM Emoji Enhancement (Batch)

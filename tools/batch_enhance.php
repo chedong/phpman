@@ -405,8 +405,10 @@ $errors = 0;
 $lastLlmTime = 0;
 $startTime = time();
 $totalEntries = count($entries);
-$consecutiveFailures = 0;
+$consecutiveFailures = 0; // per-entry: both phases must fail to increment
 $maxConsecutiveFailures = 3;
+$mdFailures = 0;  // independent counter for emoji_md (reset on md success)
+$htmlFailures = 0; // independent counter for emoji_html (reset on html success)
 
 foreach ($entries as $idx => $e) {
     $mode = $e['mode'];
@@ -463,13 +465,13 @@ foreach ($entries as $idx => $e) {
             $pcache->set($mode, $name, '', 'emoji_md', $enhancedMd, 'found');
             echo "  [md] {$label}: enhanced (" . strlen($enhancedMd) . " chars)\n";
             $enhanced++;
-            $consecutiveFailures = 0;
+            $mdFailures = 0;
         } else {
-            $consecutiveFailures++;
-            echo "  [md] {$label}: LLM returned empty — skipping ({$consecutiveFailures}/{$maxConsecutiveFailures} consecutive)\n";
+            $mdFailures++;
+            echo "  [md] {$label}: LLM returned empty — skipping ({$mdFailures}/{$maxConsecutiveFailures} consecutive md)\n";
             $errors++;
-            if ($consecutiveFailures >= $maxConsecutiveFailures) {
-                echo "\nERROR: {$maxConsecutiveFailures} consecutive LLM failures — aborting.\n";
+            if ($mdFailures >= $maxConsecutiveFailures) {
+                echo "\nERROR: {$maxConsecutiveFailures} consecutive MD LLM failures — aborting.\n";
                 echo "  Check phpman_error.log for details. Resume with --resume-from=" . ($entryNum - 1) . "\n";
                 break;
             }
@@ -504,13 +506,13 @@ foreach ($entries as $idx => $e) {
             $pcache->set($mode, $name, '', 'emoji_html', $enhancedHtml, 'found');
             echo "  [html] {$label}: enhanced (" . strlen($enhancedHtml) . " chars)\n";
             $enhanced++;
-            $consecutiveFailures = 0;
+            $htmlFailures = 0;
         } else {
-            $consecutiveFailures++;
-            echo "  [html] {$label}: LLM returned empty — skipping ({$consecutiveFailures}/{$maxConsecutiveFailures} consecutive)\n";
+            $htmlFailures++;
+            echo "  [html] {$label}: LLM returned empty — skipping ({$htmlFailures}/{$maxConsecutiveFailures} consecutive html)\n";
             $errors++;
-            if ($consecutiveFailures >= $maxConsecutiveFailures) {
-                echo "\nERROR: {$maxConsecutiveFailures} consecutive LLM failures — aborting.\n";
+            if ($htmlFailures >= $maxConsecutiveFailures) {
+                echo "\nERROR: {$maxConsecutiveFailures} consecutive HTML LLM failures — aborting.\n";
                 echo "  Check phpman_error.log for details. Resume with --resume-from=" . ($entryNum - 1) . "\n";
                 break;
             }
@@ -643,7 +645,7 @@ function showStatus(string $dbPath): void {
             while ($row = $sr->fetchArray(SQLITE3_ASSOC)) $names[] = $row['name'];
             $sr->finalize();
             if (!empty($names)) {
-                echo "    Samples:\n";
+                echo "    Enhanced samples ({$html}/{$total} pages, emoji_html → default view):\n";
                 foreach ($names as $n) echo "      {$baseUrl}/{$mode}/{$n}\n";
             }
         }

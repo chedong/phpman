@@ -124,9 +124,8 @@ All inserts are guarded by `search_index_meta` dedup check: `INSERT OR IGNORE IN
 ### 2.4 Trigger Methods
 
 ```
-CLI:  php phpMan.php --build-index
-Cron: 0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron
-URL:  GET /phpMan.php?build-index (local requests only)
+CLI:  php cli/build-index.php
+Cron: 0 3 * * * /usr/bin/php /path/to/phpman/cli/build-index.php --cron
 ```
 
 ### 2.5 Data Volume
@@ -423,10 +422,10 @@ search_fts index:
 
 ```bash
 # CLI full rebuild
-php phpMan.php --build-index
+php cli/build-index.php
 
 # Cron mode (with timestamp)
-php phpMan.php --build-index-cron
+php cli/build-index.php --cron
 
 # Show help
 php phpMan.php --help
@@ -434,7 +433,7 @@ php phpMan.php --help
 
 Cron example (daily at 3 AM):
 ```
-0 3 * * * /usr/bin/php /path/to/phpMan.php --build-index-cron
+0 3 * * * /usr/bin/php /path/to/phpman/cli/build-index.php --cron
 ```
 
 The rebuild uses `CACHE_DIR` configuration to locate the database file; no extra arguments needed.
@@ -448,7 +447,7 @@ The rebuild uses `CACHE_DIR` configuration to locate the database file; no extra
 ```
 1. Update phpMan.php
 2. scp to server
-3. Run php phpMan.php --build-index (rebuild FTS5 index with pydoc/ri)
+3. Run php cli/build-index.php (rebuild FTS5 index with pydoc/ri)
 4. Verify: curl /phpMan.php/search/json/json | python3 -m json.tool
 5. Check ri_results / pydoc_results
 ```

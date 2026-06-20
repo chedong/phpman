@@ -206,9 +206,14 @@ tag:
 		echo "Current: $(GIT_VERSION)"; \
 		exit 1; \
 	fi
-	git tag -a "v$(VERSION)" -m "v$(VERSION)"
-	git push origin "v$(VERSION)"
-	@echo "Tagged and pushed v$(VERSION)"
+	@# Update PHPMAN_VERSION in phpMan.php and commit before tagging
+	@sed -i '' "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(VERSION)');/" $(FILE)
+	@git add $(FILE)
+	@git commit -m "v$(VERSION): bump PHPMAN_VERSION" || true
+	@git tag -a "v$(VERSION)" -m "v$(VERSION)"
+	@echo "=== v$(VERSION): PHPMAN_VERSION written + committed + tagged ==="
+	@git push origin master "v$(VERSION)"
+	@echo "Pushed master + tag v$(VERSION)"
 
 # ─── Cache management ───
 

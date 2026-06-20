@@ -630,8 +630,7 @@ function getSafeHost (): string {
  */
 function baseUrl(): string {
     $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "http";
-    $script_path = isset($_SERVER['SCRIPT_NAME']) ? $_SERVER['SCRIPT_NAME'] : "/phpMan.php";
-    return $proto . "://" . getSafeHost() . $script_path;
+    return $proto . "://" . getSafeHost() . scriptName();
 }
 
 /**
@@ -640,9 +639,9 @@ function baseUrl(): string {
  */
 function isLocalRequest (): bool {
     $remoteAddr = serverValue("REMOTE_ADDR", "");
+    // Loopback only — private network IPs (RFC1918) are NOT local.
+    // Admin actions use CLI or explicit auth, not IP-based trust.
     if (in_array($remoteAddr, ["127.0.0.1", "::1", ""], true)) return true;
-    // Private network ranges: 10.x, 172.16-31.x, 192.168.x
-    if (preg_match('/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/', $remoteAddr)) return true;
     return false;
 }
 
@@ -808,7 +807,10 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
         // Check schema version — clear cache if mismatch
         $row = $db->querySingle("SELECT value FROM meta WHERE key='schema_version'", false);
         if ($row !== CACHE_SCHEMA_VERSION) {
-            if ($row === '1') {
+            // Cascading if blocks (not if/elseif) — each migration runs independently
+            // so a DB at schema v1 upgraded to v5 runs ALL of v1→v2, v2→v3, v3→v4, v4→v5.
+
+            if ($row === '1' || (int)$row < 2) {
                 // v1 → v2: add search_fts and search_index_meta, clear search cache
                 $db->exec("DELETE FROM cache WHERE mode='search'");
                 try {
@@ -830,7 +832,8 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
                     last_indexed INTEGER NOT NULL DEFAULT (strftime('%s','now')),
                     UNIQUE(name, section, source)
                 )");
-            } elseif ($row === '2') {
+            }
+            if ($row === '2' || (int)$row < 3) {
                 // v2 → v3: search_fts.name now stores expanded name; rebuild needed
                 try {
                     $db->exec("DELETE FROM search_fts");
@@ -838,16 +841,20 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
                     phpManLog("FTS5 delete: " . $e->getMessage());
                 }
                 $db->exec("DELETE FROM search_index_meta");
-            } elseif ($row === '3') {
+            }
+            if ($row === '3' || (int)$row < 4) {
                 // v3 → v4: per-format caching migration.
                 // Clear all html/markdown/mcp/raw entries; keep only json/search/emoji.
                 $db->exec("DELETE FROM cache WHERE format NOT IN ('json', 'search', 'emoji_md', 'emoji_html')");
-            } elseif ($row === '4') {
+            }
+            if ($row === '4' || (int)$row < 5) {
                 // v4 → v5: add generator_version column for tracking which phpman
                 // version produced each cached entry.
                 try { $db->exec("ALTER TABLE cache ADD COLUMN generator_version TEXT"); }
                 catch (\Throwable $e) { /* column may already exist */ }
-            } else {
+            }
+            if ((int)$row >= 5) {
+                // Unknown future schema — clear all cached content, keep schema_version
                 $db->exec("DELETE FROM cache");
             }
             $db->exec("UPDATE meta SET value = '" . CACHE_SCHEMA_VERSION . "' WHERE key = 'schema_version'");
@@ -1695,7 +1702,7 @@ function indexAproposLines (array $lines): int {
         }
 
         return $count;
-    } catch (Exception $e) {
+    } catch (\Throwable $e) {
         phpManLog("cacheDb stats: " . $e->getMessage());
         return 0;
     }
@@ -2308,11 +2315,18 @@ function cleanEmojiHtml(string $html): string {
               . '<div><span><hr><blockquote><sup><sub><small><del>';
     $html = strip_tags($html, $safeTags);
 
-    // #147: XSS defense-in-depth — strip_tags preserves event handlers on allowed tags.
-    // Post-process: remove on* attributes and neutralize javascript: URIs.
+    // #155: XSS defense-in-depth — strip_tags preserves event handlers on allowed tags.
+    // Post-process: remove on* attributes (double-quoted, single-quoted, unquoted)
+    // and neutralize javascript: URIs in all quote variants.
     $html = preg_replace(
-        ['/\bon\w+\s*=\s*"[^"]*"/i', '/href\s*=\s*"javascript:/i'],
-        ['', 'href="#"'],
+        [
+            '/\bon\w+\s*=\s*"[^"]*"/i',     // onclick="..."
+            '/\bon\w+\s*=\s*\'[^\']*\'/i',   // onclick='...'
+            '/\bon\w+\s*=\s*[^\s>]+/i',      // onclick=... (unquoted, runs to space or >)
+            '/href\s*=\s*"javascript:/i',     // href="javascript:..."
+            '/href\s*=\s*\'javascript:/i',    // href='javascript:...'
+        ],
+        ['', '', '', 'href="#"', 'href="#"'],
         $html
     );
 
@@ -2354,20 +2368,7 @@ function renderTocSidebar(array $tocItems, string $pageLabel): string {
 // Web-only below this point: skip when included from batch scripts
 if (defined('PHPMAN_NO_CLI_DISPATCH')) return;
 
-// Web handler: ?build-index triggers search index rebuild (admin use, local only)
-$buildIndexRequested = requestValue($_GET, 'build-index') !== '';
-if ($buildIndexRequested) {
-    if (!isLocalRequest()) {
-        http_response_code(403);
-        echo '<p>Forbidden: ?build-index is only available from local requests.</p>';
-        exit;
-    }
-    $content = rebuildSearchIndex();
-}
-
-//default options
-
-//page content
+// page content
 $content = "";
 //output mode
 $mode = "";
@@ -2687,6 +2688,7 @@ switch ( $mode ) {
                             $inner .= "<h2>Ruby (ri)</h2>\n" . $riResults . "\n";
                         }
                     } elseif ($format === "markdown") {
+                        $inner = "## apropos\n\n" . $inner . "\n";
                         $pydocResults = searchFtsBySource($parameter, 'pydoc', 'markdown');
                         if ($pydocResults === "") {
                             $pydocResults = getPydocSearchPage($parameter, "markdown");
@@ -2858,7 +2860,7 @@ if ($format === "json" || $format === "mcp") {
 $lineThreshold = PHPMAN_TOC_THRESHOLD;
 // Determine if this page has real content (for robots meta)
 // Search results and build-index pages should be noindex
-$hasRealContent = (trim($content) !== "" && !$isSearchFallback && $mode !== "search" && !$buildIndexRequested);
+$hasRealContent = (trim($content) !== "" && !$isSearchFallback && $mode !== "search");
 
 // Count content lines and set body class for CSS-based show/hide
 $showNav = false;
@@ -3076,8 +3078,8 @@ function showHeader (string $title = "", string $parameter = "", string $section
     if (!isLocalRequest()) {
         header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
     }
-    // MCP service discovery — sanitize $script_path against CRLF injection (#34)
-    $script_path = isset($_SERVER['SCRIPT_NAME']) ? $_SERVER['SCRIPT_NAME'] : strtok($_SERVER['REQUEST_URI'], '?');
+    // MCP service discovery — uses scriptName() for correct URL in CLI/reverse-proxy
+    $script_path = scriptName();
     $script_path = preg_replace('/[\r\n].*/', '', $script_path);
     header('Link: <' . $script_path . '/mcp>; rel="mcp-server"');
     // ETag + caching (#60)
@@ -3090,11 +3092,8 @@ function showHeader (string $title = "", string $parameter = "", string $section
     header("Expires: " .gmdate ("D, d M Y H:i:s", time() + 3600 * 24 * 7). " GMT");
     // Gzip handled by Nginx/Cloudflare (#84)
 
-    // Build SEO meta values
-    // Auto-detect base URL from current request (works for any deployment)
-    $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "http";
-    $script_path = isset($_SERVER['SCRIPT_NAME']) ? $_SERVER['SCRIPT_NAME'] : strtok($_SERVER['REQUEST_URI'], '?');
-    $base_url = $proto . "://" . getSafeHost() . $script_path;
+    // Build SEO meta values — use baseUrl() for correct URL in CLI/reverse-proxy
+    $base_url = baseUrl();
     $canonical_url = $base_url;
     $meta_description = "phpman: Open-source Linux command reference with JSON API and MCP Server for AI agents. Browse man pages, perldoc, and GNU info.";
     $meta_keywords = "man page, unix manual, linux command, perldoc, info page, phpman, json api, mcp server, ai agent";
@@ -4008,6 +4007,10 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         if ($ftsQuery !== '') {
             try {
                 $db = cacheDb();
+                if ($db === null) {
+                    // Cache DB unavailable — skip FTS5, fall through to apropos
+                    throw new \RuntimeException("FTS5 unavailable: cache DB not writable");
+                }
                 // Use FTS5 if any source has indexed data (man/pydoc/ri)
                 $totalIndexed = $db->querySingle("SELECT COUNT(*) FROM search_index_meta");
                 if ($totalIndexed > 0) {
@@ -4049,7 +4052,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
                         }
                     }
                 }
-            } catch (Exception $e) {
+            } catch (\Throwable $e) {
                 phpManLog("FTS5 search fallback: " . $e->getMessage());
             }
         }
@@ -4155,30 +4158,22 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         return $rendered['html'];
     }
 
-    // Markdown: render parsed apropos lines (supports multi-name BSD lines)
-    $output = "<ul>\n";
+    // Markdown: pure markdown list (no HTML wrappers) — each entry as "- [name(section)](url) — description"
+    $output = "";
     foreach ($lines as $line) {
         $entries = parseAproposLines($line);
         foreach ($entries as [$name, $section_num, $description]) {
-        $is_perl = str_contains($name, '::');
-        $link_mode = $is_perl ? "perldoc" : "man";
-        $link = "{$script_name}/{$link_mode}/" . urlencode($name) . "/" . urlencode($section_num) . "/markdown";
-        if ($format === "markdown") {
-            $output .= "<li>[{$name}({$section_num})]({$link})";
-        } else {
-            $output .= '<li><a href="' . h("{$script_name}/{$link_mode}/" . urlencode($name) . "/" . urlencode($section_num)) . '">' . h($name) . '</a>(' . h($section_num) . ')';
-        }
-        if ($description !== '') {
-            if ($format === "markdown") {
-                $output .= " — " . html_entity_decode(strip_tags($description));
-            } else {
-                $output .= ' — ' . h($description);
+            $is_perl = str_contains($name, '::');
+            $link_mode = $is_perl ? "perldoc" : "man";
+            $link = "{$script_name}/{$link_mode}/" . urlencode($name) . "/" . urlencode($section_num) . "/markdown";
+            $output .= "- [{$name}({$section_num})]({$link})";
+            if ($description !== '') {
+                $descText = trim(html_entity_decode(strip_tags($description), ENT_QUOTES, 'UTF-8'));
+                if ($descText !== '') $output .= " — {$descText}";
             }
-        }
-        $output .= ($format === "markdown") ? "</li>\n" : "</li>\n";
+            $output .= "\n";
         }
     }
-    $output .= "</ul>\n";
     return $output;
 }
 
