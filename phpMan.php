@@ -2228,18 +2228,23 @@ function enhanceManPage(string $mode, string $name): string {
 
             // Fix CLI-local paths in raw HTML before sending to LLM.
             // In CLI context, formatManPerlDoc() generates links with scriptName()
-            // which returns the local script path (e.g. /home/user/.phpman/phpMan.php).
-            // Replace with web-relative paths so LLM outputs correct URLs.
+            // which returns just "phpMan.php" (relative) — no leading slash.
+            // Replace BOTH absolute paths (/home/.../phpMan.php/) AND relative
+            // paths (phpMan.php/man/...) with the correct web base URL.
             if (PHP_SAPI === 'cli') {
                 $webBase = rtrim(defined('PHPMAN_BASE_URL') ? PHPMAN_BASE_URL : (getenv('PHPMAN_BASE_URL') ?: '/phpMan.php'), '/');
-                // Match: /any/local/path/tools/batch_enhance.php  or  /any/local/path/phpMan.php
+                // Absolute: /any/local/path/phpMan.php/ or /any/local/path/batch_enhance.php/
                 $rawHtml = preg_replace(
                     '#/[^\s"<>]*?/(?:phpMan\.php|batch_enhance\.php)/#',
                     $webBase . '/',
                     $rawHtml
                 );
-                // Also fix the input being sent: strip the <div id="man-content"> wrapper's
-                // internal links that point to local filesystem paths
+                // Relative: phpMan.php/man/... or batch_enhance.php/man/... (no leading slash)
+                $rawHtml = preg_replace(
+                    '#\b(?:phpMan\.php|batch_enhance\.php)/#',
+                    $webBase . '/',
+                    $rawHtml
+                );
             }
 
             $htmlPrompt = getHtmlEnhancePrompt();
@@ -2269,6 +2274,11 @@ function enhanceManPage(string $mode, string $name): string {
                     $webBase = rtrim(defined('PHPMAN_BASE_URL') ? PHPMAN_BASE_URL : (getenv('PHPMAN_BASE_URL') ?: '/phpMan.php'), '/');
                     $enhancedHtml = preg_replace(
                         '#/[^\s"<>]*?/(?:phpMan\.php|batch_enhance\.php)/#',
+                        $webBase . '/',
+                        $enhancedHtml
+                    );
+                    $enhancedHtml = preg_replace(
+                        '#\b(?:phpMan\.php|batch_enhance\.php)/#',
                         $webBase . '/',
                         $enhancedHtml
                     );
