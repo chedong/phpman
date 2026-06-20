@@ -39,11 +39,11 @@ if (PHP_SAPI !== 'cli') {
     die("CLI only\n");
 }
 
-$opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast', 'stats']);
+$opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast']);
 
 // No options → show help
 $hasActionOpt = false;
-foreach (['help','h','yes','y','dry-run','status','stop','stats'] as $k) {
+foreach (['help','h','yes','y','dry-run','status','stop'] as $k) {
     if (isset($opts[$k])) { $hasActionOpt = true; break; }
 }
 if (!$hasActionOpt && !isset($opts['mode']) && !isset($opts['limit']) &&
@@ -57,8 +57,7 @@ if (isset($opts['help']) || isset($opts['h'])) {
     echo "Usage:\n";
     echo "  php tools/batch_enhance.php [options]\n\n";
     echo "Options:\n";
-    echo "  --status           Show emoji enhancement progress per mode\n";
-    echo "  --stats            Show per-mode counts + 2-5 sample URLs for verification\n";
+    echo "  --status           Show enhancement progress + sample URLs per mode\n";
     echo "  --stop             Stop a running batch (reads PID from --pid-file)\n";
     echo "  --rebuild, -r      Force re-enhance even if emoji cache exists\n";
     echo "  --section=<s>      Manual section (e.g. '1', '3pm') for --parameter targets\n";
@@ -158,13 +157,6 @@ if ($stopMode) {
 $statusMode = isset($opts['status']);
 if ($statusMode) {
     showStatus($dbPath);
-    exit;
-}
-
-// ── Stats mode ──
-$statsMode = isset($opts['stats']);
-if ($statsMode) {
-    showStats($dbPath);
     exit;
 }
 
@@ -584,94 +576,13 @@ function showStatus(string $dbPath): void {
     $db = new SQLite3($dbPath);
     $db->enableExceptions(true);
 
-    $modes = PHPMAN_CONTENT_MODES;
-    echo "\n" . str_repeat('=', 70) . "\n";
-    echo "  phpMan Emoji Enhancement Status\n";
-    echo str_repeat('=', 70) . "\n\n";
-
-    $totalAll = 0; $totalMd = 0; $totalHtml = 0;
-
-    $stmtCount = $db->prepare("SELECT COUNT(*) FROM cache WHERE mode=:mode AND format=:format AND name != '__index__'");
-    foreach ($modes as $mode) {
-        $stmtCount->bindValue(':mode', $mode, SQLITE3_TEXT);
-        $stmtCount->bindValue(':format', 'html', SQLITE3_TEXT);
-        $result = $stmtCount->execute();
-        $total = $result->fetchArray(SQLITE3_NUM)[0];
-        $result->finalize();
-        if ($total === null) $total = 0;
-
-        $stmtCount->bindValue(':format', 'emoji_md', SQLITE3_TEXT);
-        $result = $stmtCount->execute();
-        $md = $result->fetchArray(SQLITE3_NUM)[0];
-        $result->finalize();
-
-        $stmtCount->bindValue(':format', 'emoji_html', SQLITE3_TEXT);
-        $result = $stmtCount->execute();
-        $html = $result->fetchArray(SQLITE3_NUM)[0];
-        $result->finalize();
-
-        $total = (int)$total;
-        $md = (int)$md;
-        $html = (int)$html;
-
-        $totalAll += $total;
-        $totalMd += $md;
-        $totalHtml += $html;
-
-        $mdPct = $total > 0 ? sprintf('%5.1f%%', $md / $total * 100) : '   N/A';
-        $htmlPct = $total > 0 ? sprintf('%5.1f%%', $html / $total * 100) : '   N/A';
-
-        printf("  %-10s  html: %5d  emoji_md: %5d (%s)  emoji_html: %5d (%s)\n",
-            $mode, $total, $md, $mdPct, $html, $htmlPct);
-
-        // Show last 3 enhanced for this mode
-        if ($md > 0 || $html > 0) {
-            $stmtRecent = $db->prepare(
-                "SELECT name, format, updated_at FROM cache " .
-                "WHERE mode=:mode AND format IN ('emoji_md','emoji_html') " .
-                "ORDER BY updated_at DESC LIMIT 3"
-            );
-            $stmtRecent->bindValue(':mode', $mode, SQLITE3_TEXT);
-            $recent = $stmtRecent->execute();
-            while ($r = $recent->fetchArray(SQLITE3_ASSOC)) {
-                $ts = date('m-d H:i', (int)$r['updated_at']);
-                printf("    %-8s %-30s %s\n", $r['format'], $r['name'], $ts);
-            }
-        }
-        echo "\n";
-    }
-
-    echo str_repeat('-', 70) . "\n";
-    printf("  %-10s  html: %5d  emoji_md: %5d (%5.1f%%)  emoji_html: %5d (%5.1f%%)\n",
-        'TOTAL', $totalAll, $totalMd,
-        $totalAll > 0 ? $totalMd / $totalAll * 100 : 0,
-        $totalHtml,
-        $totalAll > 0 ? $totalHtml / $totalAll * 100 : 0
-    );
-    $remaining = ($totalAll * 2) - $totalMd - $totalHtml;
-    $estMin = ceil(($remaining * 2) / 60);
-    printf("  Remaining LLM calls: ~%d (%d md + %d html), est. ~%dm (@2min/call)\n",
-        $remaining, $totalAll - $totalMd, $totalAll - $totalHtml, $estMin);
-    echo str_repeat('=', 70) . "\n";
-
-    $db->close();
-}
-
-function showStats(string $dbPath): void {
-    if (!file_exists($dbPath)) {
-        echo "No cache DB found at {$dbPath}\n";
-        echo "Run php phpMan.php first to initialize the cache.\n";
-        exit(0);
-    }
-    $db = new SQLite3($dbPath);
-    $db->enableExceptions(true);
-
     $baseUrl = getenv('PHPMAN_BASE_URL') ?: 'http://localhost:8080/phpMan.php';
     $baseUrl = rtrim($baseUrl, '/');
     $modes = PHPMAN_CONTENT_MODES;
+    $sampleCount = 3;
 
     echo "\n" . str_repeat('=', 70) . "\n";
-    echo "  phpMan Cache Statistics\n";
+    echo "  phpMan Enhancement Status\n";
     echo str_repeat('=', 70) . "\n\n";
 
     // TLDR cache count
@@ -679,7 +590,6 @@ function showStats(string $dbPath): void {
     echo "  TLDR cache entries: {$tldrCount}\n\n";
 
     $totalAll = 0; $totalMd = 0; $totalHtml = 0;
-    $sampleCount = 3; // samples per mode for verification
 
     $stmtCount = $db->prepare("SELECT COUNT(*) FROM cache WHERE mode=:mode AND format=:format AND name != '__index__'");
     $stmtSample = $db->prepare("SELECT name FROM cache WHERE mode=:mode AND format='emoji_html' AND name != '__index__' ORDER BY RANDOM() LIMIT {$sampleCount}");
@@ -711,21 +621,30 @@ function showStats(string $dbPath): void {
         printf("  %-10s  html: %5d  emoji_md: %5d (%s)  emoji_html: %5d (%s)\n",
             $mode, $total, $md, $mdPct, $html, $htmlPct);
 
+        // Show last 2 enhanced (recent) + sample URLs
+        if ($md > 0 || $html > 0) {
+            $stmtRecent = $db->prepare(
+                "SELECT name, format, updated_at FROM cache " .
+                "WHERE mode=:mode AND format IN ('emoji_md','emoji_html') " .
+                "ORDER BY updated_at DESC LIMIT 2"
+            );
+            $stmtRecent->bindValue(':mode', $mode, SQLITE3_TEXT);
+            $recent = $stmtRecent->execute();
+            while ($r = $recent->fetchArray(SQLITE3_ASSOC)) {
+                $ts = date('m-d H:i', (int)$r['updated_at']);
+                printf("    %-8s %-30s %s\n", $r['format'], $r['name'], $ts);
+            }
+        }
         // Sample URLs for verification
         if ($html > 0) {
             $stmtSample->bindValue(':mode', $mode, SQLITE3_TEXT);
             $sr = $stmtSample->execute();
             $names = [];
-            while ($row = $sr->fetchArray(SQLITE3_ASSOC)) {
-                $names[] = $row['name'];
-            }
+            while ($row = $sr->fetchArray(SQLITE3_ASSOC)) $names[] = $row['name'];
             $sr->finalize();
             if (!empty($names)) {
                 echo "    Samples:\n";
-                foreach ($names as $n) {
-                    $urlMode = ($mode === 'man') ? 'man' : $mode;
-                    echo "      {$baseUrl}/{$urlMode}/{$n}\n";
-                }
+                foreach ($names as $n) echo "      {$baseUrl}/{$mode}/{$n}\n";
             }
         }
         echo "\n";
@@ -738,6 +657,10 @@ function showStats(string $dbPath): void {
         $totalHtml,
         $totalAll > 0 ? $totalHtml / $totalAll * 100 : 0
     );
+    $remaining = ($totalAll * 2) - $totalMd - $totalHtml;
+    $estMin = ceil(($remaining * 2) / 60);
+    printf("  Remaining LLM calls: ~%d (%d md + %d html), est. ~%dm (@2min/call)\n",
+        $remaining, $totalAll - $totalMd, $totalAll - $totalHtml, $estMin);
     echo str_repeat('=', 70) . "\n";
 
     $db->close();
