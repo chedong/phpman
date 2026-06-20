@@ -596,6 +596,18 @@ function serverValue (string $key, string $default = ""): string {
 }
 
 function scriptName (): string {
+    // Prefer PHPMAN_BASE_URL constant (set in phpman.config.php) over
+    // $_SERVER['SCRIPT_NAME'] which returns local filesystem paths in CLI.
+    // Falls back to env var, then $_SERVER, then default "phpMan.php".
+    if (defined('PHPMAN_BASE_URL') && PHPMAN_BASE_URL !== '') {
+        $path = parse_url(PHPMAN_BASE_URL, PHP_URL_PATH);
+        if ($path !== null && $path !== false && $path !== '') return $path;
+    }
+    $envUrl = getenv('PHPMAN_BASE_URL');
+    if ($envUrl !== false && $envUrl !== '') {
+        $path = parse_url($envUrl, PHP_URL_PATH);
+        if ($path !== null && $path !== false && $path !== '') return $path;
+    }
     return serverValue("SCRIPT_NAME", "phpMan.php");
 }
 
@@ -2225,27 +2237,7 @@ function enhanceManPage(string $mode, string $name): string {
             }
             // DO NOT truncate input — LLM needs full content for proper structure.
             // Instead, prompt instructs LLM to keep output under limit.
-
-            // Fix CLI-local paths in raw HTML before sending to LLM.
-            // In CLI context, formatManPerlDoc() generates links with scriptName()
-            // which returns just "phpMan.php" (relative) — no leading slash.
-            // Replace BOTH absolute paths (/home/.../phpMan.php/) AND relative
-            // paths (phpMan.php/man/...) with the correct web base URL.
-            if (PHP_SAPI === 'cli') {
-                $webBase = rtrim(defined('PHPMAN_BASE_URL') ? PHPMAN_BASE_URL : (getenv('PHPMAN_BASE_URL') ?: '/phpMan.php'), '/');
-                // Absolute: /any/local/path/phpMan.php/ or /any/local/path/batch_enhance.php/
-                $rawHtml = preg_replace(
-                    '#/[^\s"<>]*?/(?:phpMan\.php|batch_enhance\.php)/#',
-                    $webBase . '/',
-                    $rawHtml
-                );
-                // Relative: phpMan.php/man/... or batch_enhance.php/man/... (no leading slash)
-                $rawHtml = preg_replace(
-                    '#\b(?:phpMan\.php|batch_enhance\.php)/#',
-                    $webBase . '/',
-                    $rawHtml
-                );
-            }
+            // (SCRIPT_NAME already fixed at function entry — links are correct)
 
             $htmlPrompt = getHtmlEnhancePrompt();
             $htmlUserMessage = "Transform this man page HTML into an emoji-enhanced version:\n\n";
@@ -2269,20 +2261,7 @@ function enhanceManPage(string $mode, string $name): string {
                 $enhancedHtml = preg_replace('/\n?```\s*$/m', '', $enhancedHtml);
                 // cleanEmojiHtml() handles DOCTYPE/html/head/body stripping + XSS defense
                 $enhancedHtml = cleanEmojiHtml($enhancedHtml);
-                // Fix CLI-local paths in LLM output (safety net for links the LLM preserved)
-                if (PHP_SAPI === 'cli') {
-                    $webBase = rtrim(defined('PHPMAN_BASE_URL') ? PHPMAN_BASE_URL : (getenv('PHPMAN_BASE_URL') ?: '/phpMan.php'), '/');
-                    $enhancedHtml = preg_replace(
-                        '#/[^\s"<>]*?/(?:phpMan\.php|batch_enhance\.php)/#',
-                        $webBase . '/',
-                        $enhancedHtml
-                    );
-                    $enhancedHtml = preg_replace(
-                        '#\b(?:phpMan\.php|batch_enhance\.php)/#',
-                        $webBase . '/',
-                        $enhancedHtml
-                    );
-                }
+                // SCRIPT_NAME was fixed at function entry — links are already correct
                 $enhancedHtml = trim($enhancedHtml);
                 if ($enhancedHtml !== '') {
                     $cache->set($mode, $name, '', 'emoji_html', $enhancedHtml, 'found');
