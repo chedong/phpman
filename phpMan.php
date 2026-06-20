@@ -95,7 +95,7 @@ if (!defined('PHPMAN_BACKUP_DIR')) {
 // Fixed filenames under derived dirs (not configurable)
 define('PHPMAN_CACHE_DB', PHPMAN_CACHE_DIR . '/phpman_cache.db');
 define('PHPMAN_LOG_FILE', PHPMAN_LOG_DIR . '/phpman_error.log');
-define('CACHE_SCHEMA_VERSION', '4');
+define('CACHE_SCHEMA_VERSION', '5');
 
 // #145: Named constants for cache sentinel and format strings
 define('CACHE_SENTINEL_NOT_FOUND', '###NOT_FOUND###');
@@ -728,6 +728,7 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
             hits        INTEGER NOT NULL DEFAULT 0,
             created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
             updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+            generator_version TEXT,
             UNIQUE(mode, name, section, format)
         )");
 
@@ -829,6 +830,11 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
                 // v3 → v4: per-format caching migration.
                 // Clear all html/markdown/mcp/raw entries; keep only json/search/emoji.
                 $db->exec("DELETE FROM cache WHERE format NOT IN ('json', 'search', 'emoji_md', 'emoji_html')");
+            } elseif ($row === '4') {
+                // v4 → v5: add generator_version column for tracking which phpman
+                // version produced each cached entry.
+                try { $db->exec("ALTER TABLE cache ADD COLUMN generator_version TEXT"); }
+                catch (\Throwable $e) { /* column may already exist */ }
             } else {
                 $db->exec("DELETE FROM cache");
             }
@@ -918,22 +924,24 @@ class PageCache {
             // UPDATE existing row — rowid is stable, no FTS orphan
             $stmt = $this->db->prepare(
                 "UPDATE cache SET content = :content, content_len = :content_len, status = :status,
-                 ttl = :ttl, updated_at = strftime('%s','now')
+                 ttl = :ttl, updated_at = strftime('%s','now'),
+                 generator_version = :genver
                  WHERE id = :id"
             );
             $stmt->bindValue(':content', $compressed, SQLITE3_BLOB);
             $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
             $stmt->bindValue(':status', $status, SQLITE3_TEXT);
             $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
+            $stmt->bindValue(':genver', GIT_DESCRIBE, SQLITE3_TEXT);
             $stmt->bindValue(':id', (int)$existing['id'], SQLITE3_INTEGER);
             $ok = $stmt->execute() !== false;
             $cacheId = (int)$existing['id'];
         } else {
             // INSERT new row
             $stmt = $this->db->prepare(
-                "INSERT INTO cache (mode, name, section, format, content, content_len, status, ttl, created_at, updated_at)
+                "INSERT INTO cache (mode, name, section, format, content, content_len, status, ttl, created_at, updated_at, generator_version)
                  VALUES (:mode, :name, :section, :format, :content, :content_len, :status, :ttl,
-                         strftime('%s','now'), strftime('%s','now'))"
+                         strftime('%s','now'), strftime('%s','now'), :genver)"
             );
             $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
             $stmt->bindValue(':name', $name, SQLITE3_TEXT);
@@ -943,6 +951,7 @@ class PageCache {
             $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
             $stmt->bindValue(':status', $status, SQLITE3_TEXT);
             $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
+            $stmt->bindValue(':genver', GIT_DESCRIBE, SQLITE3_TEXT);
             $ok = $stmt->execute() !== false;
             $cacheId = $ok ? $this->db->lastInsertRowID() : 0;
         }
@@ -2237,11 +2246,7 @@ function enhanceManPage(string $mode, string $name): string {
             if ($enhancedHtml !== '') {
                 $enhancedHtml = preg_replace('/^```(?:html)?\s*\n?/m', '', $enhancedHtml);
                 $enhancedHtml = preg_replace('/\n?```\s*$/m', '', $enhancedHtml);
-                $enhancedHtml = preg_replace('#^<!DOCTYPE[^>]*>\s*#i', '', $enhancedHtml);
-                $enhancedHtml = preg_replace('#</?html[^>]*>#i', '', $enhancedHtml);
-                $enhancedHtml = preg_replace('#</?body[^>]*>#i', '', $enhancedHtml);
-                $enhancedHtml = preg_replace('#</?head[^>]*>.*?</head>#is', '', $enhancedHtml);
-                // Post-process: fix LLM heading mistakes
+                // cleanEmojiHtml() handles DOCTYPE/html/head/body stripping + XSS defense
                 $enhancedHtml = cleanEmojiHtml($enhancedHtml);
                 $enhancedHtml = trim($enhancedHtml);
                 if ($enhancedHtml !== '') {
