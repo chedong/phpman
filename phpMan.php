@@ -2226,6 +2226,22 @@ function enhanceManPage(string $mode, string $name): string {
             // DO NOT truncate input — LLM needs full content for proper structure.
             // Instead, prompt instructs LLM to keep output under limit.
 
+            // Fix CLI-local paths in raw HTML before sending to LLM.
+            // In CLI context, formatManPerlDoc() generates links with scriptName()
+            // which returns the local script path (e.g. /home/user/.phpman/phpMan.php).
+            // Replace with web-relative paths so LLM outputs correct URLs.
+            if (PHP_SAPI === 'cli') {
+                $webBase = rtrim(getenv('PHPMAN_BASE_URL') ?: '/phpMan.php', '/');
+                // Match: /any/local/path/tools/batch_enhance.php  or  /any/local/path/phpMan.php
+                $rawHtml = preg_replace(
+                    '#/[^\s"<>]*?/(?:phpMan\.php|batch_enhance\.php)/#',
+                    $webBase . '/',
+                    $rawHtml
+                );
+                // Also fix the input being sent: strip the <div id="man-content"> wrapper's
+                // internal links that point to local filesystem paths
+            }
+
             $htmlPrompt = getHtmlEnhancePrompt();
             $htmlUserMessage = "Transform this man page HTML into an emoji-enhanced version:\n\n";
             if ($mode === 'man') {
@@ -2248,6 +2264,15 @@ function enhanceManPage(string $mode, string $name): string {
                 $enhancedHtml = preg_replace('/\n?```\s*$/m', '', $enhancedHtml);
                 // cleanEmojiHtml() handles DOCTYPE/html/head/body stripping + XSS defense
                 $enhancedHtml = cleanEmojiHtml($enhancedHtml);
+                // Fix CLI-local paths in LLM output (safety net for links the LLM preserved)
+                if (PHP_SAPI === 'cli') {
+                    $webBase = rtrim(getenv('PHPMAN_BASE_URL') ?: '/phpMan.php', '/');
+                    $enhancedHtml = preg_replace(
+                        '#/[^\s"<>]*?/(?:phpMan\.php|batch_enhance\.php)/#',
+                        $webBase . '/',
+                        $enhancedHtml
+                    );
+                }
                 $enhancedHtml = trim($enhancedHtml);
                 if ($enhancedHtml !== '') {
                     $cache->set($mode, $name, '', 'emoji_html', $enhancedHtml, 'found');
