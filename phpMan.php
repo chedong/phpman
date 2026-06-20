@@ -2231,7 +2231,7 @@ function enhanceManPage(string $mode, string $name): string {
             // which returns the local script path (e.g. /home/user/.phpman/phpMan.php).
             // Replace with web-relative paths so LLM outputs correct URLs.
             if (PHP_SAPI === 'cli') {
-                $webBase = rtrim(getenv('PHPMAN_BASE_URL') ?: '/phpMan.php', '/');
+                $webBase = rtrim(defined('PHPMAN_BASE_URL') ? PHPMAN_BASE_URL : (getenv('PHPMAN_BASE_URL') ?: '/phpMan.php'), '/');
                 // Match: /any/local/path/tools/batch_enhance.php  or  /any/local/path/phpMan.php
                 $rawHtml = preg_replace(
                     '#/[^\s"<>]*?/(?:phpMan\.php|batch_enhance\.php)/#',
@@ -2266,7 +2266,7 @@ function enhanceManPage(string $mode, string $name): string {
                 $enhancedHtml = cleanEmojiHtml($enhancedHtml);
                 // Fix CLI-local paths in LLM output (safety net for links the LLM preserved)
                 if (PHP_SAPI === 'cli') {
-                    $webBase = rtrim(getenv('PHPMAN_BASE_URL') ?: '/phpMan.php', '/');
+                    $webBase = rtrim(defined('PHPMAN_BASE_URL') ? PHPMAN_BASE_URL : (getenv('PHPMAN_BASE_URL') ?: '/phpMan.php'), '/');
                     $enhancedHtml = preg_replace(
                         '#/[^\s"<>]*?/(?:phpMan\.php|batch_enhance\.php)/#',
                         $webBase . '/',

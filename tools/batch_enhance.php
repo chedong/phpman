@@ -576,7 +576,7 @@ function showStatus(string $dbPath): void {
     $db = new SQLite3($dbPath);
     $db->enableExceptions(true);
 
-    $baseUrl = getenv('PHPMAN_BASE_URL') ?: 'http://localhost:8080/phpMan.php';
+    $baseUrl = defined('PHPMAN_BASE_URL') ? PHPMAN_BASE_URL : (getenv('PHPMAN_BASE_URL') ?: 'http://localhost:8080/phpMan.php');
     $baseUrl = rtrim($baseUrl, '/');
     $modes = PHPMAN_CONTENT_MODES;
     $sampleCount = 3;

@@ -14,6 +14,12 @@
 // define('PHPMAN_LOG_DIR', '/path/to/custom/logs');
 // define('PHPMAN_BACKUP_DIR', '/path/to/custom/backups');
 
+// --- Base URL (v4.3.3) ---
+// Public web URL of this phpMan instance. Used by CLI scripts (batch_enhance,
+// build-index, enhance) to generate correct links when running offline.
+// Default: PHPMAN_BASE_URL env var, then 'http://localhost:8080/phpMan.php'
+// define('PHPMAN_BASE_URL', 'https://www.chedong.com/phpMan.php');
+
 // --- LLM Enhancement (v4.0) ---
 // define('LLM_API_KEY', '');
 // define('LLM_API_URL', '');
