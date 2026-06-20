@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-phpMan is a single-file PHP web app (~5650 lines, `phpMan.php`) that wraps Unix `man`, `perldoc`, `info`, `pydoc3`, `ri`, and `apropos` commands into HTML, Markdown, JSON, and MCP responses. It also runs as an MCP Server for AI agent integration. CLI tools (search index rebuild, batch LLM enhancement) are in `cli/` and `tools/`.
+phpMan is a single-file PHP web app (~5650 lines, `phpMan.php`) that wraps Unix `man`, `perldoc`, `info`, `pydoc3`, `ri`, and `apropos` commands into HTML, Markdown, JSON, and MCP responses. It also runs as an MCP Server for AI agent integration. CLI tools (search index rebuild, batch LLM enhancement) are in `cli/` and `cli/`.
 
 ## Build / test / deploy
 
@@ -51,7 +51,7 @@ php cli/build-index.php --cron       # Rebuild with UTC timestamp
 # LLM emoji enhancement
 php cli/enhance.php man:ls           # Single page
 php cli/enhance.php man:ls,tar,grep  # Comma-separated batch
-php tools/batch_enhance.php --help   # Full batch (rate-limited, resumable)
+php cli/batch-enhance.php --help   # Full batch (rate-limited, resumable)
 ```
 
 All CLI scripts load config from `phpman.config.php` in the project root, then require
@@ -77,7 +77,7 @@ flags are removed.
 
 **UX: code blocks + copy button** — JS in `showFooter()` wraps all `#content-wrap pre` blocks in `<div class="code-block">` with a `📋 Copy` button positioned top-right. Clicking copies the `<code>` (or `<pre>`) textContent to clipboard with `✓ Copied!` feedback. CSS: Tokyo Night `#1f2335` background, `italic` font, rounded border, button hidden until hover (.code-block:hover .copy-btn).
 
-**Batch enhance (`tools/batch_enhance.php`)** — Fully offline CLI. `require_once`'s phpMan.php and calls `getManPage()`/`getPerldocPage()`/etc. directly for content generation. Uses shared `PageCache` + `callLLM()` + `cleanEmojiHtml()` from phpMan.php — zero HTTP dependency, no web server needed. Key features: `--status` progress per mode, `--pid-file`/`--stop` lifecycle, `--rebuild` force redo, `--parameter` single-page mode, `--cached-first` sort, 2-min rate limiting, non-existent page skip (NOT_FOUND cache). See `docs/01-PRODUCT.md` §2.12 and `docs/05-PLAN.md` v4.1 for full design.
+**Batch enhance (`cli/batch-enhance.php`)** — Fully offline CLI. `require_once`'s phpMan.php and calls `getManPage()`/`getPerldocPage()`/etc. directly for content generation. Uses shared `PageCache` + `callLLM()` + `cleanEmojiHtml()` from phpMan.php — zero HTTP dependency, no web server needed. Key features: `--status` progress per mode, `--pid-file`/`--stop` lifecycle, `--rebuild` force redo, `--parameter` single-page mode, `--cached-first` sort, 2-min rate limiting, non-existent page skip (NOT_FOUND cache). See `docs/01-PRODUCT.md` §2.12 and `docs/05-PLAN.md` v4.1 for full design.
 
 ## Key design rules
 

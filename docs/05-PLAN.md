@@ -108,8 +108,8 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `renderTocSidebar()`: floating TOC built from enhanced `<h2>`/`<h3>` HTML tags
 - Enhanced HTML is the default view when `emoji_html` cache exists; `?format=html` bypasses
 - Config: `LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`, `LLM_MAX_TOKENS` via `phpman.config.php`
-- `tools/enhance_page.php`: single-page CLI tool for shared hosts where man(1) can't fork
-- `tools/batch_enhance.php`: offline batch enhancement — auto-discovers ~35K entries from search_index_meta + cache, 2-min rate limiting, resilient resume, `--cached-first` sort, idempotent per-entry cache writes (2026-06-17)
+- `cli/enhance_page.php`: single-page CLI tool for shared hosts where man(1) can't fork
+- `cli/batch-enhance.php`: offline batch enhancement — auto-discovers ~35K entries from search_index_meta + cache, 2-min rate limiting, resilient resume, `--cached-first` sort, idempotent per-entry cache writes (2026-06-17)
 - `DELETE FROM cache` now preserves emoji_md/emoji_html during reindex (2026-06-17)
 - See `docs/01-PRODUCT.md` §2.11 for full design rationale
 
@@ -123,7 +123,7 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `--pid-file` + `--stop`: PID-based process management, safe kill via SIGTERM→SIGKILL
 - `--status`: per-mode emoji enhancement progress with counts, percentages, recent entries
 - `--rebuild` / `-r`: force re-enhance even if emoji cache exists
-- `--parameter=<name1;name2>` + `--section=<s>`: single/multi-page enhancement (supersedes `tools/enhance_page.php`)
+- `--parameter=<name1;name2>` + `--section=<s>`: single/multi-page enhancement (supersedes `cli/enhance_page.php`)
 - `--parameter` + `--mode`: target specific pages across any documentation source
 - No-arg invocation defaults to `--help`
 - **Fully offline** (2026-06-18): `require_once`'s phpMan.php, calls `getManPage()`/`getPerldocPage()`/etc. directly, uses shared `PageCache` and `callLLM()` — zero HTTP dependency
@@ -138,10 +138,10 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 
 **Design & docs**:
 - Minimal webroot principle: only `phpMan.php` + `phpman.css` + config in public path (`01-PRODUCT.md` §2.3)
-- `tools/` moved out of webroot on staging/production
+- `cli/` moved out of webroot on staging/production
 - install.sh `--webroot` auto-generates `MCP_API_KEY` (random 32-char hex)
 - README restructured: install.sh first, MCP agent config moved lower
-- Removed `tools/enhance_page.php` — superseded by `batch_enhance.php --parameter`
+- Removed `cli/enhance_page.php` — superseded by `batch_enhance.php --parameter`
 
 **Cleanup**:
 - Removed all `maxLen` input truncation — LLM models handle full pages natively
@@ -188,7 +188,7 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
   - `@LINK_START@` / `@LINK_END@` link wrappers, `@BOLD@` emphasis
 - Prompt updated to forbid `<pre><code>` nesting in Quick Ref sections (use `<code>` only)
 - `cleanEmojiHtml()` updated to handle OKF-structured enhanced content
-- Fix: deploy `tools/` alongside `cli/` in Makefile staging/release targets
+- Fix: deploy `src/` alongside `cli/` in Makefile staging/release targets
 
 **v4.3.1 — Cache version tracking + nested HTML fix**:
 - `CACHE_FORMAT_VERSION` stamp on every cache entry for format migration safety
@@ -266,9 +266,8 @@ PHPMAN_HOME/                       # ~/.phpman (outside webroot)
 │   └── mcp_server.php             # handleMcp(), handleWellKnown()
 ├── cli/                           # CLI tools (deploy alongside src/)
 │   ├── build-index.php
-│   └── enhance.php
-├── tools/                         # Batch/admin tools
-│   └── batch_enhance.php
+│   ├── enhance.php
+│   └── batch-enhance.php
 ├── db/                            # SQLite databases
 └── logs/                          # Error logs, PID files
 
@@ -410,7 +409,7 @@ User runs:  curl ... | bash                        (install.sh)
 
 Result:
   webroot:  phpMan.php  phpman.css  phpman.config.php
-  ~/.phpman: src/ cli/ tools/ db/ logs/  phpman.config.php
+  ~/.phpman: src/ cli/ db/ logs/  phpman.config.php
 ```
 
 #### Update Flow
@@ -426,7 +425,7 @@ Maintainer: make release                            (deploy to prod)
   1. make test                                       ← syntax check
   2. sed GIT_DESCRIBE + PHPMAN_VERSION in phpMan.php ← stamp exact version
   3. scp phpMan.php + phpman.css → webroot
-  4. scp -r cli/ tools/ src/ → PHPMAN_HOME
+  4. scp -r cli/ src/ → PHPMAN_HOME
   5. make logcheck                                   ← tail error logs
 
 Maintainer: make release-reindex                    (deploy + rebuild index)
@@ -487,7 +486,7 @@ never touch this file.
 2. Move functions file by file, verifying tests after each move
 3. Write `bootstrap.php` with require order
 4. Replace `phpMan.php` body with thin dispatcher
-5. Update Makefile to deploy `src/` alongside `cli/` and `tools/`
+5. Update Makefile to deploy `src/` alongside `cli/`
 6. Regression: `make test` + `test/phpman-regression.sh`
 
 **Risk mitigation**:

@@ -8,7 +8,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - `--help` CLI help for phpMan.php (`php phpMan.php --help`)
-- `tools/batch_enhance.php --status` — per-mode emoji enhancement progress
+- `cli/batch-enhance.php --status` — per-mode emoji enhancement progress
 - install.sh `--webroot` auto-generates `MCP_API_KEY` for public-facing deployments
 - install.sh `--help` pipe syntax examples (`curl ... | bash -s -- --webroot`)
 

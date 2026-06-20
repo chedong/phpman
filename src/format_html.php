@@ -24,7 +24,7 @@ function renderTocSidebar(array $tocItems, string $pageLabel): string {
 //   php cli/build-index.php           Search index rebuild
 //   php cli/build-index.php --cron    Index rebuild with timestamp
 //   php cli/enhance.php man:ls        LLM emoji enhancement
-//   php tools/batch_enhance.php        Full batch enhance (rate-limited, resumable)
+//   php cli/batch-enhance.php        Full batch enhance (rate-limited, resumable)
 
 
 function formatManPerlDoc (array $lines, string $mode = "man"): string {

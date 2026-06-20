@@ -6,7 +6,7 @@
  * Replaces: php phpMan.php --enhance=mode:name1,name2,...
  *
  * For full batch enhancement with rate limiting, resume, status, etc.,
- * use tools/batch_enhance.php instead.
+ * use cli/batch-enhance.php instead.
  *
  * Usage:
  *   php cli/enhance.php man:ls
@@ -38,7 +38,7 @@ if (isset($options['help']) || isset($options['h']) || $argc < 2) {
     echo "  php cli/enhance.php pydoc:os,json,re\n";
     echo "  php cli/enhance.php ri:Array,String,File\n\n";
     echo "For full batch enhancement (rate-limited, resumable, with status):\n";
-    echo "  php tools/batch_enhance.php --help\n\n";
+    echo "  php cli/batch-enhance.php --help\n\n";
     echo "Docs: https://github.com/chedong/phpman\n";
     exit(0);
 }

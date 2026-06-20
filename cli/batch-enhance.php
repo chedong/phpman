@@ -11,21 +11,21 @@
  * Rate-limited: minimum 2 minutes between LLM calls to respect API quotas.
  *
  * Usage:
- *   php tools/batch_enhance.php --status         # Show enhancement progress
- *   php tools/batch_enhance.php --status --stop   # Show status, then stop running batch
- *   php tools/batch_enhance.php --rebuild       # Force re-enhance already-done entries
- *   php tools/batch_enhance.php --mode=man --parameter=ls;tar;gzip  # Specific pages
- *   php tools/batch_enhance.php --rebuild --parameter=CGI::FormBuilder # Force redo one
- *   php tools/batch_enhance.php --dry-run        # Show plan without LLM calls
- *   php tools/batch_enhance.php --mode=man        # Only man pages
- *   php tools/batch_enhance.php --mode=man,perldoc # Multiple modes
- *   php tools/batch_enhance.php --limit=10        # Process max 10 entries
- *   php tools/batch_enhance.php --format=html     # Enhance emoji_html only
- *   php tools/batch_enhance.php --format=md       # Enhance emoji_md only
- *   php tools/batch_enhance.php --format=both     # Both formats (default)
- *   php tools/batch_enhance.php --yes             # Skip confirmation prompt
- *   php tools/batch_enhance.php --skip-errors     # Continue on error
- *   php tools/batch_enhance.php --cached-first    # Prioritize HTML-cached entries
+ *   php cli/batch-enhance.php --status         # Show enhancement progress
+ *   php cli/batch-enhance.php --status --stop   # Show status, then stop running batch
+ *   php cli/batch-enhance.php --rebuild       # Force re-enhance already-done entries
+ *   php cli/batch-enhance.php --mode=man --parameter=ls;tar;gzip  # Specific pages
+ *   php cli/batch-enhance.php --rebuild --parameter=CGI::FormBuilder # Force redo one
+ *   php cli/batch-enhance.php --dry-run        # Show plan without LLM calls
+ *   php cli/batch-enhance.php --mode=man        # Only man pages
+ *   php cli/batch-enhance.php --mode=man,perldoc # Multiple modes
+ *   php cli/batch-enhance.php --limit=10        # Process max 10 entries
+ *   php cli/batch-enhance.php --format=html     # Enhance emoji_html only
+ *   php cli/batch-enhance.php --format=md       # Enhance emoji_md only
+ *   php cli/batch-enhance.php --format=both     # Both formats (default)
+ *   php cli/batch-enhance.php --yes             # Skip confirmation prompt
+ *   php cli/batch-enhance.php --skip-errors     # Continue on error
+ *   php cli/batch-enhance.php --cached-first    # Prioritize HTML-cached entries
  *
  * Requires phpman.config.php with LLM_API_URL, LLM_API_KEY, LLM_MODEL,
  * LLM_MAX_TOKENS, and PHPMAN_HOME (for the cache DB path).
@@ -55,7 +55,7 @@ if (!$hasActionOpt && !isset($opts['mode']) && !isset($opts['limit']) &&
 if (isset($opts['help']) || isset($opts['h'])) {
     echo "batch_enhance.php — Offline batch LLM emoji enhancement\n\n";
     echo "Usage:\n";
-    echo "  php tools/batch_enhance.php [options]\n\n";
+    echo "  php cli/batch-enhance.php [options]\n\n";
     echo "Options:\n";
     echo "  --status           Show enhancement progress + sample URLs per mode\n";
     echo "  --stop             Stop a running batch (reads PID from --pid-file)\n";
@@ -201,8 +201,8 @@ if ($ownPid) {
             @unlink($pidFile);
         });
         echo "PID {$ownPid} (start {$startTime}) → {$pidFile}\n";
-        echo "  Stop with: php tools/batch_enhance.php --stop\n";
-        echo "            php tools/batch_enhance.php --status --stop\n";
+        echo "  Stop with: php cli/batch-enhance.php --stop\n";
+        echo "            php cli/batch-enhance.php --status --stop\n";
     } else {
         fwrite(STDERR, "ERROR: Cannot acquire lock on {$pidFile} — another instance may be starting.\n");
         if ($pidFh) fclose($pidFh);

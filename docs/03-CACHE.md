@@ -53,7 +53,7 @@ CREATE INDEX idx_cache_expiry  ON cache(updated_at) WHERE ttl > 0;
 - **Cache key**: (mode, name, section, format) uniquely identifies a cached entry
 - **Compression**: PHP `gzcompress()`, SQLite BLOB storage, ~70% average compression ratio
 - **TTL**: found entries 604800s (7 days), not_found entries 86400s (1 day). Expired entries auto-deleted on `get()`
-- **LLM enhancement formats** (`emoji_md`, `emoji_html`): Written with TTL=0 (permanent, no auto-expiry). Generated offline by `tools/batch_enhance.php` or online by `enhanceManPage()`. Preserved across `--build-index-cron` runs (reindex skips emoji formats to avoid wasting 48+ days of LLM work).
+- **LLM enhancement formats** (`emoji_md`, `emoji_html`): Written with TTL=0 (permanent, no auto-expiry). Generated offline by `cli/batch-enhance.php` or online by `enhanceManPage()`. Preserved across `--build-index-cron` runs (reindex skips emoji formats to avoid wasting 48+ days of LLM work).
 - **Auto-cleanup**: `cacheOrExecute()` has 1% probability of triggering `DELETE FROM cache WHERE expired`
 - **search mode**: Not written to `cache_fts` index, no hits counting, emits `<meta name="robots" content="noindex">`
 
@@ -237,14 +237,14 @@ php cli/build-index.php
 
 ```bash
 # Dry-run preview
-php tools/batch_enhance.php --dry-run
+php cli/batch-enhance.php --dry-run
 
 # Full batch (md only, HTML-cached first)
-nohup php tools/batch_enhance.php --cached-first --skip-errors --yes --format=md \
+nohup php cli/batch-enhance.php --cached-first --skip-errors --yes --format=md \
   > logs/batch_enhance_md.log 2>&1 &
 
 # Single page (CLI)
-php tools/enhance_page.php man ls
+php cli/enhance_page.php man ls
 ```
 
 See `docs/01-PRODUCT.md` §2.11.5–2.11.6 for full design.
