@@ -2152,7 +2152,7 @@ function getHtmlEnhancePrompt(): string {
         "18. Add descriptive emoji to option descriptions and list item text\n" .
         "19. Keep original HTML structure and section ordering intact\n" .
         "20. Emoji should be standard Unicode, widely supported\n" .
-        "21. 🚀 Quick Reference: ALWAYS create a <h2>🚀 Quick Reference</h2> section as the second section (right after NAME). Use a <table> with columns Use Case | Command | Description. If the input contains a TLDR block, preserve and emoji-enhance it. If not, generate common use cases from the content — this is critical for AI agents and quick human lookup.\n" .
+        "21. 🚀 Quick Reference: ALWAYS create a <h2>🚀 Quick Reference</h2> section as the second section (right after NAME). Use a <table> with columns Use Case | Command | Description. Command cells use <code> (NOT <pre><code> — pre blocks break table layout). Keep descriptions concise. If the input contains a TLDR block, preserve and emoji-enhance it. If not, generate common use cases from the content — this is critical for AI agents and quick human lookup.\n" .
         "22. Exit Codes: add an <h2>🚪 Exit Codes</h2> section ONLY if the original document explicitly lists exit codes\n" .
         "23. IMPORTANT: Condense your output to under " . number_format(PHPMAN_ENHANCE_MAX_CHARS) . " characters. Preserve key sections but summarize/combine verbatim repetition. Prefer tight formatting over verbosity.";
 }

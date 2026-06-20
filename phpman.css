@@ -55,6 +55,12 @@ input[type='radio'] {accent-color:#7aa2f7;}
 .code-block .copy-btn:hover {background:#565f89;color:#c0caf5;}
 .code-block .copy-btn.copied {background:#9ece6a;color:#1a1b26;border-color:#9ece6a;}
 
+/* Tables — scroll on overflow, prevent pre blocks from breaking layout */
+table {display:block;overflow-x:auto;max-width:100%;border-collapse:collapse;}
+th, td {padding:4px 8px;text-align:left;vertical-align:top;border-bottom:1px solid #292e42;}
+th {color:#7aa2f7;font-weight:bold;}
+td pre, td code {white-space:normal;word-break:break-word;font-size:13px;}
+
 /* Mobile: max-width 1024px */
 @media (max-width:1024px){
     body.ext-nav #toc-sidebar{display:block !important;position:fixed;top:4px;right:4px;width:220px;max-height:calc(100vh - 12px);overflow-y:auto;z-index:200;border:1px solid #3b4261;box-shadow:-2px 2px 8px rgba(0,0,0,.4);background:#24283b;padding:6px 8px;font-size:14px;}
