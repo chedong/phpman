@@ -87,6 +87,7 @@ _deploy-code:
 	scp -P $(TEST_PORT) $(CSS_FILE) $(TEST_HOST):$(TEST_PATH)/$(CSS_FILE); \
 	scp -P $(TEST_PORT) -r cli $(TEST_HOST):$(STAGING_HOME)/.phpman_test/; \
 	scp -P $(TEST_PORT) -r tools $(TEST_HOST):$(STAGING_HOME)/.phpman_test/; \
+	scp -P $(TEST_PORT) -r src $(TEST_HOST):$(STAGING_HOME)/.phpman_test/; \
 	ssh -p $(TEST_PORT) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE) && chmod +x \$$HOME/.phpman_test/cli/*.php \$$HOME/.phpman_test/tools/*.php"; \
 		ssh -p $(TEST_PORT) $(TEST_HOST) "ln -sf $(TEST_PATH)/phpman.config.php \$$HOME/.phpman_test/phpman.config.php"; \
 		ssh -p $(TEST_PORT) $(TEST_HOST) "ln -sf $(TEST_PATH)/$(FILE) \$$HOME/.phpman_test/$(FILE)"

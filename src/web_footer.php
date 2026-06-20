@@ -1,0 +1,112 @@
+<?php
+function showForm (string $parameter, array $check, string $markdownUrl = "", string $jsonUrl = "", string $mode = "", string $section = ""): void {
+    $script_name = h(scriptName());
+    $parameter_value = h($parameter);
+
+    echo "<form action=\"".$script_name."\" method=\"get\">\n".
+        "<fieldset>\n";
+
+    // Format links (Markdown | JSON | MCP) — only on detail pages (parameter set, not search mode)
+    $fmtLinks = [];
+    $cmd_label = h($parameter ?: "command");
+    $isDetail = $parameter !== "" && in_array($mode, PHPMAN_CONTENT_MODES);
+    if ($isDetail) {
+        if ($markdownUrl !== "") {
+            $fmtLinks[] = '<a href="' . h($markdownUrl) . '" title="' . $cmd_label . ' in Markdown format">Markdown</a>';
+        }
+        if ($jsonUrl !== "") {
+            $fmtLinks[] = '<a href="' . h($jsonUrl) . '" title="' . $cmd_label . ' structured JSON API">JSON</a>';
+        }
+        // MCP link only when page has real content (not 404/search fallback)
+        if ($markdownUrl !== "" || $jsonUrl !== "") {
+            $mcp_href = scriptName() . "/" . urlencode($mode) . "/" . urlencode($parameter) . "/mcp";
+            $fmtLinks[] = '<a href="' . h($mcp_href) . '" title="MCP Server integration">MCP</a>';
+        }
+    }
+
+    $fmtStr = !empty($fmtLinks) ? implode(" |\n", $fmtLinks) . " &nbsp;" : "";
+
+    echo "<p>" . $fmtStr . "<input type=\"text\" id=\"cmd-input\" size=\"20\" name=\"parameter\" value=\"".$parameter_value."\"/>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"man\" id=\"mode-man\"".$check['man']."/>".
+        "<label for=\"mode-man\"><a href=\"".$script_name."/man\">man</a></label>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"perldoc\" id=\"mode-perldoc\"".$check['perldoc']."/>".
+        "<label for=\"mode-perldoc\"><a href=\"".$script_name."/search/perl\">perldoc</a></label>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"info\" id=\"mode-info\"".$check['info']."/>".
+        "<label for=\"mode-info\"><a href=\"".$script_name."/info\">info</a></label>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"pydoc\" id=\"mode-pydoc\"".$check['pydoc']."/>".
+        "<label for=\"mode-pydoc\"><a href=\"".$script_name."/pydoc\">pydoc3</a></label>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"ri\" id=\"mode-ri\"".$check['ri']."/>".
+        "<label for=\"mode-ri\"><a href=\"".$script_name."/ri\">ri</a></label>\n".
+        "<input type=\"radio\" name=\"mode\" value=\"search\" id=\"mode-search\"".$check['search']."/>".
+        "<label for=\"mode-search\"><a href=\"".$script_name."/man/apropos\">search</a></label>\n".
+        "&nbsp;<input type=\"submit\" value=\"Go\"/></p>".
+        "</fieldset>\n".
+        "</form>\n";
+
+    $isDetailPage = in_array($mode, PHPMAN_CONTENT_MODES) && $parameter !== "";
+    $hasContent = ($markdownUrl !== "" || $jsonUrl !== "");
+    $cmd_label = h($parameter ?: "command");
+    if ($isDetailPage && !$hasContent) {
+        // --- Not found: show external search/reference links ---
+        echo "<p>";
+        echo "Not found locally for <b>" . $cmd_label . "</b>. Try " .
+            '<a href="https://www.google.com/search?q=' . urlencode($parameter) . '" target="_blank" rel="noopener">Google search</a>';
+
+        if ($mode === "man") {
+            // man7.org: canonical Linux man pages
+            if ($section !== "") {
+                $man7 = 'https://man7.org/linux/man-pages/man' . urlencode($section)
+                      . '/' . urlencode($parameter) . '.' . urlencode($section) . '.html';
+            } else {
+                $man7 = 'https://man7.org/linux/man-pages/index.html';
+            }
+            echo ' | <a href="' . h($man7) . '" target="_blank" rel="noopener">man7.org</a>';
+        } elseif ($mode === "perldoc") {
+            echo ' | ' .
+                '<a href="https://metacpan.org/pod/' . urlencode($parameter) . '" target="_blank" rel="noopener">MetaCPAN</a>';
+        } elseif ($mode === "pydoc") {
+            echo ' | ' .
+                '<a href="https://docs.python.org/3/search.html?q=' . urlencode($parameter) . '" target="_blank" rel="noopener">Python Docs</a>';
+        } elseif ($mode === "ri") {
+            echo ' | ' .
+                '<a href="https://ruby-doc.org/search.html?q=' . urlencode($parameter) . '" target="_blank" rel="noopener">Ruby-Doc</a>';
+        }
+        echo "</p>\n";
+    }
+}
+
+//show footer
+function showFooter (string $validator = "", bool $showNav = false, string $mode = "", string $parameter = "", string $section = "", string $enhancedBy = ""): void {
+    $script_name = h(scriptName());
+    $remote_addr = h(serverValue("REMOTE_ADDR", "unknown"));
+    $user_agent = h(serverValue("HTTP_USER_AGENT", "unknown"));
+
+    // Server software version: only visible from localhost (like phpinfo())
+    $server_info = "";
+    if (isLocalRequest()) {
+        $server_info = " On " . h(serverValue("SERVER_SOFTWARE", "unknown server"));
+    }
+
+    echo "<p>Generated by <a href=\"https://github.com/chedong/phpman\">phpman</a>" .
+        " " . h(GIT_DESCRIBE) .
+        " Author: <a href=\"https://www.chedong.com/\">Che Dong</a>" .
+        $server_info .
+        " Under <a href=\"".$script_name."/copyright\">GNU General Public License</a>" .
+        "<br />" .
+        date("Y-m-d H:i") . " @" . $remote_addr .
+        "<br />CrawledBy " . $user_agent .
+        "<br />" . $validator .
+        // v4.0: show LLM enhancement credit when emoji cache is active
+        ($enhancedBy !== "" ? "<br />Enhanced by LLM: " . h($enhancedBy) . " / taotoken.net / " . h(serverValue("HTTP_HOST", "")) . " - <a href=\"" . h(scriptName()) . "/" . h($mode) . "/" . urlencode((string)$parameter) . ($section !== "" ? "/" . h($section) : "") . "/html\">original format</a>" : "") .
+        (Profiler::getEnabled() ? profilerHtmlBlock() : "") .
+        "</p>" .
+        ($showNav ? '<div id="back-to-top"><a href="#top">^_back to top</a></div>' : "") .
+        "<script>!function(){var t=document.querySelectorAll('#content-wrap pre code');t.length&&t.forEach(function(e){var n=e.parentElement,o=document.createElement('div');o.className='code-block',n.insertBefore(o,e),o.appendChild(e);var c=document.createElement('button');c.className='copy-btn',c.textContent='📋 Copy',c.title='Copy code to clipboard',c.onclick=function(){navigator.clipboard.writeText(e.textContent).then(function(){c.textContent='✓ Copied!',c.classList.add('copied'),setTimeout(function(){c.textContent='📋 Copy',c.classList.remove('copied')},1500)})},o.appendChild(c)})}();</script>" .
+        "</body></html>";
+}
+
+/**
+ * Serve MCP server discovery JSON at /.well-known/mcp.json path.
+ * Returns JSON describing the MCP server location, available tools, and how to use them.
+ * Handles GET requests and returns application/json.
+ */
