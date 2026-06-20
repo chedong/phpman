@@ -2178,6 +2178,13 @@ function enhanceManPage(string $mode, string $name): string {
                 $enhancedMd = preg_replace('/^```(?:markdown|md)?\s*\n?/m', '', $enhancedMd);
                 $enhancedMd = preg_replace('/\n?```\s*$/m', '', $enhancedMd);
                 $enhancedMd = preg_replace('/^\[?[\w.-]+\]?\(\d+\w*\)\s+.*\s+\[?[\w.-]+\]?\(\d+\w*\)\s*\n/', '', $enhancedMd);
+                // Fix internal links broken by CLI context: replace localhost absolute paths
+                // with deployment-agnostic relative links (e.g. man/tar/markdown)
+                $enhancedMd = preg_replace(
+                    '#https?://localhost\S*?/(man|perldoc|info|pydoc|ri)/(\S+?)/markdown#',
+                    '$1/$2/markdown',
+                    $enhancedMd
+                );
                 $enhancedMd = trim($enhancedMd);
                 if ($enhancedMd !== '') {
                     $cache->set($mode, $name, '', 'emoji_md', $enhancedMd, 'found');
