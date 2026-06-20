@@ -23,7 +23,7 @@ function renderTocSidebar(array $tocItems, string $pageLabel): string {
 // Use these instead of the old phpMan.php -- flags:
 //   php cli/build-index.php           Search index rebuild
 //   php cli/build-index.php --cron    Index rebuild with timestamp
-//   php cli/enhance.php man:ls        LLM emoji enhancement
+//   php cli/batch-enhance.php man:ls        LLM emoji enhancement
 //   php cli/batch-enhance.php        Full batch enhance (rate-limited, resumable)
 
 

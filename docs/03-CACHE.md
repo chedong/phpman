@@ -244,7 +244,7 @@ nohup php cli/batch-enhance.php --cached-first --skip-errors --yes --format=md \
   > logs/batch_enhance_md.log 2>&1 &
 
 # Single page (CLI)
-php cli/enhance_page.php man ls
+php cli/batch-enhance.php man ls
 ```
 
 See `docs/01-PRODUCT.md` §2.11.5–2.11.6 for full design.

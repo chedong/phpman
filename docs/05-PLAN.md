@@ -108,7 +108,7 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `renderTocSidebar()`: floating TOC built from enhanced `<h2>`/`<h3>` HTML tags
 - Enhanced HTML is the default view when `emoji_html` cache exists; `?format=html` bypasses
 - Config: `LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`, `LLM_MAX_TOKENS` via `phpman.config.php`
-- `cli/enhance_page.php`: single-page CLI tool for shared hosts where man(1) can't fork
+- `cli/batch-enhance.php`: single-page CLI tool for shared hosts where man(1) can't fork
 - `cli/batch-enhance.php`: offline batch enhancement — auto-discovers ~35K entries from search_index_meta + cache, 2-min rate limiting, resilient resume, `--cached-first` sort, idempotent per-entry cache writes (2026-06-17)
 - `DELETE FROM cache` now preserves emoji_md/emoji_html during reindex (2026-06-17)
 - See `docs/01-PRODUCT.md` §2.11 for full design rationale
@@ -123,7 +123,7 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `--pid-file` + `--stop`: PID-based process management, safe kill via SIGTERM→SIGKILL
 - `--status`: per-mode emoji enhancement progress with counts, percentages, recent entries
 - `--rebuild` / `-r`: force re-enhance even if emoji cache exists
-- `--parameter=<name1;name2>` + `--section=<s>`: single/multi-page enhancement (supersedes `cli/enhance_page.php`)
+- `--parameter=<name1;name2>` + `--section=<s>`: single/multi-page enhancement (supersedes `cli/batch-enhance.php`)
 - `--parameter` + `--mode`: target specific pages across any documentation source
 - No-arg invocation defaults to `--help`
 - **Fully offline** (2026-06-18): `require_once`'s phpMan.php, calls `getManPage()`/`getPerldocPage()`/etc. directly, uses shared `PageCache` and `callLLM()` — zero HTTP dependency
@@ -141,7 +141,7 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `cli/` moved out of webroot on staging/production
 - install.sh `--webroot` auto-generates `MCP_API_KEY` (random 32-char hex)
 - README restructured: install.sh first, MCP agent config moved lower
-- Removed `cli/enhance_page.php` — superseded by `batch_enhance.php --parameter`
+- Removed `cli/batch-enhance.php` — superseded by `batch_enhance.php --parameter`
 
 **Cleanup**:
 - Removed all `maxLen` input truncation — LLM models handle full pages natively
@@ -256,7 +256,7 @@ PHPMAN_HOME/                       # ~/.phpman (outside webroot)
 │   ├── format_json.php            # formatToJSON(), detectHeadingType()
 │   ├── format_mcp.php             # formatForOutput() MCP wrapping
 │   ├── format_common.php          # cleanTerminalOutput(), shared helpers
-│   ├── enhance.php                # enhanceManPage(), callLLM(), cleanEmojiHtml(),
+│   ├── batch-enhance.php                # enhanceManPage(), callLLM(), cleanEmojiHtml(),
 │   │                              #   getMdEnhancePrompt(), getHtmlEnhancePrompt()
 │   ├── tldr.php                   # fetchOfficialTldr(), tldr cache logic
 │   ├── web_header.php             # showHeader() — HTTP headers, SEO meta, CSS
@@ -266,7 +266,7 @@ PHPMAN_HOME/                       # ~/.phpman (outside webroot)
 │   └── mcp_server.php             # handleMcp(), handleWellKnown()
 ├── cli/                           # CLI tools (deploy alongside src/)
 │   ├── build-index.php
-│   ├── enhance.php
+│   ├── batch-enhance.php
 │   └── batch-enhance.php
 ├── db/                            # SQLite databases
 └── logs/                          # Error logs, PID files

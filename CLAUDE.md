@@ -49,8 +49,8 @@ php cli/build-index.php              # Rebuild FTS5 search index
 php cli/build-index.php --cron       # Rebuild with UTC timestamp
 
 # LLM emoji enhancement
-php cli/enhance.php man:ls           # Single page
-php cli/enhance.php man:ls,tar,grep  # Comma-separated batch
+php cli/batch-enhance.php man:ls           # Single page (shorthand)
+php cli/batch-enhance.php man:ls,tar,grep  # Comma-separated batch
 php cli/batch-enhance.php --help   # Full batch (rate-limited, resumable)
 ```
 

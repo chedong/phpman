@@ -1,7 +1,7 @@
 #!/usr/bin/env php
 <?php
 /**
- * batch_enhance.php — Offline batch LLM emoji enhancement for all indexed pages.
+ * batch-enhance.php — Offline batch LLM emoji enhancement for all indexed pages.
  *
  * Iterates entries from search_index_meta (man) plus perldoc/info/pydoc/ri
  * from the cache table, generates HTML/markdown via phpMan's own formatting
@@ -11,6 +11,9 @@
  * Rate-limited: minimum 2 minutes between LLM calls to respect API quotas.
  *
  * Usage:
+ *   php cli/batch-enhance.php <mode>:<name1>[,<name2>,...]   # Quick single/multi-page
+ *   php cli/batch-enhance.php man:ls,tar,grep                # Shorthand for --mode=man --parameter=ls;tar;grep
+ *   php cli/batch-enhance.php perldoc:File::Basename         # Also works with --rebuild, etc.
  *   php cli/batch-enhance.php --status         # Show enhancement progress
  *   php cli/batch-enhance.php --status --stop   # Show status, then stop running batch
  *   php cli/batch-enhance.php --rebuild       # Force re-enhance already-done entries
@@ -29,14 +32,37 @@
  *
  * Requires phpman.config.php with LLM_API_URL, LLM_API_KEY, LLM_MODEL,
  * LLM_MAX_TOKENS, and PHPMAN_HOME (for the cache DB path).
- *
- * The target phpMan instance URL defaults to PHPMAN_BASE_URL env var,
- * falling back to 'http://localhost:8080/phpMan.php'.
  */
 
-if (PHP_SAPI !== 'cli') {
-    http_response_code(400);
-    die("CLI only\n");
+require __DIR__ . '/_bootstrap.php';
+
+// ── Implicit mode:name positional argument (shorthand for --mode --parameter) ──
+// Accepts: php cli/batch-enhance.php man:ls,tar,grep   or   man:ls,tar,grep --rebuild
+$posMode = '';
+$posParamList = '';
+$posArgs = [];
+for ($i = 1; $i < ($argc ?? 0); $i++) {
+    if (isset($argv[$i]) && $argv[$i][0] !== '-' && preg_match('/^([a-z]+):(.+)$/', $argv[$i], $pm)) {
+        $posMode = $pm[1];
+        $posParamList = $pm[2]; // comma-separated names
+        $posArgs[] = $i; // mark for removal from argv
+    }
+}
+// Remove positional mode:name args so getopt doesn't choke on them
+if (!empty($posArgs)) {
+    foreach ($posArgs as $idx) unset($argv[$idx]);
+    $argv = array_values($argv);
+    $argc = count($argv);
+}
+
+$opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast']);
+
+// Propagate positional mode:name into opts (existing --mode/--parameter take precedence)
+if ($posMode !== '' && !isset($opts['mode'])) {
+    $opts['mode'] = $posMode;
+}
+if ($posParamList !== '' && !isset($opts['parameter'])) {
+    $opts['parameter'] = str_replace(',', ';', $posParamList); // comma → semicolon
 }
 
 $opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast']);
@@ -53,19 +79,23 @@ if (!$hasActionOpt && !isset($opts['mode']) && !isset($opts['limit']) &&
 }
 
 if (isset($opts['help']) || isset($opts['h'])) {
-    echo "batch_enhance.php — Offline batch LLM emoji enhancement\n\n";
+    echo "batch-enhance.php — Offline batch LLM emoji enhancement\n\n";
     echo "Usage:\n";
+    echo "  php cli/batch-enhance.php <mode>:<name1>[,<name2>,...] [options]\n";
     echo "  php cli/batch-enhance.php [options]\n\n";
+    echo "Quick enhance (shorthand):\n";
+    echo "  php cli/batch-enhance.php man:ls                     # Single page\n";
+    echo "  php cli/batch-enhance.php man:ls,tar,grep            # Multiple pages\n";
+    echo "  php cli/batch-enhance.php man:ls,tar,grep --rebuild  # Force redo\n\n";
     echo "Options:\n";
     echo "  --status           Show enhancement progress + sample URLs per mode\n";
     echo "  --stop             Stop a running batch (reads PID from --pid-file)\n";
     echo "  --rebuild, -r      Force re-enhance even if emoji cache exists\n";
     echo "  --section=<s>      Manual section (e.g. '1', '3pm') for --parameter targets\n";
-    echo "  --parameter=<p>    Specific pages to enhance (semicolon-separated)\n";
-    echo "                      Requires --mode. Example: --mode=man --parameter=ls;tar\n";
+    echo "  --parameter=<p>    Specific pages (semicolon-separated, needs --mode)\n";
+    echo "  --mode=<m>         Filter: man, perldoc, info, pydoc, ri (comma-separated)\n";
     echo "  --dry-run          Show what would be done, no LLM calls\n";
     echo "  --yes, -y          Skip confirmation prompt (for cron/SSH)\n";
-    echo "  --mode=<m>         Filter: man, perldoc, info, pydoc, ri (comma-separated)\n";
     echo "  --limit=<n>        Max entries to process (default: unlimited)\n";
     echo "  --format=<f>       html, md, or both (default: both)\n";
     echo "  --resume-from=<n>  Skip first N entries\n";
@@ -73,25 +103,9 @@ if (isset($opts['help']) || isset($opts['h'])) {
     echo "  --cached-first     Sort: entries with HTML cache first\n";
     echo "  --pid-file=<path>  Write PID to file (auto: PHPMAN_HOME/logs/batch_enhance.pid)\n";
     echo "  --help             Show this help\n";
+    echo "\nShorthand <mode>:<name> is equivalent to --mode=<mode> --parameter=<name>.\n";
+    echo "Multiple names separated by commas are converted to semicolons automatically.\n";
     exit;
-}
-
-// ── Load config ──
-$configFile = __DIR__ . '/../phpman.config.php';
-if (!file_exists($configFile)) {
-    fwrite(STDERR, "ERROR: phpman.config.php not found at $configFile\n");
-    exit(1);
-}
-require $configFile;
-
-// ── Load phpMan core (offline — no HTTP, no web server needed) ──
-// Makefile deploys phpMan.php → webroot AND symlinks into PHPMAN_HOME.
-define('PHPMAN_NO_CLI_DISPATCH', true);
-require_once rtrim(PHPMAN_HOME, '/') . '/phpMan.php';
-
-if (!defined('PHPMAN_HOME') || PHPMAN_HOME === '') {
-    fwrite(STDERR, "ERROR: PHPMAN_HOME not configured\n");
-    exit(1);
 }
 
 $dbPath = rtrim(PHPMAN_HOME, '/') . '/db/phpman_cache.db';

@@ -216,21 +216,21 @@ php phpMan.php --enhance=pydoc:os,json,re
 
 `enhanceManPage()` runs two phases: Phase 1 generates `emoji_md` (Markdown → LLM), Phase 2 generates `emoji_html` (HTML → LLM). Each checks cache first, skips if already enhanced.
 
-#### 2.11.5 Single-Page CLI: `cli/enhance_page.php`
+#### 2.11.5 Single-Page CLI: `cli/batch-enhance.php`
 
 **Problem**: On shared hosting (e.g., DreamHost), the `man` command spawns 5+ subprocesses (zsoelim → manconv → preconv → tbl → groff). Under high system load (load average 25+), `fork()` fails with `Resource temporarily unavailable`. Direct `man ls` works, but PHP's `shell_exec("man ls")` fails because the PHP process already consumes memory, leaving insufficient resources for the man pipeline fork chain.
 
 The web server (Apache/mod_fcgid) can still serve man pages because its worker processes have different resource limits and the pages are cached after first request.
 
-**Solution**: `cli/enhance_page.php` fetches the Markdown from the running phpMan web instance via HTTP, sends it to the LLM, and writes the enhanced result directly into the SQLite cache — bypassing the `man` fork entirely.
+**Solution**: `cli/batch-enhance.php` fetches the Markdown from the running phpMan web instance via HTTP, sends it to the LLM, and writes the enhanced result directly into the SQLite cache — bypassing the `man` fork entirely.
 
 ```bash
 # Requires PHPMAN_BASE_URL env var or defaults to http://localhost:8080/phpMan.php
-PHPMAN_BASE_URL=https://test.chedong.com/phpMan.php php cli/enhance_page.php man ls
+PHPMAN_BASE_URL=https://test.chedong.com/phpMan.php php cli/batch-enhance.php man ls
 
 # Batch enhance via shell loop (NOT recommended — use batch_enhance.php instead)
 for cmd in ls tar grep; do
-  php cli/enhance_page.php man $cmd
+  php cli/batch-enhance.php man $cmd
 done
 ```
 
@@ -271,7 +271,7 @@ php cli/batch-enhance.php --mode=man,perldoc --limit=100 --dry-run
 - **Timeline**: ~35K entries × 2 min/call ≈ 48 days for single format, ~97 days for both formats on a single server
 
 **Key differences from `--enhance` and `enhance_page.php`**:
-| Aspect | `--enhance` (CLI) | `cli/enhance_page.php` | `cli/batch-enhance.php` |
+| Aspect | `--enhance` (CLI) | `cli/batch-enhance.php` | `cli/batch-enhance.php` |
 |--------|-------------------|--------------------------|---------------------------|
 | Content source | `shell_exec("man ...")` | HTTP fetch from phpMan web | HTTP fetch from phpMan web |
 | Cache format | `emoji_html` + `emoji_md` (dual) | `emoji_md` only | `emoji_md` + `emoji_html` (configurable) |
@@ -452,7 +452,7 @@ When reviewing code, follow this order:
 |------|----------|
 | 2026-06-18 | v4.2: Copy button UX — JS wraps `#content-wrap pre` with 📋 Copy (Tokyo Night `#1f2335` bg, italic, rounded); Prompt v2 — forbid `<a>` in code, forbid emoji markers, preserve structure; `PHPMAN_ENHANCE_MAX_CHARS` (32K); TOC regex fix for attributed headings; Makefile version auto-sync from git tag; input truncation removed |
 | 2026-06-17 | v4.0: `cli/batch-enhance.php` — offline batch LLM enhancement with auto-discovery from search index + cache, 2-min rate limiting, resilient resume, dual-format support (§2.11.6) |
-| 2026-06-16 | v4.0: Dual-format LLM enhancement — emoji_html (HTML-direct, default view) + emoji_md (Markdown, /markdown format); TOC from <h2>/<h3> tags with &amp; fix; max_tokens uncapped; finish_reason truncation logging; showFooter section param in original-format link; cli/enhance_page.php |
+| 2026-06-16 | v4.0: Dual-format LLM enhancement — emoji_html (HTML-direct, default view) + emoji_md (Markdown, /markdown format); TOC from <h2>/<h3> tags with &amp; fix; max_tokens uncapped; finish_reason truncation logging; showFooter section param in original-format link; cli/batch-enhance.php |
 | 2026-06-09 | v3.7.1: Fix #96 XSS (sources array h), #107 undefined $expanded, #108 SQL prepared stmt, #109 tldr_cache TTL index, #110 INSERT OR REPLACE comments, #111 ticket status table, #112 CLI CACHE_DB constant; add Ticket Status Summary table |
 | 2026-06-08 | v3.7: Security hardening — #95 SQL parameterize, #98 catch block logging, #100 CACHE_DIR validation, #102 perldoc $width escape, #104 FTS5 sanitize, #105 ETag invalidation, #103 rebuildSearchIndex logging | TLDR cache strategy: SQLite `tldr_cache` with 7-day TTL, negative caching; old file-based `tldr_cache/` deprecated |
 | 2026-06-04 | `isLocalRequest` deprecation: HSTS/version hiding moved to Nginx config, debug switched to `PHPMAN_DEBUG` env var; `ob_gzhandler` + `checkRateLimit` marked for cleanup (#84 #89); security hardening table adds status column |
@@ -821,5 +821,5 @@ pydoc output has no overstrike/ANSI; `cleanTerminalOutput` is a pass-through. Bu
 | `formatInlineMarkdown()` | phpMan.php | 2328 |
 | `renderTocSidebar()` | phpMan.php | 2363 |
 | `showFooter()` enhanced link | phpMan.php | 3387 |
-| `cli/enhance_page.php` | cli/enhance_page.php | — |
+| `cli/batch-enhance.php` | cli/batch-enhance.php | — |
 | `cli/batch-enhance.php` | cli/batch-enhance.php | — |
