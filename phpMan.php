@@ -41,8 +41,10 @@ if (file_exists($_config_file)) { require $_config_file; }
 unset($_config_file);
 
 // Load all source files (config defaults + functions + classes)
-require __DIR__ . "/src/config.php";
-require __DIR__ . "/src/bootstrap.php";
+// Resolve src/: dev (next to phpMan.php) or deployed (PHPMAN_HOME/src/)
+$srcDir = is_dir(__DIR__ . '/src') ? __DIR__ . '/src' : PHPMAN_HOME . '/src';
+require $srcDir . '/config.php';
+require $srcDir . '/bootstrap.php';
 
 // Test mode: load functions only, skip dispatch
 if (defined("PHPMAN_TEST_MODE")) { return; }
