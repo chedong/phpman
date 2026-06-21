@@ -88,6 +88,33 @@ function formatForOutput (string $jsonStr, string $format): string {
  */
 function formatMcpMarkdown (array $data): string {
     $mode = $data["mode"] ?? "man";
+
+    // ── Search results: markdown list ──
+    if ($mode === "search") {
+        $query = $data["parameter"] ?? "";
+        $count = $data["count"] ?? 0;
+        $out = "# Search: {$query} ({$count} results)\n\n";
+        foreach ($data["results"] ?? [] as $r) {
+            $name = $r["name"] ?? "";
+            $desc = $r["description"] ?? "";
+            $link = $r["link"] ?? "";
+            $out .= "- [{$name}]({$link}) — {$desc}\n";
+        }
+        if (!empty($data["pydoc_results"])) {
+            $out .= "\n## Python 3 (pydoc3)\n\n";
+            foreach ($data["pydoc_results"] as $r) {
+                $out .= "- [{$r["name"]}]({$r["link"]}) — {$r["description"]}\n";
+            }
+        }
+        if (!empty($data["ri_results"])) {
+            $out .= "\n## Ruby (ri)\n\n";
+            foreach ($data["ri_results"] as $r) {
+                $out .= "- [{$r["name"]}]({$r["link"]}) — {$r["description"]}\n";
+            }
+        }
+        return $out;
+    }
+
     $param = $data["parameter"] ?? "";
     $section = $data["section"] ?? "";
     $label = $param;
@@ -155,6 +182,20 @@ function formatMcpMarkdown (array $data): string {
  * Gives agents programmatic access to flags, examples, section outlines.
  */
 function formatMcpStructured (array $data): array {
+    // ── Search results: return results arrays directly ──
+    if (($data["mode"] ?? "") === "search") {
+        $out = [
+            "mode" => "search",
+            "query" => $data["parameter"] ?? "",
+            "section" => $data["section"] ?? "",
+            "count" => $data["count"] ?? 0,
+            "results" => $data["results"] ?? [],
+        ];
+        if (!empty($data["pydoc_results"])) $out["pydoc_results"] = $data["pydoc_results"];
+        if (!empty($data["ri_results"])) $out["ri_results"] = $data["ri_results"];
+        return $out;
+    }
+
     $outline = [];
     foreach ($data["sections"] ?? [] as $name => $sec) {
         $item = [
