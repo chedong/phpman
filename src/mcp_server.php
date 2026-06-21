@@ -307,7 +307,9 @@ function executeCliSearch (array $args): string {
         throw new Exception("Missing required parameter: query");
     }
 
-    return getSearchPage($query, $section, "mcp");
+    // getSearchPage returns plain JSON for "mcp" format — wrap ONCE here
+    $jsonStr = getSearchPage($query, $section, "mcp");
+    return formatForOutput($jsonStr, "mcp");
 }
 
 //get specified command's man page and convert to html format

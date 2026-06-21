@@ -216,24 +216,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
 
     // json / mcp output
     if ($format === "json" || $format === "mcp") {
-        $results = array();
-        $pydoc_results = array();
-        $ri_results = array();
-        // Parse man page results from $lines (supports multi-name BSD lines)
-        foreach ($lines as $line) {
-            $entries = parseAproposLines($line);
-            foreach ($entries as [$name, $section_num, $description]) {
-            $is_perl = preg_match('/:/', $name);
-            $link_mode = $is_perl ? "perldoc" : "man";
-            $results[] = array(
-                "name" => $name,
-                "description" => $description,
-                "section" => $section_num,
-                "link" => $script_name . "/" . $link_mode . "/" . urlencode($name) . "/" . urlencode($section_num) . "/json",
-            );
-            }
-        }
-        // Merge FTS5 pydoc/ri results (from getSearchPage's FTS5 query)
+        // Collect pydoc/ri results from FTS5 (same for json and mcp)
         foreach ($pydocFtsLines as $pl) {
             if (preg_match('/^(.+)\s+\(pydoc\)\s+—\s+(.+)$/', $pl, $m)) {
                 $pydoc_results[] = array(
@@ -269,7 +252,12 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         if (!empty($ri_results)) {
             $jsonData["ri_results"] = $ri_results;
         }
-        return formatForOutput(json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), $format);
+        // Return plain JSON for both — MCP wrapping done ONCE by caller (web dispatch / executeCliSearch)
+        $jsonStr = json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        if ($format === "mcp") {
+            return $jsonStr;  // plain JSON, caller wraps with formatForOutput
+        }
+        return $jsonStr;  // json format: plain JSON
     }
 
     // determine link mode: perl modules (section 3pm or name with ::) use perldoc, others use man
