@@ -22,3 +22,8 @@ cache/
 phpman.config.php
 *.swp
 .claude/
+
+# Composer (dev-only, not used in production — single-file deployment)
+composer.json
+composer.lock
+vendor/
