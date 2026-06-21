@@ -50,43 +50,34 @@ Then open **http://localhost:45678/** in your browser.
 
 ## Configuration
 
-phpMan uses environment variables for configuration. TLDR is fetched from tldr-pages/cheat.sh and cached in SQLite — no API key needed.
+phpMan has two config files. **You only need to edit one of them.**
 
-### Environment Variables
+| File | Location | Purpose | Edit? |
+|------|----------|---------|-------|
+| `phpman.config.php` | webroot (or `~/.phpman/`) | **Your site-specific settings** — PHPMAN_HOME, API keys, debug mode, MCP auth | **Yes** |
+| `src/config.php` | `~/.phpman/src/` | **Internal defaults** — fallback values when `phpman.config.php` doesn't define something. Uses `defined()` guard so your settings always win. | No |
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CACHE_DIR` | _(auto)_ | SQLite cache directory (set via `phpman.config.php`) |
-| `LLM_API_URL` | _(empty)_ | OpenAI-compatible API endpoint (reserved for future use) |
-| `LLM_API_KEY` | _(empty)_ | API key for LLM provider (reserved for future use) |
-| `LLM_MODEL` | `gpt-4o-mini` | Model name (reserved for future use) |
+**How it works**: `phpMan.php` loads `phpman.config.php` first (your overrides), then `src/config.php` fills in defaults for anything you didn't set. They never conflict because `src/config.php` uses `if (!defined(...))` before every constant.
 
-### Server Configuration
+**Zero config**: If you don't create `phpman.config.php`, everything works with defaults — `PHPMAN_HOME` auto-detects, no LLM, no MCP auth.
 
-**Apache (.htaccess or VirtualHost):**
-```apache
-SetEnv LLM_API_KEY sk-ant-xxxxx
-SetEnv LLM_MODEL gpt-4o-mini
+**Minimal config** (production, 2 lines):
+```php
+define('PHPMAN_HOME', '/home/user/.phpman');
+define('PHPMAN_BASE_URL', 'https://www.example.com/phpMan.php');
 ```
 
-**Nginx (server block):**
-```nginx
-location ~ \.php$ {
-    fastcgi_param LLM_API_KEY sk-ant-xxxxx;
-    fastcgi_param LLM_MODEL gpt-4o-mini;
-    # ... other fastcgi params
-}
+**Full config** (with emoji enhancement + MCP auth):
+```php
+define('PHPMAN_HOME', '/home/user/.phpman');
+define('PHPMAN_BASE_URL', 'https://www.example.com/phpMan.php');
+define('LLM_API_KEY', 'sk-xxx');
+define('LLM_API_URL', 'https://api.openai.com/v1/chat/completions');
+define('LLM_MODEL', 'gpt-4o-mini');
+define('MCP_API_KEY', 'your-secret-key-here');
 ```
 
-**PHP-FPM (pool configuration):**
-```ini
-env[LLM_API_KEY] = sk-ant-xxxxx
-env[LLM_MODEL] = gpt-4o-mini
-```
-
-### Security Notes
-
-- **Never commit API keys to git.** Use environment variables (excluded from version control).
+See `phpman.config.php.example` for all available options with comments.
 - **Cache security:** SQLite cache DB files are stored outside webroot (via `CACHE_DIR` in `phpman.config.php`), not directly accessible via HTTP.
 
 ---
