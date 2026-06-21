@@ -38,7 +38,7 @@ Then open **http://localhost:45678/** in your browser.
 >
 > Batch LLM emoji enhancement (optional — requires API key):
 > ```bash
-> php cli/batch-enhance.php --help
+> php cli/batch-enhance.php man:ls,tar,grep
 > ```
 
 
@@ -856,8 +856,14 @@ php cli/build-index.php
 # Rebuild index (cron mode with timestamp)
 php cli/build-index.php --cron
 
-# Show batch enhance help
+# Enhance a single page (shorthand: mode:name)
+php cli/batch-enhance.php man:ls
+php cli/batch-enhance.php man:ls,tar,grep --rebuild
+
+# Batch enhance with full options
 php cli/batch-enhance.php --help
+php cli/batch-enhance.php --status
+php cli/batch-enhance.php --cached-first --skip-errors --yes
 ```
 
 Cron example (daily at 3am):

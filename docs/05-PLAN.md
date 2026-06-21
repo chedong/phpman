@@ -18,13 +18,13 @@ git push origin v3.6.3
 ## Version Roadmap
 
 ```
-v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 → v4.2 → v4.3 → v4.4 (planned)
+v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 → v4.2 → v4.3 → v4.4 (current)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 man/perldoc/info   pydoc3/ri        Config overridables   JSON canonical cache   batch PID/stop    Copy button UX   OKF Markdown   Code Split
 MCP Server         structured out   Underscore link fix   LLM emoji enhancement   XSS hardening     Prompt v2 tuning   PHPMAN_BASE_URL  thin dispatcher
 JSON API           Search cascade   man7.org fallback     Code split (design)     --parameter mode  ENHANCE_MAX_CHARS  URL hardening   src/ layout
-TLDR endpoint      FTS5 3-source    Docs restructured     i18n                   minimal webroot   TOC regex fix      format purity    bootstrap.php
-                                   Structure regr test   AI translation          install.sh MCP key Makefile version sync  ?build-index removal  ~80-line entry point
+TLDR endpoint      FTS5 3-source    Docs restructured     i18n                   minimal webroot   TOC regex fix      format purity    22 src files
+                                   Structure regr test   AI translation          install.sh MCP key Makefile version sync  ?build-index removal  shared bootstrap
 ```
 
 ---
@@ -233,104 +233,145 @@ while preserving a single-file web entry point. Minimize web output: only
 **Target file tree**:
 
 ```
-PHPMAN_HOME/                       # ~/.phpman (outside webroot)
-├── src/
-│   ├── bootstrap.php              # require all src files in dependency order
-│   ├── config.php                 # PHPMAN_* default constants (defined() guard)
-│   ├── util.php                   # h(), serverValue(), baseUrl(), scriptName(),
-│   │                              #   getSafeHost(), isLocalRequest(), requestValue()
-│   ├── log.php                    # phpManLog()
-│   ├── cache.php                  # cacheDb(), PageCache class, schema migrations
-│   ├── search_index.php           # rebuildSearchIndex(), expandNameForFts(),
-│   │                              #   buildFtsQuery(), indexAproposLines()
-│   ├── source_man.php             # getManPage(), getManIndex()
-│   ├── source_perldoc.php         # getPerldocPage()
-│   ├── source_info.php            # getInfoPage()
-│   ├── source_pydoc.php           # getPydocPage()
-│   ├── source_ri.php              # getRiPage()
-│   ├── source_search.php          # getSearchPage(), searchFtsBySource(),
-│   │                              #   parseAproposLines(), renderGroupedResults()
-│   ├── format_html.php            # formatManPerlDoc(), overstrike/ANSI → HTML
-│   ├── format_markdown.php        # formatManPerlDocToMarkdown(),
-│   │                              #   formatInlineMarkdown()
-│   ├── format_json.php            # formatToJSON(), detectHeadingType()
-│   ├── format_mcp.php             # formatForOutput() MCP wrapping
-│   ├── format_common.php          # cleanTerminalOutput(), shared helpers
-│   ├── batch-enhance.php                # enhanceManPage(), callLLM(), cleanEmojiHtml(),
-│   │                              #   getMdEnhancePrompt(), getHtmlEnhancePrompt()
-│   ├── tldr.php                   # fetchOfficialTldr(), tldr cache logic
-│   ├── web_header.php             # showHeader() — HTTP headers, SEO meta, CSS
-│   ├── web_footer.php             # showFooter() — footer HTML, JS, profiling
-│   ├── web_router.php             # URL dispatch: normalizeMode/Parameter/Section,
-│   │                              #   format negotiation, switch($mode) routing
-│   └── mcp_server.php             # handleMcp(), handleWellKnown()
-├── cli/                           # CLI tools (deploy alongside src/)
-│   ├── build-index.php
-│   ├── batch-enhance.php
-│   └── batch-enhance.php
-├── db/                            # SQLite databases
-└── logs/                          # Error logs, PID files
+repo/                               # Git repository root
+├── phpMan.php                      # Thin dispatcher (753 lines) — only PHP file in webroot
+├── phpman.css                      # Stylesheet
+│
+├── src/                            # 22 source files (5080 lines total, loaded by bootstrap.php)
+│   ├── bootstrap.php               # require all src files in dependency order
+│   ├── config.php                  # PHPMAN_* default constants (defined() guard)
+│   ├── util.php                    # h(), serverValue(), baseUrl(), scriptName(),
+│   │                               #   getSafeHost(), isLocalRequest(), requestValue(),
+│   │                               #   normalizeMode(), normalizeParameter(), normalizeSection()
+│   ├── log.php                     # phpManLog()
+│   ├── cache.php                   # cacheDb(), PageCache class, Profiler, cacheOrExecute()
+│   ├── search_index.php            # rebuildSearchIndex(), expandNameForFts(),
+│   │                               #   buildFtsQuery(), indexAproposLines(), parseApropos*()
+│   ├── format_common.php           # cleanTerminalOutput(), detectHeadingType() +
+│   │                               #   all detectL1/L2 helpers + extractFlagsFromSections()
+│   ├── format_html.php             # formatManPerlDoc(), renderTocSidebar(), addManPageToc()
+│   ├── format_markdown.php         # formatManPerlDocToMarkdown(), showCopyright()
+│   ├── format_json.php             # formatToJSON(), parseFlagJSON()
+│   ├── format_mcp.php              # formatForOutput(), formatMcpMarkdown(),
+│   │                               #   formatMcpStructured(), formatSearchResults()
+│   ├── source_man.php              # getManPage(), getManIndex()
+│   ├── source_perldoc.php          # getPerldocPage(), getPerldocIndex()
+│   ├── source_info.php             # getInfoPage(), getInfoIndex()
+│   ├── source_pydoc.php            # getPydocPage(), getPydocIndex(), getPydocSearchPage()
+│   ├── source_ri.php               # getRiPage(), getRiIndex(), getRiSearchPage()
+│   ├── source_search.php           # getSearchPage(), renderGroupedResults()
+│   ├── enhance.php                 # enhanceManPage(), callLLM(), cleanEmojiHtml(),
+│   │                               #   getMdEnhancePrompt(), getHtmlEnhancePrompt()
+│   ├── tldr.php                    # fetchOfficialTldr() + all TLDR parsers/formatters
+│   ├── mcp_server.php              # handleMcp(), handleWellKnown() + 8 MCP helpers
+│   ├── web_header.php              # showHeader() — HTTP headers, SEO meta, CSS
+│   └── web_footer.php              # showFooter(), showForm() — footer HTML, JS, profiling
+│
+├── cli/                            # CLI tools (deployed to PHPMAN_HOME alongside src/)
+│   ├── _bootstrap.php              # Shared bootstrap: PHP_SAPI guard + PHPMAN_HOME resolve
+│   │                               #   + phpman.config.php load + require phpMan.php
+│   ├── build-index.php             # php cli/build-index.php [--cron]
+│   └── batch-enhance.php           # php cli/batch-enhance.php [mode:names] [--status|...]
+│                                   #   Shorthand: php cli/batch-enhance.php man:ls,tar
+│
+├── test/                           # Test suite (require phpMan.php → all src/ loaded)
+│   ├── run_all.php                 # All 296 tests entry point
+│   ├── test_helper.php             # assert_equals/contains/match/not_*()
+│   ├── unit/                       # 8 unit test files
+│   ├── integration/                # 5 integration test files
+│   └── e2e/                        # 4 E2E test files (require network)
+│
+├── docs/                           # Design documentation
+├── Makefile                        # CI/CD pipeline
+├── .deploy.mk.example              # SSH config template (not committed)
+├── install.sh                      # One-line installer
+└── phpman.config.php.example       # User config template
 
-webroot/                           # Public-facing — minimal attack surface
-├── phpMan.php                     # Thin dispatcher (~80 lines)
-└── phpman.css                     # Stylesheet
+Deployed:
+  webroot:   phpMan.php  phpman.css  phpman.config.php
+  PHPMAN_HOME:  src/  cli/  db/  logs/  (phpman.config.php symlink)
 ```
 
-**Entry point (`phpMan.php`)**:
+**Entry point (`phpMan.php`, 753 lines)**:
 
 ```php
 <?php
-// Thin dispatcher — all logic in PHPMAN_HOME/src/
-define('PHPMAN_WEBROOT', __DIR__);
+// GPL header + RE_ASCII + version constants (lines 1-36)
+// ...
 
-// Load config (may override PHPMAN_HOME)
-$configFile = PHPMAN_WEBROOT . '/phpman.config.php';
-if (file_exists($configFile)) require $configFile;
+// Load site-specific config before defaults (define() guard pattern)
+$_config_file = __DIR__ . "/phpman.config.php";
+if (file_exists($_config_file)) { require $_config_file; }
+unset($_config_file);
 
-// Resolve PHPMAN_HOME
-if (!defined('PHPMAN_HOME') || PHPMAN_HOME === '') {
-    $home = getenv('HOME') ?: '/tmp';
-    define('PHPMAN_HOME', $home . '/.phpman');
-}
+// Load all source files (config defaults + functions + classes)
+// Resolve src/: dev (next to phpMan.php) or deployed (PHPMAN_HOME/src/)
+$srcDir = is_dir(__DIR__ . '/src') ? __DIR__ . '/src' : PHPMAN_HOME . '/src';
+require $srcDir . '/config.php';
+require $srcDir . '/bootstrap.php';
 
-// Load all source files (test mode: only define functions, skip dispatch)
-require PHPMAN_HOME . '/src/bootstrap.php';
+// Test mode: load functions only, skip dispatch
+if (defined("PHPMAN_TEST_MODE")) { return; }
 
 // CLI tools define PHPMAN_NO_CLI_DISPATCH to skip web dispatch
-if (defined('PHPMAN_NO_CLI_DISPATCH')) return;
+if (defined("PHPMAN_NO_CLI_DISPATCH")) return;
 
-// Dispatch web request
-require PHPMAN_HOME . '/src/web_router.php';
+// === Web dispatch (inline procedural code) ===
+// Format negotiation → PATH_INFO routing → switch($mode) → output
 ```
 
-**Dependency order** (`bootstrap.php`):
+**Dependency order** (`src/bootstrap.php`, 31 lines):
 
 ```php
 <?php
-// Load in dependency order: no circular dependencies
-require __DIR__ . '/config.php';        // constants first
-require __DIR__ . '/util.php';          // h(), serverValue() — used everywhere
-require __DIR__ . '/log.php';           // phpManLog()
-require __DIR__ . '/cache.php';         // cacheDb(), PageCache
-require __DIR__ . '/search_index.php';  // depends on cache.php
-require __DIR__ . '/format_common.php'; // shared formatting helpers
-require __DIR__ . '/format_html.php';   // depends on format_common.php
-require __DIR__ . '/format_markdown.php';
-require __DIR__ . '/format_json.php';
-require __DIR__ . '/format_mcp.php';
-require __DIR__ . '/source_man.php';    // depends on formatters
-require __DIR__ . '/source_perldoc.php';
-require __DIR__ . '/source_info.php';
-require __DIR__ . '/source_pydoc.php';
-require __DIR__ . '/source_ri.php';
-require __DIR__ . '/source_search.php';
-require __DIR__ . '/enhance.php';       // depends on sources + formatters
-require __DIR__ . '/tldr.php';
-require __DIR__ . '/mcp_server.php';
-require __DIR__ . '/web_header.php';
-require __DIR__ . '/web_footer.php';
-// web_router.php is loaded by phpMan.php after bootstrap
+$srcDir = __DIR__;
+
+require $srcDir . '/config.php';         // 0: constants (defined() guards)
+require $srcDir . '/util.php';           // 1: h(), baseUrl(), scriptName(), etc.
+require $srcDir . '/log.php';            // 1: phpManLog()
+require $srcDir . '/cache.php';          // 1: cacheDb(), PageCache, Profiler
+require $srcDir . '/search_index.php';   // 2: FTS5 indexing, apropos parsing
+require $srcDir . '/format_common.php';  // 2: cleanTerminalOutput(), detectHeadingType()
+require $srcDir . '/format_html.php';    // 3: formatManPerlDoc(), renderTocSidebar()
+require $srcDir . '/format_markdown.php';// 3: formatManPerlDocToMarkdown(), showCopyright()
+require $srcDir . '/format_json.php';    // 3: formatToJSON(), parseFlagJSON()
+require $srcDir . '/format_mcp.php';     // 3: formatForOutput(), formatMcp*()
+require $srcDir . '/source_man.php';     // 4: getManPage(), getManIndex()
+require $srcDir . '/source_perldoc.php'; // 4: getPerldocPage()
+require $srcDir . '/source_info.php';    // 4: getInfoPage()
+require $srcDir . '/source_pydoc.php';   // 4: getPydocPage()
+require $srcDir . '/source_ri.php';      // 4: getRiPage()
+require $srcDir . '/source_search.php';  // 4: getSearchPage()
+require $srcDir . '/enhance.php';        // 5: enhanceManPage(), callLLM()
+require $srcDir . '/tldr.php';           // 5: fetchOfficialTldr()
+require $srcDir . '/mcp_server.php';     // 6: handleMcp(), handleWellKnown()
+require $srcDir . '/web_header.php';     // 7: showHeader()
+require $srcDir . '/web_footer.php';     // 7: showFooter(), showForm()
+
+$PHPMAN_TITLE = PHPMAN_HOME_TITLE;
+$TOC_ITEMS = array();
 ```
+
+**Shared CLI bootstrap** (`cli/_bootstrap.php`, 28 lines):
+
+```php
+<?php
+if (PHP_SAPI !== 'cli') { http_response_code(400); die("CLI only\n"); }
+
+$config_file = __DIR__ . '/../phpman.config.php';
+if (file_exists($config_file)) { require $config_file; }
+
+if (!defined('PHPMAN_HOME') || PHPMAN_HOME === '') { /* resolve HOME */ }
+
+define('PHPMAN_NO_CLI_DISPATCH', true);
+require_once PHPMAN_HOME . '/phpMan.php';
+```
+
+**Note**: The web dispatch code (~700 lines) remains inline in `phpMan.php`.
+It is NOT a separate `web_router.php` file — keeping it inline means the
+entry point is self-contained for the web-accessible path, while all
+shared logic (functions, classes) lives in `src/`. The dispatch code
+calls functions loaded by bootstrap but is not itself required by anything.
 
 **Key design decisions**:
 

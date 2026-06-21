@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-phpMan is a single-file PHP web app (~5650 lines, `phpMan.php`) that wraps Unix `man`, `perldoc`, `info`, `pydoc3`, `ri`, and `apropos` commands into HTML, Markdown, JSON, and MCP responses. It also runs as an MCP Server for AI agent integration. CLI tools (search index rebuild, batch LLM enhancement) are in `cli/` and `cli/`.
+phpMan is a PHP web app (`phpMan.php` ~753 lines + 22 source files in `src/`) that wraps Unix `man`, `perldoc`, `info`, `pydoc3`, `ri`, and `apropos` commands into HTML, Markdown, JSON, and MCP responses. It also runs as an MCP Server for AI agent integration. CLI tools (search index rebuild, batch LLM enhancement) are in `cli/`.
 
 ## Build / test / deploy
 
@@ -81,7 +81,7 @@ flags are removed.
 
 ## Key design rules
 
-- **Single-file deployment by design** — no Composer, no autoload. Code splits (v3.0 roadmap) must preserve a single-file entry point.
+- **Single-file deployment by design** — one PHP file (`phpMan.php`) in webroot, 22 source files in `src/` outside webroot. No Composer, no autoload. Code structure preserves a single web-accessible entry point.
 - **XHTML 1.0 Transitional** — no HTML5 tags (`<nav>`, `<section>`), no `og:` meta tags. Use `<div id="...">` and `<p>` instead.
 - **Footer IP + UA display is intentional** — it's for spider/bot tracking in `showFooter()`. Do not remove it. See `docs/01-PRODUCT.md` for the full rationale.
 - **`?debug=1`** only shows sensitive details when `isLocalRequest()` returns true (REMOTE_ADDR is 127.0.0.1, ::1, or empty).
