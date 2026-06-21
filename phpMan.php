@@ -30,7 +30,7 @@ define('RE_ASCII', '[ -~]');
 define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 
 // #49: Named constants for magic numbers
-define('PHPMAN_VERSION', '4.4.0');        // current version (#67)
+define('PHPMAN_VERSION', '4.4.3');        // current version (#67)
 define('GIT_DESCRIBE', 'v4.1.1-10-gd2a3e77-dirty');         // replaced by make deploy/release with git describe --tags
 
 
