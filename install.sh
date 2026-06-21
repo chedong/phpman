@@ -164,25 +164,30 @@ do_deploy_webroot() {
 
     echo "→ Deploying phpMan to $target ..."
 
-    # Copy the single-file app + CSS
+    # Copy dispatcher + CSS (only 2 files in webroot)
     cp "$INSTALL_DIR/phpMan.php" "$target/"
     cp "$INSTALL_DIR/phpman.css" "$target/" 2>/dev/null || true
     chmod 644 "$target/phpMan.php" "$target/phpman.css" 2>/dev/null || true
 
-    # Generate config if not present
+    # Generate webroot config with MCP_API_KEY (does nothing if already exists)
     generate_config "$target" true
 
-    # Ensure data directory exists (outside webroot is handled by PHPMAN_HOME config)
+    # Data directories live outside webroot, under PHPMAN_HOME (~/.phpman)
     mkdir -p "$HOME/.phpman/db" "$HOME/.phpman/logs" "$HOME/.phpman/backups"
+
+    # Symlink webroot config ← PHPMAN_HOME for CLI tools (batch-enhance etc.)
+    ln -sf "$target/phpman.config.php" "$HOME/.phpman/phpman.config.php" 2>/dev/null || true
 
     echo ""
     echo -e "${GREEN}✓ Deployed to $target${NC}"
     echo "  phpMan.php → $target/phpMan.php"
     [ -f "$target/phpman.css" ] && echo "  phpman.css  → $target/phpman.css"
     echo "  config      → $target/phpman.config.php"
-    echo "  data dir    → $HOME/.phpman/"
+    echo "  data dir    → $HOME/.phpman/ (src/ cli/ db/ logs/)"
     echo ""
     echo "  Next: configure your web server to serve PHP from $target"
+    echo "  For correct link generation, edit $target/phpman.config.php"
+    echo "  and set:  define('PHPMAN_BASE_URL', 'https://your-domain.com/phpMan.php');"
 }
 
 # ─── Install ──────────────────────────────────────────────────────────────────
@@ -204,14 +209,26 @@ do_install() {
 
     cd "$INSTALL_DIR"
 
+    # 1. Generate config FIRST — phpMan.php and CLI tools need it
+    echo "→ Generating config..."
+    generate_config "$INSTALL_DIR"
+
+    # 2. Create data directories (db/, logs/, backups/) under PHPMAN_HOME
+    mkdir -p "$HOME/.phpman/db" "$HOME/.phpman/logs" "$HOME/.phpman/backups"
+
+    # 3. Build FTS5 search index (config must exist first for PHPMAN_HOME)
     echo "→ Building FTS5 search index (man + pydoc3 + ri) ..."
     echo "  (this may take 1–2 minutes on first run)"
     php cli/build-index.php
 
-    generate_config "$INSTALL_DIR"
-
     echo ""
     echo -e "${GREEN}✓ phpMan installed!${NC}"
+    echo "  phpMan.php → $INSTALL_DIR/phpMan.php"
+    echo "  config     → $INSTALL_DIR/phpman.config.php"
+    echo "  src/       → $INSTALL_DIR/src/ ($(ls $INSTALL_DIR/src/*.php 2>/dev/null | wc -l) files)"
+    echo "  cli/       → $INSTALL_DIR/cli/"
+    echo "  data dir   → $HOME/.phpman/"
+    echo ""
 
     # If --webroot specified, deploy there too
     if [ -n "$WEBROOT" ]; then
@@ -248,6 +265,7 @@ do_update() {
 
     echo ""
     echo -e "${GREEN}✓ phpMan updated!${NC}"
+    echo "  Version: $(git describe --tags --always 2>/dev/null || echo 'unknown')"
 
     if [ "$NO_SERVER" = false ]; then
         start_server
