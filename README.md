@@ -557,6 +557,15 @@ curl "https://www.chedong.com/phpMan.php/man/tar/1/markdown"
 
 ## What's New
 
+### v4.4 (2026-06-21) — Code Split & CLI Consolidation
+
+- **Code split** — 5660-line monolith → 753-line dispatcher + 22 source files in `src/`. Webroot contains only `phpMan.php` + `phpman.css` + `phpman.config.php`.
+- **CLI consolidation** — All CLI tools under `cli/`: `build-index.php`, `batch-enhance.php`. Shared bootstrap (`_bootstrap.php`). `enhance.php` merged into `batch-enhance.php` with shorthand syntax: `php cli/batch-enhance.php man:ls,tar`.
+- **Security hardening** — `isLocalRequest()` restricts to loopback only. `cleanEmojiHtml()` strips all event-handler quote variants. `getSearchPage()` gracefully falls back when cache DB unavailable.
+- **Markdown format purity** — Search results in Markdown use pure `- ` list items, no HTML wrappers.
+- **install.sh improvements** — Config generated from `.example` (single source of truth). `--update` checks for new config options. `PHPMAN_VERSION` written by `make tag`.
+- **MCP search** — `cli_search` returns structured results (mode/search/count/results) via both POST `/mcp` and GET `/search/{query}/mcp`.
+
 ### v3.6+ (2026-06-08)
 
 - **TLDR embedded in man pages** — TLDR is now integrated directly into man page rendering (HTML/Markdown/JSON/MCP), fetching from tldr-pages + cheat.sh with SQLite 7-day cache. The old `/tldr` route and `TLDR_CACHE_DIR` env vars are removed.

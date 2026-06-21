@@ -7,36 +7,37 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- `--help` CLI help for phpMan.php (`php phpMan.php --help`)
-- `cli/batch-enhance.php --status` — per-mode emoji enhancement progress
-- install.sh `--webroot` auto-generates `MCP_API_KEY` for public-facing deployments
-- install.sh `--help` pipe syntax examples (`curl ... | bash -s -- --webroot`)
+- **Code split (v4.4.0)** — 5660-line monolith split into 753-line dispatcher (`phpMan.php`) + 22 source files (`src/`). Webroot contains only 1 PHP file.
+- **CLI shared bootstrap (v4.4.2)** — `cli/_bootstrap.php`: PHPMAN_HOME resolve + phpMan.php load, shared by all CLI tools (removes ~20 lines of duplication per file).
+- **CLI positional shorthand** — `php cli/batch-enhance.php man:ls,tar` as shorthand for `--mode=man --parameter=ls;tar`.
+- **install.sh `check_config_updates()`** — detects new config keys in `.example` not present in user's `phpman.config.php` during `--update`.
+- **install.sh `--webroot` prompt** — suggests setting `PHPMAN_BASE_URL` after webroot deployment.
+- **First-deploy directory planning** — `docs/PLAN.md` §First Deploy Directory Layout: Path A (install.sh) vs Path B (Makefile), what creates each directory.
+- **Config minimization docs** — `docs/PLAN.md` §Config Minimization: zero-config (local `php -S`), minimal production (2 defines), +LLM (5 defines).
+- **phpman.config.php.example** — header comments show minimal/full config tiers.
 
 ### Removed
-- `rebuild-index.php` — superseded by `php phpMan.php --build-index`
-- Dead constant `PHPMAN_FLAG_DESC_MAX_LEN` (never referenced)
-- Old clone-based "Quick Start" from README (superseded by install.sh)
+- **`?build-index` web handler** — index rebuild is CLI-only via `php cli/build-index.php`.
+- **`tools/` directory** — `tools/batch_enhance.php` moved to `cli/batch-enhance.php`. `tools/` cleaned from servers + Makefile.
+- **`cli/enhance.php`** — merged into `cli/batch-enhance.php` with positional shorthand syntax.
 
 ### Changed
-- **README restructure**: install.sh first, MCP agent config moved lower
-- **Minimal webroot principle** (`docs/01-PRODUCT.md` §2.3): only phpMan.php + phpman.css + config in webroot
-- `docs/DESIGN.md` restructured into numbered docs (`01-PRODUCT.md`, `03-CACHE.md`, etc.)
-- install.sh URL: `main/` → `master/` branch
-- batch_enhance.php: no-arg defaults to `--help`
+- **install.sh config generation** — copies from `.example` (single source of truth) instead of inline heredoc.
+- **install.sh ordering** — generate config → mkdir data dirs → build-index → start_server (config exists before any phpMan.php loading).
+- **`make tag VERSION=x.y.z`** — writes `PHPMAN_VERSION` into `phpMan.php`, commits, tags, pushes in one step.
+- **Makefile deploy** — `scp -r src/` alongside `cli/` to PHPMAN_HOME. `rm -rf` stale `tools/` before deploy.
+- **baseUrl() + showHeader()** — use `scriptName()` not `$_SERVER['SCRIPT_NAME']` directly, respecting `PHPMAN_BASE_URL` in CLI/reverse-proxy.
+- **Schema migration** — cascading `if` blocks replace `if/elseif` so v1→v5 runs ALL intermediate migrations.
+- **`Exception` → `\Throwable`** in `indexAproposLines()` and `getSearchPage()` catch blocks.
 
 ### Fixed
-- FTS5 rebuild DROP TABLE fallback: if DROP fails, falls back to DELETE FROM
-- Cross-reference links for underscored names (e.g., `io_cancel(2)`) — SGR processing now runs before linkification so SGR-split names are rejoined before `name(section)` matching
-
-### Changed
-- Cache TTL: found entries from permanent to 7 days; expired entries auto-cleaned (1% chance per request)
-- `docs/CACHE_DESIGN.md` rewritten with actual v3.6.2 schema
-- **Man page fallback**: "not found locally" links now point to man7.org (canonical Linux man pages) instead of cheat.sh
-- **Naming consistency**: all global vars/constants use `PHPMAN_` prefix — `$PHP_MAN_WIDTH` → `$PHPMAN_WIDTH`, `$PHP_MAN_TITLE` → `$PHPMAN_TITLE`, internal constants (`TOC_LINE_THRESHOLD`, `GZIP_MIN_BYTES`, `FLAG_DESC_MAX_LEN`, `TLDR_MAX_EXAMPLES`) also renamed
-- **Config overridable**: `PHPMAN_WIDTH`, `PHPMAN_TOC_THRESHOLD`, `PHPMAN_GZIP_MIN_BYTES`, `PHPMAN_TLDR_MAX_EXAMPLES`, `PHPMAN_HOME_TITLE`, `PHPMAN_PROJECT_NAME` now use `defined()` guard pattern — overridable via `phpman.config.php`
-- `$GLOBALS['PHPMAN_WIDTH']` → direct constant `PHPMAN_WIDTH` usage
-- `$site_name` → `PHPMAN_PROJECT_NAME` (define)
-- Visible branding: `phpMan` → `phpman` in H1 breadcrumb, site_name, footer
+- **MCP search (v4.4.3)** — `cli_search` returns structured search results (mode=search, results/count) instead of empty man-page structure. Root cause: double `formatForOutput()` wrapping.
+- **Search fallback (#152)** — `getSearchPage()` checks `cacheDb()` for null, throws RuntimeException to fall through to apropos.
+- **XSS sanitizer (#155)** — `cleanEmojiHtml()` strips single-quoted and unquoted event handlers (`onclick='...'`, `onclick=...`) plus single-quoted `javascript:` URIs.
+- **isLocalRequest (#154)** — restricts to loopback only (127.0.0.1, ::1, empty). RFC1918 private network IPs no longer treated as trusted local.
+- **batch_enhance.php failure counter (#158)** — independent `mdFailures`/`htmlFailures` counters per format; single-format failures correctly trigger abort.
+- **Markdown search results** — `getSearchPage()` returns pure Markdown list items (`- [name](url)`) instead of `<ul>`/`<li>` HTML wrappers.
+- **Accidentally committed `.phpman-test/db/`** — removed from git tracking, added to `.gitignore`. Stale `tools/` cleaned from staging + production servers.
 
 ## [3.6.1] — 2026-06-08
 
