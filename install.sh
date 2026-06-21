@@ -117,20 +117,22 @@ check_config_updates() {
         return
     fi
 
-    # Extract define('KEY' names from .example
+    # Extract define('KEY' names from .example — robust against multi-line
+    # comments. Uses sed to find all define() calls (commented or not).
     local missing=""
-    while IFS= read -r line; do
-        # Match both // define('KEY' and define('KEY' patterns
-        local key; key=$(echo "$line" | sed -n "s/.*define('\([A-Z_][A-Z_0-9]*\)'.*/\1/p")
-        if [ -n "$key" ] && ! grep -q "define('$key'" "$config_file"; then
-            local comment; comment=$(echo "$line" | sed 's/^[[:space:]]*\/\/[[:space:]]*//' | sed 's/^[[:space:]]*//')
+    while IFS= read -r key; do
+        [ -z "$key" ] && continue
+        if ! grep -q "define('$key'" "$config_file"; then
+            # Find the first comment line mentioning this key in .example
+            local hint; hint=$(grep -B5 "define('$key'" "$example" | grep '//' | tail -1 | sed 's/^[[:space:]]*\/\/[[:space:]]*//')
+            [ -z "$hint" ] && hint="$key"
             if [ -z "$missing" ]; then
-                missing="$key — $comment"
+                missing="$key — $hint"
             else
-                missing="$missing"$'\n'"        $key — $comment"
+                missing="$missing"$'\n'"        $key — $hint"
             fi
         fi
-    done < "$example"
+    done < <(sed -n "s/.*define('\([A-Z_][A-Z_0-9]*\)'.*/\1/p" "$example" | sort -u)
 
     if [ -n "$missing" ]; then
         echo ""

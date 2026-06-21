@@ -65,8 +65,6 @@ if ($posParamList !== '' && !isset($opts['parameter'])) {
     $opts['parameter'] = str_replace(',', ';', $posParamList); // comma → semicolon
 }
 
-$opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast']);
-
 // No options → show help
 $hasActionOpt = false;
 foreach (['help','h','yes','y','dry-run','status','stop'] as $k) {

@@ -35,8 +35,6 @@ function formatSearchResults(array $results, string $parameter, string $section,
     // HTML output
     if ($format === 'html') {
         $rendered = renderGroupedResults($results, $scriptName);
-        if ($rendered['sidebar'] !== '') {
-        }
         return $rendered['html'];
     }
 

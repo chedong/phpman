@@ -1,23 +1,13 @@
 <?php
-// ASCII character classes for overstrike pattern matching:
-// RE_ASCII — plain printable ASCII, for raw terminal output (cleanTerminalOutput)
-// RE_ASCII_SAFE — printable + placeholder bytes \x05\x06\x07 for &<>, used after
-//                 formatManPerlDoc() replaces &<> with placeholders
-define('RE_ASCII', '[ -~]');
-define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
-
-// #49: Named constants for magic numbers
-define('PHPMAN_VERSION', '3.7.12');        // current version (#67)
-define('GIT_DESCRIBE', 'v4.1.1-10-gd2a3e77-dirty');         // replaced by make deploy/release with git describe --tags
-
-
 // --- Shared helper functions (#44: DRY refactoring) ---
 // --- Load site-specific config (phpman.config.php) ---
 // Uses define() pattern like WordPress wp-config.php — constants defined
 // in phpman.config.php override the defaults below.
-$_config_file = dirname(__FILE__) . '/phpman.config.php';
+// Config file is in the project root, not src/. phpMan.php loads it first,
+// but CLI tools may require config.php before phpMan.php is in scope.
+$_config_file = dirname(__DIR__) . '/phpman.config.php';
 if (file_exists($_config_file)) {
-    require $_config_file;
+    require_once $_config_file;
 }
 
 // Default terminal width for man/perldoc output (#49: character width, used as MANROFFOPT -rLL=NNNn).

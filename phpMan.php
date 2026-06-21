@@ -43,7 +43,7 @@ unset($_config_file);
 // Load all source files (config defaults + functions + classes)
 // Resolve src/: dev (next to phpMan.php) or deployed (PHPMAN_HOME/src/)
 $srcDir = is_dir(__DIR__ . '/src') ? __DIR__ . '/src' : PHPMAN_HOME . '/src';
-require $srcDir . '/config.php';
+require_once $srcDir . '/config.php';
 require $srcDir . '/bootstrap.php';
 
 // Test mode: load functions only, skip dispatch
@@ -213,16 +213,23 @@ $section = normalizeSection($section);
 Profiler::mark('parse');
 
 // ETag/304 check before exec-heavy dispatch (#83)
-// Key-based ETag: include cache timestamp so re-indexing invalidates stale ETags
+// Key-based ETag: include cache timestamp so re-indexing invalidates stale ETags.
+// #175: Also include enhanced HTML cache status — batch-enhance can generate
+// emoji_html cache without changing search_index_updated, so the ETag must
+// reflect whether enhanced content is available.
 if ($format === "html" && $mode !== "mcp" && $mode !== "copyright" && $mode !== "search" && $parameter !== "") {
     $cacheAge = '';
+    $hasEnhanced = false;
     try {
         $db = cacheDb();
         if ($db) {
             $cacheAge = $db->querySingle("SELECT value FROM meta WHERE key = 'search_index_updated'") ?: '';
+            // Check if emoji_html cache exists for this page — single lookup
+            $ec = $db->querySingle("SELECT 1 FROM cache WHERE mode = :m AND name = :n AND section = '' AND format = 'emoji_html' AND status = 'found'");
+            $hasEnhanced = ($ec !== null);
         }
     } catch (\Throwable $ignored) {}
-    $etag = '"' . md5($mode . '/' . $parameter . '/' . $section . '/' . PHPMAN_VERSION . '/' . $cacheAge) . '"';
+    $etag = '"' . md5($mode . '/' . $parameter . '/' . $section . '/' . PHPMAN_VERSION . '/' . $cacheAge . '/' . ($hasEnhanced ? 'enh' : 'raw')) . '"';
     $ifNoneMatch = serverValue("HTTP_IF_NONE_MATCH", "");
     if ($ifNoneMatch === $etag) {
         http_response_code(304);

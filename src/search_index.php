@@ -101,55 +101,6 @@ function mergeSearchResults(array $rows): array {
 }
 
 /**
- * Perform FTS5 full-text search.
- * Returns array of result rows, or empty array on failure/FTS5 unavailability.
- *
- * @param string $parameter  Search query
- * @param string $section    Optional section filter (e.g. '1', '8')
- * @param int    $limit      Max results (default 50)
- * @return array
- */
-function searchFts(string $parameter, string $section = '', int $limit = 50): array {
-    try {
-        $db = cacheDb();
-
-        // Check if search_fts exists
-        $tables = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name='search_fts'");
-        if (!$tables->fetchArray()) {
-            return []; // FTS5 not available — caller will fall back
-        }
-
-        $ftsQuery = buildFtsQuery($parameter);
-        if ($ftsQuery === '') {
-            return [];
-        }
-
-        // Try AND query first (default for multi-word: all terms required)
-        $results = searchFtsQuery($db, $ftsQuery, $parameter, $section, $limit);
-
-        // Multi-word fallback: if AND returned nothing, try OR so that
-        // "wget request" still matches entries containing just "wget" or "request".
-        // This avoids falling to expensive apropos for partial matches.
-        // Note: buildFtsQuery outputs {"term1"* AND "term2"*} — "* AND " not " AND ".
-        // Check if the FTS query has multiple terms (contains AND), meaning
-        // there's an OR fallback opportunity regardless of the original parameter's
-        // punctuation. buildFtsQuery normalizes Chinese punctuation internally,
-        // so "URL、curl" also produces "term1"* AND "term2"*.
-        if (empty($results) && strpos($ftsQuery, ' AND ') !== false) {
-            $orQuery = str_replace('"* AND "', '"* OR "', $ftsQuery);
-            if ($orQuery !== $ftsQuery) {
-                $results = searchFtsQuery($db, $orQuery, $parameter, $section, $limit);
-            }
-        }
-
-        return $results;
-    } catch (\Throwable $e) {
-        phpManLog("FTS5 search error: " . $e->getMessage());
-        return []; // Graceful fallback
-    }
-}
-
-/**
  * Search FTS5 index for pydoc or ri entries matching a query.
  * Returns results in the format expected by the search cascade:
  *   - 'json': array of ['name' => ..., 'description' => ..., 'link' => ...]
@@ -233,8 +184,7 @@ function searchFtsBySource(string $parameter, string $source, string $format) {
 /**
  * Execute a single FTS5 query and return merged results.
  *
- * Extracted so searchFts() can try multiple query strategies (AND, OR)
- * without duplicating the SQL setup.
+ * Used by the FTS5 search path (getSearchPage) for AND/OR query strategies.
  */
 function searchFtsQuery(SQLite3 $db, string $ftsQuery, string $parameter, string $section, int $limit): array {
     // COALESCE(m.name, s.name) AS display_name: prefer original name from meta
@@ -469,23 +419,27 @@ function rebuildSearchIndex(): string {
             return "ERROR: FTS5 not available (search_fts table does not exist).\n";
         }
 
-        // Clear existing search index: DROP+CREATE is much faster than DELETE FROM
-        // on FTS5 (DELETE rebuilds internal indices per row).
-        // Fall back to DELETE FROM if DROP fails (e.g., DB locked by another connection).
-        $dropped = false;
+        // #180: rename+rebuild+drop pattern — safer than DROP+CREATE.
+        // DDL (ALTER/CREATE) auto-commits in SQLite, so these run outside
+        // the INSERT transaction. If the process is killed mid-rebuild,
+        // search_fts_old preserves the previous index; searches keep working.
+        // On next run, the old table is recovered and rebuild starts fresh.
+
+        // 1. Clean up leftover from a previous interrupted run (if any)
+        try { $db->exec("DROP TABLE IF EXISTS search_fts_old"); }
+        catch (\Throwable $ignored) {}
+
+        // 2. Rename current → old
+        $hadExisting = false;
         try {
-            $db->exec("DROP TABLE IF EXISTS search_fts");
-            $dropped = true;
+            $db->exec("ALTER TABLE search_fts RENAME TO search_fts_old");
+            $hadExisting = true;
         } catch (\Throwable $e) {
-            phpManLog("DROP search_fts: " . $e->getMessage());
+            // First run or search_fts doesn't exist — will be created below
+            phpManLog("rebuildSearchIndex: no existing search_fts to rename");
         }
-        if (!$dropped) {
-            try {
-                $db->exec("DELETE FROM search_fts");
-            } catch (\Throwable $e) {
-                phpManLog("DELETE search_fts: " . $e->getMessage());
-            }
-        }
+
+        // 3. Create fresh table
         try {
             $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS search_fts
                        USING fts5(
@@ -494,9 +448,18 @@ function rebuildSearchIndex(): string {
                            prefix='1,2,3'
                        )");
         } catch (\Throwable $e) {
-            // FTS5 not available — falls back to apropos
+            // FTS5 not available — restore old table if we renamed one
+            if ($hadExisting) {
+                try { $db->exec("DROP TABLE IF EXISTS search_fts"); }
+                    catch (\Throwable $ignored) {}
+                try { $db->exec("ALTER TABLE search_fts_old RENAME TO search_fts"); }
+                    catch (\Throwable $ignored) {}
+            }
             return "ERROR: FTS5 not available, cannot create search_fts.\n";
         }
+
+        // 4. Clear meta + page cache (these changes stay even on rollback;
+        //    the INSERT transaction below only covers FTS data)
         $db->exec("DELETE FROM search_index_meta");
         $output[] = "Cleared existing search index.\n";
 
@@ -507,7 +470,7 @@ function rebuildSearchIndex(): string {
         $db->exec("DELETE FROM cache WHERE format NOT IN ('emoji_md', 'emoji_html')");
         $output[] = "Cleared page cache (emoji enhancements preserved).\n";
 
-        // Wrap inserts in a transaction to prevent WAL bloat
+        // 5. Wrap INSERTs in a transaction to prevent WAL bloat
         $db->exec("BEGIN IMMEDIATE");
 
         $logInterval = 500; // Report progress every N entries
@@ -720,6 +683,10 @@ function rebuildSearchIndex(): string {
         // COMMIT the transaction
         $db->exec("COMMIT");
 
+        // Drop the old table — rebuild succeeded, old data is no longer needed
+        try { $db->exec("DROP TABLE IF EXISTS search_fts_old"); }
+        catch (\Throwable $ignored) {}
+
         // Update meta
         $stmtMeta = $db->prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (:key, :value)");
         $stmtMeta->bindValue(':key', 'search_index_count', SQLITE3_TEXT);
@@ -733,6 +700,14 @@ function rebuildSearchIndex(): string {
     } catch (\Throwable $e) {
         phpManLog("rebuildSearchIndex: " . $e->getMessage());
         try { $db->exec("ROLLBACK"); } catch (\Throwable $ignored) {}
+        // #180: Restore old table if rebuild failed — searches keep working
+        try {
+            $hasOld = $db->querySingle("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='search_fts_old'");
+            if ($hasOld) {
+                $db->exec("DROP TABLE IF EXISTS search_fts");
+                $db->exec("ALTER TABLE search_fts_old RENAME TO search_fts");
+            }
+        } catch (\Throwable $ignored) {}
         return "ERROR: " . $e->getMessage() . "\n";
     }
 }

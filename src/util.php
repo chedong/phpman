@@ -122,7 +122,5 @@ function normalizeSection ($section): string {
     return $section;
 }
 
-/**
- * Get or create the SQLite cache database connection.
- * Uses static $db for connection reuse within a single request.
- */
+
+// normalizeMode: validate and normalize the display mode parameter

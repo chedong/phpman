@@ -62,6 +62,9 @@ DEMO_HOME    := $(shell ssh -p $(DEMO_PORT) $(DEMO_HOST) 'echo $$HOME')
 test:
 	php -l $(FILE)
 	php -l phpman.config.php.example
+	@for f in src/*.php; do php -l "$$f" >/dev/null || exit 1; done
+	@for f in cli/*.php; do php -l "$$f" >/dev/null || exit 1; done
+	@echo "All PHP files pass syntax check"
 
 # ─── Staging ───
 
@@ -207,7 +210,7 @@ tag:
 		exit 1; \
 	fi
 	@# Update PHPMAN_VERSION in phpMan.php and commit before tagging
-	@sed -i '' "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(VERSION)');/" $(FILE)
+	@sed -i.bak "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(VERSION)');/" $(FILE) && rm -f $(FILE).bak
 	@git add $(FILE)
 	@git commit -m "v$(VERSION): bump PHPMAN_VERSION" || true
 	@git tag -a "v$(VERSION)" -m "v$(VERSION)"
