@@ -27,3 +27,4 @@ phpman.config.php
 composer.json
 composer.lock
 vendor/
+.phpman-test/
