@@ -508,6 +508,103 @@ No manual init needed. cacheDb() lazily bootstraps everything on first use.
 The only offline step: cli/build-index.php (populates FTS5 search index).
 ```
 
+#### First Deploy Directory Layout
+
+Two deployment paths. Both result in the same runtime structure:
+
+```
+# Path A: install.sh (user self-install)
+git clone → ~/.phpman/                    # repo = PHPMAN_HOME
+~/.phpman/src/        ← from repo
+~/.phpman/cli/        ← from repo
+~/.phpman/db/         ← install.sh: mkdir -p
+~/.phpman/logs/       ← install.sh: mkdir -p
+~/.phpman/backups/    ← install.sh: mkdir -p
+
+  --webroot /var/www/html:
+    /var/www/html/phpMan.php          ← cp from ~/.phpman
+    /var/www/html/phpman.css          ← cp from ~/.phpman
+    /var/www/html/phpman.config.php   ← generated from .example
+
+# Path B: Makefile (maintainer deploy)
+scp phpMan.php + phpman.css → webroot
+scp -r src/ cli/ → PHPMAN_HOME
+db/ logs/ backups/           ← auto-created by cacheDb() on first request
+phpman.config.php            ← created by Makefile from .example on first deploy
+```
+
+**Directories and what creates them:**
+
+| Directory | Path A (install.sh) | Path B (Makefile) |
+|---|---|---|
+| `src/` | git clone | `scp -r src/` |
+| `cli/` | git clone | `scp -r cli/` |
+| `db/` | `mkdir -p` | cacheDb() auto-create |
+| `logs/` | `mkdir -p` | cacheDb() auto-create |
+| `backups/` | `mkdir -p` | `make release` (first backup) |
+
+**webroot contains only 3 files** (minimal attack surface):
+```
+/var/www/html/
+├── phpMan.php           # Thin dispatcher — only PHP file served by HTTP
+├── phpman.css           # Stylesheet
+└── phpman.config.php    # User config (define() overrides)
+```
+
+#### Config Minimization
+
+Config is in **one file**: `phpman.config.php` (in webroot, symlinked to PHPMAN_HOME).
+Defaults are in `src/config.php` — user config only needs to override what differs.
+
+**Zero config** — works for local dev:
+```bash
+php -S localhost:45678 phpMan.php
+# → http://localhost:45678/phpMan.php
+# All defaults: PHPMAN_HOME=~/.phpman, no LLM, no MCP auth
+```
+
+**Minimal production** (2 defines):
+```php
+define('PHPMAN_HOME', '/home/user/.phpman');
+define('PHPMAN_BASE_URL', 'https://www.example.com/phpMan.php');
+```
+
+**Add emoji enhancement** (+3 defines):
+```php
+define('LLM_API_KEY', 'sk-xxx');
+define('LLM_API_URL', 'https://api.openai.com/v1/chat/completions');
+define('LLM_MODEL', 'gpt-4o-mini');
+```
+
+**Add MCP authentication** (+1 define):
+```php
+define('MCP_API_KEY', 'your-secret-key-here');
+```
+
+**install.sh config generation**: copies `phpman.config.php.example` → uncomments
+`PHPMAN_HOME` with detected home path. If `--webroot` flag is passed, also generates
+a random 32-char `MCP_API_KEY`. All other settings stay commented — user uncomments
+as needed. Single source of truth: `.example` file defines the canonical config format.
+
+**Config overridable constants** (all use `defined()` guard in `src/config.php`):
+
+| Constant | Default | Required? |
+|---|---|---|
+| `PHPMAN_HOME` | `~/.phpman` | Only for non-standard home |
+| `PHPMAN_BASE_URL` | auto-detect | Production (for correct CLI links) |
+| `PHPMAN_WIDTH` | 100 | No |
+| `PHPMAN_TOC_THRESHOLD` | 80 | No |
+| `PHPMAN_TLDR_MAX_EXAMPLES` | 16 | No |
+| `PHPMAN_ENHANCE_MAX_CHARS` | 32000 | No |
+| `LLM_API_KEY` | `''` | For emoji enhancement |
+| `LLM_API_URL` | `''` | For emoji enhancement |
+| `LLM_MODEL` | `''` | For emoji enhancement |
+| `LLM_MAX_TOKENS` | 4096 | No |
+| `MCP_API_KEY` | `''` | For MCP auth |
+| `PHPMAN_DEBUG` | false | No |
+| `PHPMAN_HOME_TITLE` | `'phpman - Linux...'` | No |
+| `PHPMAN_PROJECT_NAME` | `'phpman'` | No |
+
 **.deploy.mk role**: maintainer-only SSH config (never committed, never deployed).
 Provides server addresses, paths, log locations to Makefile:
 
