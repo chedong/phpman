@@ -216,7 +216,24 @@ function getSearchPage (string $parameter, string $section = "", string $format 
 
     // json / mcp output
     if ($format === "json" || $format === "mcp") {
-        // Collect pydoc/ri results from FTS5 (same for json and mcp)
+        $results = array();
+        $pydoc_results = array();
+        $ri_results = array();
+        // Parse man page results from $lines (supports multi-name BSD lines)
+        foreach ($lines as $line) {
+            $entries = parseAproposLines($line);
+            foreach ($entries as [$name, $section_num, $description]) {
+            $is_perl = preg_match('/:/', $name);
+            $link_mode = $is_perl ? "perldoc" : "man";
+            $results[] = array(
+                "name" => $name,
+                "description" => $description,
+                "section" => $section_num,
+                "link" => $script_name . "/" . $link_mode . "/" . urlencode($name) . "/" . urlencode($section_num) . "/json",
+            );
+            }
+        }
+        // Merge FTS5 pydoc/ri results
         foreach ($pydocFtsLines as $pl) {
             if (preg_match('/^(.+)\s+\(pydoc\)\s+—\s+(.+)$/', $pl, $m)) {
                 $pydoc_results[] = array(
