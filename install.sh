@@ -108,6 +108,40 @@ run_checks() {
 
 # ─── Config Generator ─────────────────────────────────────────────────────────
 
+# Compare user config against .example — report new config keys added since install
+check_config_updates() {
+    local config_file="${1:-$INSTALL_DIR/phpman.config.php}"
+    local example="$INSTALL_DIR/phpman.config.php.example"
+
+    if [ ! -f "$config_file" ] || [ ! -f "$example" ]; then
+        return
+    fi
+
+    # Extract define('KEY' names from .example
+    local missing=""
+    while IFS= read -r line; do
+        # Match both // define('KEY' and define('KEY' patterns
+        local key; key=$(echo "$line" | sed -n "s/.*define('\([A-Z_][A-Z_0-9]*\)'.*/\1/p")
+        if [ -n "$key" ] && ! grep -q "define('$key'" "$config_file"; then
+            local comment; comment=$(echo "$line" | sed 's/^[[:space:]]*\/\/[[:space:]]*//' | sed 's/^[[:space:]]*//')
+            if [ -z "$missing" ]; then
+                missing="$key — $comment"
+            else
+                missing="$missing"$'\n'"        $key — $comment"
+            fi
+        fi
+    done < "$example"
+
+    if [ -n "$missing" ]; then
+        echo ""
+        echo -e "${YELLOW}── New config options available (not in your phpman.config.php) ──${NC}"
+        echo "  $missing"
+        echo ""
+        echo "  → Compare: diff $config_file $example"
+        echo ""
+    fi
+}
+
 generate_config() {
     local target_dir="${1:-$INSTALL_DIR}"
     local config_file="$target_dir/phpman.config.php"
@@ -255,6 +289,9 @@ do_update() {
     cd "$INSTALL_DIR"
     echo "→ Pulling latest code..."
     git pull --ff-only
+
+    # Check for new config options in .example not in user's config
+    check_config_updates "$INSTALL_DIR/phpman.config.php"
 
     echo "→ Rebuilding FTS5 search index..."
     php cli/build-index.php
