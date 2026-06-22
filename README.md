@@ -550,7 +550,7 @@ curl "https://www.chedong.com/phpMan.php/man/tar/1/markdown"
 
 ### v4.4 (2026-06-21) — Code Split & CLI Consolidation
 
-- **Code split** — 5660-line monolith → 753-line dispatcher + 22 source files in `src/`. Webroot contains only `phpMan.php` + `phpman.css` + `phpman.config.php`.
+- **Code split** — 5660-line monolith → 753-line dispatcher + 22 source files in `src/`. Webroot contains only `phpMan.php` + `phpman.css` + `phpman.js` + `phpman.config.php`.
 - **CLI consolidation** — All CLI tools under `cli/`: `build-index.php`, `batch-enhance.php`. Shared bootstrap (`_bootstrap.php`). `enhance.php` merged into `batch-enhance.php` with shorthand syntax: `php cli/batch-enhance.php man:ls,tar`.
 - **Security hardening** — `isLocalRequest()` restricts to loopback only. `cleanEmojiHtml()` strips all event-handler quote variants. `getSearchPage()` gracefully falls back when cache DB unavailable.
 - **Markdown format purity** — Search results in Markdown use pure `- ` list items, no HTML wrappers.

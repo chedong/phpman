@@ -154,7 +154,7 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 ### v4.2 — UX Polish & Prompt Tuning (2026-06-18)
 
 **Code block copy button**:
-- JS in `showFooter()` wraps all `#content-wrap pre` in `<div class="code-block">` with `📋 Copy` button top-right
+- External JS `phpman.js` (loaded via `<script src="phpman.js">` in `showFooter()`) wraps all `#content-wrap pre` in `<div class="code-block">` with `📋 Copy` button top-right
 - Click copies code text to clipboard, shows `✓ Copied!` feedback (1.5s)
 - Tokyo Night styling: `#1f2335` background, `italic` font, `#292e42` border, `border-radius:4px`
 - Button visible on hover (desktop), always visible (mobile)
@@ -265,7 +265,7 @@ repo/                               # Git repository root
 │   ├── tldr.php                    # fetchOfficialTldr() + all TLDR parsers/formatters
 │   ├── mcp_server.php              # handleMcp(), handleWellKnown() + 8 MCP helpers
 │   ├── web_header.php              # showHeader() — HTTP headers, SEO meta, CSS
-│   └── web_footer.php              # showFooter(), showForm() — footer HTML, JS, profiling
+│   └── web_footer.php              # showFooter(), showForm() — footer HTML, profiling display
 │
 ├── cli/                            # CLI tools (deployed to PHPMAN_HOME alongside src/)
 │   ├── _bootstrap.php              # Shared bootstrap: PHP_SAPI guard + PHPMAN_HOME resolve

@@ -7,9 +7,9 @@
 #
 # Usage:
 #   make test
-#   make staging                  # staging: push code + CSS only
+#   make staging                  # staging: push code + CSS/JS only
 #   make staging-reindex          # staging: push code + rebuild search index
-#   make release                  # production: push code + CSS only
+#   make release                  # production: push code + CSS/JS only
 #   make release-reindex          # production: push code + rebuild search index
 #   make reindex                  # production: rebuild search index only (no code push)
 #   make reindex-staging          # staging: rebuild search index only
@@ -31,7 +31,7 @@
 #     - System man/pydoc/ri docs were installed/updated (new content needs indexing)
 #
 #   Do NOT need reindex (plain release is enough):
-#     - HTML/CSS/UI changes
+#     - HTML/CSS/JS/UI changes
 #     - Formatter output changes (HTML/Markdown/JSON/MCP)
 #     - MCP/JSON wrapper logic changes
 #     - PageCache TTL, logging, backup, config directory changes
@@ -49,6 +49,7 @@ endif
 
 FILE ?= phpMan.php
 CSS_FILE ?= phpman.css
+JS_FILE  ?= phpman.js
 
 .PHONY: test staging staging-reindex release release-reindex reindex reindex-staging rollback verify logcheck package upload-release clean cache-flush cache-flush-staging cache-stats tag _deploy-code _release-code
 
@@ -88,10 +89,11 @@ _deploy-code:
 	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) | \
 		ssh -p $(TEST_PORT) $(TEST_HOST) "cat > $(TEST_PATH)/$(FILE)"; \
 	scp -P $(TEST_PORT) $(CSS_FILE) $(TEST_HOST):$(TEST_PATH)/$(CSS_FILE); \
+	scp -P $(TEST_PORT) $(JS_FILE) $(TEST_HOST):$(TEST_PATH)/$(JS_FILE); \
 	ssh -p $(TEST_PORT) $(TEST_HOST) "rm -rf \$$HOME/.phpman_test/tools/"; \
 		scp -P $(TEST_PORT) -r cli $(TEST_HOST):$(STAGING_HOME)/.phpman_test/; \
 	scp -P $(TEST_PORT) -r src $(TEST_HOST):$(STAGING_HOME)/.phpman_test/; \
-	ssh -p $(TEST_PORT) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE) && chmod +x \$$HOME/.phpman_test/cli/*.php"; \
+	ssh -p $(TEST_PORT) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE) $(TEST_PATH)/$(JS_FILE) && chmod +x \$$HOME/.phpman_test/cli/*.php"; \
 		ssh -p $(TEST_PORT) $(TEST_HOST) "ln -sf $(TEST_PATH)/phpman.config.php \$$HOME/.phpman_test/phpman.config.php"; \
 		ssh -p $(TEST_PORT) $(TEST_HOST) "ln -sf $(TEST_PATH)/$(FILE) \$$HOME/.phpman_test/$(FILE)"
 	@echo ""
@@ -130,10 +132,11 @@ _release-code:
 	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) | \
 		ssh -p $(DEMO_PORT) $(DEMO_HOST) "cat > $(DEMO_PATH)/$(FILE)"; \
 	scp -P $(DEMO_PORT) $(CSS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(CSS_FILE); \
+	scp -P $(DEMO_PORT) $(JS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(JS_FILE); \
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) "rm -rf \$$HOME/.phpman/tools/"; \
 		scp -P $(DEMO_PORT) -r cli $(DEMO_HOST):$(DEMO_HOME)/.phpman/; \
 	scp -P $(DEMO_PORT) -r src $(DEMO_HOST):$(DEMO_HOME)/.phpman/; \
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(CSS_FILE) && chmod +x \$$HOME/.phpman/cli/*.php"; \
+	ssh -p $(DEMO_PORT) $(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(CSS_FILE) $(DEMO_PATH)/$(JS_FILE) && chmod +x \$$HOME/.phpman/cli/*.php"; \
 	echo ""; \
 	echo "=== Deployed to production ==="; \
 	echo "$(DEMO_URL)"; \

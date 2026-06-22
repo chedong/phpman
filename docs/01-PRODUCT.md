@@ -42,7 +42,7 @@ phpMan is deployed as a single `phpMan.php` file by design:
 
 ### 2.3 Minimal Webroot (Public File Surface)
 
-phpMan's webroot should contain **only the minimum files necessary for public HTTP service**: `phpMan.php`, `phpman.css`, and optionally `phpman.config.php`.
+phpMan's webroot should contain **only the minimum files necessary for public HTTP service**: `phpMan.php`, `phpman.css`, `phpman.js`, and optionally `phpman.config.php`.
 
 **What must NOT be in the webroot**:
 
@@ -54,7 +54,7 @@ phpMan's webroot should contain **only the minimum files necessary for public HT
 | `.deploy.mk` | Deployment credentials — SSH host/port/path, already gitignored |
 | `.git/` | Git metadata — source history, commit messages, working tree |
 
-**Principle**: Any file in the webroot is one misconfiguration away from being publicly readable. CLI tools, tests, and internal documentation belong in the install directory (`~/.phpman/`) or the git clone, never in the webroot. Deployment scripts (Makefile, install.sh) must only copy the allowlist of public files (`phpMan.php`, `phpman.css`).
+**Principle**: Any file in the webroot is one misconfiguration away from being publicly readable. CLI tools, tests, and internal documentation belong in the install directory (`~/.phpman/`) or the git clone, never in the webroot. Deployment scripts (Makefile, install.sh) must only copy the allowlist of public files (`phpMan.php`, `phpman.css`, `phpman.js`).
 
 **Code location**: `Makefile` (`_deploy-code` scp lines), `install.sh` (`do_deploy_webroot()` cp lines)
 
@@ -168,7 +168,7 @@ man page ──→ getManPage($name, '', 'html') → raw HTML (with <pre><code>/
 - **Default view**: When `emoji_html` cache exists, served directly as HTML; `?format=html` or PATH_INFO `/html` bypasses
 - **Markdown view**: `/markdown` format prefers `emoji_md` cache over raw Markdown
 - **TOC**: `renderTocSidebar()` builds floating sidebar from `<h2>`/`<h3>` tags (v4.2: regex fixed to match tags with `id="..."` attributes)
-- **Code blocks (v4.2)**: JS in `showFooter()` wraps all `#content-wrap pre` in `.code-block` div with `📋 Copy` button top-right. Tokyo Night styling: `#1f2335` bg, italic font, rounded border
+- **Code blocks (v4.2)**: External JS `phpman.js` wraps all `#content-wrap pre` in `.code-block` div with `📋 Copy` button top-right. Tokyo Night styling: `#1f2335` bg, italic font, rounded border. Extracted from inline `<script>` to separate file (v4.4.4+) for XHTML validity and browser caching.
 - **Prompt rules (v4.2)**: forbid `<a>` inside `<pre><code>`, forbid emoji as list markers, preserve original structure, condense output under configurable limit
 
 #### 2.11.2 LLM Integration

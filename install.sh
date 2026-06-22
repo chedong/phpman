@@ -200,10 +200,11 @@ do_deploy_webroot() {
 
     echo "→ Deploying phpMan to $target ..."
 
-    # Copy dispatcher + CSS (only 2 files in webroot)
+    # Copy dispatcher + CSS + JS (only 3 files in webroot)
     cp "$INSTALL_DIR/phpMan.php" "$target/"
     cp "$INSTALL_DIR/phpman.css" "$target/" 2>/dev/null || true
-    chmod 644 "$target/phpMan.php" "$target/phpman.css" 2>/dev/null || true
+    cp "$INSTALL_DIR/phpman.js" "$target/" 2>/dev/null || true
+    chmod 644 "$target/phpMan.php" "$target/phpman.css" "$target/phpman.js" 2>/dev/null || true
 
     # Generate webroot config with MCP_API_KEY (does nothing if already exists)
     generate_config "$target" true
@@ -218,6 +219,7 @@ do_deploy_webroot() {
     echo -e "${GREEN}✓ Deployed to $target${NC}"
     echo "  phpMan.php → $target/phpMan.php"
     [ -f "$target/phpman.css" ] && echo "  phpman.css  → $target/phpman.css"
+    [ -f "$target/phpman.js" ] && echo "  phpman.js   → $target/phpman.js"
     echo "  config      → $target/phpman.config.php"
     echo "  data dir    → $HOME/.phpman/ (src/ cli/ db/ logs/)"
     echo ""

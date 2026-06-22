@@ -101,7 +101,7 @@ function showFooter (string $validator = "", bool $showNav = false, string $mode
         (Profiler::getEnabled() ? profilerHtmlBlock() : "") .
         "</p>" .
         ($showNav ? '<div id="back-to-top"><a href="#top">^_back to top</a></div>' : "") .
-        "<script>!function(){var t=document.querySelectorAll('#content-wrap pre code');t.length&&t.forEach(function(e){var n=e.parentElement,o=document.createElement('div');o.className='code-block',n.insertBefore(o,e),o.appendChild(e);var c=document.createElement('button');c.className='copy-btn',c.textContent='📋 Copy',c.title='Copy code to clipboard',c.onclick=function(){navigator.clipboard.writeText(e.textContent).then(function(){c.textContent='✓ Copied!',c.classList.add('copied'),setTimeout(function(){c.textContent='📋 Copy',c.classList.remove('copied')},1500)})},o.appendChild(c)})}();</script>" .
+        "<script type=\"text/javascript\" src=\"".h(str_replace('phpMan.php', 'phpman.js', scriptName()))."\"></script>\n" .
         "</body></html>";
 }
 
