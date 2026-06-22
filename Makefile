@@ -96,8 +96,9 @@ _deploy-code:
 		fi"
 	sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|" \
 	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
-	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) | \
-		ssh -p $(TEST_PORT) $(TEST_HOST) "cat > $(TEST_PATH)/$(FILE)"; \
+	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) > $(FILE).tmp && \
+	mv $(FILE).tmp $(FILE) && \
+	scp -P $(TEST_PORT) $(FILE) $(TEST_HOST):$(TEST_PATH)/$(FILE); \
 	scp -P $(TEST_PORT) $(CSS_FILE) $(TEST_HOST):$(TEST_PATH)/$(CSS_FILE); \
 	scp -P $(TEST_PORT) $(JS_FILE) $(TEST_HOST):$(TEST_PATH)/$(JS_FILE); \
 	ssh -p $(TEST_PORT) $(TEST_HOST) "rm -rf \$$HOME/.phpman_test/tools/"; \
@@ -153,8 +154,9 @@ _release-code:
 		"ls -1t \"\$$HOME/.phpman/backups/$(FILE).\"*.bak 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true"; \
 	sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(DEMO_HOME)/.phpman');|" \
 	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
-	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) | \
-		ssh -p $(DEMO_PORT) $(DEMO_HOST) "cat > $(DEMO_PATH)/$(FILE)"; \
+	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) > $(FILE).tmp && \
+	mv $(FILE).tmp $(FILE) && \
+	scp -P $(DEMO_PORT) $(FILE) $(DEMO_HOST):$(DEMO_PATH)/$(FILE); \
 	scp -P $(DEMO_PORT) $(CSS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(CSS_FILE); \
 	scp -P $(DEMO_PORT) $(JS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(JS_FILE); \
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) "rm -rf \$$HOME/.phpman/tools/"; \
