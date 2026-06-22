@@ -57,8 +57,16 @@ GIT_TAG     := $(shell git describe --tags --always --dirty 2>/dev/null || echo 
 GIT_VERSION := $(shell (git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0") | sed 's/^v//')
 
 # Resolve remote $HOME so config gets the literal path (mod_fcgid may not set HOME)
-STAGING_HOME := $(shell ssh -p $(TEST_PORT) $(TEST_HOST) 'echo $$HOME')
-DEMO_HOME    := $(shell ssh -p $(DEMO_PORT) $(DEMO_HOST) 'echo $$HOME')
+STAGING_HOME := $(shell ssh -p $(TEST_PORT) $(TEST_HOST) 'echo $$HOME' 2>/dev/null || echo "")
+DEMO_HOME    := $(shell ssh -p $(DEMO_PORT) $(DEMO_HOST) 'echo $$HOME' 2>/dev/null || echo "")
+
+# Guard: fail early if remote $HOME couldn't be resolved (SSH down, too many connections, etc.)
+ifeq ($(STAGING_HOME),)
+$(error Failed to resolve STAGING_HOME — SSH to $(TEST_HOST):$(TEST_PORT) failed. Check your connection and try again.)
+endif
+ifeq ($(DEMO_HOME),)
+$(error Failed to resolve DEMO_HOME — SSH to $(DEMO_HOST):$(DEMO_PORT) failed. Check your connection and try again.)
+endif
 
 test:
 	php -l $(FILE)
