@@ -1,17 +1,27 @@
 <?php
-// phpMan site configuration — copy to phpman.config.php and adjust.
-// Created automatically by install.sh or `make deploy` / `make release`.
+// phpMan webroot configuration — copy to phpman.config.php and adjust.
+// Created automatically by install.sh or `make staging` / `make release`.
 //
-// === Minimal config (everything else uses defaults) ===
+// This file lives in your webroot. It contains ONLY config that the web
+// frontend router needs: PHPMAN_HOME, PHPMAN_BASE_URL, GA_ID, DEBUG.
+//
+// Sensitive keys (LLM API keys, MCP auth) go in ~/.phpman/config.local.php
+// — NOT in webroot. See src/config.php for all available options + defaults.
+//
+// === Minimal config ===
 //   define('PHPMAN_HOME', getenv('HOME') . '/.phpman');
 //   define('PHPMAN_BASE_URL', 'https://www.example.com/phpMan.php');
 //
 // === Add LLM emoji enhancement ===
-//   define('LLM_API_KEY',  'sk-xxx');
-//   define('LLM_API_URL',  'https://api.openai.com/v1/chat/completions');
-//   define('LLM_MODEL',    'gpt-4o-mini');
+//   Create ~/.phpman/config.local.php:
+//     <?php
+//     define('LLM_API_KEY',  'sk-xxx');
+//     define('LLM_API_URL',  'https://api.openai.com/v1/chat/completions');
+//     define('LLM_MODEL',    'gpt-4o-mini');
 //
-// Leave values commented to use defaults in phpMan.php src/config.php.
+//   See phpman.config.php.example (this file) in ~/.phpman/ for full options.
+//
+// Leave values commented to use defaults in src/config.php.
 
 // --- PHPMAN_HOME ---
 // Base directory for all phpMan local data (cache DB, logs, backups).
@@ -30,39 +40,10 @@
 // Default: PHPMAN_BASE_URL env var, then 'http://localhost:8080/phpMan.php'
 // define('PHPMAN_BASE_URL', 'https://www.chedong.com/phpMan.php');
 
-// --- LLM Enhancement (v4.0) ---
-// define('LLM_API_KEY', '');
-// define('LLM_API_URL', '');
-// define('LLM_MODEL', '');
-// define('LLM_MAX_TOKENS', 4096);
-// define('PHPMAN_ENHANCE_MAX_CHARS', 32000);  // max chars for LLM-enhanced output
-
-// --- Fallback LLM (v4.2.2) ---
-// Optional: multiple fallback endpoints tried in order when primary fails
-// with 5xx/429/timeout. Each entry must have url, key, model.
-// Leave empty array or comment out to skip fallback entirely.
-// define('LLM_FALLBACKS', [
-//     [
-//         'url'   => 'https://api.openai.com/v1/chat/completions',
-//         'key'   => 'sk-xxx',
-//         'model' => 'gpt-4o-mini',
-//     ],
-//     [
-//         'url'   => 'https://api.anthropic.com/v1/messages',
-//         'key'   => 'sk-yyy',
-//         'model' => 'claude-haiku-4-5',
-//     ],
-// ]);
-
 // --- Google Analytics (v4.4.4+) ---
 // Set your GA4 measurement ID to enable pageview tracking.
 // Leave empty to disable (default).
 // define('PHPMAN_GA_ID', 'G-XXXXXXXXXX');
-
-// --- MCP Authentication (#97) ---
-// Set a secret key to require X-API-Key header on all MCP requests.
-// Leave empty to allow unauthenticated access (default, for local/trusted networks).
-// define('MCP_API_KEY', 'your-secret-key-here');
 
 // --- Debug ---
 // Set true for development/troubleshooting; false for production.

@@ -95,3 +95,15 @@ if (!defined('LLM_API_URL'))    define('LLM_API_URL', '');
 if (!defined('LLM_MODEL'))      define('LLM_MODEL', '');
 if (!defined('LLM_MAX_TOKENS')) define('LLM_MAX_TOKENS', 4096);
 
+// --- Load local overrides (API keys, secrets) ---
+// ~/.phpman/config.local.php is NEVER in webroot and NOT tracked by git.
+// Override LLM_API_KEY, MCP_API_KEY, LLM_FALLBACKS, etc. here.
+// Create from install.sh or manually:
+//   cp phpman.config.php.example ~/.phpman/config.local.php
+//   $EDITOR ~/.phpman/config.local.php
+$_local_config = PHPMAN_HOME . '/config.local.php';
+if (file_exists($_local_config)) {
+    require_once $_local_config;
+}
+unset($_local_config);
+
