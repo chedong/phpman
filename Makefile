@@ -94,43 +94,44 @@ _deploy-code:
 				$(STAGING_HOME)/.phpman_test/phpman.config.php.example | \
 			cat > $(STAGING_HOME)/.phpman_test/phpman.config.php && chmod 644 $(STAGING_HOME)/.phpman_test/phpman.config.php && echo 'Created phpman.config.php'; \
 		fi"
-	sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|" \
+	@# Patch placeholders in phpMan.php and upload
+	@sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|" \
 	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
-	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) > $(FILE).tmp && \
-	mv $(FILE).tmp $(FILE) && \
-	scp -P $(TEST_PORT) $(FILE) $(TEST_HOST):$(TEST_PATH)/$(FILE); \
-	scp -P $(TEST_PORT) $(CSS_FILE) $(TEST_HOST):$(TEST_PATH)/$(CSS_FILE); \
-	scp -P $(TEST_PORT) $(JS_FILE) $(TEST_HOST):$(TEST_PATH)/$(JS_FILE); \
-	ssh -p $(TEST_PORT) $(TEST_HOST) "rm -rf \$$HOME/.phpman_test/tools/"; \
-		scp -P $(TEST_PORT) -r cli $(TEST_HOST):$(STAGING_HOME)/.phpman_test/; \
-	scp -P $(TEST_PORT) -r src $(TEST_HOST):$(STAGING_HOME)/.phpman_test/; \
-	scp -P $(TEST_PORT) phpman.config.php.example $(TEST_HOST):$(STAGING_HOME)/.phpman_test/phpman.config.php.example; \
-	ssh -p $(TEST_PORT) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE) $(TEST_PATH)/$(JS_FILE) && chmod +x \$$HOME/.phpman_test/cli/*.php"; \
+	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) > $(FILE).tmp
+	@mv $(FILE).tmp $(FILE)
+	@scp -P $(TEST_PORT) $(FILE) $(TEST_HOST):$(TEST_PATH)/$(FILE)
+	@scp -P $(TEST_PORT) $(CSS_FILE) $(TEST_HOST):$(TEST_PATH)/$(CSS_FILE)
+	@scp -P $(TEST_PORT) $(JS_FILE) $(TEST_HOST):$(TEST_PATH)/$(JS_FILE)
+	@ssh -p $(TEST_PORT) $(TEST_HOST) "rm -rf \$$HOME/.phpman_test/tools/"
+	@scp -P $(TEST_PORT) -r cli $(TEST_HOST):$(STAGING_HOME)/.phpman_test/
+	@scp -P $(TEST_PORT) -r src $(TEST_HOST):$(STAGING_HOME)/.phpman_test/
+	@scp -P $(TEST_PORT) phpman.config.php.example $(TEST_HOST):$(STAGING_HOME)/.phpman_test/phpman.config.php.example
+	@ssh -p $(TEST_PORT) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE) $(TEST_PATH)/$(JS_FILE) && chmod +x \$$HOME/.phpman_test/cli/*.php"
 	@echo ""
 	@echo "=== Deployed to staging ($(GIT_TAG)) ==="
 	@echo "$(TEST_URL)"
 	@echo ""
 	@# Check for new config options not in server's phpman.config.php
 	@echo "--- Checking for new config options ---"; \
-	missing=$$(ssh -p $(TEST_PORT) $(TEST_HOST) " \
-		example=$(STAGING_HOME)/.phpman_test/phpman.config.php.example; \
-		config=$(STAGING_HOME)/.phpman_test/phpman.config.php; \
-		if [ ! -f \"\$$config\" ] || [ ! -f \"\$$example\" ]; then exit 0; fi; \
-		while IFS= read -r key; do \
-			[ -z \"\$$key\" ] && continue; \
-			grep -q \"define('\$$key'\" \"\$$config\" && continue; \
-			hint=\$$(grep -B5 \"define('\$$key'\" \"\$$example\" | grep '//' | tail -1 | sed 's/^[[:space:]]*\/\/[[:space:]]*//'); \
-			[ -z \"\$$hint\" ] && hint=\"\$$key\"; \
-			echo \"  \$$key — \$$hint\"; \
-		done < <(sed -n \"s/.*define('\\\\\\([A-Z_][A-Z_0-9]*\\\\)'.*/\\\\1/p\" \"\$$example\" | sort -u) \
-	"); \
-	if [ -n "$$missing" ]; then \
-		echo "  ⚠  New config options not in your phpman.config.php:"; \
-		echo "$$missing"; \
-		echo "  → Compare: diff phpman.config.php phpman.config.php.example"; \
-	else \
-		echo "  ✓ Config up to date"; \
-	fi
+		missing=$$(ssh -p $(TEST_PORT) $(TEST_HOST) " \
+			example=$(STAGING_HOME)/.phpman_test/phpman.config.php.example; \
+			config=$(STAGING_HOME)/.phpman_test/phpman.config.php; \
+			if [ ! -f \"\$$config\" ] || [ ! -f \"\$$example\" ]; then exit 0; fi; \
+			while IFS= read -r key; do \
+				[ -z \"\$$key\" ] && continue; \
+				grep -q \"define('\$$key'\" \"\$$config\" && continue; \
+				hint=\$$(grep -B5 \"define('\$$key'\" \"\$$example\" | grep '//' | tail -1 | sed 's/^[[:space:]]*\/\/[[:space:]]*//'); \
+				[ -z \"\$$hint\" ] && hint=\"\$$key\"; \
+				echo \"  \$$key — \$$hint\"; \
+			done < <(sed -n \"s/.*define('\\\\\\([A-Z_][A-Z_0-9]*\\\\)'.*/\\\\1/p\" \"\$$example\" | sort -u) \
+		"); \
+		if [ -n "$$missing" ]; then \
+			echo "  ⚠  New config options not in your phpman.config.php:"; \
+			echo "$$missing"; \
+			echo "  → Compare: diff phpman.config.php phpman.config.php.example"; \
+		else \
+			echo "  ✓ Config up to date"; \
+		fi
 
 staging: test _deploy-code
 
@@ -147,49 +148,50 @@ _release-code:
 	@echo "=== Deploying $(GIT_TAG) ==="
 	@echo "=== Preparing production server ==="
 	@TIMESTAMP=$$(date +%Y%m%d-%H%M%S); \
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"mkdir -p \"\$$HOME/.phpman/backups\" && cp $(DEMO_PATH)/$(FILE) \"\$$HOME/.phpman/backups/$(FILE).$${TIMESTAMP}.bak\" 2>/dev/null || true"; \
-	echo "=== Pruning old backups (keeping last 5) ==="; \
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"ls -1t \"\$$HOME/.phpman/backups/$(FILE).\"*.bak 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true"; \
-	sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(DEMO_HOME)/.phpman');|" \
+		ssh -p $(DEMO_PORT) $(DEMO_HOST) \
+			"mkdir -p \"\$$HOME/.phpman/backups\" && cp $(DEMO_PATH)/$(FILE) \"\$$HOME/.phpman/backups/$(FILE).$${TIMESTAMP}.bak\" 2>/dev/null || true"
+	@echo "=== Pruning old backups (keeping last 5) ==="
+	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
+			"ls -1t \"\$$HOME/.phpman/backups/$(FILE).\"*.bak 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true"
+	@# Patch placeholders in phpMan.php and upload
+	@sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(DEMO_HOME)/.phpman');|" \
 	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
-	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) > $(FILE).tmp && \
-	mv $(FILE).tmp $(FILE) && \
-	scp -P $(DEMO_PORT) $(FILE) $(DEMO_HOST):$(DEMO_PATH)/$(FILE); \
-	scp -P $(DEMO_PORT) $(CSS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(CSS_FILE); \
-	scp -P $(DEMO_PORT) $(JS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(JS_FILE); \
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) "rm -rf \$$HOME/.phpman/tools/"; \
-		scp -P $(DEMO_PORT) -r cli $(DEMO_HOST):$(DEMO_HOME)/.phpman/; \
-	scp -P $(DEMO_PORT) -r src $(DEMO_HOST):$(DEMO_HOME)/.phpman/; \
-	scp -P $(DEMO_PORT) phpman.config.php.example $(DEMO_HOST):$(DEMO_HOME)/.phpman/phpman.config.php.example; \
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(CSS_FILE) $(DEMO_PATH)/$(JS_FILE) && chmod +x \$$HOME/.phpman/cli/*.php"; \
-	echo ""; \
-	echo "=== Deployed to production ==="; \
-	echo "$(DEMO_URL)"; \
-	echo "Rollback: make rollback"; \
-	echo ""; \
+	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) > $(FILE).tmp
+	@mv $(FILE).tmp $(FILE)
+	@scp -P $(DEMO_PORT) $(FILE) $(DEMO_HOST):$(DEMO_PATH)/$(FILE)
+	@scp -P $(DEMO_PORT) $(CSS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(CSS_FILE)
+	@scp -P $(DEMO_PORT) $(JS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(JS_FILE)
+	@ssh -p $(DEMO_PORT) $(DEMO_HOST) "rm -rf \$$HOME/.phpman/tools/"
+	@scp -P $(DEMO_PORT) -r cli $(DEMO_HOST):$(DEMO_HOME)/.phpman/
+	@scp -P $(DEMO_PORT) -r src $(DEMO_HOST):$(DEMO_HOME)/.phpman/
+	@scp -P $(DEMO_PORT) phpman.config.php.example $(DEMO_HOST):$(DEMO_HOME)/.phpman/phpman.config.php.example
+	@ssh -p $(DEMO_PORT) $(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(CSS_FILE) $(DEMO_PATH)/$(JS_FILE) && chmod +x \$$HOME/.phpman/cli/*.php"
+	@echo ""
+	@echo "=== Deployed to production ==="
+	@echo "$(DEMO_URL)"
+	@echo "Rollback: make rollback"
+	@echo ""
 	@# Check for new config options not in server's phpman.config.php
 	@echo "--- Checking for new config options ---"; \
-	missing=$$(ssh -p $(DEMO_PORT) $(DEMO_HOST) " \
-		example=$(DEMO_HOME)/.phpman/phpman.config.php.example; \
-		config=$(DEMO_HOME)/.phpman/phpman.config.php; \
-		if [ ! -f \"\$$config\" ] || [ ! -f \"\$$example\" ]; then exit 0; fi; \
-		while IFS= read -r key; do \
-			[ -z \"\$$key\" ] && continue; \
-			grep -q \"define('\$$key'\" \"\$$config\" && continue; \
-			hint=\$$(grep -B5 \"define('\$$key'\" \"\$$example\" | grep '//' | tail -1 | sed 's/^[[:space:]]*\/\/[[:space:]]*//'); \
-			[ -z \"\$$hint\" ] && hint=\"\$$key\"; \
-			echo \"  \$$key — \$$hint\"; \
-		done < <(sed -n \"s/.*define('\\\\\\([A-Z_][A-Z_0-9]*\\\\)'.*/\\\\1/p\" \"\$$example\" | sort -u) \
-	"); \
-	if [ -n "$$missing" ]; then \
-		echo "  ⚠  New config options not in your phpman.config.php:"; \
-		echo "$$missing"; \
-		echo "  → Compare: diff phpman.config.php phpman.config.php.example"; \
-	else \
-		echo "  ✓ Config up to date"; \
-	fi
+		missing=$$(ssh -p $(DEMO_PORT) $(DEMO_HOST) " \
+			example=$(DEMO_HOME)/.phpman/phpman.config.php.example; \
+			config=$(DEMO_HOME)/.phpman/phpman.config.php; \
+			if [ ! -f \"\$$config\" ] || [ ! -f \"\$$example\" ]; then exit 0; fi; \
+			while IFS= read -r key; do \
+				[ -z \"\$$key\" ] && continue; \
+				grep -q \"define('\$$key'\" \"\$$config\" && continue; \
+				hint=\$$(grep -B5 \"define('\$$key'\" \"\$$example\" | grep '//' | tail -1 | sed 's/^[[:space:]]*\/\/[[:space:]]*//'); \
+				[ -z \"\$$hint\" ] && hint=\"\$$key\"; \
+				echo \"  \$$key — \$$hint\"; \
+			done < <(sed -n \"s/.*define('\\\\\\([A-Z_][A-Z_0-9]*\\\\)'.*/\\\\1/p\" \"\$$example\" | sort -u) \
+		"); \
+		if [ -n "$$missing" ]; then \
+			echo "  ⚠  New config options not in your phpman.config.php:"; \
+			echo "$$missing"; \
+			echo "  → Compare: diff phpman.config.php phpman.config.php.example"; \
+		else \
+			echo "  ✓ Config up to date"; \
+		fi
 	$(MAKE) logcheck
 
 release: test _release-code
