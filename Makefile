@@ -94,7 +94,7 @@ _deploy-code:
 				$(STAGING_HOME)/.phpman_test/phpman.config.php.example | \
 			cat > $(STAGING_HOME)/.phpman_test/phpman.config.php && chmod 644 $(STAGING_HOME)/.phpman_test/phpman.config.php && echo 'Created phpman.config.php'; \
 		fi"
-	sed -e "s|define('PHPMAN_HOME', '[^']*');|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|" \
+	sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|" \
 	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
 	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) | \
 		ssh -p $(TEST_PORT) $(TEST_HOST) "cat > $(TEST_PATH)/$(FILE)"; \
@@ -151,7 +151,7 @@ _release-code:
 	echo "=== Pruning old backups (keeping last 5) ==="; \
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"ls -1t \"\$$HOME/.phpman/backups/$(FILE).\"*.bak 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true"; \
-	sed -e "s|define('PHPMAN_HOME', '[^']*');|define('PHPMAN_HOME', '$(DEMO_HOME)/.phpman');|" \
+	sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(DEMO_HOME)/.phpman');|" \
 	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
 	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) | \
 		ssh -p $(DEMO_PORT) $(DEMO_HOST) "cat > $(DEMO_PATH)/$(FILE)"; \
