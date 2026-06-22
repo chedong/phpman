@@ -144,9 +144,10 @@ check_config_updates() {
     fi
 }
 
+# Generate ~/.phpman/phpman.config.php — the single source of truth for ALL config.
+# Webroot only gets a minimal phpman.config.php with just PHPMAN_HOME (see do_deploy_webroot).
 generate_config() {
-    local target_dir="${1:-$INSTALL_DIR}"
-    local config_file="$target_dir/phpman.config.php"
+    local config_file="$INSTALL_DIR/phpman.config.php"
 
     if [ -f "$config_file" ]; then
         echo "  phpman.config.php already exists, skipping."
@@ -168,49 +169,15 @@ generate_config() {
     sed -i '' "s|// define('PHPMAN_HOME'.*|define('PHPMAN_HOME', '${home}/.phpman');|" "$config_file" 2>/dev/null || \
     sed -i "s|// define('PHPMAN_HOME'.*|define('PHPMAN_HOME', '${home}/.phpman');|" "$config_file"
 
-    echo "  Generated: $config_file"
-    echo "  → Edit $config_file to set PHPMAN_BASE_URL and PHPMAN_GA_ID"
-}
-
-# Generate ~/.phpman/config.local.php — backend secrets (LLM keys, MCP auth).
-# This file is NEVER in webroot and NOT tracked by git.
-generate_local_config() {
-    local local_config="$HOME/.phpman/config.local.php"
-
-    if [ -f "$local_config" ]; then
-        echo "  config.local.php already exists, skipping."
-        return
-    fi
-
+    # Generate a random 32-char hex key for MCP authentication
     local mcp_key; mcp_key=$(php -r 'echo bin2hex(random_bytes(16));')
+    sed -i '' "s|// define('MCP_API_KEY'.*|define('MCP_API_KEY', '${mcp_key}');|" "$config_file" 2>/dev/null || \
+    sed -i "s|// define('MCP_API_KEY'.*|define('MCP_API_KEY', '${mcp_key}');|" "$config_file"
 
-    cat > "$local_config" << 'LOCALEOF'
-<?php
-// phpMan backend configuration — NOT in webroot, NOT tracked by git.
-// Loaded by src/config.php after all defaults are set.
-// Only define values you need to override here.
-//
-// === LLM emoji enhancement (v4.0) ===
-// define('LLM_API_KEY', '');
-// define('LLM_API_URL', '');
-// define('LLM_MODEL', '');
-// define('LLM_MAX_TOKENS', 4096);
-// define('PHPMAN_ENHANCE_MAX_CHARS', 32000);
-//
-// === Fallback LLM (v4.2.2) ===
-// define('LLM_FALLBACKS', [
-//     ['url' => 'https://api.openai.com/v1/chat/completions', 'key' => 'sk-xxx', 'model' => 'gpt-4o-mini'],
-// ]);
-//
-// === MCP Authentication (#97) ===
-LOCALEOF
-
-    echo "define('MCP_API_KEY', '${mcp_key}');" >> "$local_config"
-
-    echo "  Generated: $local_config"
+    echo "  Generated: $config_file"
     echo "  MCP_API_KEY: $mcp_key"
     echo "  → MCP clients must send: X-API-Key: $mcp_key"
-    echo "  → Edit $local_config to add LLM_API_KEY for emoji enhancement"
+    echo "  → Edit $config_file to set PHPMAN_BASE_URL, PHPMAN_GA_ID, LLM_API_KEY"
 }
 
 # ─── Deploy to Webroot ────────────────────────────────────────────────────────
@@ -231,31 +198,32 @@ do_deploy_webroot() {
     cp "$INSTALL_DIR/phpman.js" "$target/" 2>/dev/null || true
     chmod 644 "$target/phpMan.php" "$target/phpman.css" "$target/phpman.js" 2>/dev/null || true
 
-    # Generate webroot config (does nothing if already exists)
-    generate_config "$target"
+    # Webroot config: ONLY PHPMAN_HOME — all other config lives in ~/.phpman/phpman.config.php
+    local webroot_config="$target/phpman.config.php"
+    if [ ! -f "$webroot_config" ]; then
+        local home; home=$(php -r 'echo getenv("HOME") ?: ($_SERVER["HOME"] ?? "");')
+        echo "<?php define('PHPMAN_HOME', '${home}/.phpman');" > "$webroot_config"
+        chmod 644 "$webroot_config"
+        echo "  Created: $webroot_config (PHPMAN_HOME only)"
+    fi
 
     # Data directories live outside webroot, under PHPMAN_HOME (~/.phpman)
     mkdir -p "$HOME/.phpman/db" "$HOME/.phpman/logs" "$HOME/.phpman/backups"
 
-    # Generate backend config with MCP_API_KEY (does nothing if already exists)
-    generate_local_config
-
-    # Symlink webroot config ← PHPMAN_HOME for CLI tools (batch-enhance etc.)
-    ln -sf "$target/phpman.config.php" "$HOME/.phpman/phpman.config.php" 2>/dev/null || true
-
     echo ""
     echo -e "${GREEN}✓ Deployed to $target${NC}"
-    echo "  phpMan.php → $target/phpMan.php"
-    [ -f "$target/phpman.css" ] && echo "  phpman.css  → $target/phpman.css"
-    [ -f "$target/phpman.js" ] && echo "  phpman.js   → $target/phpman.js"
-    echo "  web config  → $target/phpman.config.php"
-    echo "  backend cfg → $HOME/.phpman/config.local.php (LLM keys, MCP auth)"
-    echo "  data dir    → $HOME/.phpman/ (src/ cli/ db/ logs/)"
+    echo "  phpMan.php  → $target/phpMan.php"
+    [ -f "$target/phpman.css" ] && echo "  phpman.css   → $target/phpman.css"
+    [ -f "$target/phpman.js" ] && echo "  phpman.js    → $target/phpman.js"
+    echo "  web config   → $target/phpman.config.php (PHPMAN_HOME only)"
+    echo "  full config  → $HOME/.phpman/phpman.config.php (all settings)"
+    echo "  data dir     → $HOME/.phpman/ (src/ cli/ db/ logs/)"
     echo ""
     echo "  Next: configure your web server to serve PHP from $target"
-    echo "  For correct link generation, edit $target/phpman.config.php"
-    echo "  and set:  define('PHPMAN_BASE_URL', 'https://your-domain.com/phpMan.php');"
-    echo "  For LLM emoji enhancement, edit $HOME/.phpman/config.local.php"
+    echo "  Edit $HOME/.phpman/phpman.config.php to configure:"
+    echo "    PHPMAN_BASE_URL  — your public URL for correct link generation"
+    echo "    LLM_API_KEY      — for emoji enhancement"
+    echo "    PHPMAN_GA_ID     — for Google Analytics"
 }
 
 # ─── Install ──────────────────────────────────────────────────────────────────
@@ -277,29 +245,25 @@ do_install() {
 
     cd "$INSTALL_DIR"
 
-    # 1. Generate webroot config FIRST — phpMan.php and CLI tools need it
+    # 1. Generate config FIRST — phpMan.php and CLI tools need it
     echo "→ Generating config..."
-    generate_config "$INSTALL_DIR"
+    generate_config
 
-    # 2. Generate backend config (~/.phpman/config.local.php) for LLM/MCP keys
-    generate_local_config
-
-    # 3. Create data directories (db/, logs/, backups/) under PHPMAN_HOME
+    # 2. Create data directories (db/, logs/, backups/) under PHPMAN_HOME
     mkdir -p "$HOME/.phpman/db" "$HOME/.phpman/logs" "$HOME/.phpman/backups"
 
-    # 4. Build FTS5 search index (config must exist first for PHPMAN_HOME)
+    # 3. Build FTS5 search index (config must exist first for PHPMAN_HOME)
     echo "→ Building FTS5 search index (man + pydoc3 + ri) ..."
     echo "  (this may take 1–2 minutes on first run)"
     php cli/build-index.php
 
     echo ""
     echo -e "${GREEN}✓ phpMan installed!${NC}"
-    echo "  phpMan.php → $INSTALL_DIR/phpMan.php"
-    echo "  web config → $INSTALL_DIR/phpman.config.php"
-    echo "  backend cfg→ $HOME/.phpman/config.local.php (LLM keys, MCP auth)"
-    echo "  src/       → $INSTALL_DIR/src/ ($(ls $INSTALL_DIR/src/*.php 2>/dev/null | wc -l) files)"
-    echo "  cli/       → $INSTALL_DIR/cli/"
-    echo "  data dir   → $HOME/.phpman/"
+    echo "  phpMan.php  → $INSTALL_DIR/phpMan.php"
+    echo "  config      → $INSTALL_DIR/phpman.config.php (all settings)"
+    echo "  src/        → $INSTALL_DIR/src/ ($(ls $INSTALL_DIR/src/*.php 2>/dev/null | wc -l) files)"
+    echo "  cli/        → $INSTALL_DIR/cli/"
+    echo "  data dir    → $HOME/.phpman/"
     echo ""
 
     # If --webroot specified, deploy there too
@@ -330,8 +294,6 @@ do_update() {
 
     # Check for new config options in .example not in user's config
     check_config_updates "$INSTALL_DIR/phpman.config.php"
-    # Ensure backend config exists (won't overwrite existing)
-    generate_local_config
 
     echo "→ Rebuilding FTS5 search index..."
     php cli/build-index.php

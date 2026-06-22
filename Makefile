@@ -81,17 +81,26 @@ test:
 _deploy-code:
 	@echo "=== Preparing staging server ==="
 	@echo "--- Configuring staging home: ~/.phpman_test (debug ON) ---"
+	@# Webroot config: only PHPMAN_HOME (create if missing, update if exists)
 	@ssh -p $(TEST_PORT) $(TEST_HOST) " \
 		if [ -f $(TEST_PATH)/phpman.config.php ] && [ -s $(TEST_PATH)/phpman.config.php ]; then \
 			sed -i \"s|define('PHPMAN_HOME',.*|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|\" $(TEST_PATH)/phpman.config.php; \
-			sed -i \"s|// define('PHPMAN_DEBUG'.*|define('PHPMAN_DEBUG', true);|\" $(TEST_PATH)/phpman.config.php; \
-			sed -i \"s|define('PHPMAN_DEBUG',[[:space:]]*false.*|define('PHPMAN_DEBUG', true);|\" $(TEST_PATH)/phpman.config.php; \
+			echo 'Updated phpman.config.php (PHPMAN_HOME only)'; \
+		else \
+			echo \"<?php define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');\" > $(TEST_PATH)/phpman.config.php && chmod 644 $(TEST_PATH)/phpman.config.php && echo 'Created phpman.config.php (PHPMAN_HOME only)'; \
+		fi"
+	@# PHPMAN_HOME config: full config from .example (create if missing, update if exists)
+	@ssh -p $(TEST_PORT) $(TEST_HOST) " \
+		if [ -f $(STAGING_HOME)/.phpman_test/phpman.config.php ] && [ -s $(STAGING_HOME)/.phpman_test/phpman.config.php ]; then \
+			sed -i \"s|define('PHPMAN_HOME',.*|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|\" $(STAGING_HOME)/.phpman_test/phpman.config.php; \
+			sed -i \"s|// define('PHPMAN_DEBUG'.*|define('PHPMAN_DEBUG', true);|\" $(STAGING_HOME)/.phpman_test/phpman.config.php; \
+			sed -i \"s|define('PHPMAN_DEBUG',[[:space:]]*false.*|define('PHPMAN_DEBUG', true);|\" $(STAGING_HOME)/.phpman_test/phpman.config.php; \
 			echo 'Updated phpman.config.php (preserved existing)'; \
 		else \
 			sed -e \"s|// define('PHPMAN_HOME'.*\\.phpman_test.*|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|\" \
 			    -e \"s|// define('PHPMAN_DEBUG'.*|define('PHPMAN_DEBUG', true);|\" \
 				$(STAGING_HOME)/.phpman_test/phpman.config.php.example | \
-			cat > $(TEST_PATH)/phpman.config.php && chmod 644 $(TEST_PATH)/phpman.config.php && echo 'Created phpman.config.php'; \
+			cat > $(STAGING_HOME)/.phpman_test/phpman.config.php && chmod 644 $(STAGING_HOME)/.phpman_test/phpman.config.php && echo 'Created phpman.config.php'; \
 		fi"
 	sed -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
 	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) | \
@@ -103,7 +112,6 @@ _deploy-code:
 	scp -P $(TEST_PORT) -r src $(TEST_HOST):$(STAGING_HOME)/.phpman_test/; \
 	scp -P $(TEST_PORT) phpman.config.php.example $(TEST_HOST):$(STAGING_HOME)/.phpman_test/phpman.config.php.example; \
 	ssh -p $(TEST_PORT) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE) $(TEST_PATH)/$(JS_FILE) && chmod +x \$$HOME/.phpman_test/cli/*.php"; \
-		ssh -p $(TEST_PORT) $(TEST_HOST) "ln -sf $(TEST_PATH)/phpman.config.php \$$HOME/.phpman_test/phpman.config.php"; \
 	@echo ""
 	@echo "=== Deployed to staging ($(GIT_TAG)) ==="
 	@echo "$(TEST_URL)"
@@ -112,7 +120,7 @@ _deploy-code:
 	@echo "--- Checking for new config options ---"; \
 	missing=$$(ssh -p $(TEST_PORT) $(TEST_HOST) " \
 		example=$(STAGING_HOME)/.phpman_test/phpman.config.php.example; \
-		config=$(TEST_PATH)/phpman.config.php; \
+		config=$(STAGING_HOME)/.phpman_test/phpman.config.php; \
 		if [ ! -f \"\$$config\" ] || [ ! -f \"\$$example\" ]; then exit 0; fi; \
 		while IFS= read -r key; do \
 			[ -z \"\$$key\" ] && continue; \
@@ -145,11 +153,9 @@ _release-code:
 	@echo "=== Deploying $(GIT_TAG) ==="
 	@echo "=== Preparing production server ==="
 	@echo "--- Configuring home: ~/.phpman ---"
-	sed "s|// define('PHPMAN_HOME'.*\.phpman');|define('PHPMAN_HOME', '$(DEMO_HOME)/.phpman');|" \
-		phpman.config.php.example | \
+	@# Webroot config: ONLY PHPMAN_HOME. All other config lives in ~/.phpman/phpman.config.php
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"test -f $(DEMO_PATH)/phpman.config.php && cat > /dev/null || cat > $(DEMO_PATH)/phpman.config.php && chmod 644 $(DEMO_PATH)/phpman.config.php && echo 'Created phpman.config.php'"; \
-		ssh -p $(DEMO_PORT) $(DEMO_HOST) "ln -sf $(DEMO_PATH)/phpman.config.php \$$HOME/.phpman/phpman.config.php"; \
+		"test -f $(DEMO_PATH)/phpman.config.php && cat > /dev/null || (echo \"<?php define('PHPMAN_HOME', '$(DEMO_HOME)/.phpman');\" > $(DEMO_PATH)/phpman.config.php && chmod 644 $(DEMO_PATH)/phpman.config.php && echo 'Created phpman.config.php (PHPMAN_HOME only)')"; \
 	@TIMESTAMP=$$(date +%Y%m%d-%H%M%S); \
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"mkdir -p \"\$$HOME/.phpman/backups\" && cp $(DEMO_PATH)/$(FILE) \"\$$HOME/.phpman/backups/$(FILE).$${TIMESTAMP}.bak\" 2>/dev/null || true"; \
@@ -175,7 +181,7 @@ _release-code:
 	@echo "--- Checking for new config options ---"; \
 	missing=$$(ssh -p $(DEMO_PORT) $(DEMO_HOST) " \
 		example=$(DEMO_HOME)/.phpman/phpman.config.php.example; \
-		config=$(DEMO_PATH)/phpman.config.php; \
+		config=$(DEMO_HOME)/.phpman/phpman.config.php; \
 		if [ ! -f \"\$$config\" ] || [ ! -f \"\$$example\" ]; then exit 0; fi; \
 		while IFS= read -r key; do \
 			[ -z \"\$$key\" ] && continue; \
