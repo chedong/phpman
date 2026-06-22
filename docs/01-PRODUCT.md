@@ -32,6 +32,14 @@ phpMan is a single-file PHP web application that presents Unix `man`/`perldoc`/`
 
 **Code location**: `showFooter()`
 
+**Google Analytics (v4.4.4+)**: Optional GA4 pageview tracking via `PHPMAN_GA_ID` config:
+
+- Set `define('PHPMAN_GA_ID', 'G-XXXXXXXXXX')` in `phpman.config.php` to enable
+- `showFooter()` conditionally outputs `<script async="async" src="https://www.googletagmanager.com/gtag/js?id=...">` + inline `gtag('config', ...)` 
+- Inline JS is CDATA-wrapped for XHTML validity
+- Leave empty (default) = no GA output, zero overhead
+- Architecture: server-side injection keeps measurement ID configurable per deployment, not hardcoded in static JS
+
 ### 2.2 Single-File Architecture
 
 phpMan is deployed as a single `phpMan.php` file by design:

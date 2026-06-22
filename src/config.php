@@ -29,6 +29,9 @@ if (!defined('PHPMAN_TLDR_MAX_EXAMPLES')) {
 if (!defined('PHPMAN_ENHANCE_MAX_CHARS')) {
     define('PHPMAN_ENHANCE_MAX_CHARS', 32000);  // max chars for LLM enhance output
 }
+if (!defined('PHPMAN_GA_ID')) {
+    define('PHPMAN_GA_ID', '');                  // Google Analytics GA4 measurement ID (empty = disabled)
+}
 if (!defined('PHPMAN_HOME_TITLE')) {
     define('PHPMAN_HOME_TITLE', 'phpman - Linux Command Reference, JSON API & MCP Server for AI Agents');
 }

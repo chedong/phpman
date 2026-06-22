@@ -85,7 +85,7 @@ flags are removed.
 - **XHTML 1.0 Transitional** — no HTML5 tags (`<nav>`, `<section>`), no `og:` meta tags. Use `<div id="...">` and `<p>` instead.
 - **Footer IP + UA display is intentional** — it's for spider/bot tracking in `showFooter()`. Do not remove it. See `docs/01-PRODUCT.md` for the full rationale.
 - **`?debug=1`** only shows sensitive details when `isLocalRequest()` returns true (REMOTE_ADDR is 127.0.0.1, ::1, or empty).
-- **Config overridables** — `PHPMAN_WIDTH`, `PHPMAN_TOC_THRESHOLD`, `PHPMAN_GZIP_MIN_BYTES`, `PHPMAN_TLDR_MAX_EXAMPLES`, `PHPMAN_ENHANCE_MAX_CHARS`, `PHPMAN_HOME_TITLE`, `PHPMAN_PROJECT_NAME` use `defined()` guard pattern, overridable via `phpman.config.php`.
+- **Config overridables** — `PHPMAN_WIDTH`, `PHPMAN_TOC_THRESHOLD`, `PHPMAN_GZIP_MIN_BYTES`, `PHPMAN_TLDR_MAX_EXAMPLES`, `PHPMAN_ENHANCE_MAX_CHARS`, `PHPMAN_HOME_TITLE`, `PHPMAN_PROJECT_NAME`, `PHPMAN_GA_ID` use `defined()` guard pattern, overridable via `phpman.config.php`.
 - **Cap word style** for new code: functionNames, variableNames, arrayKeys. Existing code uses mixed styles — match the surrounding convention.
 - **Output format purity** — each format must produce self-consistent output with no cross-format contamination. Markdown output MUST NOT contain HTML tags (`<ul>`, `<li>`, `<a>`) — use pure Markdown (`- ` list items, `[text](url)` links). JSON MUST be valid parseable JSON. HTML MUST be XHTML 1.0 Transitional compliant.
 - **`h()` and `serverValue()`** are the canonical helpers for HTML escaping and reading `$_SERVER`. Use them instead of direct access.

@@ -581,6 +581,11 @@ define('LLM_MODEL', 'gpt-4o-mini');
 define('MCP_API_KEY', 'your-secret-key-here');
 ```
 
+**Add Google Analytics** (+1 define):
+```php
+define('PHPMAN_GA_ID', 'G-XXXXXXXXXX');
+```
+
 **install.sh config generation**: copies `phpman.config.php.example` → uncomments
 `PHPMAN_HOME` with detected home path. If `--webroot` flag is passed, also generates
 a random 32-char `MCP_API_KEY`. All other settings stay commented — user uncomments

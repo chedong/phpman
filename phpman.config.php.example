@@ -54,6 +54,11 @@
 //     ],
 // ]);
 
+// --- Google Analytics (v4.4.4+) ---
+// Set your GA4 measurement ID to enable pageview tracking.
+// Leave empty to disable (default).
+// define('PHPMAN_GA_ID', 'G-XXXXXXXXXX');
+
 // --- MCP Authentication (#97) ---
 // Set a secret key to require X-API-Key header on all MCP requests.
 // Leave empty to allow unauthenticated access (default, for local/trusted networks).
