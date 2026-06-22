@@ -198,14 +198,10 @@ do_deploy_webroot() {
     cp "$INSTALL_DIR/phpman.js" "$target/" 2>/dev/null || true
     chmod 644 "$target/phpMan.php" "$target/phpman.css" "$target/phpman.js" 2>/dev/null || true
 
-    # Webroot config: ONLY PHPMAN_HOME — all other config lives in ~/.phpman/phpman.config.php
-    local webroot_config="$target/phpman.config.php"
-    if [ ! -f "$webroot_config" ]; then
-        local home; home=$(php -r 'echo getenv("HOME") ?: ($_SERVER["HOME"] ?? "");')
-        echo "<?php define('PHPMAN_HOME', '${home}/.phpman');" > "$webroot_config"
-        chmod 644 "$webroot_config"
-        echo "  Created: $webroot_config (PHPMAN_HOME only)"
-    fi
+    # Patch PHPMAN_HOME into phpMan.php (replaces __PHPMAN_HOME__ placeholder)
+    local home; home=$(php -r 'echo getenv("HOME") ?: ($_SERVER["HOME"] ?? "");')
+    sed -i '' "s|__PHPMAN_HOME__|${home}/.phpman|" "$target/phpMan.php" 2>/dev/null || \
+    sed -i "s|__PHPMAN_HOME__|${home}/.phpman|" "$target/phpMan.php"
 
     # Data directories live outside webroot, under PHPMAN_HOME (~/.phpman)
     mkdir -p "$HOME/.phpman/db" "$HOME/.phpman/logs" "$HOME/.phpman/backups"
@@ -215,8 +211,7 @@ do_deploy_webroot() {
     echo "  phpMan.php  → $target/phpMan.php"
     [ -f "$target/phpman.css" ] && echo "  phpman.css   → $target/phpman.css"
     [ -f "$target/phpman.js" ] && echo "  phpman.js    → $target/phpman.js"
-    echo "  web config   → $target/phpman.config.php (PHPMAN_HOME only)"
-    echo "  full config  → $HOME/.phpman/phpman.config.php (all settings)"
+    echo "  config       → $HOME/.phpman/phpman.config.php (all settings)"
     echo "  data dir     → $HOME/.phpman/ (src/ cli/ db/ logs/)"
     echo ""
     echo "  Next: configure your web server to serve PHP from $target"
@@ -248,6 +243,11 @@ do_install() {
     # 1. Generate config FIRST — phpMan.php and CLI tools need it
     echo "→ Generating config..."
     generate_config
+
+    # Patch PHPMAN_HOME into phpMan.php for the built-in dev server
+    local home; home=$(php -r 'echo getenv("HOME") ?: ($_SERVER["HOME"] ?? "");')
+    sed -i '' "s|__PHPMAN_HOME__|${home}/.phpman|" "$INSTALL_DIR/phpMan.php" 2>/dev/null || \
+    sed -i "s|__PHPMAN_HOME__|${home}/.phpman|" "$INSTALL_DIR/phpMan.php"
 
     # 2. Create data directories (db/, logs/, backups/) under PHPMAN_HOME
     mkdir -p "$HOME/.phpman/db" "$HOME/.phpman/logs" "$HOME/.phpman/backups"

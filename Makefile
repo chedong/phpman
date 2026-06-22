@@ -81,14 +81,6 @@ test:
 _deploy-code:
 	@echo "=== Preparing staging server ==="
 	@echo "--- Configuring staging home: ~/.phpman_test (debug ON) ---"
-	@# Webroot config: only PHPMAN_HOME (create if missing, update if exists)
-	@ssh -p $(TEST_PORT) $(TEST_HOST) " \
-		if [ -f $(TEST_PATH)/phpman.config.php ] && [ -s $(TEST_PATH)/phpman.config.php ]; then \
-			sed -i \"s|define('PHPMAN_HOME',.*|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|\" $(TEST_PATH)/phpman.config.php; \
-			echo 'Updated phpman.config.php (PHPMAN_HOME only)'; \
-		else \
-			echo \"<?php define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');\" > $(TEST_PATH)/phpman.config.php && chmod 644 $(TEST_PATH)/phpman.config.php && echo 'Created phpman.config.php (PHPMAN_HOME only)'; \
-		fi"
 	@# PHPMAN_HOME config: full config from .example (create if missing, update if exists)
 	@ssh -p $(TEST_PORT) $(TEST_HOST) " \
 		if [ -f $(STAGING_HOME)/.phpman_test/phpman.config.php ] && [ -s $(STAGING_HOME)/.phpman_test/phpman.config.php ]; then \
@@ -102,7 +94,8 @@ _deploy-code:
 				$(STAGING_HOME)/.phpman_test/phpman.config.php.example | \
 			cat > $(STAGING_HOME)/.phpman_test/phpman.config.php && chmod 644 $(STAGING_HOME)/.phpman_test/phpman.config.php && echo 'Created phpman.config.php'; \
 		fi"
-	sed -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
+	sed -e "s|define('PHPMAN_HOME', '[^']*');|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|" \
+	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
 	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) | \
 		ssh -p $(TEST_PORT) $(TEST_HOST) "cat > $(TEST_PATH)/$(FILE)"; \
 	scp -P $(TEST_PORT) $(CSS_FILE) $(TEST_HOST):$(TEST_PATH)/$(CSS_FILE); \
@@ -152,17 +145,14 @@ staging-reindex: test _deploy-code
 _release-code:
 	@echo "=== Deploying $(GIT_TAG) ==="
 	@echo "=== Preparing production server ==="
-	@echo "--- Configuring home: ~/.phpman ---"
-	@# Webroot config: ONLY PHPMAN_HOME. All other config lives in ~/.phpman/phpman.config.php
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"test -f $(DEMO_PATH)/phpman.config.php && cat > /dev/null || (echo \"<?php define('PHPMAN_HOME', '$(DEMO_HOME)/.phpman');\" > $(DEMO_PATH)/phpman.config.php && chmod 644 $(DEMO_PATH)/phpman.config.php && echo 'Created phpman.config.php (PHPMAN_HOME only)')"; \
 	@TIMESTAMP=$$(date +%Y%m%d-%H%M%S); \
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"mkdir -p \"\$$HOME/.phpman/backups\" && cp $(DEMO_PATH)/$(FILE) \"\$$HOME/.phpman/backups/$(FILE).$${TIMESTAMP}.bak\" 2>/dev/null || true"; \
 	echo "=== Pruning old backups (keeping last 5) ==="; \
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"ls -1t \"\$$HOME/.phpman/backups/$(FILE).\"*.bak 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true"; \
-	sed -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
+	sed -e "s|define('PHPMAN_HOME', '[^']*');|define('PHPMAN_HOME', '$(DEMO_HOME)/.phpman');|" \
+	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
 	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) | \
 		ssh -p $(DEMO_PORT) $(DEMO_HOST) "cat > $(DEMO_PATH)/$(FILE)"; \
 	scp -P $(DEMO_PORT) $(CSS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(CSS_FILE); \

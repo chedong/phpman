@@ -30,15 +30,10 @@ define('RE_ASCII', '[ -~]');
 define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 
 // #49: Named constants for magic numbers
-define('PHPMAN_VERSION', '4.4.4');        // current version (#67)
-define('GIT_DESCRIBE', 'v4.1.1-10-gd2a3e77-dirty');         // replaced by make deploy/release with git describe --tags
+define('PHPMAN_HOME', '__PHPMAN_HOME__');  // replaced by make deploy/release
+define('PHPMAN_VERSION', '4.4.4');         // current version (#67)
+define('GIT_DESCRIBE', 'v4.1.1-10-gd2a3e77-dirty');  // replaced by make deploy/release
 
-
-
-// Load site-specific config before defaults (define() guard pattern)
-$_config_file = __DIR__ . "/phpman.config.php";
-if (file_exists($_config_file)) { require $_config_file; }
-unset($_config_file);
 
 // Load all source files (config defaults + functions + classes)
 // Resolve src/: dev (next to phpMan.php) or deployed (PHPMAN_HOME/src/)
