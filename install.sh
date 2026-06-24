@@ -163,12 +163,6 @@ generate_config() {
     # Copy from .example — single source of truth for config format
     cp "$example" "$config_file"
 
-    local home; home=$(php -r 'echo getenv("HOME") ?: ($_SERVER["HOME"] ?? "");')
-
-    # Uncomment and set PHPMAN_HOME
-    sed -i '' "s|// define('PHPMAN_HOME'.*|define('PHPMAN_HOME', '${home}/.phpman');|" "$config_file" 2>/dev/null || \
-    sed -i "s|// define('PHPMAN_HOME'.*|define('PHPMAN_HOME', '${home}/.phpman');|" "$config_file"
-
     # Generate a random 32-char hex key for MCP authentication
     local mcp_key; mcp_key=$(php -r 'echo bin2hex(random_bytes(16));')
     sed -i '' "s|// define('MCP_API_KEY'.*|define('MCP_API_KEY', '${mcp_key}');|" "$config_file" 2>/dev/null || \
