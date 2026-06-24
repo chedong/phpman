@@ -19,11 +19,12 @@
 
 // --- PHPMAN_HOME ---
 // Base directory for all phpMan local data (cache DB, logs, backups).
-// Default: PHPMAN_HOME env var, then $HOME/.phpman
-// Use ~/.phpman_test for staging to avoid sharing DB/logs/backups with production.
+// PHPMAN_HOME is baked into phpMan.php at deploy time (sed-replaced like
+// GIT_DESCRIBE). Uncomment below only if you need to override the baked-in
+// value (rare — usually only for staging with ~/.phpman_test).
 // define('PHPMAN_HOME', getenv('HOME') . '/.phpman');
 // define('PHPMAN_HOME', getenv('HOME') . '/.phpman_test');
-// Or override individual paths below:
+// Or override individual paths:
 // define('PHPMAN_CACHE_DIR', '/path/to/custom/cache');
 // define('PHPMAN_LOG_DIR', '/path/to/custom/logs');
 // define('PHPMAN_BACKUP_DIR', '/path/to/custom/backups');
