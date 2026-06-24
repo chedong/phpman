@@ -680,11 +680,14 @@ function showStatus(string $dbPath): void {
     // ── Config dump ──
     echo "\n┌─ Config ──────────────────────────────────────────────────────────────┐\n";
     $configs = ["PHPMAN_HOME", "PHPMAN_BASE_URL", "PHPMAN_GA_ID", "PHPMAN_WIDTH", "PHPMAN_TOC_THRESHOLD", "PHPMAN_GZIP_MIN_BYTES", "PHPMAN_TLDR_MAX_EXAMPLES", "PHPMAN_ENHANCE_MAX_CHARS", "LLM_API_URL", "LLM_API_KEY", "LLM_MODEL", "LLM_MAX_TOKENS", "MCP_API_KEY", "PHPMAN_DEBUG", "CACHE_SCHEMA_VERSION"];
+    // Mask sensitive/verbose values: key => max visible length before truncation
+    $maskConfig = ["MCP_API_KEY" => 8, "LLM_API_KEY" => 8, "LLM_API_URL" => 45];
     foreach ($configs as $key) {
         $val = defined($key) ? constant($key) : "(not defined)";
-        if ($key === "MCP_API_KEY" && $val !== "" && $val !== "(not defined)") $val = substr($val, 0, 8) . "...";
-        if ($key === "LLM_API_KEY" && $val !== "" && $val !== "(not defined)") $val = substr($val, 0, 8) . "...";
-        if ($key === "LLM_API_URL" && strlen($val) > 45) $val = substr($val, 0, 42) . "...";
+        if (isset($maskConfig[$key]) && $val !== "" && $val !== "(not defined)") {
+            $maxLen = $maskConfig[$key];
+            if (strlen($val) > $maxLen) $val = substr($val, 0, $maxLen - 3) . "...";
+        }
         printf("  %-28s %s\n", $key . ":", $val);
     }
     echo "└──────────────────────────────────────────────────────────────────────────┘\n";

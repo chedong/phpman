@@ -174,6 +174,14 @@ generate_config() {
     echo "  → Edit $config_file to set PHPMAN_BASE_URL, PHPMAN_GA_ID, LLM_API_KEY"
 }
 
+# Patch __PHPMAN_HOME__ placeholder in phpMan.php (macOS + Linux sed compat)
+patch_phpman_home() {
+    local target_file="$1"
+    local home; home=$(php -r 'echo getenv("HOME") ?: ($_SERVER["HOME"] ?? "");')
+    sed -i '' "s|__PHPMAN_HOME__|${home}/.phpman|" "$target_file" 2>/dev/null || \
+    sed -i "s|__PHPMAN_HOME__|${home}/.phpman|" "$target_file"
+}
+
 # ─── Deploy to Webroot ────────────────────────────────────────────────────────
 
 do_deploy_webroot() {
@@ -192,10 +200,7 @@ do_deploy_webroot() {
     cp "$INSTALL_DIR/phpman.js" "$target/" 2>/dev/null || true
     chmod 644 "$target/phpMan.php" "$target/phpman.css" "$target/phpman.js" 2>/dev/null || true
 
-    # Patch PHPMAN_HOME into phpMan.php (replaces __PHPMAN_HOME__ placeholder)
-    local home; home=$(php -r 'echo getenv("HOME") ?: ($_SERVER["HOME"] ?? "");')
-    sed -i '' "s|__PHPMAN_HOME__|${home}/.phpman|" "$target/phpMan.php" 2>/dev/null || \
-    sed -i "s|__PHPMAN_HOME__|${home}/.phpman|" "$target/phpMan.php"
+    patch_phpman_home "$target/phpMan.php"
 
     # Data directories live outside webroot, under PHPMAN_HOME (~/.phpman)
     mkdir -p "$HOME/.phpman/db" "$HOME/.phpman/logs" "$HOME/.phpman/backups"
@@ -238,10 +243,7 @@ do_install() {
     echo "→ Generating config..."
     generate_config
 
-    # Patch PHPMAN_HOME into phpMan.php for the built-in dev server
-    local home; home=$(php -r 'echo getenv("HOME") ?: ($_SERVER["HOME"] ?? "");')
-    sed -i '' "s|__PHPMAN_HOME__|${home}/.phpman|" "$INSTALL_DIR/phpMan.php" 2>/dev/null || \
-    sed -i "s|__PHPMAN_HOME__|${home}/.phpman|" "$INSTALL_DIR/phpMan.php"
+    patch_phpman_home "$INSTALL_DIR/phpMan.php"
 
     # 2. Create data directories (db/, logs/, backups/) under PHPMAN_HOME
     mkdir -p "$HOME/.phpman/db" "$HOME/.phpman/logs" "$HOME/.phpman/backups"

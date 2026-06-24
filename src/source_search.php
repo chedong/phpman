@@ -269,12 +269,8 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         if (!empty($ri_results)) {
             $jsonData["ri_results"] = $ri_results;
         }
-        // Return plain JSON for both — MCP wrapping done ONCE by caller (web dispatch / executeCliSearch)
-        $jsonStr = json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        if ($format === "mcp") {
-            return $jsonStr;  // plain JSON, caller wraps with formatForOutput
-        }
-        return $jsonStr;  // json format: plain JSON
+        // Return plain JSON — formatForOutput wrapping done ONCE by caller
+        return json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     }
 
     // determine link mode: perl modules (section 3pm or name with ::) use perldoc, others use man
