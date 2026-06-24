@@ -123,6 +123,106 @@ accents. All colors derive from the Tokyo Night palette:
 from man page output. Blue links maintain web usability expectations without
 breaking the dark theme.
 
+## Light Mode: Hakusho (白書) — Scholar's Manuscript
+
+Tokyo Night is the late-night coding session. When the sun is up, phpMan
+switches to **Hakusho** — a light palette grounded in the tactile world of
+Japanese manuscript culture. The visual metaphor is a printed man page on a
+desk in morning light: rice paper, sumi ink, indigo dye, pine wood.
+
+Auto-switch via `prefers-color-scheme` media query — follows OS-level setting,
+no JavaScript required for the core toggle. Users who set their OS to light/dark
+automatically get the matching phpMan theme.
+
+### Hakusho Light Palette
+
+| Token | Hex | Role |
+|-------|-----|------|
+| `bg-main` | `#f5f0e8` | Page background — warm aged rice paper |
+| `bg-sidebar` | `#efebe2` | TOC sidebar, TLDR block — tatami straw |
+| `bg-tldr-header` | `#e8e3d6` | TLDR header — scroll parchment |
+| `bg-code` | `#ede8dc` | Code block — paper shadow |
+| `bg-input` | `#ffffff` | Input fields — fresh paper |
+| `text-body` | `#2d2a2e` | Body text — sumi charcoal ink |
+| `text-secondary` | `#5c5a5e` | Secondary labels |
+| `text-muted` | `#8c8a8e` | Muted metadata |
+| `text-link` | `#2e5c8a` | Links — indigo blue |
+| `text-bold` | `#b35c00` | Bold emphasis — burnt amber |
+| `text-underline` | `#4a7a5e` | Underline — pine green |
+| `border-primary` | `#d5cfc4` | Borders — paper shadow |
+| `border-active` | `#2e5c8a` | Focus ring — indigo |
+| `button-bg` | `#2e5c8a` | Button — indigo |
+| `button-hover` | `#3d72a8` | Button hover — lighter indigo |
+| `btn-text` | `#ffffff` | Button text — white |
+
+### Why "Hakusho" rather than a generic Solarized Light
+
+The terminal tool ecosystem already has Solarized Light, Papercolor, and
+One Light. All three lean cool (blue-gray or beige-gray). Hakusho leans
+**warm** — the paper is aged rather than bleached, the ink is charcoal
+rather than pure black. It feels human and tactile, the opposite of a
+synthetic color scheme. The palette has a material quality: you can almost
+smell the paper.
+
+This is the **signature risk**: a warm, paper-tone light mode for a
+developer tool, in a landscape where every other terminal theme light
+variant defaults to cool gray. If it succeeds, it's unmistakably phpMan.
+
+## Switching Mechanism
+
+```css
+/* Tokyo Night — default (dark) */
+:root {
+  --bg-main: #1a1b26;
+  --bg-sidebar: #24283b;
+  --bg-tldr-header: #1f2335;
+  --bg-code: #1a1b26;
+  --bg-input: #24283b;
+  --text-body: #c0caf5;
+  --text-secondary: #a9b1d6;
+  --text-muted: #787c99;
+  --text-link: #7aa2f7;
+  --text-bold: #e0af68;
+  --text-underline: #9ece6a;
+  --border-primary: #3b4261;
+  --border-active: #89b4fa;
+  --button-bg: #7aa2f7;
+  --button-hover: #89b4fa;
+  --btn-text: #1a1b26;
+}
+
+/* Hakusho — light mode */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg-main: #f5f0e8;
+    --bg-sidebar: #efebe2;
+    --bg-tldr-header: #e8e3d6;
+    --bg-code: #ede8dc;
+    --bg-input: #ffffff;
+    --text-body: #2d2a2e;
+    --text-secondary: #5c5a5e;
+    --text-muted: #8c8a8e;
+    --text-link: #2e5c8a;
+    --text-bold: #b35c00;
+    --text-underline: #4a7a5e;
+    --border-primary: #d5cfc4;
+    --border-active: #2e5c8a;
+    --button-bg: #2e5c8a;
+    --button-hover: #3d72a8;
+    --btn-text: #ffffff;
+  }
+}
+```
+
+All CSS rules reference `var(--bg-main)`, `var(--text-body)`, etc.
+No hardcoded colors in selectors. Adding a manual toggle (JS + localStorage)
+is a future enhancement — the core auto-switch works zero-JS.
+
+The `prefers-color-scheme` media query is supported in all modern browsers
+since 2019. No sunrise/sunset calculation needed — the OS already knows
+the user's preference.
+
+
 ## Typography
 
 | Token | Value | Usage |

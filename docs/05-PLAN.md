@@ -117,6 +117,12 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `src/Source/` + `src/Formatter/` + `src/Cache/` + `src/Config/`
 - Single-file entry point preserved
 
+### v4.6 (planned) — Light/Dark Auto-Switch
+- **Hakusho (白書) light mode**: warm paper-tone palette via `prefers-color-scheme: light`
+- CSS custom properties (`var(--bg-main)` etc.) — one stylesheet, two palettes
+- Zero-JS auto-switch; manual toggle (localStorage) as future enhancement
+- See `docs/02-UI-DESIGN.md` for full palette and design rationale
+
 ### v4.1 — Tooling & Security Hardening (current, 2026-06-17)
 
 **batch_enhance.php lifecycle**:
