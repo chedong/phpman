@@ -1,14 +1,25 @@
 <?php
-// --- Shared helper functions (#44: DRY refactoring) ---
-// --- Load site-specific config (phpman.config.php) ---
-// Uses define() pattern like WordPress wp-config.php — constants defined
-// in phpman.config.php override the defaults below.
-// Config file is in the project root, not src/. phpMan.php loads it first,
-// but CLI tools may require config.php before phpMan.php is in scope.
+// ─── CONFIGURATION ───────────────────────────────────────────────────────────
+// TWO files, one pattern (like WordPress wp-config.php):
+//
+//   1. phpman.config.php     ← USER OVERRIDES (edit this, NOT this file)
+//   2. src/config.php        ← SYSTEM DEFAULTS (this file — DO NOT EDIT)
+//
+// Load order: phpman.config.php is loaded FIRST (lines below), then
+// defaults are defined with if(!defined('X')) guards. User defines always win.
+//
+// To change any setting: copy phpman.config.php.example → phpman.config.php,
+// uncomment and edit the relevant define() line.
+// ──────────────────────────────────────────────────────────────────────────────
+
+// Load user overrides FIRST (so defaults don't overwrite them)
 $_config_file = dirname(__DIR__) . '/phpman.config.php';
 if (file_exists($_config_file)) {
     require_once $_config_file;
 }
+
+// ═══════════ SYSTEM DEFAULTS BELOW — DO NOT EDIT ═════════════════════════════
+// Override any of these in phpman.config.php instead.
 
 // Default terminal width for man/perldoc output (#49: character width, used as MANROFFOPT -rLL=NNNn).
 // Override in phpman.config.php via define('PHPMAN_WIDTH', 120);
