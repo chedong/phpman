@@ -30,9 +30,9 @@ define('RE_ASCII', '[ -~]');
 define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 
 // #49: Named constants for magic numbers
-define('PHPMAN_HOME', '__PHPMAN_HOME__');  // replaced by make deploy/release
-define('PHPMAN_VERSION', '4.5');         // current version (#67)
-define('GIT_DESCRIBE', 'v4.1.1-10-gd2a3e77-dirty');  // replaced by make deploy/release
+define('PHPMAN_HOME', '/home/chedong/.phpman');  // replaced by make deploy/release
+define('PHPMAN_VERSION', '4.5.4');         // current version (#67)
+define('GIT_DESCRIBE', 'v4.5.4-dirty');  // replaced by make deploy/release
 
 
 // Load all source files (config defaults + functions + classes)
@@ -116,6 +116,15 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
         }
     }
     
+    // Guard: reject abnormally deep/long PATH_INFO (scanner noise, probes)
+    $pathInfo = serverValue("PATH_INFO");
+    if (strlen($pathInfo) > 100 || count($segments) > 5 || preg_match('#:/#', $pathInfo)) {
+        http_response_code(403);
+        header("Content-Type: text/plain; charset=UTF-8");
+        die("403 Forbidden: malformed PATH_INFO
+");
+    }
+
     $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp", ".well-known", "pydoc", "ri");
     $seg_count = count($segments);
     
