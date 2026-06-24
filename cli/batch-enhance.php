@@ -679,7 +679,7 @@ function showStatus(string $dbPath): void {
 
     // ── Config dump ──
     echo "\n┌─ Config ──────────────────────────────────────────────────────────────┐\n";
-    $configs = ["PHPMAN_HOME", "PHPMAN_BASE_URL", "PHPMAN_GA_ID", "PHPMAN_WIDTH", "PHPMAN_TOC_THRESHOLD", "PHPMAN_GZIP_MIN_BYTES", "PHPMAN_TLDR_MAX_EXAMPLES", "PHPMAN_ENHANCE_MAX_CHARS", "LLM_API_URL", "LLM_MODEL", "LLM_MAX_TOKENS", "MCP_API_KEY", "PHPMAN_DEBUG", "CACHE_SCHEMA_VERSION"];
+    $configs = ["PHPMAN_HOME", "PHPMAN_BASE_URL", "PHPMAN_GA_ID", "PHPMAN_WIDTH", "PHPMAN_TOC_THRESHOLD", "PHPMAN_GZIP_MIN_BYTES", "PHPMAN_TLDR_MAX_EXAMPLES", "PHPMAN_ENHANCE_MAX_CHARS", "LLM_API_URL", "LLM_API_KEY", "LLM_MODEL", "LLM_MAX_TOKENS", "MCP_API_KEY", "PHPMAN_DEBUG", "CACHE_SCHEMA_VERSION"];
     foreach ($configs as $key) {
         $val = defined($key) ? constant($key) : "(not defined)";
         if ($key === "MCP_API_KEY" && $val !== "" && $val !== "(not defined)") $val = substr($val, 0, 8) . "...";

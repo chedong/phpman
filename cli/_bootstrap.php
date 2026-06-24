@@ -7,8 +7,13 @@ if (PHP_SAPI !== 'cli') {
     die("CLI only\n");
 }
 
-// Load site config from project root (may define PHPMAN_HOME, PHPMAN_DEBUG, etc.)
+// Load site config (may define PHPMAN_HOME, PHPMAN_DEBUG, etc.)
+// Search: 1) project-root, 2) $HOME/.phpman/ (matches src/config.php fallback)
 $config_file = __DIR__ . '/../phpman.config.php';
+if (!file_exists($config_file)) {
+    $home = getenv('HOME') ?: ($_SERVER['HOME'] ?? '');
+    $config_file = $home . '/.phpman/phpman.config.php';
+}
 if (file_exists($config_file)) {
     require $config_file;
 }

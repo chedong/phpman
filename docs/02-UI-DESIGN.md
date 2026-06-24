@@ -147,12 +147,15 @@ automatically get the matching phpMan theme.
 | `text-secondary` | `#5c5a5e` | Secondary labels |
 | `text-muted` | `#8c8a8e` | Muted metadata |
 | `text-link` | `#2e5c8a` | Links — indigo blue |
+| `text-link-hover` | `#3d72a8` | Link hover — lighter indigo |
 | `text-bold` | `#b35c00` | Bold emphasis — burnt amber |
 | `text-underline` | `#4a7a5e` | Underline — pine green |
 | `border-primary` | `#d5cfc4` | Borders — paper shadow |
+| `border-subtle` | `#ddd8cc` | Subtle borders — lighter shadow |
 | `border-active` | `#2e5c8a` | Focus ring — indigo |
 | `button-bg` | `#2e5c8a` | Button — indigo |
 | `button-hover` | `#3d72a8` | Button hover — lighter indigo |
+| `button-border` | `#8a9ab0` | Button border |
 | `btn-text` | `#ffffff` | Button text — white |
 
 ### Why "Hakusho" rather than a generic Solarized Light
@@ -176,18 +179,21 @@ variant defaults to cool gray. If it succeeds, it's unmistakably phpMan.
   --bg-main: #1a1b26;
   --bg-sidebar: #24283b;
   --bg-tldr-header: #1f2335;
-  --bg-code: #1a1b26;
+  --bg-code: #1f2335;
   --bg-input: #24283b;
   --text-body: #c0caf5;
   --text-secondary: #a9b1d6;
   --text-muted: #787c99;
   --text-link: #7aa2f7;
+  --text-link-hover: #89b4fa;
   --text-bold: #e0af68;
   --text-underline: #9ece6a;
   --border-primary: #3b4261;
+  --border-subtle: #292e42;
   --border-active: #89b4fa;
   --button-bg: #7aa2f7;
   --button-hover: #89b4fa;
+  --button-border: #565f89;
   --btn-text: #1a1b26;
 }
 
@@ -203,20 +209,22 @@ variant defaults to cool gray. If it succeeds, it's unmistakably phpMan.
     --text-secondary: #5c5a5e;
     --text-muted: #8c8a8e;
     --text-link: #2e5c8a;
+    --text-link-hover: #3d72a8;
     --text-bold: #b35c00;
     --text-underline: #4a7a5e;
     --border-primary: #d5cfc4;
+    --border-subtle: #ddd8cc;
     --border-active: #2e5c8a;
     --button-bg: #2e5c8a;
     --button-hover: #3d72a8;
+    --button-border: #8a9ab0;
     --btn-text: #ffffff;
   }
 }
 ```
 
-All CSS rules reference `var(--bg-main)`, `var(--text-body)`, etc.
-No hardcoded colors in selectors. Adding a manual toggle (JS + localStorage)
-is a future enhancement — the core auto-switch works zero-JS.
+All CSS rules reference CSS custom properties — no hardcoded colors in selectors.
+Live implementation in `phpman.css` (v4.6). The core auto-switch works zero-JS.
 
 The `prefers-color-scheme` media query is supported in all modern browsers
 since 2019. No sunrise/sunset calculation needed — the OS already knows

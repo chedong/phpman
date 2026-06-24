@@ -106,24 +106,31 @@ if (serverValue("PATH_INFO") !== "" && strpos(serverValue("PATH_INFO"), "/.well-
  * parse parameters from $_SERVER["PATH_INFO"]: phpMan.php/MODE/COMMAND/SECTION/FORMAT
  * or parse parameters from HTTP/GET
  */
-if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
-    $array_param = explode('/', serverValue("PATH_INFO"));
-    $segments = [];
-    foreach ($array_param as $p) {
-        $p_trimmed = trim($p);
-        if ($p_trimmed !== "") {
-            $segments[] = $p_trimmed;
-        }
-    }
-    
-    // Guard: reject abnormally deep/long PATH_INFO (scanner noise, probes)
-    $pathInfo = serverValue("PATH_INFO");
-    if (strlen($pathInfo) > 100 || count($segments) > 5 || preg_match('#:/#', $pathInfo)) {
-        http_response_code(403);
-        header("Content-Type: text/plain; charset=UTF-8");
-        die("403 Forbidden: malformed PATH_INFO
+$pathInfo = serverValue("PATH_INFO");
+    if ($pathInfo !== "" && trim($pathInfo) != "") {
+        // Guard: reject abnormally deep/long PATH_INFO BEFORE parsing (scanner noise, probes)
+        if (strlen($pathInfo) > 100 || preg_match('#:/#', $pathInfo)) {
+            http_response_code(403);
+            header("Content-Type: text/plain; charset=UTF-8");
+            die("403 Forbidden: malformed PATH_INFO
 ");
-    }
+        }
+
+        $array_param = explode('/', $pathInfo);
+        $segments = [];
+        foreach ($array_param as $p) {
+            $p_trimmed = trim($p);
+            if ($p_trimmed !== "") {
+                $segments[] = $p_trimmed;
+            }
+        }
+
+        if (count($segments) > 5) {
+            http_response_code(403);
+            header("Content-Type: text/plain; charset=UTF-8");
+            die("403 Forbidden: malformed PATH_INFO
+");
+        }
 
     $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp", ".well-known", "pydoc", "ri");
     $seg_count = count($segments);
