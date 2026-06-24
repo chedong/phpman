@@ -93,5 +93,5 @@ if (!defined('PHPMAN_DEBUG')) define('PHPMAN_DEBUG', getenv('PHPMAN_DEBUG') === 
 if (!defined('LLM_API_KEY'))    define('LLM_API_KEY', '');
 if (!defined('LLM_API_URL'))    define('LLM_API_URL', '');
 if (!defined('LLM_MODEL'))      define('LLM_MODEL', '');
-if (!defined('LLM_MAX_TOKENS')) define('LLM_MAX_TOKENS', 4096);
+if (!defined('LLM_MAX_TOKENS')) define('LLM_MAX_TOKENS', 409600);
 
