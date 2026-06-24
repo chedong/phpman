@@ -13,7 +13,12 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 // Load user overrides FIRST (so defaults don't overwrite them)
+// Search order: 1) ../phpman.config.php (webroot-relative), 2) $HOME/.phpman/
 $_config_file = dirname(__DIR__) . '/phpman.config.php';
+if (!file_exists($_config_file)) {
+    $home = getenv('HOME') ?: ($_SERVER['HOME'] ?? '');
+    $_config_file = $home . '/.phpman/phpman.config.php';
+}
 if (file_exists($_config_file)) {
     require_once $_config_file;
 }
