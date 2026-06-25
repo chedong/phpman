@@ -31,7 +31,7 @@ define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 
 // #49: Named constants for magic numbers
 define('PHPMAN_HOME', '/home/chedong/.phpman');  // replaced by make deploy/release
-define('PHPMAN_VERSION', '4.5.8');         // current version (#67)
+define('PHPMAN_VERSION', '4.5.9');         // current version (#67)
 define('GIT_DESCRIBE', 'v4.5.7');  // replaced by make deploy/release
 
 
