@@ -9,11 +9,10 @@
         document.documentElement.setAttribute('data-theme', saved);
     }
 
-    // Create toggle button
+    // Create toggle button — icon set by updateToggleIcon() from CSS matchMedia
     var toggle = document.createElement('button');
     toggle.id = 'theme-toggle';
     toggle.title = 'Toggle light/dark mode';
-    toggle.textContent = '☾';  // ☾
     updateToggleIcon();
 
     toggle.onclick = function () {

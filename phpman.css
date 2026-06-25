@@ -1,5 +1,15 @@
 /* phpMan Tokyo Night + Hakusho stylesheet — v4.7 */
 /* Tokyo Night — dark mode defaults */
+
+/* ── Theme: CSS custom properties ──
+   Cascade (specificity decides):
+   1. :root                          (0-1-0) — dark default
+   2. @media (prefers-color-scheme: light) :root  (0-1-0) — light auto, wins #1 by source order
+   3. :root[data-theme="dark"]       (0-2-0) — manual dark, beats #2
+   4. :root[data-theme="light"]      (0-2-0) — manual light, beats all
+   Only #1 + #2 are needed for OS-level auto-switch — no JS required.
+   #3 + #4 are for the optional manual toggle button. */
+
 :root {
     --bg-main:           #1a1b26;
     --bg-sidebar:        #24283b;
@@ -23,9 +33,9 @@
     --toggle-icon:       "\263E";  /* ☾ moon (light mode available) */
 }
 
-/* Hakusho (白書) — light mode, auto via OS or manual [data-theme="light"] */
+/* Hakusho (白書) — light mode, auto via OS preference */
 @media (prefers-color-scheme: light) {
-    :root:not([data-theme="dark"]) {
+    :root {
         --bg-main:           #f5f0e8;
         --bg-sidebar:        #efebe2;
         --bg-tldr-header:    #e8e3d6;
@@ -49,8 +59,30 @@
     }
 }
 
-/* Manual overrides — always win over media query */
-[data-theme="light"] {
+/* Manual overrides — higher specificity (0-2-0) always beats @media :root (0-1-0) */
+:root[data-theme="dark"] {
+    --bg-main:           #1a1b26;
+    --bg-sidebar:        #24283b;
+    --bg-tldr-header:    #1f2335;
+    --bg-code:           #1f2335;
+    --bg-input:          #24283b;
+    --text-body:         #c0caf5;
+    --text-secondary:    #a9b1d6;
+    --text-muted:        #787c99;
+    --text-link:         #7aa2f7;
+    --text-link-hover:   #89b4fa;
+    --text-bold:         #e0af68;
+    --text-underline:    #9ece6a;
+    --border-primary:    #3b4261;
+    --border-subtle:     #292e42;
+    --border-active:     #89b4fa;
+    --button-bg:         #7aa2f7;
+    --button-hover:      #89b4fa;
+    --button-border:     #565f89;
+    --btn-text:          #1a1b26;
+    --toggle-icon:       "\263E";  /* ☾ moon */
+}
+:root[data-theme="light"] {
     --bg-main:           #f5f0e8;
     --bg-sidebar:        #efebe2;
     --bg-tldr-header:    #e8e3d6;
@@ -70,10 +102,7 @@
     --button-hover:      #3d72a8;
     --button-border:     #8a9ab0;
     --btn-text:          #ffffff;
-    --toggle-icon:       "\2600";  /* ☀ sun (showing light, tap for dark) */
-}
-[data-theme="dark"] {
-    --toggle-icon:       "\263E";  /* ☾ moon (showing dark, tap for light) */
+    --toggle-icon:       "\2600";  /* ☀ sun */
 }
 
 html {scroll-behavior:smooth;}
