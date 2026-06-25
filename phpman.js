@@ -1,7 +1,9 @@
 /* phpMan — theme-toggle + copy-button scripts v4.7 */
 (function () {
-    /* ── Theme toggle ── */
-    var STORAGE_KEY = 'phpman-theme';
+    /* ── Theme toggle ──
+       Storage key bumped to v2 (2026-06-25) to invalidate stale preferences
+       that forced dark mode after CSS auto-switch refactor. */
+    var STORAGE_KEY = 'phpman-theme-v2';
 
     // Restore saved preference
     var saved = localStorage.getItem(STORAGE_KEY);
