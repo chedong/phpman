@@ -50,7 +50,9 @@ phpMan is deployed as a single `phpMan.php` file by design:
 
 ### 2.3 Minimal Webroot (Public File Surface)
 
-phpMan's webroot should contain **only the minimum files necessary for public HTTP service**: `phpMan.php`, `phpman.css`, `phpman.js`, and optionally `phpman.config.php`.
+phpMan's webroot contains **only 3 files**: `phpMan.php`, `phpman.css`, `phpman.js`. No config files, no source code.
+
+`PHPMAN_HOME` is baked directly into `phpMan.php` at deploy time (replaced from `__PHPMAN_HOME__` placeholder via `sed`, same mechanism as `GIT_DESCRIBE` and `PHPMAN_VERSION` in §2.11). All user-editable configuration lives in a single file at `~/.phpman/phpman.config.php` — securely outside webroot (see §2.16).
 
 **What must NOT be in the webroot**:
 
@@ -145,9 +147,17 @@ Search (apropos) and pydoc3 keyword results use unified `<ul><li>` list format, 
 
 ri index (`/ri`) is also changed to `<ul>` list. Search/fallback pages use `<div id="man-content">` instead of `<pre>`.
 
-### 2.11 Footer Git Version Number
+### 2.11 Deploy-Time Constants
 
-`make deploy`/`make release` injects `git describe --tags --always --dirty` into the `GIT_DESCRIBE` constant via `sed` + ssh pipe. Footer displays `phpMan v2.3-5-g1cea00a`. Local dev defaults to `local`.
+`make release` / `make staging` / `install.sh` inject three constants into `phpMan.php` via `sed` before uploading:
+
+| Constant | Placeholder | Injected value |
+|----------|------------|----------------|
+| `PHPMAN_HOME` | `__PHPMAN_HOME__` | `$HOME/.phpman` (resolved via SSH or local env) |
+| `PHPMAN_VERSION` | `'4.4.4'` (last tagged) | `git describe --tags --abbrev=0` |
+| `GIT_DESCRIBE` | `'v4.1.1-10-gd2a3e77-dirty'` | `git describe --tags --always --dirty` |
+
+Footer displays `phpMan v4.5-3-g1cea00a`. Local dev defaults to placeholder values.
 
 ### 2.12 LLM Emoji Enhancement (v4.0)
 
@@ -366,6 +376,46 @@ phpMan provides two deployment tools for two different audiences:
 **敏感信息隔离**：`.deploy.mk` 包含 SSH host/port/path，已 `.gitignore`。模板 `.deploy.mk.example` 可公开。
 
 **Code location**: `Makefile`（CI/CD 入口）, `.deploy.mk.example`（服务器配置模板）, `install.sh`（用户端一键安装）
+
+### 2.16 Configuration Architecture (v4.5)
+
+phpMan uses a **single config file** outside webroot: `~/.phpman/phpman.config.php`.
+
+**Loading chain** (both web and CLI paths converge at `src/config.php`):
+
+```
+Web:  phpMan.php → PHPMAN_HOME (baked-in) → src/config.php (defaults + load config)
+CLI:  _bootstrap.php → resolve PHPMAN_HOME → src/bootstrap.php → src/config.php
+```
+
+`src/config.php` sets defaults via the `defined()` guard pattern (like WordPress `wp-config.php`), then loads `~/.phpman/phpman.config.php` to allow overrides:
+
+```php
+if (!defined('PHPMAN_GA_ID'))  define('PHPMAN_GA_ID', '');     // default
+if (!defined('LLM_API_KEY'))   define('LLM_API_KEY', '');     // default
+// ... then: require PHPMAN_HOME . '/phpman.config.php';      // overrides
+```
+
+**What goes where**:
+
+| File | Location | Contents |
+|------|----------|----------|
+| `phpMan.php` | webroot | `PHPMAN_HOME`, `PHPMAN_VERSION`, `GIT_DESCRIBE` — injected at deploy time |
+| `phpman.config.php` | `~/.phpman/` | All user settings: `PHPMAN_BASE_URL`, `PHPMAN_GA_ID`, `LLM_API_KEY`, `MCP_API_KEY`, `PHPMAN_DEBUG`, `LLM_FALLBACKS` |
+| `src/config.php` | `~/.phpman/src/` | Defaults for all constants, `define()` guard pattern |
+| `phpman.config.php.example` | `~/.phpman/` (git) | Template, copied by `install.sh generate_config()` |
+
+**Security**: API keys (`LLM_API_KEY`, `MCP_API_KEY`) are never in webroot. If PHP parsing fails, only the baked-in constants (`PHPMAN_HOME`, version strings) are exposed — no secrets.
+
+**install.sh flow**:
+1. `generate_config()` — copies `.example` → `~/.phpman/phpman.config.php`, generates `MCP_API_KEY`
+2. `sed` replaces `__PHPMAN_HOME__` → `$HOME/.phpman` in both `$INSTALL_DIR/phpMan.php` (dev server) and webroot copy (Apache/Nginx)
+3. `do_deploy_webroot()` — copies `phpMan.php` + CSS + JS to webroot + patches `__PHPMAN_HOME__`
+
+**make release flow**:
+1. SSH resolves `$HOME` → `DEMO_HOME`
+2. `sed` replaces `__PHPMAN_HOME__`, `GIT_DESCRIBE`, `PHPMAN_VERSION` in local `phpMan.php`
+3. `scp` uploads patched `phpMan.php` + CSS + JS + `src/` + `cli/` + `.example`
 
 ---
 
