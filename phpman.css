@@ -1,14 +1,8 @@
 /* phpMan Tokyo Night + Hakusho stylesheet — v4.7 */
 /* Tokyo Night — dark mode defaults */
 
-/* ── Theme: CSS custom properties ──
-   Cascade (specificity decides):
-   1. :root                          (0-1-0) — dark default
-   2. @media (prefers-color-scheme: light) :root  (0-1-0) — light auto, wins #1 by source order
-   3. :root[data-theme="dark"]       (0-2-0) — manual dark, beats #2
-   4. :root[data-theme="light"]      (0-2-0) — manual light, beats all
-   Only #1 + #2 are needed for OS-level auto-switch — no JS required.
-   #3 + #4 are for the optional manual toggle button. */
+/* ── Theme variables ──
+   Dark default → @media light auto → [data-theme] manual override (higher specificity). */
 
 :root {
     --bg-main:           #1a1b26;
