@@ -30,9 +30,9 @@ define('RE_ASCII', '[ -~]');
 define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 
 // #49: Named constants for magic numbers
-define('PHPMAN_HOME', '/home/chedong/.phpman');  // replaced by make deploy/release
-define('PHPMAN_VERSION', '4.5.4');         // current version (#67)
-define('GIT_DESCRIBE', 'v4.5.4-dirty');  // replaced by make deploy/release
+define('PHPMAN_HOME', '/home/chedong/.phpman_test');  // replaced by make deploy/release
+define('PHPMAN_VERSION', '4.5.7');         // current version (#67)
+define('GIT_DESCRIBE', 'v4.5.6-11-g6069752-dirty');  // replaced by make deploy/release
 
 
 // Load all source files (config defaults + functions + classes)
