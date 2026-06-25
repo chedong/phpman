@@ -283,10 +283,12 @@ class PageCache {
             return null;
         }
 
-        // Count this cache hit (found or not_found)
-        $hitStmt = $this->db->prepare("UPDATE cache SET hits = hits + 1 WHERE id = :id");
-        $hitStmt->bindValue(':id', $row['id'], SQLITE3_INTEGER);
-        $hitStmt->execute();
+        // Count this cache hit (found or not_found) — non-critical, ignore lock errors
+        try {
+            $hitStmt = $this->db->prepare("UPDATE cache SET hits = hits + 1 WHERE id = :id");
+            $hitStmt->bindValue(':id', $row['id'], SQLITE3_INTEGER);
+            $hitStmt->execute();
+        } catch (\Throwable $e) {}
 
         if ($row['status'] === 'not_found') {
             return CACHE_SENTINEL_NOT_FOUND;
@@ -318,48 +320,68 @@ class PageCache {
         $oldRes = $chk->execute();
         $existing = ($oldRes && ($oldRow = $oldRes->fetchArray(SQLITE3_ASSOC))) ? $oldRow : null;
 
-        if ($existing) {
-            // UPDATE existing row — rowid is stable, no FTS orphan
-            $stmt = $this->db->prepare(
-                "UPDATE cache SET content = :content, content_len = :content_len, status = :status,
-                 ttl = :ttl, updated_at = strftime('%s','now'),
-                 generator_version = :genver
-                 WHERE id = :id"
-            );
-            $stmt->bindValue(':content', $compressed, SQLITE3_BLOB);
-            $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
-            $stmt->bindValue(':status', $status, SQLITE3_TEXT);
-            $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
-            $stmt->bindValue(':genver', GIT_DESCRIBE, SQLITE3_TEXT);
-            $stmt->bindValue(':id', (int)$existing['id'], SQLITE3_INTEGER);
-            $ok = $stmt->execute() !== false;
-            $cacheId = (int)$existing['id'];
-        } else {
-            // INSERT new row
-            $stmt = $this->db->prepare(
-                "INSERT INTO cache (mode, name, section, format, content, content_len, status, ttl, created_at, updated_at, generator_version)
-                 VALUES (:mode, :name, :section, :format, :content, :content_len, :status, :ttl,
-                         strftime('%s','now'), strftime('%s','now'), :genver)"
-            );
-            $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
-            $stmt->bindValue(':name', $name, SQLITE3_TEXT);
-            $stmt->bindValue(':section', $section, SQLITE3_TEXT);
-            $stmt->bindValue(':format', $format, SQLITE3_TEXT);
-            $stmt->bindValue(':content', $compressed, SQLITE3_BLOB);
-            $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
-            $stmt->bindValue(':status', $status, SQLITE3_TEXT);
-            $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
-            $stmt->bindValue(':genver', GIT_DESCRIBE, SQLITE3_TEXT);
-            $ok = $stmt->execute() !== false;
-            $cacheId = $ok ? $this->db->lastInsertRowID() : 0;
-        }
+        // Retry loop for SQLITE_BUSY — concurrent requests can saturate busyTimeout
+        $maxRetries = 3;
+        for ($retry = 0; $retry <= $maxRetries; $retry++) {
+            try {
+                if ($existing) {
+                    // UPDATE existing row — rowid is stable, no FTS orphan
+                    $stmt = $this->db->prepare(
+                        "UPDATE cache SET content = :content, content_len = :content_len, status = :status,
+                         ttl = :ttl, updated_at = strftime('%s','now'),
+                         generator_version = :genver
+                         WHERE id = :id"
+                    );
+                    $stmt->bindValue(':content', $compressed, SQLITE3_BLOB);
+                    $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
+                    $stmt->bindValue(':status', $status, SQLITE3_TEXT);
+                    $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
+                    $stmt->bindValue(':genver', GIT_DESCRIBE, SQLITE3_TEXT);
+                    $stmt->bindValue(':id', (int)$existing['id'], SQLITE3_INTEGER);
+                    $ok = $stmt->execute() !== false;
+                    $cacheId = (int)$existing['id'];
+                } else {
+                    // INSERT new row
+                    $stmt = $this->db->prepare(
+                        "INSERT INTO cache (mode, name, section, format, content, content_len, status, ttl, created_at, updated_at, generator_version)
+                         VALUES (:mode, :name, :section, :format, :content, :content_len, :status, :ttl,
+                                 strftime('%s','now'), strftime('%s','now'), :genver)"
+                    );
+                    $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
+                    $stmt->bindValue(':name', $name, SQLITE3_TEXT);
+                    $stmt->bindValue(':section', $section, SQLITE3_TEXT);
+                    $stmt->bindValue(':format', $format, SQLITE3_TEXT);
+                    $stmt->bindValue(':content', $compressed, SQLITE3_BLOB);
+                    $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
+                    $stmt->bindValue(':status', $status, SQLITE3_TEXT);
+                    $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
+                    $stmt->bindValue(':genver', GIT_DESCRIBE, SQLITE3_TEXT);
+                    $ok = $stmt->execute() !== false;
+                    $cacheId = $ok ? $this->db->lastInsertRowID() : 0;
+                }
 
-        // Sync FTS5 index for found entries (skip search mode — search results aren't indexed)
-        if ($ok && $status === 'found' && $mode !== 'search') {
-            $this->syncFts($cacheId, $mode, $name, $section, $content);
-        }
+                // Sync FTS5 index for found entries (skip search mode — search results aren't indexed)
+                if ($ok && $status === 'found' && $mode !== 'search') {
+                    $this->syncFts($cacheId, $mode, $name, $section, $content);
+                }
 
-        return $ok;
+                return $ok;
+            } catch (\Throwable $e) {
+                $msg = $e->getMessage();
+                if ($retry < $maxRetries && (strpos($msg, 'database is locked') !== false || strpos($msg, 'database locked') !== false)) {
+                    usleep(($retry + 1) * 150000);  // 150ms, 300ms, 450ms backoff
+                    continue;
+                }
+                // Non-lock error or retries exhausted — log and fail gracefully
+                if ($retry >= $maxRetries) {
+                    phpManLog("cache set retries exhausted for {$mode}/{$name}/{$section}: " . $msg);
+                } else {
+                    phpManLog("cache set error for {$mode}/{$name}/{$section}: " . $msg);
+                }
+                return false;
+            }
+        }
+        return false;
     }
 
     public function delete(string $mode, string $name, string $section): bool {
