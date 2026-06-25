@@ -54,10 +54,10 @@ php cli/batch-enhance.php man:ls,tar,grep  # Comma-separated batch
 php cli/batch-enhance.php --help   # Full batch (rate-limited, resumable)
 ```
 
-All CLI scripts load config from `phpman.config.php` in the project root, then require
-`phpMan.php` via `PHPMAN_HOME` with `PHPMAN_NO_CLI_DISPATCH` defined to skip web
-dispatch. The old `php phpMan.php --build-index` / `--build-index-cron` / `--enhance`
-flags are removed.
+All CLI scripts resolve `PHPMAN_HOME`, then require `src/bootstrap.php` directly
+(no longer load `phpMan.php`). `src/config.php` sets defaults and loads
+`~/.phpman/phpman.config.php` for user overrides. The old
+`php phpMan.php --build-index` / `--build-index-cron` / `--enhance` flags are removed.
 
 ## Architecture
 
@@ -85,7 +85,7 @@ flags are removed.
 - **XHTML 1.0 Transitional** — no HTML5 tags (`<nav>`, `<section>`), no `og:` meta tags. Use `<div id="...">` and `<p>` instead.
 - **Footer IP + UA display is intentional** — it's for spider/bot tracking in `showFooter()`. Do not remove it. See `docs/01-PRODUCT.md` for the full rationale.
 - **`?debug=1`** only shows sensitive details when `isLocalRequest()` returns true (REMOTE_ADDR is 127.0.0.1, ::1, or empty).
-- **Config overridables** — `PHPMAN_WIDTH`, `PHPMAN_TOC_THRESHOLD`, `PHPMAN_GZIP_MIN_BYTES`, `PHPMAN_TLDR_MAX_EXAMPLES`, `PHPMAN_ENHANCE_MAX_CHARS`, `PHPMAN_HOME_TITLE`, `PHPMAN_PROJECT_NAME`, `PHPMAN_GA_ID` use `defined()` guard pattern, overridable via `phpman.config.php`.
+- **Config architecture (v4.5)** — single config file at `~/.phpman/phpman.config.php` (NEVER in webroot). `PHPMAN_HOME` is baked into `phpMan.php` at deploy time (via `sed`, same as `GIT_DESCRIBE`). `src/config.php` loads defaults then requires the user config. API keys (`LLM_API_KEY`, `MCP_API_KEY`) are outside webroot.
 - **Cap word style** for new code: functionNames, variableNames, arrayKeys. Existing code uses mixed styles — match the surrounding convention.
 - **Output format purity** — each format must produce self-consistent output with no cross-format contamination. Markdown output MUST NOT contain HTML tags (`<ul>`, `<li>`, `<a>`) — use pure Markdown (`- ` list items, `[text](url)` links). JSON MUST be valid parseable JSON. HTML MUST be XHTML 1.0 Transitional compliant.
 - **`h()` and `serverValue()`** are the canonical helpers for HTML escaping and reading `$_SERVER`. Use them instead of direct access.
