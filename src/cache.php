@@ -93,7 +93,7 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
 
     $db = new SQLite3($dbPath);
     $db->enableExceptions(true);
-    $db->busyTimeout(5000);  // must be before any exec() to avoid "database is locked"
+    $db->busyTimeout(10000);  // must be before any exec() to avoid "database is locked"
     // PRAGMA journal_mode=WAL requires an exclusive lock — can fail under concurrent access.
     // Wrap in try/catch so a transient lock doesn't crash the request.
     try {
@@ -317,8 +317,14 @@ class PageCache {
         $chk->bindValue(':cn', $name, SQLITE3_TEXT);
         $chk->bindValue(':cs', $section, SQLITE3_TEXT);
         $chk->bindValue(':cf', $format, SQLITE3_TEXT);
-        $oldRes = $chk->execute();
-        $existing = ($oldRes && ($oldRow = $oldRes->fetchArray(SQLITE3_ASSOC))) ? $oldRow : null;
+        $existing = null;
+        try {
+            $oldRes = $chk->execute();
+            $existing = ($oldRes && ($oldRow = $oldRes->fetchArray(SQLITE3_ASSOC))) ? $oldRow : null;
+        } catch (\Throwable $e) {
+            // SELECT can fail with "database is locked" under concurrent access;
+            // fall through to INSERT path.
+        }
 
         // Retry loop for SQLITE_BUSY — concurrent requests can saturate busyTimeout.
         // prepare() + bindValue() are deterministic → done once outside the loop;
@@ -368,7 +374,7 @@ class PageCache {
             } catch (\Throwable $e) {
                 $msg = $e->getMessage();
                 if ($attempt < $maxAttempts - 1 && strpos($msg, 'database is locked') !== false) {
-                    // Exponential backoff with jitter: 100-500ms, 200-800ms, 400-1200ms…
+                    // Exponential backoff with jitter: 100–300ms, 200–600ms, etc.
                     // up to ~12s total wait across 8 attempts (vs old 0.9s across 3)
                     $base = (1 << min($attempt, 4)) * 100000;  // 100ms, 200ms, 400ms, 800ms, 1600ms…
                     $jitter = random_int(0, $base * 2);

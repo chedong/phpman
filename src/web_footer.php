@@ -103,7 +103,7 @@ function showFooter (string $validator = "", bool $showNav = false, string $mode
         ($showNav ? '<div id="back-to-top"><a href="#top">^_back to top</a></div>' : "") .
         "<script type=\"text/javascript\" src=\"".h(str_replace('phpMan.php', 'phpman.js', scriptName()))."\"></script>\n" .
         ((defined('PHPMAN_GA_ID') && PHPMAN_GA_ID !== '') ?
-         "<script type=\"text/javascript\" src=\"https://www.googletagmanager.com/gtag/js?id=".h(PHPMAN_GA_ID)."\"></script>\n".
+         "<script async=\"async\" type=\"text/javascript\" src=\"https://www.googletagmanager.com/gtag/js?id=".h(PHPMAN_GA_ID)."\"></script>\n".
          "<script type=\"text/javascript\">\n//<![CDATA[\n".
          "window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','".h(PHPMAN_GA_ID)."');".
          "\n//]]>\n</script>\n"
