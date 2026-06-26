@@ -29,10 +29,10 @@ declare(strict_types=1);
 define('RE_ASCII', '[ -~]');
 define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 
-// #49: Named constants for magic numbers
-define('PHPMAN_HOME', '__PHPMAN_HOME__');  // replaced by make deploy/release
-define('PHPMAN_VERSION', '4.4.4');         // current version (#67)
-define('GIT_DESCRIBE', 'v4.1.1-10-gd2a3e77-dirty');  // replaced by make deploy/release
+// #49: Named constants — placeholders replaced by make deploy/release
+define('PHPMAN_HOME', '__PHPMAN_HOME__');
+define('PHPMAN_VERSION', '0.0.0');
+define('GIT_DESCRIBE', 'local');
 
 
 // Load all source files (config defaults + functions + classes)
