@@ -18,7 +18,7 @@ git push origin v3.6.3
 ## Version Roadmap
 
 ```
-v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 → v4.2 → v4.3 → v4.4 → v4.5 → v4.6 → v4.7 → v5.0 (current)
+v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 → v4.2 → v4.3 → v4.4 → v4.5 → v4.6 → v4.7 → v4.8 (current)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 man/perldoc/info   pydoc3/ri        Config overridables   JSON canonical cache   batch PID/stop    Copy button UX   OKF Markdown    Code Split
 MCP Server         structured out   Underscore link fix   LLM emoji enhancement   XSS hardening     Prompt v2 tuning  PHPMAN_BASE_URL thin dispatcher
@@ -119,7 +119,7 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `src/Source/` + `src/Formatter/` + `src/Cache/` + `src/Config/`
 - Single-file entry point preserved
 
-### v5.0 — Calibrated Terminal CSS (2026-06-26)
+### v4.8 — Calibrated Terminal CSS (2026-06-26)
 
 - **CSS rewrites from scratch**: Geist-inspired semantic design token system — 6 surface tokens, 4 text tokens, 4 alpha overlay tokens, border strength scale
 - **Typography split**: System sans-serif (`-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif`) for UI chrome (H1 breadcrumb, form, sidebar, footer, TLDR headers); monospace (`'SF Mono', 'Cascadia Code', Menlo, Consolas, 'DejaVu Sans Mono', monospace`) for man page content

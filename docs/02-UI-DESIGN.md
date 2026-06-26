@@ -93,7 +93,7 @@ shadows:
 phpMan is a single-file PHP web application that wraps Unix `man`, `perldoc`, `info`,
 `pydoc3`, and `ri` commands into HTML, Markdown, JSON, and MCP responses.
 
-**Design philosophy (v5.0)**: "Calibrated Terminal" — a Geist-inspired token system
+**Design philosophy (v4.8)**: "Calibrated Terminal" — a Geist-inspired token system
 applied to terminal-native colors. UI chrome uses system sans-serif for scannability;
 content stays monospace to honor its terminal origins. Alpha-layered depth replaces
 flat opaque surfaces.
@@ -171,7 +171,7 @@ are respected when no manual override is active.
 
 ## Typography
 
-**The sans/mono split (v5.0 signature change):**
+**The sans/mono split (v4.8 signature change):**
 
 UI chrome (H1 breadcrumb, form, sidebar, footer) uses system sans-serif.
 Content (`#man-content`, `pre`, `code`) stays monospace. This visual separation
@@ -236,7 +236,7 @@ Three z-index layers, now with shadows for depth cues:
 | Top | 200 | Theme toggle, mobile expanded TOC | `popover` |
 | Topmost | 210 | Back-to-top button | `card` |
 
-### Alpha Depth Model (v5.0)
+### Alpha Depth Model (v4.8)
 
 Instead of opaque surface variants, hover/active states use translucent alpha
 overlays. This creates depth through transparency — a terminal-native concept

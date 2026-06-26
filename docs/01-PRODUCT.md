@@ -101,13 +101,13 @@ GNU info pages use Setext-style underline headings:
 
 **Code location**: `detectHeadingType()`, `formatManPerlDoc()`
 
-### 2.7 Calibrated Terminal Theme (v5.0)
+### 2.7 Calibrated Terminal Theme (v4.8)
 
-v5.0 redesign: "Calibrated Terminal" — a [Vercel Geist](https://vercel.com/design)-inspired token system applied to terminal-native colors. The CSS was rewritten from the ground up with semantic design tokens, alpha-layered depth, system sans-serif UI chrome, and a proper motion/focus system.
+v4.8 redesign: "Calibrated Terminal" — a [Vercel Geist](https://vercel.com/design)-inspired token system applied to terminal-native colors. The CSS was rewritten from the ground up with semantic design tokens, alpha-layered depth, system sans-serif UI chrome, and a proper motion/focus system.
 
 **Key changes from v4.7:**
 
-| Aspect | v4.7 | v5.0 |
+| Aspect | v4.7 | v4.8 |
 |--------|------|------|
 | Tokens | 28 flat opaque hex values | 6-surface + 4-text + 4-alpha semantic scales |
 | Typography | `monospace 14px` everywhere | Sans-serif (UI chrome) + monospace (content) |
@@ -127,7 +127,7 @@ v5.0 redesign: "Calibrated Terminal" — a [Vercel Geist](https://vercel.com/des
 - Borders ascend: `default` → `hover` → `active`
 - Alpha overlays: `100` (4%) → `200` (7%) → `300` (12%) → `400` (18%)
 
-**The sans/mono split** is v5.0's signature risk: UI chrome (H1 breadcrumb, form, TOC sidebar, footer, TLDR headers) uses system sans-serif for scannability; man page content stays monospace. This visual separation between reading environment and terminal artifact creates hierarchy that monospace-only design couldn't achieve.
+**The sans/mono split** is v4.8's signature risk: UI chrome (H1 breadcrumb, form, TOC sidebar, footer, TLDR headers) uses system sans-serif for scannability; man page content stays monospace. This visual separation between reading environment and terminal artifact creates hierarchy that monospace-only design couldn't achieve.
 
 Full design system spec: `docs/02-UI-DESIGN.md`.
 
