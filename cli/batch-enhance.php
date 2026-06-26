@@ -609,11 +609,16 @@ function showStatus(string $dbPath): void {
     $stmtSample = $db->prepare("SELECT name FROM cache WHERE mode=:mode AND format='emoji_html' AND name != '__index__' ORDER BY RANDOM() LIMIT {$sampleCount}");
 
     foreach ($modes as $mode) {
-        $stmtCount->bindValue(':mode', $mode, SQLITE3_TEXT);
-        $stmtCount->bindValue(':format', 'html', SQLITE3_TEXT);
-        $result = $stmtCount->execute();
-        $total = (int)($result->fetchArray(SQLITE3_NUM)[0] ?: 0);
-        $result->finalize();
+        // denominator: search_index_meta for man (authoritative), cache for others
+        if ($mode === 'man') {
+            $total = (int)($db->querySingle("SELECT COUNT(*) FROM search_index_meta WHERE source != 'pydoc3' AND source != 'ri'") ?: 0);
+        } else {
+            $stmtCount->bindValue(':mode', $mode, SQLITE3_TEXT);
+            $stmtCount->bindValue(':format', 'html', SQLITE3_TEXT);
+            $result = $stmtCount->execute();
+            $total = (int)($result->fetchArray(SQLITE3_NUM)[0] ?: 0);
+            $result->finalize();
+        }
 
         $stmtCount->bindValue(':format', 'emoji_md', SQLITE3_TEXT);
         $result = $stmtCount->execute();
