@@ -31,7 +31,7 @@ define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 
 // #49: Named constants — placeholders replaced by make deploy/release
 define('PHPMAN_HOME', '__PHPMAN_HOME__');
-define('PHPMAN_VERSION', '4.7');
+define('PHPMAN_VERSION', '5.0');
 define('GIT_DESCRIBE', 'local');
 
 

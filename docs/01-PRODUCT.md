@@ -101,21 +101,35 @@ GNU info pages use Setext-style underline headings:
 
 **Code location**: `detectHeadingType()`, `formatManPerlDoc()`
 
-### 2.7 Tokyo Night Dark Theme
+### 2.7 Calibrated Terminal Theme (v5.0)
 
-v2.3 adopted Tokyo Night color scheme, unifying visual style across all modes (man/perldoc/info/pydoc/ri):
+v5.0 redesign: "Calibrated Terminal" — a [Vercel Geist](https://vercel.com/design)-inspired token system applied to terminal-native colors. The CSS was rewritten from the ground up with semantic design tokens, alpha-layered depth, system sans-serif UI chrome, and a proper motion/focus system.
 
-| Element | Color | Usage |
-|------|------|------|
-| `#1a1b26` | Deep blue-black | Main background |
-| `#c0caf5` | Light blue-gray | Body text |
-| `#e0af68` | Warm gold | Bold |
-| `#9ece6a` | Green | Underline |
-| `#7aa2f7` | Blue | Links, buttons |
-| `#24283b` | Dark blue-gray | Sidebar/TLDR background |
-| `#3b4261` | Mid gray-blue | Borders |
+**Key changes from v4.7:**
 
-CSS unified globally: `body`/`pre` share font family and size, `<b>`/`<u>` colors no longer differ by mode.
+| Aspect | v4.7 | v5.0 |
+|--------|------|------|
+| Tokens | 28 flat opaque hex values | 6-surface + 4-text + 4-alpha semantic scales |
+| Typography | `monospace 14px` everywhere | Sans-serif (UI chrome) + monospace (content) |
+| Depth | Flat solid backgrounds | Alpha overlays (`rgba(…)`) + box-shadows |
+| Focus | Browser default | Two-layer focus ring on all interactive elements |
+| Motion | `0.25s` on background/color only | `150ms`/`200ms` with `cubic-bezier` easing; `prefers-reduced-motion` support |
+| Spacing | Ad-hoc px values | 4px-unit scale (8/12/16/24/32/40) |
+| Border radius | Mixed 2–6px | Consistent 6px default |
+| Print | None | Print stylesheet (hides chrome, B&W) |
+| Form | Bare fieldset | Toolbar card with shadow, input glow ring, button scale feedback |
+
+**Palette** (dark, native): Cool ink surfaces (`#0b0b14` root, `#131320` card, `#181828` elevated) with warm amber-gold accents for bold/emphasis (`#e0af68`) and cool blue for links (`#6d9ef0`). Light mode ("Hakusho", 白書) follows the same token structure with warm paper tones.
+
+**Semantic color intent** (Geist-inspired 10-step scale structure):
+- Surfaces ascend: `root` → `card` → `elevated` → `field`
+- Text ascends: `muted` (disabled) → `secondary` (metadata) → `primary` (body)
+- Borders ascend: `default` → `hover` → `active`
+- Alpha overlays: `100` (4%) → `200` (7%) → `300` (12%) → `400` (18%)
+
+**The sans/mono split** is v5.0's signature risk: UI chrome (H1 breadcrumb, form, TOC sidebar, footer, TLDR headers) uses system sans-serif for scannability; man page content stays monospace. This visual separation between reading environment and terminal artifact creates hierarchy that monospace-only design couldn't achieve.
+
+Full design system spec: `docs/02-UI-DESIGN.md`.
 
 ### 2.8 Format Links on Detail Pages Only
 

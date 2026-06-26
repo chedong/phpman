@@ -18,13 +18,15 @@ git push origin v3.6.3
 ## Version Roadmap
 
 ```
-v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 → v4.2 → v4.3 → v4.4 (current)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-man/perldoc/info   pydoc3/ri        Config overridables   JSON canonical cache   batch PID/stop    Copy button UX   OKF Markdown   Code Split
-MCP Server         structured out   Underscore link fix   LLM emoji enhancement   XSS hardening     Prompt v2 tuning   PHPMAN_BASE_URL  thin dispatcher
-JSON API           Search cascade   man7.org fallback     Code split (design)     --parameter mode  ENHANCE_MAX_CHARS  URL hardening   src/ layout
-TLDR endpoint      FTS5 3-source    Docs restructured     i18n                   minimal webroot   TOC regex fix      format purity    22 src files
-                                   Structure regr test   AI translation          install.sh MCP key Makefile version sync  ?build-index removal  shared bootstrap
+v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 → v4.2 → v4.3 → v4.4 → v4.5 → v4.6 → v4.7 → v5.0 (current)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+man/perldoc/info   pydoc3/ri        Config overridables   JSON canonical cache   batch PID/stop    Copy button UX   OKF Markdown    Code Split
+MCP Server         structured out   Underscore link fix   LLM emoji enhancement   XSS hardening     Prompt v2 tuning  PHPMAN_BASE_URL thin dispatcher
+JSON API           Search cascade   man7.org fallback     Code split (design)     --parameter mode  ENHANCE_MAX_CHARS URL hardening   src/ layout
+TLDR endpoint      FTS5 3-source    Docs restructured     i18n                   minimal webroot   TOC regex fix     format purity   22 src files
+                                   Structure regr test   AI translation          install.sh MCP key Makefile version sync ?build-index removal  shared bootstrap
+                                                                                                               rsync deploy   Calibrated Terminal CSS
+                                                                                                               theme toggle   Geist-inspired token system
 ```
 
 ---
@@ -116,6 +118,21 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 **Phase 4: Code split** (planned)
 - `src/Source/` + `src/Formatter/` + `src/Cache/` + `src/Config/`
 - Single-file entry point preserved
+
+### v5.0 — Calibrated Terminal CSS (2026-06-26)
+
+- **CSS rewrites from scratch**: Geist-inspired semantic design token system — 6 surface tokens, 4 text tokens, 4 alpha overlay tokens, border strength scale
+- **Typography split**: System sans-serif (`-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif`) for UI chrome (H1 breadcrumb, form, sidebar, footer, TLDR headers); monospace (`'SF Mono', 'Cascadia Code', Menlo, Consolas, 'DejaVu Sans Mono', monospace`) for man page content
+- **Alpha-layered depth**: `rgba(255,255,255,0.04–0.18)` translucent overlays replace opaque surface variants — depth through transparency without backdrop-filter
+- **Focus ring**: Two-layer `box-shadow` (`2px surface-root, 4px accent-blue`) on all `:focus-visible` interactive elements. Input fields get softer 3px glow ring
+- **Motion system**: `150ms` state changes, `200ms` overlays, `cubic-bezier(0.175, 0.885, 0.32, 1.1)` easing. `prefers-reduced-motion: reduce` kills all transitions
+- **4px spacing unit**: 4/8/12/16/24/32/40px token scale (from Vercel Geist)
+- **Border radius**: Consistent 6px default on all surface elements. No mixing of sharp and round
+- **Form redesign**: Toolbar card with `card` shadow, input focus glow ring, button `scale(0.97)` active feedback, uppercase format links with letter-spacing
+- **Print stylesheet**: Hides all chrome (toggle, sidebars, form, copy buttons), pure B&W
+- **Box shadows**: `card` (1px blur, subtle) and `popover` (three-layer, pronounced) — Geist dark-theme shadow values
+- Palette stays Tokyo Night dark / Hakusho light DNA — colors refined (deeper ink `#0b0b14`, paper white `#fafaf6`) but recognizable
+- Full design system spec: `docs/02-UI-DESIGN.md`, palette documented in `docs/01-PRODUCT.md` §2.7
 
 ### v4.6 — Light/Dark Auto-Switch (completed, 2026-06-26)
 - **Hakusho (白書) light mode**: warm paper-tone palette via `prefers-color-scheme: light`
