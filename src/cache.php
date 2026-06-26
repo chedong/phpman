@@ -353,7 +353,7 @@ class PageCache {
             $stmt->bindValue(':genver', GIT_DESCRIBE, SQLITE3_TEXT);
         }
 
-        $maxAttempts = 3;
+        $maxAttempts = 8;
         for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
             try {
                 $ok = $stmt->execute() !== false;
@@ -368,7 +368,11 @@ class PageCache {
             } catch (\Throwable $e) {
                 $msg = $e->getMessage();
                 if ($attempt < $maxAttempts - 1 && strpos($msg, 'database is locked') !== false) {
-                    usleep(($attempt + 1) * 150000);  // 150ms, 300ms, 450ms backoff
+                    // Exponential backoff with jitter: 100-500ms, 200-800ms, 400-1200ms…
+                    // up to ~12s total wait across 8 attempts (vs old 0.9s across 3)
+                    $base = (1 << min($attempt, 4)) * 100000;  // 100ms, 200ms, 400ms, 800ms, 1600ms…
+                    $jitter = random_int(0, $base * 2);
+                    usleep($base + $jitter);
                     continue;
                 }
                 // Non-lock error or retries exhausted — log and fail gracefully
