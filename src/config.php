@@ -58,24 +58,28 @@ if (!defined('PHPMAN_PROJECT_NAME')) {
 // PHPMAN_HOME: base directory for all local data (cache, logs, backups).
 // Default: PHPMAN_HOME env var > HOME env var > $_SERVER['HOME'] > posix_getpwuid
 // staging should use ~/.phpman_test to avoid sharing DB/logs/backups with production.
-if (!defined('PHPMAN_HOME')) {
+//
+// phpMan.php pre-defines PHPMAN_HOME = '__PHPMAN_HOME__' (replaced by sed at deploy).
+// Locally, we resolve the placeholder to ~/.phpman for filesystem operations.
+$_phpman_home = defined('PHPMAN_HOME') ? PHPMAN_HOME : '';
+if ($_phpman_home === '' || $_phpman_home === '__PHPMAN_HOME__' || str_starts_with($_phpman_home, '__')) {
     $home = getenv('HOME') ?: ($_SERVER['HOME'] ?? '');
     if (!$home && function_exists('posix_getpwuid')) {
         $pw = posix_getpwuid(posix_getuid());
         $home = $pw['dir'] ?? '';
     }
-    define('PHPMAN_HOME', getenv('PHPMAN_HOME') ?: $home . '/.phpman');
+    $_phpman_home = getenv('PHPMAN_HOME') ?: $home . '/.phpman';
 }
 
-// Derived paths — can be overridden individually in phpman.config.php
+// Derived paths — use resolved $_phpman_home, not raw PHPMAN_HOME constant
 if (!defined('PHPMAN_CACHE_DIR')) {
-    define('PHPMAN_CACHE_DIR', PHPMAN_HOME . '/db');
+    define('PHPMAN_CACHE_DIR', $_phpman_home . '/db');
 }
 if (!defined('PHPMAN_LOG_DIR')) {
-    define('PHPMAN_LOG_DIR', PHPMAN_HOME . '/logs');
+    define('PHPMAN_LOG_DIR', $_phpman_home . '/logs');
 }
 if (!defined('PHPMAN_BACKUP_DIR')) {
-    define('PHPMAN_BACKUP_DIR', PHPMAN_HOME . '/backups');
+    define('PHPMAN_BACKUP_DIR', $_phpman_home . '/backups');
 }
 
 // Fixed filenames under derived dirs (not configurable)
