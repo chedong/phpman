@@ -44,32 +44,31 @@ Then open **http://localhost:45678/** in your browser.
 
 ## Screenshot
 
-[![phpMan Screenshot](https://sourceforge.net/p/phpunixman/screenshot/phpman_screenshot-5d0e2fc2.png)](https://sourceforge.net/p/phpunixman/screenshot/phpman_screenshot-5d0e2fc2.png)
+| Desktop | Mobile |
+|---------|--------|
+| [![phpMan Desktop](https://sourceforge.net/p/phpunixman/screenshot/phpman_screenshot-5d0e2fc2.png)](https://sourceforge.net/p/phpunixman/screenshot/phpman_screenshot-5d0e2fc2.png) | [![phpMan Mobile](https://sourceforge.net/p/phpunixman/screenshot/phpman_mobile-f6008fa4.jpg)](https://sourceforge.net/p/phpunixman/screenshot/phpman_mobile-f6008fa4.jpg) |
 
 ---
 
+
 ## Configuration
 
-phpMan has two config files. **You only need to edit one of them.**
+All settings live in a **single file**: `~/.phpman/phpman.config.php`. The webroot contains no config files — `PHPMAN_HOME` is baked into `phpMan.php` at deploy time.
 
 | File | Location | Purpose | Edit? |
 |------|----------|---------|-------|
-| `phpman.config.php` | webroot (or `~/.phpman/`) | **Your site-specific settings** — PHPMAN_HOME, API keys, debug mode, MCP auth | **Yes** |
-| `src/config.php` | `~/.phpman/src/` | **Internal defaults** — fallback values when `phpman.config.php` doesn't define something. Uses `defined()` guard so your settings always win. | No |
+| `phpman.config.php` | `~/.phpman/` | **Your settings** — API keys, MCP auth, GA tracking, debug mode | **Yes** |
+| `phpman.config.php.example` | `~/.phpman/` (git) | **Template** — copied by `install.sh` on first run | No |
 
-**How it works**: `phpMan.php` loads `phpman.config.php` first (your overrides), then `src/config.php` fills in defaults for anything you didn't set. They never conflict because `src/config.php` uses `if (!defined(...))` before every constant.
+**Zero config**: If `~/.phpman/phpman.config.php` doesn't exist, everything works with defaults — no LLM, no MCP auth, no GA tracking.
 
-**Zero config**: If you don't create `phpman.config.php`, everything works with defaults — `PHPMAN_HOME` auto-detects, no LLM, no MCP auth.
-
-**Minimal config** (production, 2 lines):
+**Minimal config** (production):
 ```php
-define('PHPMAN_HOME', '/home/user/.phpman');
 define('PHPMAN_BASE_URL', 'https://www.example.com/phpMan.php');
 ```
 
-**Full config** (with emoji enhancement + MCP auth):
+**With emoji enhancement + MCP auth**:
 ```php
-define('PHPMAN_HOME', '/home/user/.phpman');
 define('PHPMAN_BASE_URL', 'https://www.example.com/phpMan.php');
 define('LLM_API_KEY', 'sk-xxx');
 define('LLM_API_URL', 'https://api.openai.com/v1/chat/completions');
@@ -77,8 +76,9 @@ define('LLM_MODEL', 'gpt-4o-mini');
 define('MCP_API_KEY', 'your-secret-key-here');
 ```
 
-See `phpman.config.php.example` for all available options with comments.
-- **Cache security:** SQLite cache DB files are stored outside webroot (via `CACHE_DIR` in `phpman.config.php`), not directly accessible via HTTP.
+> **Security**: API keys are NEVER in webroot. If PHP parsing fails, only `PHPMAN_HOME` and version strings are exposed — no secrets.
+>
+> See `phpman.config.php.example` for all available options.
 
 ---
 
