@@ -7,6 +7,7 @@
 # release artifacts
 *.gz
 *.bak
+*.deploy
 
 # deployed MCP discovery (generated from template per-site)
 .well-known/mcp.json
