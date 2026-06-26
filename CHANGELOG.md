@@ -4,40 +4,25 @@ All notable changes to phpMan are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [4.6.0] — 2026-06-26
 
 ### Added
-- **Code split (v4.4.0)** — 5660-line monolith split into 753-line dispatcher (`phpMan.php`) + 22 source files (`src/`). Webroot contains only 1 PHP file.
-- **CLI shared bootstrap (v4.4.2)** — `cli/_bootstrap.php`: PHPMAN_HOME resolve + phpMan.php load, shared by all CLI tools (removes ~20 lines of duplication per file).
-- **CLI positional shorthand** — `php cli/batch-enhance.php man:ls,tar` as shorthand for `--mode=man --parameter=ls;tar`.
-- **install.sh `check_config_updates()`** — detects new config keys in `.example` not present in user's `phpman.config.php` during `--update`.
-- **install.sh `--webroot` prompt** — suggests setting `PHPMAN_BASE_URL` after webroot deployment.
-- **First-deploy directory planning** — `docs/PLAN.md` §First Deploy Directory Layout: Path A (install.sh) vs Path B (Makefile), what creates each directory.
-- **Config minimization docs** — `docs/PLAN.md` §Config Minimization: zero-config (local `php -S`), minimal production (2 defines), +LLM (5 defines).
-- **phpman.config.php.example** — header comments show minimal/full config tiers.
-
-### Removed
-- **`?build-index` web handler** — index rebuild is CLI-only via `php cli/build-index.php`.
-- **`tools/` directory** — `tools/batch_enhance.php` moved to `cli/batch-enhance.php`. `tools/` cleaned from servers + Makefile.
-- **`cli/enhance.php`** — merged into `cli/batch-enhance.php` with positional shorthand syntax.
-
-### Changed
-- **install.sh config generation** — copies from `.example` (single source of truth) instead of inline heredoc.
-- **install.sh ordering** — generate config → mkdir data dirs → build-index → start_server (config exists before any phpMan.php loading).
-- **`make tag VERSION=x.y.z`** — writes `PHPMAN_VERSION` into `phpMan.php`, commits, tags, pushes in one step.
-- **Makefile deploy** — `scp -r src/` alongside `cli/` to PHPMAN_HOME. `rm -rf` stale `tools/` before deploy.
-- **baseUrl() + showHeader()** — use `scriptName()` not `$_SERVER['SCRIPT_NAME']` directly, respecting `PHPMAN_BASE_URL` in CLI/reverse-proxy.
-- **Schema migration** — cascading `if` blocks replace `if/elseif` so v1→v5 runs ALL intermediate migrations.
-- **`Exception` → `\Throwable`** in `indexAproposLines()` and `getSearchPage()` catch blocks.
+- **Hakusho (白書) light mode** — 20 CSS custom properties with `@media (prefers-color-scheme: light)` auto-switch. Zero JS. Tokyo Night dark defaults, warm paper-tone light palette. Manual toggle via `[data-theme]` selectors + `phpman.js` with localStorage persistence (`phpman-theme-v2` key).
+- **Theme toggle button** — `#theme-toggle` (fixed top-left, ☀/☾ icon) in `phpman.js`, with CSS transition on `body` for smooth palette swap.
 
 ### Fixed
-- **MCP search (v4.4.3)** — `cli_search` returns structured search results (mode=search, results/count) instead of empty man-page structure. Root cause: double `formatForOutput()` wrapping.
-- **Search fallback (#152)** — `getSearchPage()` checks `cacheDb()` for null, throws RuntimeException to fall through to apropos.
-- **XSS sanitizer (#155)** — `cleanEmojiHtml()` strips single-quoted and unquoted event handlers (`onclick='...'`, `onclick=...`) plus single-quoted `javascript:` URIs.
-- **isLocalRequest (#154)** — restricts to loopback only (127.0.0.1, ::1, empty). RFC1918 private network IPs no longer treated as trusted local.
-- **batch_enhance.php failure counter (#158)** — independent `mdFailures`/`htmlFailures` counters per format; single-format failures correctly trigger abort.
-- **Markdown search results** — `getSearchPage()` returns pure Markdown list items (`- [name](url)`) instead of `<ul>`/`<li>` HTML wrappers.
-- **Accidentally committed `.phpman-test/db/`** — removed from git tracking, added to `.gitignore`. Stale `tools/` cleaned from staging + production servers.
+- **PATH_INFO guard hoist (#181)** — `strlen()` check moved before `explode()` to prevent memory DoS on oversized PATH_INFO.
+- **FTS5 colon query error (#192)** — `buildFtsQuery()` now strips leading/trailing colons from search terms. Searching for `SQL:` no longer triggers `no such column: SQL`.
+- **SQLite lock retries (#193)** — cache write retries increased 3→8 with exponential backoff + random jitter (~12s max wait vs ~0.9s).
+- **LLM_MAX_TOKENS default (#182)** — reduced from 409600 (exceeds all provider limits) to 8192.
+- **CSS token names aligned with design docs (#183)** — 19 semantic custom properties (`--bg-main`, `--text-body`, `--text-link`, `--btn-text`…) replace abbreviated names.
+- **CLI config fallback (#185)** — `cli/_bootstrap.php` now searches `$HOME/.phpman/phpman.config.php` when project-root config is absent.
+- **batch-enhance status config dump (#188)** — `LLM_API_KEY` added to displayed keys (masked); dead masking code removed.
+- **GA4 script XHTML compliance (#187)** — `async` replaced with `type="text/javascript"` (tradeoff documented).
+
+### Changed
+- **CSS refactored** — all hardcoded hex colors replaced with semantic custom properties in `:root`, one `@media` block for Hakusho, `[data-theme]` overrides with higher specificity (0-2-0).
+- **Search index rebuilt** — staging + production reindexed (13,835 entries, 0 errors).
 
 ## [3.6.1] — 2026-06-08
 

@@ -117,10 +117,13 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `src/Source/` + `src/Formatter/` + `src/Cache/` + `src/Config/`
 - Single-file entry point preserved
 
-### v4.6 (planned) — Light/Dark Auto-Switch
+### v4.6 — Light/Dark Auto-Switch (completed, 2026-06-26)
 - **Hakusho (白書) light mode**: warm paper-tone palette via `prefers-color-scheme: light`
-- CSS custom properties (`var(--bg-main)` etc.) — one stylesheet, two palettes
-- Zero-JS auto-switch; manual toggle (localStorage) as future enhancement
+- CSS custom properties (19 semantic tokens: `--bg-main`, `--text-body`, `--text-link`…) — one stylesheet, two palettes
+- Manual theme toggle: `[data-theme]` CSS selectors (specificity 0-2-0) + `phpman.js` localStorage (`phpman-theme-v2`)
+- **FTS5 colon query fix** (#192): strip leading/trailing colons from search terms
+- **SQLite lock retry** (#193): 3→8 retries with exponential backoff + random jitter
+- **PATH_INFO guard hoist** (#181): strlen check before explode() for DoS protection
 - See `docs/02-UI-DESIGN.md` for full palette and design rationale
 
 ### v4.1 — Tooling & Security Hardening (current, 2026-06-17)
