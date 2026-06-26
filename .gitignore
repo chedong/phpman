@@ -11,8 +11,9 @@
 # deployed MCP discovery (generated from template per-site)
 .well-known/mcp.json
 
-# AtomCode local-scope configs (machine-specific)
+# AtomCode / InsCode local-scope configs (machine-specific)
 .atomcode/
+.inscode/
 
 # cache directories (generated, environment-specific)
 tldr_cache/
