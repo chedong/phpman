@@ -102,7 +102,6 @@ _deploy-code:
 	@rm -f $(FILE).deploy
 	@scp -P $(TEST_PORT) $(CSS_FILE) $(TEST_HOST):$(TEST_PATH)/$(CSS_FILE)
 	@scp -P $(TEST_PORT) $(JS_FILE) $(TEST_HOST):$(TEST_PATH)/$(JS_FILE)
-	@ssh -p $(TEST_PORT) $(TEST_HOST) "rm -rf \$$HOME/.phpman_test/tools/"
 	@scp -P $(TEST_PORT) -r cli $(TEST_HOST):$(STAGING_HOME)/.phpman_test/
 	@scp -P $(TEST_PORT) -r src $(TEST_HOST):$(STAGING_HOME)/.phpman_test/
 	@scp -P $(TEST_PORT) phpman.config.php.example $(TEST_HOST):$(STAGING_HOME)/.phpman_test/phpman.config.php.example
@@ -161,7 +160,6 @@ _release-code:
 	@rm -f $(FILE).deploy
 	@scp -P $(DEMO_PORT) $(CSS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(CSS_FILE)
 	@scp -P $(DEMO_PORT) $(JS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(JS_FILE)
-	@ssh -p $(DEMO_PORT) $(DEMO_HOST) "rm -rf \$$HOME/.phpman/tools/"
 	@scp -P $(DEMO_PORT) -r cli $(DEMO_HOST):$(DEMO_HOME)/.phpman/
 	@scp -P $(DEMO_PORT) -r src $(DEMO_HOST):$(DEMO_HOME)/.phpman/
 	@scp -P $(DEMO_PORT) phpman.config.php.example $(DEMO_HOST):$(DEMO_HOME)/.phpman/phpman.config.php.example
