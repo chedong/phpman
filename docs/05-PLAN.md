@@ -433,7 +433,7 @@ later layers respect `defined()` guards:
 │   TEST_HOST = chedong@staging.example.com
 │   DEMO_HOST = chedong@chedong.com
 │
-└── Makefile tag           ← writes PHPMAN_VERSION into phpMan.php before git tag
+└── Makefile tag           ← tags only (PHPMAN_VERSION is placeholder, no source edit)
 ```
 
 **Loading order on every request**:
@@ -483,14 +483,12 @@ Result:
 
 ```
 Maintainer: make tag VERSION=4.4.0                 (local)
-  1. sed 's/PHPMAN_VERSION.*/4.4.0/' phpMan.php     ← write version into file
-  2. git commit -m "v4.4.0: bump PHPMAN_VERSION"     ← commit (repo always current)
-  3. git tag -a v4.4.0 -m "v4.4.0"                  ← annotated tag
-  4. git push origin master v4.4.0                    ← push commit + tag
+  1. git tag -a v4.4.0 -m "v4.4.0"                  ← annotated tag (no source edit)
+  2. git push origin master v4.4.0                    ← push + tag
 
 Maintainer: make release                            (deploy to prod)
   1. make test                                       ← syntax check
-  2. sed GIT_DESCRIBE + PHPMAN_VERSION in phpMan.php ← stamp exact version
+  2. sed PHPMAN_HOME + GIT_DESCRIBE + PHPMAN_VERSION ← replace placeholders
   3. scp phpMan.php + phpman.css → webroot
   4. scp -r cli/ src/ → PHPMAN_HOME
   5. make logcheck                                   ← tail error logs

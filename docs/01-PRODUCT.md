@@ -170,12 +170,12 @@ ri index (`/ri`) is also changed to `<ul>` list. Search/fallback pages use `<div
 | Constant | Placeholder | Injected value |
 |----------|------------|----------------|
 | `PHPMAN_HOME` | `__PHPMAN_HOME__` | `$HOME/.phpman` (resolved via SSH or local env) |
-| `PHPMAN_VERSION` | `0.0.0` | `git describe --tags --abbrev=0` |
-| `GIT_DESCRIBE` | `local` | `git describe --tags --always --dirty` |
+| `PHPMAN_VERSION` | `__PHPMAN_VERSION__` | `git describe --tags --abbrev=0` |
+| `GIT_DESCRIBE` | `__GIT_DESCRIBE__` | `git describe --tags --always --dirty` |
 
 All three use placeholders in the repo — never committed with real values. `make release` / `make staging` sed-replaces them into a temp file (`phpMan.php.deploy`), uploads it, then deletes the temp. The local `phpMan.php` is never touched, keeping `git status` clean.
 
-Footer displays `phpMan v4.7-3-g1cea00a`. Local dev shows placeholder values: `PHPMAN_HOME = __PHPMAN_HOME__`, `GIT_DESCRIBE = local`.
+Footer displays `phpMan v4.7-3-g1cea00a`. Local dev shows placeholder values: `PHPMAN_HOME = __PHPMAN_HOME__`, `GIT_DESCRIBE = __GIT_DESCRIBE__`.
 
 ### 2.12 LLM Emoji Enhancement (v4.0)
 

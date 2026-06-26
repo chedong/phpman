@@ -260,12 +260,9 @@ tag:
 		echo "Current: $(GIT_VERSION)"; \
 		exit 1; \
 	fi
-	@# Update PHPMAN_VERSION in phpMan.php and commit before tagging
-	@sed -i.bak "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(VERSION)');/" $(FILE) && rm -f $(FILE).bak
-	@git add $(FILE)
-	@git commit -m "v$(VERSION): bump PHPMAN_VERSION" || true
+	@# PHPMAN_VERSION is a placeholder — no source edit needed, just tag
 	@git tag -a "v$(VERSION)" -m "v$(VERSION)"
-	@echo "=== v$(VERSION): PHPMAN_VERSION written + committed + tagged ==="
+	@echo "=== v$(VERSION): tagged (PHPMAN_VERSION is placeholder, no source edit) ==="
 	@git push origin master "v$(VERSION)"
 	@echo "Pushed master + tag v$(VERSION)"
 
