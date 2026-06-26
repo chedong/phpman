@@ -104,7 +104,7 @@ function renderGroupedResults(array $results, string $scriptName): array {
  * Render search results to the requested format.
  */
 
-function getSearchPage (string $parameter, string $section = "", string $format = "html"): string {
+function getSearchPage (string $parameter, string $section = "", string $format = "html", ?string &$source = null): string {
     $script_name = ($format === "markdown" || $format === "json" || $format === "mcp") ? baseUrl() : scriptName();
     
     // Parse optional section prefix from search string (e.g. "1 GCC" => section=1, query=GCC)
@@ -187,6 +187,9 @@ function getSearchPage (string $parameter, string $section = "", string $format 
                             $lines[] = $origName . ' (' . $sectionNum . ') — ' . $desc;
                         }
                     }
+                    if (!empty($lines)) {
+                        $source = 'fts';
+                    }
                 }
             } catch (\Throwable $e) {
                 phpManLog("FTS5 search fallback: " . $e->getMessage());
@@ -196,6 +199,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
 
     // --- FALLBACK: system apropos (when FTS5 empty/unavailable, or section-only) ---
     if (empty($lines)) {
+        $source = 'apropos';
         if ($section !== "" && preg_match("/^[0-9n]$/", $section) && !$sectionOnly) {
             // Section + keyword: search within section
             $cmd = "apropos -s " . escapeshellarg($section) . " " . escapeshellarg($parameter);
