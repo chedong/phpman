@@ -246,8 +246,8 @@ a:hover {
    ═══════════════════════════════════════════════════════════════ */
 #theme-toggle {
     position: fixed;
-    top: var(--space-4);
-    left: var(--space-4);
+    bottom: var(--space-6);
+    right: var(--space-6);
     z-index: 200;
     width: 32px;
     height: 32px;
@@ -743,7 +743,7 @@ td code {
 #back-to-top {
     position: fixed;
     bottom: var(--space-6);
-    right: var(--space-6);
+    right: calc(var(--space-6) + 40px);
     z-index: 100;
     display: none;
 }
@@ -917,12 +917,11 @@ body > p:last-of-type a:hover {
 
     h1 {
         font-size: 18px;
-        margin-top: 36px;  /* clear the theme toggle */
     }
 
     #theme-toggle {
-        top: var(--space-2);
-        left: var(--space-2);
+        bottom: var(--space-2);
+        right: var(--space-2);
         width: 28px;
         height: 28px;
         font-size: 13px;
