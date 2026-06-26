@@ -66,7 +66,9 @@ phpMan's webroot contains **only 3 files**: `phpMan.php`, `phpman.css`, `phpman.
 
 **Principle**: Any file in the webroot is one misconfiguration away from being publicly readable. CLI tools, tests, and internal documentation belong in the install directory (`~/.phpman/`) or the git clone, never in the webroot. Deployment scripts (Makefile, install.sh) must only copy the allowlist of public files (`phpMan.php`, `phpman.css`, `phpman.js`).
 
-**Code location**: `Makefile` (`_deploy-code` scp lines), `install.sh` (`do_deploy_webroot()` cp lines)
+**Code location**: `Makefile` (`_deploy-code` rsync lines), `install.sh` (`do_deploy_webroot()` cp lines)
+
+**Deploy performance**: `make release` uses `rsync -avz` for `cli/`, `src/`, CSS, and JS — only changed files are transferred. `phpMan.php` uses `scp` (single file, patched from temp).
 
 ### 2.4 XHTML 1.0 Transitional
 
@@ -154,10 +156,12 @@ ri index (`/ri`) is also changed to `<ul>` list. Search/fallback pages use `<div
 | Constant | Placeholder | Injected value |
 |----------|------------|----------------|
 | `PHPMAN_HOME` | `__PHPMAN_HOME__` | `$HOME/.phpman` (resolved via SSH or local env) |
-| `PHPMAN_VERSION` | `'4.4.4'` (last tagged) | `git describe --tags --abbrev=0` |
-| `GIT_DESCRIBE` | `'v4.1.1-10-gd2a3e77-dirty'` | `git describe --tags --always --dirty` |
+| `PHPMAN_VERSION` | `0.0.0` | `git describe --tags --abbrev=0` |
+| `GIT_DESCRIBE` | `local` | `git describe --tags --always --dirty` |
 
-Footer displays `phpMan v4.5-3-g1cea00a`. Local dev defaults to placeholder values.
+All three use placeholders in the repo — never committed with real values. `make release` / `make staging` sed-replaces them into a temp file (`phpMan.php.deploy`), uploads it, then deletes the temp. The local `phpMan.php` is never touched, keeping `git status` clean.
+
+Footer displays `phpMan v4.7-3-g1cea00a`. Local dev shows placeholder values: `PHPMAN_HOME = __PHPMAN_HOME__`, `GIT_DESCRIBE = local`.
 
 ### 2.12 LLM Emoji Enhancement (v4.0)
 
@@ -187,6 +191,7 @@ man page ──→ getManPage($name, '', 'html') → raw HTML (with <pre><code>/
 - **Markdown view**: `/markdown` format prefers `emoji_md` cache over raw Markdown
 - **TOC**: `renderTocSidebar()` builds floating sidebar from `<h2>`/`<h3>` tags (v4.2: regex fixed to match tags with `id="..."` attributes)
 - **Code blocks (v4.2)**: External JS `phpman.js` wraps all `#content-wrap pre` in `.code-block` div with `📋 Copy` button top-right. Tokyo Night styling: `#1f2335` bg, italic font, rounded border. Extracted from inline `<script>` to separate file (v4.4.4+) for XHTML validity and browser caching.
+- **Theme toggle (v4.7)**: CSS custom properties with Tokyo Night (dark) + Hakusho (白書, light) palettes. Auto-follows `prefers-color-scheme`; manual toggle button (☀/☾) in top-left corner with localStorage persistence. `phpman.js` handles toggle logic.
 - **Prompt rules (v4.2)**: forbid `<a>` inside `<pre><code>`, forbid emoji as list markers, preserve original structure, condense output under configurable limit
 
 #### 2.11.2 LLM Integration
