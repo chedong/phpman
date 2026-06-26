@@ -350,14 +350,15 @@ switch ( $mode ) {
         if ( $parameter != "" ) {
             $content = cacheOrExecute('search', $parameter, $section, $format,
                 function() use ($parameter, $section, $format) {
-                    $inner = getSearchPage($parameter, $section, $format);
+                    $source = 'apropos';
+                    $inner = getSearchPage($parameter, $section, $format, $source);
                     Profiler::mark('fts:done');
 
                     // Cascade to pydoc3 and ri — always check FTS5 (fast),
                     // command-line only when man search had no results.
                     $hasManResults = ($inner !== "" && $inner !== "<ul>\n</ul>\n");
                     if ($format === "html") {
-                        $inner = "<h2>apropos</h2>\n" . $inner . "\n";
+                        $inner = "<h2>" . ($source === 'fts' ? 'man' : 'apropos') . "</h2>\n" . $inner . "\n";
                         $pydocResults = searchFtsBySource($parameter, 'pydoc', 'html');
                         if ($pydocResults === "" && !$hasManResults) {
                             $pydocResults = getPydocSearchPage($parameter, "html");
@@ -375,7 +376,7 @@ switch ( $mode ) {
                             $inner .= "<h2>Ruby (ri)</h2>\n" . $riResults . "\n";
                         }
                     } elseif ($format === "markdown") {
-                        $inner = "## apropos\n\n" . $inner . "\n";
+                        $inner = "## " . ($source === 'fts' ? 'man' : 'apropos') . "\n\n" . $inner . "\n";
                         $pydocResults = searchFtsBySource($parameter, 'pydoc', 'markdown');
                         if ($pydocResults === "") {
                             $pydocResults = getPydocSearchPage($parameter, "markdown");
