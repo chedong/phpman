@@ -28,6 +28,14 @@ if (!defined('PHPMAN_HOME') || PHPMAN_HOME === '') {
     define('PHPMAN_HOME', getenv('PHPMAN_HOME') ?: $home . '/.phpman');
 }
 
+// Constants normally defined in phpMan.php (web dispatcher).
+// When loading src/ directly via bootstrap, define them here so
+// format_common.php, enhance.php etc. don't crash on undefined constants.
+if (!defined('RE_ASCII'))      define('RE_ASCII', '[ -~]');
+if (!defined('RE_ASCII_SAFE')) define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
+if (!defined('PHPMAN_VERSION')) define('PHPMAN_VERSION', '0.0.0');
+if (!defined('GIT_DESCRIBE'))  define('GIT_DESCRIBE', 'cli');
+
 // Load phpMan core functions directly from src/ — no web dispatcher needed
 define('PHPMAN_NO_CLI_DISPATCH', true);
 require_once PHPMAN_HOME . '/src/bootstrap.php';
