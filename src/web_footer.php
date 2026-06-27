@@ -3,10 +3,7 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
     $script_name = h(scriptName());
     $parameter_value = h($parameter);
 
-    echo "<form action=\"".$script_name."\" method=\"get\">\n".
-        "<fieldset>\n";
-
-    // Format links — render as tab button group (class added to each <a>)
+    // Build format tabs (Markdown | JSON | MCP) — rendered above the search block
     $fmtLinks = [];
     $cmd_label = h($parameter ?: "command");
     $isDetail = $parameter !== "" && in_array($mode, PHPMAN_CONTENT_MODES);
@@ -17,16 +14,21 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
         if ($jsonUrl !== "") {
             $fmtLinks[] = '<a href="' . h($jsonUrl) . '" class="fmt-tab" title="' . $cmd_label . ' structured JSON API">JSON</a>';
         }
-        // MCP link only when page has real content (not 404/search fallback)
         if ($markdownUrl !== "" || $jsonUrl !== "") {
             $mcp_href = scriptName() . "/" . urlencode($mode) . "/" . urlencode($parameter) . "/mcp";
             $fmtLinks[] = '<a href="' . h($mcp_href) . '" class="fmt-tab" title="MCP Server integration">MCP</a>';
         }
     }
 
-    $fmtStr = !empty($fmtLinks) ? '<span class="fmt-tabs">' . implode("\n", $fmtLinks) . '</span>' : "";
+    // Format tabs above the search form — sit on top of the fieldset like a tab bar
+    if (!empty($fmtLinks)) {
+        echo '<div class="fmt-tabs">' . implode("\n", $fmtLinks) . '</div>';
+    }
 
-    echo "<p>" . $fmtStr . "<input type=\"text\" id=\"cmd-input\" size=\"20\" name=\"parameter\" value=\"".$parameter_value."\"/>\n".
+    echo "<form action=\"".$script_name."\" method=\"get\">\n".
+        "<fieldset>\n";
+
+    echo "<p><input type=\"text\" id=\"cmd-input\" size=\"20\" name=\"parameter\" value=\"".$parameter_value."\"/>\n".
         "<input type=\"radio\" name=\"mode\" value=\"man\" id=\"mode-man\"".$check['man']."/>".
         "<label for=\"mode-man\"><a href=\"".$script_name."/man\">man</a></label>\n".
         "<input type=\"radio\" name=\"mode\" value=\"perldoc\" id=\"mode-perldoc\"".$check['perldoc']."/>".

@@ -183,57 +183,31 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
         $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_expiry
                    ON cache(updated_at) WHERE ttl > 0");
     } else {
-        // Check schema version — clear cache if mismatch
+        // Schema migration — production DBs are at v5. Ensure core tables exist
+        // for rare old DBs, then only run v4→v5 + future-version guards.
         $row = $db->querySingle("SELECT value FROM meta WHERE key='schema_version'", false);
         if ($row !== CACHE_SCHEMA_VERSION) {
-            // Cascading if blocks (not if/elseif) — each migration runs independently
-            // so a DB at schema v1 upgraded to v5 runs ALL of v1→v2, v2→v3, v3→v4, v4→v5.
-
-            if ($row === '1' || (int)$row < 2) {
-                // v1 → v2: add search_fts and search_index_meta, clear search cache
-                $db->exec("DELETE FROM cache WHERE mode='search'");
+            // Safety: ensure core tables exist (create at first init; may be missing in old DBs)
+            if ((int)$row < 5) {
                 try {
                     $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS search_fts
-                               USING fts5(
-                                   name, section, description, body,
-                                   tokenize='unicode61 tokenchars ''-:''',
-                                   prefix='1,2,3'
-                               )");
-                } catch (\Throwable $e) {
-                    phpManLog("FTS5 meta prefix: " . $e->getMessage());
-                }
+                               USING fts5(name, section, description, body,
+                                          tokenize='unicode61 tokenchars ''-:''',
+                                          prefix='1,2,3')");
+                } catch (\Throwable $e) {}
                 $db->exec("CREATE TABLE IF NOT EXISTS search_index_meta (
-                    name TEXT NOT NULL,
-                    section TEXT NOT NULL DEFAULT '',
+                    name TEXT NOT NULL, section TEXT NOT NULL DEFAULT '',
                     source TEXT NOT NULL DEFAULT 'man',
                     body_len INTEGER NOT NULL DEFAULT 0,
                     hits INTEGER NOT NULL DEFAULT 0,
                     last_indexed INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-                    UNIQUE(name, section, source)
-                )");
-            }
-            if ($row === '2' || (int)$row < 3) {
-                // v2 → v3: search_fts.name now stores expanded name; rebuild needed
-                try {
-                    $db->exec("DELETE FROM search_fts");
-                } catch (\Throwable $e) {
-                    phpManLog("FTS5 delete: " . $e->getMessage());
-                }
-                $db->exec("DELETE FROM search_index_meta");
-            }
-            if ($row === '3' || (int)$row < 4) {
-                // v3 → v4: per-format caching migration.
-                // Clear all html/markdown/mcp/raw entries; keep only json/search/emoji.
-                $db->exec("DELETE FROM cache WHERE format NOT IN ('json', 'search', 'emoji_md', 'emoji_html')");
-            }
-            if ($row === '4' || (int)$row < 5) {
-                // v4 → v5: add generator_version column for tracking which phpman
-                // version produced each cached entry.
+                    UNIQUE(name, section, source))");
+                // v4 → v5: add generator_version column
                 try { $db->exec("ALTER TABLE cache ADD COLUMN generator_version TEXT"); }
-                catch (\Throwable $e) { /* column may already exist */ }
+                catch (\Throwable $e) {}
             }
             if ((int)$row >= 5) {
-                // Unknown future schema — clear all cached content, keep schema_version
+                // Unknown future schema — clear all cached content
                 $db->exec("DELETE FROM cache");
             }
             $db->exec("UPDATE meta SET value = '" . CACHE_SCHEMA_VERSION . "' WHERE key = 'schema_version'");

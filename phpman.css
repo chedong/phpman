@@ -333,16 +333,16 @@ form p {
     color: var(--text-secondary);
 }
 
-/* Format tabs (Markdown | JSON | MCP) — pill button group */
+/* Format tabs (Markdown | JSON | MCP) — above search block */
 .fmt-tabs {
-    display: inline-flex;
+    display: flex;
     gap: 0;
-    margin-right: var(--space-2);
+    margin-bottom: var(--space-2);
 }
 
 .fmt-tab {
     display: inline-block;
-    padding: 4px 10px;
+    padding: var(--space-1) var(--space-3);
     font-family: var(--font-ui);
     font-size: 12px;
     font-weight: 500;
@@ -350,23 +350,16 @@ form p {
     text-decoration: none;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    background: var(--alpha-100);
+    background: var(--surface-card);
     border: 1px solid var(--border-default);
+    border-radius: var(--btn-radius);
     transition: background var(--duration-fast) var(--ease-out),
                 color var(--duration-fast) var(--ease-out),
                 border-color var(--duration-fast) var(--ease-out);
 }
 
-.fmt-tab:first-child {
-    border-radius: var(--btn-radius) 0 0 var(--btn-radius);
-}
-
-.fmt-tab:last-child {
-    border-radius: 0 var(--btn-radius) var(--btn-radius) 0;
-}
-
-.fmt-tab:not(:last-child) {
-    border-right: none;
+.fmt-tab + .fmt-tab {
+    margin-left: var(--space-1);
 }
 
 .fmt-tab:hover {
@@ -974,16 +967,15 @@ body > p:last-of-type a:hover {
         gap: var(--space-2);
     }
 
-    /* Format tabs — compact pill row on mobile */
+    /* Format tabs — compact row above form on mobile */
     .fmt-tabs {
-        align-self: flex-start;
-        margin-right: 0;
-        margin-bottom: var(--space-1);
+        flex-wrap: wrap;
+        margin-bottom: var(--space-2);
     }
 
     .fmt-tab {
         font-size: 13px;
-        padding: var(--space-1) var(--space-3);
+        padding: var(--space-1) var(--space-2);
     }
 
     /* Mode radio group — wrap as tag-like row, touch-friendly */

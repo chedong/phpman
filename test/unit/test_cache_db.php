@@ -83,8 +83,8 @@ $db1 = cacheDb();
 $db2 = cacheDb();
 assert_equals(true, $db1 === $db2, "cacheDb() returns same instance on repeated calls");
 
-// ─── Schema migration: v1 → v2 → v3 ───
-echo "\n--- Schema migration v1→v2: adds search_fts and search_index_meta ---\n";
+// ─── Schema migration: old version → v5 ───
+echo "\n--- Schema migration v1→v5: ensures core tables and bumps version ---\n";
 cleanupTmpDir();
 // Reset static singleton so migration runs on the manually-created DB
 cacheDb(true);
@@ -109,23 +109,19 @@ $migDb->exec("INSERT INTO cache (mode, name, section, format, content, status)
               VALUES ('search', 'test', '', 'html', 'old search', 'found')");
 $migDb->close();
 
-// Now call cacheDb() — should detect v1 and migrate
+// Now call cacheDb() — should detect v1 and migrate to v5
 $db = cacheDb();
 $version = $db->querySingle("SELECT value FROM meta WHERE key='schema_version'", false);
 assert_equals(CACHE_SCHEMA_VERSION, $version, "v1 migrated to current schema version");
 
-// Search cache should be cleared during v1→v2 migration
-$searchCount = $db->querySingle("SELECT COUNT(*) FROM cache WHERE mode='search'", false);
-assert_equals(0, (int)$searchCount, "v1→v2: search cache cleared");
-
-// search_fts and search_index_meta should now exist
+// Core tables should exist after migration
 $checkFts = $db->querySingle("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='search_fts'", false);
-assert_equals(1, (int)$checkFts, "v1→v2: search_fts table created");
+assert_equals(1, (int)$checkFts, "v1→v5: search_fts table created");
 
 $checkMeta = $db->querySingle("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='search_index_meta'", false);
-assert_equals(1, (int)$checkMeta, "v1→v2: search_index_meta table created");
+assert_equals(1, (int)$checkMeta, "v1→v5: search_index_meta table created");
 
-echo "\n--- Schema migration v2→v3: clears search_fts and search_index_meta ---\n";
+echo "\n--- Schema migration v2→v5: preserves existing tables, bumps version ---\n";
 cleanupTmpDir();
 cacheDb(true);
 if (!is_dir($tmpDir)) mkdir($tmpDir, 0755, true);
@@ -159,12 +155,12 @@ $db = cacheDb();
 $version = $db->querySingle("SELECT value FROM meta WHERE key='schema_version'", false);
 assert_equals(CACHE_SCHEMA_VERSION, $version, "v2 migrated to current schema version");
 
-// search_fts should be cleared (not dropped)
+// Existing search data is preserved (migration no longer clears it)
 $ftsCount = $db->querySingle("SELECT COUNT(*) FROM search_fts", false);
-assert_equals(0, (int)$ftsCount, "v2→v3: search_fts data cleared");
+assert_equals(1, (int)$ftsCount, "v2→v5: search_fts data preserved");
 
 $metaCount = $db->querySingle("SELECT COUNT(*) FROM search_index_meta", false);
-assert_equals(0, (int)$metaCount, "v2→v3: search_index_meta data cleared");
+assert_equals(1, (int)$metaCount, "v2→v5: search_index_meta data preserved");
 
 echo "\n--- Schema migration unknown version: clears all cache ---\n";
 cleanupTmpDir();

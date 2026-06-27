@@ -422,42 +422,24 @@ function rebuildSearchIndex(): string {
             return "ERROR: FTS5 not available (search_fts table does not exist).\n";
         }
 
-        // #180: rename+rebuild+drop pattern — safer than DROP+CREATE.
-        // DDL (ALTER/CREATE) auto-commits in SQLite, so these run outside
-        // the INSERT transaction. If the process is killed mid-rebuild,
-        // search_fts_old preserves the previous index; searches keep working.
-        // On next run, the old table is recovered and rebuild starts fresh.
-
-        // 1. Clean up leftover from a previous interrupted run (if any)
+        // Drop stale _old table from any previous interrupted rebuild
         try { $db->exec("DROP TABLE IF EXISTS search_fts_old"); }
         catch (\Throwable $ignored) {}
 
-        // 2. Rename current → old
-        $hadExisting = false;
-        try {
-            $db->exec("ALTER TABLE search_fts RENAME TO search_fts_old");
-            $hadExisting = true;
-        } catch (\Throwable $e) {
-            // First run or search_fts doesn't exist — will be created below
-            phpManLog("rebuildSearchIndex: no existing search_fts to rename");
-        }
+        // Drop current index and rebuild from scratch.
+        // The DROP+CREATE runs outside the INSERT transaction (DDL auto-commits).
+        // If the process is killed mid-rebuild, re-run `php cli/build-index.php`.
+        try { $db->exec("DROP TABLE IF EXISTS search_fts"); }
+        catch (\Throwable $ignored) {}
 
-        // 3. Create fresh table
         try {
-            $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS search_fts
+            $db->exec("CREATE VIRTUAL TABLE search_fts
                        USING fts5(
                            name, section, description, body,
                            tokenize='unicode61 tokenchars ''-:''',
                            prefix='1,2,3'
                        )");
         } catch (\Throwable $e) {
-            // FTS5 not available — restore old table if we renamed one
-            if ($hadExisting) {
-                try { $db->exec("DROP TABLE IF EXISTS search_fts"); }
-                    catch (\Throwable $ignored) {}
-                try { $db->exec("ALTER TABLE search_fts_old RENAME TO search_fts"); }
-                    catch (\Throwable $ignored) {}
-            }
             return "ERROR: FTS5 not available, cannot create search_fts.\n";
         }
 
@@ -703,14 +685,6 @@ function rebuildSearchIndex(): string {
     } catch (\Throwable $e) {
         phpManLog("rebuildSearchIndex: " . $e->getMessage());
         try { $db->exec("ROLLBACK"); } catch (\Throwable $ignored) {}
-        // #180: Restore old table if rebuild failed — searches keep working
-        try {
-            $hasOld = $db->querySingle("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='search_fts_old'");
-            if ($hasOld) {
-                $db->exec("DROP TABLE IF EXISTS search_fts");
-                $db->exec("ALTER TABLE search_fts_old RENAME TO search_fts");
-            }
-        } catch (\Throwable $ignored) {}
         return "ERROR: " . $e->getMessage() . "\n";
     }
 }
