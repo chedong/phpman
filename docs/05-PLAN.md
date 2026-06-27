@@ -18,13 +18,15 @@ git push origin v3.6.3
 ## Version Roadmap
 
 ```
-v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 → v4.2 → v4.3 → v4.4 (current)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-man/perldoc/info   pydoc3/ri        Config overridables   JSON canonical cache   batch PID/stop    Copy button UX   OKF Markdown   Code Split
-MCP Server         structured out   Underscore link fix   LLM emoji enhancement   XSS hardening     Prompt v2 tuning   PHPMAN_BASE_URL  thin dispatcher
-JSON API           Search cascade   man7.org fallback     Code split (design)     --parameter mode  ENHANCE_MAX_CHARS  URL hardening   src/ layout
-TLDR endpoint      FTS5 3-source    Docs restructured     i18n                   minimal webroot   TOC regex fix      format purity    22 src files
-                                   Structure regr test   AI translation          install.sh MCP key Makefile version sync  ?build-index removal  shared bootstrap
+v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 → v4.2 → v4.3 → v4.4 → v4.5 → v4.6 → v4.7 → v4.8 (current)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+man/perldoc/info   pydoc3/ri        Config overridables   JSON canonical cache   batch PID/stop    Copy button UX   OKF Markdown    Code Split
+MCP Server         structured out   Underscore link fix   LLM emoji enhancement   XSS hardening     Prompt v2 tuning  PHPMAN_BASE_URL thin dispatcher
+JSON API           Search cascade   man7.org fallback     Code split (design)     --parameter mode  ENHANCE_MAX_CHARS URL hardening   src/ layout
+TLDR endpoint      FTS5 3-source    Docs restructured     i18n                   minimal webroot   TOC regex fix     format purity   22 src files
+                                   Structure regr test   AI translation          install.sh MCP key Makefile version sync ?build-index removal  shared bootstrap
+                                                                                                               rsync deploy   Calibrated Terminal CSS
+                                                                                                               theme toggle   Geist-inspired token system
 ```
 
 ---
@@ -117,10 +119,28 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `src/Source/` + `src/Formatter/` + `src/Cache/` + `src/Config/`
 - Single-file entry point preserved
 
-### v4.6 (planned) — Light/Dark Auto-Switch
+### v4.8 — Calibrated Terminal CSS (2026-06-26)
+
+- **CSS rewrites from scratch**: Geist-inspired semantic design token system — 6 surface tokens, 4 text tokens, 4 alpha overlay tokens, border strength scale
+- **Typography split**: System sans-serif (`-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif`) for UI chrome (H1 breadcrumb, form, sidebar, footer, TLDR headers); monospace (`'SF Mono', 'Cascadia Code', Menlo, Consolas, 'DejaVu Sans Mono', monospace`) for man page content
+- **Alpha-layered depth**: `rgba(255,255,255,0.04–0.18)` translucent overlays replace opaque surface variants — depth through transparency without backdrop-filter
+- **Focus ring**: Two-layer `box-shadow` (`2px surface-root, 4px accent-blue`) on all `:focus-visible` interactive elements. Input fields get softer 3px glow ring
+- **Motion system**: `150ms` state changes, `200ms` overlays, `cubic-bezier(0.175, 0.885, 0.32, 1.1)` easing. `prefers-reduced-motion: reduce` kills all transitions
+- **4px spacing unit**: 4/8/12/16/24/32/40px token scale (from Vercel Geist)
+- **Border radius**: Consistent 6px default on all surface elements. No mixing of sharp and round
+- **Form redesign**: Toolbar card with `card` shadow, input focus glow ring, button `scale(0.97)` active feedback, uppercase format links with letter-spacing
+- **Print stylesheet**: Hides all chrome (toggle, sidebars, form, copy buttons), pure B&W
+- **Box shadows**: `card` (1px blur, subtle) and `popover` (three-layer, pronounced) — Geist dark-theme shadow values
+- Palette stays Tokyo Night dark / Hakusho light DNA — colors refined (deeper ink `#0b0b14`, paper white `#fafaf6`) but recognizable
+- Full design system spec: `docs/02-UI-DESIGN.md`, palette documented in `docs/01-PRODUCT.md` §2.7
+
+### v4.6 — Light/Dark Auto-Switch (completed, 2026-06-26)
 - **Hakusho (白書) light mode**: warm paper-tone palette via `prefers-color-scheme: light`
-- CSS custom properties (`var(--bg-main)` etc.) — one stylesheet, two palettes
-- Zero-JS auto-switch; manual toggle (localStorage) as future enhancement
+- CSS custom properties (19 semantic tokens: `--bg-main`, `--text-body`, `--text-link`…) — one stylesheet, two palettes
+- Manual theme toggle: `[data-theme]` CSS selectors (specificity 0-2-0) + `phpman.js` localStorage (`phpman-theme-v2`)
+- **FTS5 colon query fix** (#192): strip leading/trailing colons from search terms
+- **SQLite lock retry** (#193): 3→8 retries with exponential backoff + random jitter
+- **PATH_INFO guard hoist** (#181): strlen check before explode() for DoS protection
 - See `docs/02-UI-DESIGN.md` for full palette and design rationale
 
 ### v4.1 — Tooling & Security Hardening (current, 2026-06-17)
@@ -413,7 +433,7 @@ later layers respect `defined()` guards:
 │   TEST_HOST = chedong@staging.example.com
 │   DEMO_HOST = chedong@chedong.com
 │
-└── Makefile tag           ← writes PHPMAN_VERSION into phpMan.php before git tag
+└── Makefile tag           ← tags only (PHPMAN_VERSION is placeholder, no source edit)
 ```
 
 **Loading order on every request**:
@@ -463,14 +483,12 @@ Result:
 
 ```
 Maintainer: make tag VERSION=4.4.0                 (local)
-  1. sed 's/PHPMAN_VERSION.*/4.4.0/' phpMan.php     ← write version into file
-  2. git commit -m "v4.4.0: bump PHPMAN_VERSION"     ← commit (repo always current)
-  3. git tag -a v4.4.0 -m "v4.4.0"                  ← annotated tag
-  4. git push origin master v4.4.0                    ← push commit + tag
+  1. git tag -a v4.4.0 -m "v4.4.0"                  ← annotated tag (no source edit)
+  2. git push origin master v4.4.0                    ← push + tag
 
 Maintainer: make release                            (deploy to prod)
   1. make test                                       ← syntax check
-  2. sed GIT_DESCRIBE + PHPMAN_VERSION in phpMan.php ← stamp exact version
+  2. sed PHPMAN_HOME + GIT_DESCRIBE + PHPMAN_VERSION ← replace placeholders
   3. scp phpMan.php + phpman.css → webroot
   4. scp -r cli/ src/ → PHPMAN_HOME
   5. make logcheck                                   ← tail error logs

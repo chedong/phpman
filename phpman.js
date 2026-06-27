@@ -1,6 +1,49 @@
-/* phpMan copy-button script */
-/* Extracted from phpMan.php for external caching and XHTML validity */
+/* phpMan — theme-toggle + copy-button scripts v4.7 */
 (function () {
+    /* ── Theme toggle ──
+       Storage key bumped to v2 (2026-06-25) to invalidate stale preferences
+       that forced dark mode after CSS auto-switch refactor. */
+    var STORAGE_KEY = 'phpman-theme-v2';
+
+    // Restore saved preference
+    var saved = localStorage.getItem(STORAGE_KEY);
+    if (saved === 'light' || saved === 'dark') {
+        document.documentElement.setAttribute('data-theme', saved);
+    }
+
+    // Create toggle button — icon set by updateToggleIcon() from CSS matchMedia
+    var toggle = document.createElement('button');
+    toggle.id = 'theme-toggle';
+    toggle.title = 'Toggle light/dark mode';
+    updateToggleIcon();
+
+    toggle.onclick = function () {
+        var current = document.documentElement.getAttribute('data-theme');
+        // Determine what we're actually showing (account for OS default)
+        var isDark = (current === 'dark') || (!current && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        var next = isDark ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem(STORAGE_KEY, next);
+        updateToggleIcon();
+    };
+
+    // Listen for OS theme changes (only relevant when no manual override)
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+        if (!document.documentElement.getAttribute('data-theme')) {
+            updateToggleIcon();
+        }
+    });
+
+    function updateToggleIcon() {
+        var d = document.documentElement;
+        var current = d.getAttribute('data-theme');
+        var isDark = (current === 'dark') || (!current && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        toggle.textContent = isDark ? '☀' : '☾';  // ☀ in dark (tap for light), ☾ in light (tap for dark)
+    }
+
+    document.body.appendChild(toggle);
+
+    /* ── Copy buttons ── */
     var blocks = document.querySelectorAll('#content-wrap pre code');
     if (!blocks.length) return;
 
@@ -9,19 +52,17 @@
         var wrapper = document.createElement('div');
         wrapper.className = 'code-block';
 
-        // Wrap <pre> in .code-block div
         pre.insertBefore(wrapper, code);
         wrapper.appendChild(code);
 
-        // Create copy button
         var btn = document.createElement('button');
         btn.className = 'copy-btn';
-        btn.textContent = '📋 Copy';
+        btn.textContent = '📋 Copy';  // 📋 Copy
         btn.title = 'Copy code to clipboard';
 
         btn.onclick = function () {
             navigator.clipboard.writeText(code.textContent).then(function () {
-                btn.textContent = '✓ Copied!';
+                btn.textContent = '✓ Copied!';  // ✓ Copied!
                 btn.classList.add('copied');
                 setTimeout(function () {
                     btn.textContent = '📋 Copy';

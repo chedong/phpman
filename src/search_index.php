@@ -59,8 +59,11 @@ function buildFtsQuery(string $raw): string {
     foreach ($terms as $t) {
         $t = trim($t);
         if ($t !== '') {
-            // Preserve hyphens, colons, underscores, dots — critical for commands
+            // Preserve hyphens, underscores, dots, internal colons — critical for commands.
+            // Strip leading/trailing colons to prevent FTS5 column-filter misinterpretation.
+            // E.g. "SQL:" → FTS5 reads "SQL" as column name; "Apache::Session" stays intact.
             $t = preg_replace('/[^\p{L}\p{N}\.\-_:]/u', '', $t);
+            $t = preg_replace('/^:+|:+$/', '', $t);
             if ($t !== '') {
                 $parts[] = '"' . $t . '"*';
             }

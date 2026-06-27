@@ -94,18 +94,16 @@ _deploy-code:
 				$(STAGING_HOME)/.phpman_test/phpman.config.php.example | \
 			cat > $(STAGING_HOME)/.phpman_test/phpman.config.php && chmod 644 $(STAGING_HOME)/.phpman_test/phpman.config.php && echo 'Created phpman.config.php'; \
 		fi"
-	@# Patch placeholders in phpMan.php and upload
+	@# Patch placeholders in phpMan.php and upload (never touches local FILE)
 	@sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|" \
 	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
-	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) > $(FILE).tmp
-	@mv $(FILE).tmp $(FILE)
-	@scp -P $(TEST_PORT) $(FILE) $(TEST_HOST):$(TEST_PATH)/$(FILE)
-	@scp -P $(TEST_PORT) $(CSS_FILE) $(TEST_HOST):$(TEST_PATH)/$(CSS_FILE)
-	@scp -P $(TEST_PORT) $(JS_FILE) $(TEST_HOST):$(TEST_PATH)/$(JS_FILE)
-	@ssh -p $(TEST_PORT) $(TEST_HOST) "rm -rf \$$HOME/.phpman_test/tools/"
-	@scp -P $(TEST_PORT) -r cli $(TEST_HOST):$(STAGING_HOME)/.phpman_test/
-	@scp -P $(TEST_PORT) -r src $(TEST_HOST):$(STAGING_HOME)/.phpman_test/
-	@scp -P $(TEST_PORT) phpman.config.php.example $(TEST_HOST):$(STAGING_HOME)/.phpman_test/phpman.config.php.example
+	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) > $(FILE).deploy
+	@scp -P $(TEST_PORT) $(FILE).deploy $(TEST_HOST):$(TEST_PATH)/$(FILE)
+	@rm -f $(FILE).deploy
+	@rsync -avz -e "ssh -p $(TEST_PORT)" $(CSS_FILE) $(JS_FILE) $(TEST_HOST):$(TEST_PATH)/
+	@rsync -avz -e "ssh -p $(TEST_PORT)" cli/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/cli/
+	@rsync -avz -e "ssh -p $(TEST_PORT)" src/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/src/
+	@rsync -avz -e "ssh -p $(TEST_PORT)" phpman.config.php.example $(TEST_HOST):$(STAGING_HOME)/.phpman_test/
 	@ssh -p $(TEST_PORT) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE) $(TEST_PATH)/$(JS_FILE) && chmod +x \$$HOME/.phpman_test/cli/*.php"
 	@echo ""
 	@echo "=== Deployed to staging ($(GIT_TAG)) ==="
@@ -153,18 +151,16 @@ _release-code:
 	@echo "=== Pruning old backups (keeping last 5) ==="
 	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 			"ls -1t \"\$$HOME/.phpman/backups/$(FILE).\"*.bak 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true"
-	@# Patch placeholders in phpMan.php and upload
+	@# Patch placeholders in phpMan.php and upload (never touches local FILE)
 	@sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(DEMO_HOME)/.phpman');|" \
 	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
-	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) > $(FILE).tmp
-	@mv $(FILE).tmp $(FILE)
-	@scp -P $(DEMO_PORT) $(FILE) $(DEMO_HOST):$(DEMO_PATH)/$(FILE)
-	@scp -P $(DEMO_PORT) $(CSS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(CSS_FILE)
-	@scp -P $(DEMO_PORT) $(JS_FILE) $(DEMO_HOST):$(DEMO_PATH)/$(JS_FILE)
-	@ssh -p $(DEMO_PORT) $(DEMO_HOST) "rm -rf \$$HOME/.phpman/tools/"
-	@scp -P $(DEMO_PORT) -r cli $(DEMO_HOST):$(DEMO_HOME)/.phpman/
-	@scp -P $(DEMO_PORT) -r src $(DEMO_HOST):$(DEMO_HOME)/.phpman/
-	@scp -P $(DEMO_PORT) phpman.config.php.example $(DEMO_HOST):$(DEMO_HOME)/.phpman/phpman.config.php.example
+	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) > $(FILE).deploy
+	@scp -P $(DEMO_PORT) $(FILE).deploy $(DEMO_HOST):$(DEMO_PATH)/$(FILE)
+	@rm -f $(FILE).deploy
+	@rsync -avz -e "ssh -p $(DEMO_PORT)" $(CSS_FILE) $(JS_FILE) $(DEMO_HOST):$(DEMO_PATH)/
+	@rsync -avz -e "ssh -p $(DEMO_PORT)" cli/ $(DEMO_HOST):$(DEMO_HOME)/.phpman/cli/
+	@rsync -avz -e "ssh -p $(DEMO_PORT)" src/ $(DEMO_HOST):$(DEMO_HOME)/.phpman/src/
+	@rsync -avz -e "ssh -p $(DEMO_PORT)" phpman.config.php.example $(DEMO_HOST):$(DEMO_HOME)/.phpman/
 	@ssh -p $(DEMO_PORT) $(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(CSS_FILE) $(DEMO_PATH)/$(JS_FILE) && chmod +x \$$HOME/.phpman/cli/*.php"
 	@echo ""
 	@echo "=== Deployed to production ==="
@@ -264,12 +260,9 @@ tag:
 		echo "Current: $(GIT_VERSION)"; \
 		exit 1; \
 	fi
-	@# Update PHPMAN_VERSION in phpMan.php and commit before tagging
-	@sed -i.bak "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(VERSION)');/" $(FILE) && rm -f $(FILE).bak
-	@git add $(FILE)
-	@git commit -m "v$(VERSION): bump PHPMAN_VERSION" || true
+	@# PHPMAN_VERSION is a placeholder — no source edit needed, just tag
 	@git tag -a "v$(VERSION)" -m "v$(VERSION)"
-	@echo "=== v$(VERSION): PHPMAN_VERSION written + committed + tagged ==="
+	@echo "=== v$(VERSION): tagged (PHPMAN_VERSION is placeholder, no source edit) ==="
 	@git push origin master "v$(VERSION)"
 	@echo "Pushed master + tag v$(VERSION)"
 

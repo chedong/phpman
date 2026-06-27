@@ -50,7 +50,9 @@ phpMan is deployed as a single `phpMan.php` file by design:
 
 ### 2.3 Minimal Webroot (Public File Surface)
 
-phpMan's webroot should contain **only the minimum files necessary for public HTTP service**: `phpMan.php`, `phpman.css`, `phpman.js`, and optionally `phpman.config.php`.
+phpMan's webroot contains **only 3 files**: `phpMan.php`, `phpman.css`, `phpman.js`. No config files, no source code.
+
+`PHPMAN_HOME` is baked directly into `phpMan.php` at deploy time (replaced from `__PHPMAN_HOME__` placeholder via `sed`, same mechanism as `GIT_DESCRIBE` and `PHPMAN_VERSION` in §2.11). All user-editable configuration lives in a single file at `~/.phpman/phpman.config.php` — securely outside webroot (see §2.16).
 
 **What must NOT be in the webroot**:
 
@@ -64,7 +66,9 @@ phpMan's webroot should contain **only the minimum files necessary for public HT
 
 **Principle**: Any file in the webroot is one misconfiguration away from being publicly readable. CLI tools, tests, and internal documentation belong in the install directory (`~/.phpman/`) or the git clone, never in the webroot. Deployment scripts (Makefile, install.sh) must only copy the allowlist of public files (`phpMan.php`, `phpman.css`, `phpman.js`).
 
-**Code location**: `Makefile` (`_deploy-code` scp lines), `install.sh` (`do_deploy_webroot()` cp lines)
+**Code location**: `Makefile` (`_deploy-code` rsync lines), `install.sh` (`do_deploy_webroot()` cp lines)
+
+**Deploy performance**: `make release` uses `rsync -avz` for `cli/`, `src/`, CSS, and JS — only changed files are transferred. `phpMan.php` uses `scp` (single file, patched from temp).
 
 ### 2.4 XHTML 1.0 Transitional
 
@@ -97,21 +101,35 @@ GNU info pages use Setext-style underline headings:
 
 **Code location**: `detectHeadingType()`, `formatManPerlDoc()`
 
-### 2.7 Tokyo Night Dark Theme
+### 2.7 Calibrated Terminal Theme (v4.8)
 
-v2.3 adopted Tokyo Night color scheme, unifying visual style across all modes (man/perldoc/info/pydoc/ri):
+v4.8 redesign: "Calibrated Terminal" — a [Vercel Geist](https://vercel.com/design)-inspired token system applied to terminal-native colors. The CSS was rewritten from the ground up with semantic design tokens, alpha-layered depth, system sans-serif UI chrome, and a proper motion/focus system.
 
-| Element | Color | Usage |
-|------|------|------|
-| `#1a1b26` | Deep blue-black | Main background |
-| `#c0caf5` | Light blue-gray | Body text |
-| `#e0af68` | Warm gold | Bold |
-| `#9ece6a` | Green | Underline |
-| `#7aa2f7` | Blue | Links, buttons |
-| `#24283b` | Dark blue-gray | Sidebar/TLDR background |
-| `#3b4261` | Mid gray-blue | Borders |
+**Key changes from v4.7:**
 
-CSS unified globally: `body`/`pre` share font family and size, `<b>`/`<u>` colors no longer differ by mode.
+| Aspect | v4.7 | v4.8 |
+|--------|------|------|
+| Tokens | 28 flat opaque hex values | 6-surface + 4-text + 4-alpha semantic scales |
+| Typography | `monospace 14px` everywhere | Sans-serif (UI chrome) + monospace (content) |
+| Depth | Flat solid backgrounds | Alpha overlays (`rgba(…)`) + box-shadows |
+| Focus | Browser default | Two-layer focus ring on all interactive elements |
+| Motion | `0.25s` on background/color only | `150ms`/`200ms` with `cubic-bezier` easing; `prefers-reduced-motion` support |
+| Spacing | Ad-hoc px values | 4px-unit scale (8/12/16/24/32/40) |
+| Border radius | Mixed 2–6px | Consistent 6px default |
+| Print | None | Print stylesheet (hides chrome, B&W) |
+| Form | Bare fieldset | Toolbar card with shadow, input glow ring, button scale feedback |
+
+**Palette** (dark, native): Cool ink surfaces (`#0b0b14` root, `#131320` card, `#181828` elevated) with warm amber-gold accents for bold/emphasis (`#e0af68`) and cool blue for links (`#6d9ef0`). Light mode ("Hakusho", 白書) follows the same token structure with warm paper tones.
+
+**Semantic color intent** (Geist-inspired 10-step scale structure):
+- Surfaces ascend: `root` → `card` → `elevated` → `field`
+- Text ascends: `muted` (disabled) → `secondary` (metadata) → `primary` (body)
+- Borders ascend: `default` → `hover` → `active`
+- Alpha overlays: `100` (4%) → `200` (7%) → `300` (12%) → `400` (18%)
+
+**The sans/mono split** is v4.8's signature risk: UI chrome (H1 breadcrumb, form, TOC sidebar, footer, TLDR headers) uses system sans-serif for scannability; man page content stays monospace. This visual separation between reading environment and terminal artifact creates hierarchy that monospace-only design couldn't achieve.
+
+Full design system spec: `docs/02-UI-DESIGN.md`.
 
 ### 2.8 Format Links on Detail Pages Only
 
@@ -145,9 +163,19 @@ Search (apropos) and pydoc3 keyword results use unified `<ul><li>` list format, 
 
 ri index (`/ri`) is also changed to `<ul>` list. Search/fallback pages use `<div id="man-content">` instead of `<pre>`.
 
-### 2.11 Footer Git Version Number
+### 2.11 Deploy-Time Constants
 
-`make deploy`/`make release` injects `git describe --tags --always --dirty` into the `GIT_DESCRIBE` constant via `sed` + ssh pipe. Footer displays `phpMan v2.3-5-g1cea00a`. Local dev defaults to `local`.
+`make release` / `make staging` / `install.sh` inject three constants into `phpMan.php` via `sed` before uploading:
+
+| Constant | Placeholder | Injected value |
+|----------|------------|----------------|
+| `PHPMAN_HOME` | `__PHPMAN_HOME__` | `$HOME/.phpman` (resolved via SSH or local env) |
+| `PHPMAN_VERSION` | `__PHPMAN_VERSION__` | `git describe --tags --abbrev=0` |
+| `GIT_DESCRIBE` | `__GIT_DESCRIBE__` | `git describe --tags --always --dirty` |
+
+All three use placeholders in the repo — never committed with real values. `make release` / `make staging` sed-replaces them into a temp file (`phpMan.php.deploy`), uploads it, then deletes the temp. The local `phpMan.php` is never touched, keeping `git status` clean.
+
+Footer displays `phpMan v4.7-3-g1cea00a`. Local dev shows placeholder values: `PHPMAN_HOME = __PHPMAN_HOME__`, `GIT_DESCRIBE = __GIT_DESCRIBE__`.
 
 ### 2.12 LLM Emoji Enhancement (v4.0)
 
@@ -177,6 +205,7 @@ man page ──→ getManPage($name, '', 'html') → raw HTML (with <pre><code>/
 - **Markdown view**: `/markdown` format prefers `emoji_md` cache over raw Markdown
 - **TOC**: `renderTocSidebar()` builds floating sidebar from `<h2>`/`<h3>` tags (v4.2: regex fixed to match tags with `id="..."` attributes)
 - **Code blocks (v4.2)**: External JS `phpman.js` wraps all `#content-wrap pre` in `.code-block` div with `📋 Copy` button top-right. Tokyo Night styling: `#1f2335` bg, italic font, rounded border. Extracted from inline `<script>` to separate file (v4.4.4+) for XHTML validity and browser caching.
+- **Theme toggle (v4.7)**: CSS custom properties with Tokyo Night (dark) + Hakusho (白書, light) palettes. Auto-follows `prefers-color-scheme`; manual toggle button (☀/☾) in top-left corner with localStorage persistence. `phpman.js` handles toggle logic.
 - **Prompt rules (v4.2)**: forbid `<a>` inside `<pre><code>`, forbid emoji as list markers, preserve original structure, condense output under configurable limit
 
 #### 2.11.2 LLM Integration
@@ -366,6 +395,46 @@ phpMan provides two deployment tools for two different audiences:
 **敏感信息隔离**：`.deploy.mk` 包含 SSH host/port/path，已 `.gitignore`。模板 `.deploy.mk.example` 可公开。
 
 **Code location**: `Makefile`（CI/CD 入口）, `.deploy.mk.example`（服务器配置模板）, `install.sh`（用户端一键安装）
+
+### 2.16 Configuration Architecture (v4.5)
+
+phpMan uses a **single config file** outside webroot: `~/.phpman/phpman.config.php`.
+
+**Loading chain** (both web and CLI paths converge at `src/config.php`):
+
+```
+Web:  phpMan.php → PHPMAN_HOME (baked-in) → src/config.php (defaults + load config)
+CLI:  _bootstrap.php → resolve PHPMAN_HOME → src/bootstrap.php → src/config.php
+```
+
+`src/config.php` sets defaults via the `defined()` guard pattern (like WordPress `wp-config.php`), then loads `~/.phpman/phpman.config.php` to allow overrides:
+
+```php
+if (!defined('PHPMAN_GA_ID'))  define('PHPMAN_GA_ID', '');     // default
+if (!defined('LLM_API_KEY'))   define('LLM_API_KEY', '');     // default
+// ... then: require PHPMAN_HOME . '/phpman.config.php';      // overrides
+```
+
+**What goes where**:
+
+| File | Location | Contents |
+|------|----------|----------|
+| `phpMan.php` | webroot | `PHPMAN_HOME`, `PHPMAN_VERSION`, `GIT_DESCRIBE` — injected at deploy time |
+| `phpman.config.php` | `~/.phpman/` | All user settings: `PHPMAN_BASE_URL`, `PHPMAN_GA_ID`, `LLM_API_KEY`, `MCP_API_KEY`, `PHPMAN_DEBUG`, `LLM_FALLBACKS` |
+| `src/config.php` | `~/.phpman/src/` | Defaults for all constants, `define()` guard pattern |
+| `phpman.config.php.example` | `~/.phpman/` (git) | Template, copied by `install.sh generate_config()` |
+
+**Security**: API keys (`LLM_API_KEY`, `MCP_API_KEY`) are never in webroot. If PHP parsing fails, only the baked-in constants (`PHPMAN_HOME`, version strings) are exposed — no secrets.
+
+**install.sh flow**:
+1. `generate_config()` — copies `.example` → `~/.phpman/phpman.config.php`, generates `MCP_API_KEY`
+2. `sed` replaces `__PHPMAN_HOME__` → `$HOME/.phpman` in both `$INSTALL_DIR/phpMan.php` (dev server) and webroot copy (Apache/Nginx)
+3. `do_deploy_webroot()` — copies `phpMan.php` + CSS + JS to webroot + patches `__PHPMAN_HOME__`
+
+**make release flow**:
+1. SSH resolves `$HOME` → `DEMO_HOME`
+2. `sed` replaces `__PHPMAN_HOME__`, `GIT_DESCRIBE`, `PHPMAN_VERSION` in local `phpMan.php`
+3. `scp` uploads patched `phpMan.php` + CSS + JS + `src/` + `cli/` + `.example`
 
 ---
 

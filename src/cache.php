@@ -93,7 +93,7 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
 
     $db = new SQLite3($dbPath);
     $db->enableExceptions(true);
-    $db->busyTimeout(5000);  // must be before any exec() to avoid "database is locked"
+    $db->busyTimeout(10000);  // must be before any exec() to avoid "database is locked"
     // PRAGMA journal_mode=WAL requires an exclusive lock — can fail under concurrent access.
     // Wrap in try/catch so a transient lock doesn't crash the request.
     try {
@@ -283,10 +283,12 @@ class PageCache {
             return null;
         }
 
-        // Count this cache hit (found or not_found)
-        $hitStmt = $this->db->prepare("UPDATE cache SET hits = hits + 1 WHERE id = :id");
-        $hitStmt->bindValue(':id', $row['id'], SQLITE3_INTEGER);
-        $hitStmt->execute();
+        // Count this cache hit (found or not_found) — non-critical, ignore lock errors
+        try {
+            $hitStmt = $this->db->prepare("UPDATE cache SET hits = hits + 1 WHERE id = :id");
+            $hitStmt->bindValue(':id', $row['id'], SQLITE3_INTEGER);
+            $hitStmt->execute();
+        } catch (\Throwable $e) {}
 
         if ($row['status'] === 'not_found') {
             return CACHE_SENTINEL_NOT_FOUND;
@@ -315,11 +317,19 @@ class PageCache {
         $chk->bindValue(':cn', $name, SQLITE3_TEXT);
         $chk->bindValue(':cs', $section, SQLITE3_TEXT);
         $chk->bindValue(':cf', $format, SQLITE3_TEXT);
-        $oldRes = $chk->execute();
-        $existing = ($oldRes && ($oldRow = $oldRes->fetchArray(SQLITE3_ASSOC))) ? $oldRow : null;
+        $existing = null;
+        try {
+            $oldRes = $chk->execute();
+            $existing = ($oldRes && ($oldRow = $oldRes->fetchArray(SQLITE3_ASSOC))) ? $oldRow : null;
+        } catch (\Throwable $e) {
+            // SELECT can fail with "database is locked" under concurrent access;
+            // fall through to INSERT path.
+        }
 
+        // Retry loop for SQLITE_BUSY — concurrent requests can saturate busyTimeout.
+        // prepare() + bindValue() are deterministic → done once outside the loop;
+        // only execute() can throw "database is locked".
         if ($existing) {
-            // UPDATE existing row — rowid is stable, no FTS orphan
             $stmt = $this->db->prepare(
                 "UPDATE cache SET content = :content, content_len = :content_len, status = :status,
                  ttl = :ttl, updated_at = strftime('%s','now'),
@@ -332,10 +342,7 @@ class PageCache {
             $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
             $stmt->bindValue(':genver', GIT_DESCRIBE, SQLITE3_TEXT);
             $stmt->bindValue(':id', (int)$existing['id'], SQLITE3_INTEGER);
-            $ok = $stmt->execute() !== false;
-            $cacheId = (int)$existing['id'];
         } else {
-            // INSERT new row
             $stmt = $this->db->prepare(
                 "INSERT INTO cache (mode, name, section, format, content, content_len, status, ttl, created_at, updated_at, generator_version)
                  VALUES (:mode, :name, :section, :format, :content, :content_len, :status, :ttl,
@@ -350,16 +357,40 @@ class PageCache {
             $stmt->bindValue(':status', $status, SQLITE3_TEXT);
             $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
             $stmt->bindValue(':genver', GIT_DESCRIBE, SQLITE3_TEXT);
-            $ok = $stmt->execute() !== false;
-            $cacheId = $ok ? $this->db->lastInsertRowID() : 0;
         }
 
-        // Sync FTS5 index for found entries (skip search mode — search results aren't indexed)
-        if ($ok && $status === 'found' && $mode !== 'search') {
-            $this->syncFts($cacheId, $mode, $name, $section, $content);
-        }
+        $maxAttempts = 8;
+        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+            try {
+                $ok = $stmt->execute() !== false;
+                $cacheId = $existing ? (int)$existing['id'] : ($ok ? $this->db->lastInsertRowID() : 0);
 
-        return $ok;
+                // Sync FTS5 index for found entries (skip search mode — search results aren't indexed)
+                if ($ok && $status === 'found' && $mode !== 'search') {
+                    $this->syncFts($cacheId, $mode, $name, $section, $content);
+                }
+
+                return $ok;
+            } catch (\Throwable $e) {
+                $msg = $e->getMessage();
+                if ($attempt < $maxAttempts - 1 && strpos($msg, 'database is locked') !== false) {
+                    // Exponential backoff with jitter: 100–300ms, 200–600ms, etc.
+                    // up to ~12s total wait across 8 attempts (vs old 0.9s across 3)
+                    $base = (1 << min($attempt, 4)) * 100000;  // 100ms, 200ms, 400ms, 800ms, 1600ms…
+                    $jitter = random_int(0, $base * 2);
+                    usleep($base + $jitter);
+                    continue;
+                }
+                // Non-lock error or retries exhausted — log and fail gracefully
+                if ($attempt >= $maxAttempts - 1) {
+                    phpManLog("cache set retries exhausted for {$mode}/{$name}/{$section}: " . $msg);
+                } else {
+                    phpManLog("cache set error for {$mode}/{$name}/{$section}: " . $msg);
+                }
+                return false;
+            }
+        }
+        return false;
     }
 
     public function delete(string $mode, string $name, string $section): bool {
