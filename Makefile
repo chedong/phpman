@@ -54,7 +54,8 @@ JS_FILE  ?= phpman.js
 .PHONY: test staging staging-reindex release release-reindex reindex reindex-staging rollback verify logcheck package upload-release clean cache-flush cache-flush-staging cache-stats tag _deploy-code _release-code
 
 GIT_TAG     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "local")
-GIT_VERSION := $(shell (git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0") | sed 's/^v//')
+# Use global latest tag (not branch-local) so version is correct from worktrees/forks
+GIT_VERSION := $(shell (git tag --sort=-v:refname 2>/dev/null | head -1 || echo "v0.0.0") | sed 's/^v//')
 
 # Resolve remote $HOME so config gets the literal path (mod_fcgid may not set HOME)
 STAGING_HOME := $(shell ssh -p $(TEST_PORT) $(TEST_HOST) 'echo $$HOME' 2>/dev/null || echo "")
