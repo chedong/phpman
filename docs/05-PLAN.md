@@ -18,8 +18,8 @@ git push origin v3.6.3
 ## Version Roadmap
 
 ```
-v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 → v4.2 → v4.3 → v4.4 → v4.5 → v4.6 → v4.7 → v4.8 (current)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 → v4.2 → v4.3 → v4.4 → v4.5 → v4.6 → v4.7 → v4.8 → v4.9 (current)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 man/perldoc/info   pydoc3/ri        Config overridables   JSON canonical cache   batch PID/stop    Copy button UX   OKF Markdown    Code Split
 MCP Server         structured out   Underscore link fix   LLM emoji enhancement   XSS hardening     Prompt v2 tuning  PHPMAN_BASE_URL thin dispatcher
 JSON API           Search cascade   man7.org fallback     Code split (design)     --parameter mode  ENHANCE_MAX_CHARS URL hardening   src/ layout
@@ -27,6 +27,8 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
                                    Structure regr test   AI translation          install.sh MCP key Makefile version sync ?build-index removal  shared bootstrap
                                                                                                                rsync deploy   Calibrated Terminal CSS
                                                                                                                theme toggle   Geist-inspired token system
+                                                                                                               format tabs    GIT_VERSION global tag
+                                                                                                               font +2px      schema migration simplified
 ```
 
 ---

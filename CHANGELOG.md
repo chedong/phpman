@@ -4,6 +4,23 @@ All notable changes to phpMan are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.9.0] — 2026-06-27
+
+### Added
+- **Format tabs above search block** — Markdown/JSON/MCP rendered as `.fmt-tab` pill buttons above the fieldset, not inline links inside the form.
+- **Font scale +2px** — body 14→16px, pre 13→14px, content 13→14px; all headings +1px. Mobile sizes bumped proportionally.
+- **Mobile search polish** — radio button group with larger touch targets (min-height 44px), full-width inputs, portrait-optimized flex layout.
+
+### Fixed
+- **FTS5 perldoc results truncated (#189)** — removed useless `LEFT JOIN search_index_meta` that created duplicate rows, consuming the 300-row LIMIT. Replaced with `SELECT DISTINCT`, bumped LIMIT to 500. Perldoc entries like `Authen::SASL::Perl` now visible in search results.
+- **GIT_VERSION worktree-safe** — `make release` now uses `git tag --sort=-v:refname | head -1` (global latest) instead of `git describe --tags --abbrev=0` (branch-local). Version numbers correct from any branch.
+- **CLI bootstrap constant crash** — `RE_ASCII`, `RE_ASCII_SAFE`, `GIT_DESCRIBE` now defined in `cli/_bootstrap.php` before loading `src/bootstrap.php`. Fixes fatal "Undefined constant" errors in batch-enhance.
+
+### Changed
+- **Schema migration simplified** — retired v1→v2, v2→v3, v3→v4 cascading migration blocks. All production DBs at v5. Core table creation safety net kept for old DBs.
+- **rebuildSearchIndex simplified** — `search_fts_old` rename+rollback pattern replaced with direct `DROP`+`CREATE`. Removed ~30 lines of fallback code.
+- **Stale tables dropped** — `search_fts_old*` (6 tables) and `emoji_cache` removed from production and staging databases.
+
 ## [4.6.0] — 2026-06-26
 
 ### Added
