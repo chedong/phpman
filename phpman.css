@@ -185,7 +185,7 @@ body {
     color: var(--text-primary);
     background: var(--surface-root);
     font-family: var(--font-ui);
-    font-size: 14px;
+    font-size: 16px;
     line-height: 1.55;
     margin: 0;
     padding: var(--space-4) var(--space-6);
@@ -203,7 +203,7 @@ code {
 }
 
 pre {
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.55;
     margin: 0;
     white-space: pre;
@@ -329,23 +329,57 @@ form p {
     gap: var(--space-2);
     margin: 0;
     font-family: var(--font-ui);
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-secondary);
 }
 
-/* Format links (Markdown | JSON | MCP) */
-form p a {
+/* Format tabs (Markdown | JSON | MCP) — pill button group */
+.fmt-tabs {
+    display: inline-flex;
+    gap: 0;
+    margin-right: var(--space-2);
+}
+
+.fmt-tab {
+    display: inline-block;
+    padding: 4px 10px;
+    font-family: var(--font-ui);
     font-size: 12px;
     font-weight: 500;
     color: var(--text-muted);
+    text-decoration: none;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    padding: 2px 0;
+    background: var(--alpha-100);
+    border: 1px solid var(--border-default);
+    transition: background var(--duration-fast) var(--ease-out),
+                color var(--duration-fast) var(--ease-out),
+                border-color var(--duration-fast) var(--ease-out);
 }
 
-form p a:hover {
-    color: var(--accent-blue);
+.fmt-tab:first-child {
+    border-radius: var(--btn-radius) 0 0 var(--btn-radius);
+}
+
+.fmt-tab:last-child {
+    border-radius: 0 var(--btn-radius) var(--btn-radius) 0;
+}
+
+.fmt-tab:not(:last-child) {
+    border-right: none;
+}
+
+.fmt-tab:hover {
+    background: var(--alpha-200);
+    color: var(--text-primary);
+    border-color: var(--border-hover);
     text-decoration: none;
+}
+
+.fmt-tab:active {
+    background: var(--accent-blue);
+    color: #ffffff;
+    border-color: var(--accent-blue);
 }
 
 /* Text input */
@@ -356,11 +390,11 @@ input[type='text'] {
     border-radius: var(--btn-radius);
     padding: 6px 10px;
     font-family: var(--font-mono);
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.4;
     min-width: 140px;
     flex: 1;
-    max-width: 240px;
+    max-width: 280px;
     transition: border-color var(--duration-fast) var(--ease-out),
                 box-shadow var(--duration-fast) var(--ease-out);
 }
@@ -383,7 +417,7 @@ input[type='radio'] {
 }
 
 form p label {
-    font-size: 13px;
+    font-size: 14px;
     cursor: pointer;
     color: var(--text-secondary);
     padding: 2px 0;
@@ -401,7 +435,7 @@ input[type='submit'] {
     border-radius: var(--btn-radius);
     padding: 6px 14px;
     font-family: var(--font-ui);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
     line-height: 1.4;
     cursor: pointer;
@@ -429,14 +463,14 @@ form + p {
    ═══════════════════════════════════════════════════════════════ */
 #man-content {
     font-family: var(--font-mono);
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.55;
     color: var(--text-primary);
 }
 
 #man-content h2 {
     font-family: var(--font-ui);
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 500;
     color: var(--text-primary);
     margin: var(--space-8) 0 var(--space-2) 0;
@@ -447,7 +481,7 @@ form + p {
 
 #man-content h3 {
     font-family: var(--font-ui);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
     color: var(--text-secondary);
     margin: var(--space-6) 0 var(--space-1) 0;
@@ -455,7 +489,7 @@ form + p {
 
 #man-content h4 {
     font-family: var(--font-ui);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
     color: var(--text-muted);
     margin: var(--space-4) 0 var(--space-1) 0;
@@ -678,7 +712,7 @@ td code {
     border-radius: var(--btn-radius);
     padding: var(--space-2);
     font-family: var(--font-ui);
-    font-size: 12px;
+    font-size: 13px;
     z-index: 100;
     display: none;
     box-shadow: var(--shadow-popover);
@@ -876,7 +910,7 @@ body > p:last-of-type {
     padding-top: var(--space-4);
     border-top: 1px solid var(--border-default);
     font-family: var(--font-ui);
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1.7;
     color: var(--text-muted);
 }
@@ -912,7 +946,7 @@ body > p:last-of-type a:hover {
 @media (max-width: 1024px) {
     body {
         padding: var(--space-2) var(--space-3);
-        font-size: 13px;
+        font-size: 15px;
     }
 
     h1 {
@@ -933,11 +967,56 @@ body > p:last-of-type a:hover {
         padding: 0;
     }
 
-    /* Form stacks vertically */
+    /* Form — portrait: stack rows */
     form p {
         flex-direction: column;
-        align-items: flex-start;
-        gap: var(--space-1);
+        align-items: stretch;
+        gap: var(--space-2);
+    }
+
+    /* Format tabs — compact pill row on mobile */
+    .fmt-tabs {
+        align-self: flex-start;
+        margin-right: 0;
+        margin-bottom: var(--space-1);
+    }
+
+    .fmt-tab {
+        font-size: 13px;
+        padding: var(--space-1) var(--space-3);
+    }
+
+    /* Mode radio group — wrap as tag-like row, touch-friendly */
+    form p > input[type='radio'] + label {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+    }
+
+    /* Stack radio+label pairs in a wrapping row */
+    form p {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    /* Mode selector row — wrap radio buttons as tap targets */
+    form p > input[type='radio'] {
+        transform: scale(1.4);
+        margin-right: 4px;
+    }
+
+    form p label {
+        font-size: 15px;
+        padding: var(--space-1) var(--space-1);
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+    }
+
+    form p label a {
+        padding: var(--space-1) var(--space-2);
+        display: inline-block;
+        font-size: 13px;
     }
 
     input[type='text'] {
@@ -945,29 +1024,19 @@ body > p:last-of-type a:hover {
         max-width: 100%;
         box-sizing: border-box;
         padding: var(--space-2);
-        font-size: 14px;
+        font-size: 16px;
     }
 
     input[type='submit'] {
         padding: var(--space-2) var(--space-6);
-        font-size: 14px;
+        font-size: 16px;
         min-height: 44px;
         width: 100%;
     }
 
     input[type='radio'] {
-        transform: scale(1.3);
+        transform: scale(1.4);
         margin-right: 2px;
-    }
-
-    form p label {
-        font-size: 14px;
-    }
-
-    form p a {
-        padding: var(--space-1) var(--space-2);
-        display: inline-block;
-        font-size: 13px;
     }
 
     /* TOC becomes an overlay drawer */
@@ -984,7 +1053,7 @@ body > p:last-of-type a:hover {
         box-shadow: var(--shadow-popover);
         background: var(--surface-card);
         padding: var(--space-2);
-        font-size: 13px;
+        font-size: 14px;
     }
 
     body.ext-nav #toc-sidebar a {
@@ -1002,7 +1071,7 @@ body > p:last-of-type a:hover {
     #toc-toggle {
         cursor: pointer;
         color: var(--text-primary);
-        font-size: 14px;
+        font-size: 15px;
     }
 
     #toc-toggle:hover {
@@ -1037,43 +1106,43 @@ body > p:last-of-type a:hover {
 
     /* Content on mobile */
     #man-content {
-        font-size: 12px;
-        line-height: 1.45;
+        font-size: 14px;
+        line-height: 1.5;
     }
 
     #man-content pre {
-        font-size: 12px;
-        line-height: 1.45;
+        font-size: 13px;
+        line-height: 1.5;
         white-space: pre-wrap;
         word-wrap: break-word;
     }
 
     #man-content h2 {
-        font-size: 14px;
+        font-size: 15px;
     }
 
     #man-content h3 {
-        font-size: 12px;
+        font-size: 14px;
     }
 
     /* TLDR on mobile */
     .tldr-header {
-        font-size: 13px;
+        font-size: 14px;
     }
 
     .tldr-examples li {
-        font-size: 12px;
+        font-size: 13px;
     }
 
     .tldr-examples li code {
-        font-size: 11px;
+        font-size: 12px;
     }
 
     /* Code block copy button always visible on touch devices */
     .code-block .copy-btn {
         opacity: 1;
         padding: 3px 8px;
-        font-size: 11px;
+        font-size: 12px;
     }
 
     /* Search results */
@@ -1082,12 +1151,12 @@ body > p:last-of-type a:hover {
     }
 
     .alpha-group li {
-        font-size: 12px;
+        font-size: 13px;
     }
 
     /* Footer */
     body > p:last-of-type {
-        font-size: 11px;
+        font-size: 12px;
     }
 }
 

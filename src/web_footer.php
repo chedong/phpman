@@ -6,25 +6,25 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
     echo "<form action=\"".$script_name."\" method=\"get\">\n".
         "<fieldset>\n";
 
-    // Format links (Markdown | JSON | MCP) — only on detail pages (parameter set, not search mode)
+    // Format links — render as tab button group (class added to each <a>)
     $fmtLinks = [];
     $cmd_label = h($parameter ?: "command");
     $isDetail = $parameter !== "" && in_array($mode, PHPMAN_CONTENT_MODES);
     if ($isDetail) {
         if ($markdownUrl !== "") {
-            $fmtLinks[] = '<a href="' . h($markdownUrl) . '" title="' . $cmd_label . ' in Markdown format">Markdown</a>';
+            $fmtLinks[] = '<a href="' . h($markdownUrl) . '" class="fmt-tab" title="' . $cmd_label . ' in Markdown format">Markdown</a>';
         }
         if ($jsonUrl !== "") {
-            $fmtLinks[] = '<a href="' . h($jsonUrl) . '" title="' . $cmd_label . ' structured JSON API">JSON</a>';
+            $fmtLinks[] = '<a href="' . h($jsonUrl) . '" class="fmt-tab" title="' . $cmd_label . ' structured JSON API">JSON</a>';
         }
         // MCP link only when page has real content (not 404/search fallback)
         if ($markdownUrl !== "" || $jsonUrl !== "") {
             $mcp_href = scriptName() . "/" . urlencode($mode) . "/" . urlencode($parameter) . "/mcp";
-            $fmtLinks[] = '<a href="' . h($mcp_href) . '" title="MCP Server integration">MCP</a>';
+            $fmtLinks[] = '<a href="' . h($mcp_href) . '" class="fmt-tab" title="MCP Server integration">MCP</a>';
         }
     }
 
-    $fmtStr = !empty($fmtLinks) ? implode(" |\n", $fmtLinks) . " &nbsp;" : "";
+    $fmtStr = !empty($fmtLinks) ? '<span class="fmt-tabs">' . implode("\n", $fmtLinks) . '</span>' : "";
 
     echo "<p>" . $fmtStr . "<input type=\"text\" id=\"cmd-input\" size=\"20\" name=\"parameter\" value=\"".$parameter_value."\"/>\n".
         "<input type=\"radio\" name=\"mode\" value=\"man\" id=\"mode-man\"".$check['man']."/>".
