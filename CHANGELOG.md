@@ -4,6 +4,11 @@ All notable changes to phpMan are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.9.1] — 2026-06-27
+
+### Fixed
+- **Code block copy button clipping** — single-line code blocks now have `min-height: 36px`. Copy button vertically centered via `top: 50%; translateY(-50%)` (was `top: 4px`, could clip on short blocks). `pre` padding-right 48→56px for better button spacing.
+
 ## [4.9.0] — 2026-06-27
 
 ### Added
