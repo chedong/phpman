@@ -29,7 +29,7 @@ declare(strict_types=1);
 define('RE_ASCII', '[ -~]');
 define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
 
-// #49: Named constants — placeholders replaced by make deploy/release
+// #49: Named constants for magic numbers
 define('PHPMAN_HOME', '__PHPMAN_HOME__');
 define('PHPMAN_VERSION', '__PHPMAN_VERSION__');
 define('GIT_DESCRIBE', '__GIT_DESCRIBE__');
@@ -106,16 +106,32 @@ if (serverValue("PATH_INFO") !== "" && strpos(serverValue("PATH_INFO"), "/.well-
  * parse parameters from $_SERVER["PATH_INFO"]: phpMan.php/MODE/COMMAND/SECTION/FORMAT
  * or parse parameters from HTTP/GET
  */
-if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
-    $array_param = explode('/', serverValue("PATH_INFO"));
-    $segments = [];
-    foreach ($array_param as $p) {
-        $p_trimmed = trim($p);
-        if ($p_trimmed !== "") {
-            $segments[] = $p_trimmed;
+$pathInfo = serverValue("PATH_INFO");
+    if ($pathInfo !== "" && trim($pathInfo) != "") {
+        // Guard: reject abnormally deep/long PATH_INFO BEFORE parsing (scanner noise, probes)
+        if (strlen($pathInfo) > 100 || preg_match('#:/#', $pathInfo)) {
+            http_response_code(403);
+            header("Content-Type: text/plain; charset=UTF-8");
+            die("403 Forbidden: malformed PATH_INFO
+");
         }
-    }
-    
+
+        $array_param = explode('/', $pathInfo);
+        $segments = [];
+        foreach ($array_param as $p) {
+            $p_trimmed = trim($p);
+            if ($p_trimmed !== "") {
+                $segments[] = $p_trimmed;
+            }
+        }
+
+        if (count($segments) > 5) {
+            http_response_code(403);
+            header("Content-Type: text/plain; charset=UTF-8");
+            die("403 Forbidden: malformed PATH_INFO
+");
+        }
+
     $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp", ".well-known", "pydoc", "ri");
     $seg_count = count($segments);
     
@@ -350,15 +366,14 @@ switch ( $mode ) {
         if ( $parameter != "" ) {
             $content = cacheOrExecute('search', $parameter, $section, $format,
                 function() use ($parameter, $section, $format) {
-                    $source = 'apropos';
-                    $inner = getSearchPage($parameter, $section, $format, $source);
+                    $inner = getSearchPage($parameter, $section, $format);
                     Profiler::mark('fts:done');
 
                     // Cascade to pydoc3 and ri — always check FTS5 (fast),
                     // command-line only when man search had no results.
                     $hasManResults = ($inner !== "" && $inner !== "<ul>\n</ul>\n");
                     if ($format === "html") {
-                        $inner = "<h2>" . ($source === 'fts' ? 'man' : 'apropos') . "</h2>\n" . $inner . "\n";
+                        $inner = "<h2>apropos</h2>\n" . $inner . "\n";
                         $pydocResults = searchFtsBySource($parameter, 'pydoc', 'html');
                         if ($pydocResults === "" && !$hasManResults) {
                             $pydocResults = getPydocSearchPage($parameter, "html");
@@ -376,7 +391,7 @@ switch ( $mode ) {
                             $inner .= "<h2>Ruby (ri)</h2>\n" . $riResults . "\n";
                         }
                     } elseif ($format === "markdown") {
-                        $inner = "## " . ($source === 'fts' ? 'man' : 'apropos') . "\n\n" . $inner . "\n";
+                        $inner = "## apropos\n\n" . $inner . "\n";
                         $pydocResults = searchFtsBySource($parameter, 'pydoc', 'markdown');
                         if ($pydocResults === "") {
                             $pydocResults = getPydocSearchPage($parameter, "markdown");
