@@ -152,22 +152,18 @@ function getSearchPage (string $parameter, string $section = "", string $format 
                 if ($totalIndexed > 0) {
                     if ($section !== "" && preg_match("/^[0-9n]$/", $section)) {
                         $stmt = $db->prepare(
-                            "SELECT s.name, s.section, s.description
+                            "SELECT DISTINCT s.name, s.section, s.description
                              FROM search_fts s
-                             LEFT JOIN search_index_meta m ON m.section = s.section
-                                 AND (s.name = m.name OR s.name LIKE m.name || ' %')
                              WHERE search_fts MATCH :q AND s.section = :sec
-                             ORDER BY rank LIMIT 300"
+                             ORDER BY rank LIMIT 500"
                         );
                         $stmt->bindValue(':sec', $section, SQLITE3_TEXT);
                     } else {
                         $stmt = $db->prepare(
-                            "SELECT s.name, s.section, s.description
+                            "SELECT DISTINCT s.name, s.section, s.description
                              FROM search_fts s
-                             LEFT JOIN search_index_meta m ON m.section = s.section
-                                 AND (s.name = m.name OR s.name LIKE m.name || ' %')
                              WHERE search_fts MATCH :q
-                             ORDER BY rank LIMIT 300"
+                             ORDER BY rank LIMIT 500"
                         );
                     }
                     $stmt->bindValue(':q', $ftsQuery, SQLITE3_TEXT);
