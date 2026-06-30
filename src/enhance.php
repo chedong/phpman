@@ -368,8 +368,14 @@ function cleanEmojiHtml(string $html): string {
             '/\bon\w+\s*=\s*[^\s>]+/i',      // onclick=... (unquoted, runs to space or >)
             '/href\s*=\s*"javascript:/i',     // href="javascript:..."
             '/href\s*=\s*\'javascript:/i',    // href='javascript:...'
+            '/href\s*=\s*"data:text/i',       // href="data:text/html,..."
+            '/href\s*=\s*\'data:text/i',      // href='data:text/html,...'
+            '/href\s*=\s*"vbscript:/i',       // href="vbscript:..."
+            '/href\s*=\s*\'vbscript:/i',      // href='vbscript:...'
+            '/\bstyle\s*=\s*"[^"]*\b(?:expression|javascript|vbscript|url\s*\()/i',  // style="expression(...)"
+            '/\bstyle\s*=\s*\'[^\']*\b(?:expression|javascript|vbscript|url\s*\()/i', // style='expression(...)'
         ],
-        ['', '', '', 'href="#"', 'href="#"'],
+        ['', '', '', 'href="#"', 'href="#"', 'href="#"', 'href="#"', 'href="#"', 'href="#"', '', ''],
         $html
     );
 

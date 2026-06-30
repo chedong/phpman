@@ -97,7 +97,7 @@ function showFooter (string $validator = "", bool $showNav = false, string $mode
         "<br />CrawledBy " . $user_agent .
         "<br />" . $validator .
         // v4.0: show LLM enhancement credit when emoji cache is active
-        ($enhancedBy !== "" ? "<br />Enhanced by LLM: " . h($enhancedBy) . " / taotoken.net / " . h(serverValue("HTTP_HOST", "")) . " - <a href=\"" . h(scriptName()) . "/" . h($mode) . "/" . urlencode((string)$parameter) . ($section !== "" ? "/" . h($section) : "") . "/html\">original format</a>" : "") .
+        ($enhancedBy !== "" ? "<br />Enhanced by LLM: " . h($enhancedBy) . " / taotoken.net / " . h(preg_replace('/[\r\n]/', '', serverValue("HTTP_HOST", ""))) . " - <a href=\"" . h(scriptName()) . "/" . h($mode) . "/" . urlencode((string)$parameter) . ($section !== "" ? "/" . h($section) : "") . "/html\">original format</a>" : "") .
         (Profiler::getEnabled() ? profilerHtmlBlock() : "") .
         "</p>" .
         ($showNav ? '<div id="back-to-top"><a href="#top">^_top_^</a></div>' : "") .

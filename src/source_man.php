@@ -5,7 +5,8 @@ function getManPage (string $parameter, string $section = "", string $format = "
     $oldManroffopt = getenv('MANROFFOPT');
     $oldManwidth = getenv('MANWIDTH');
     try {
-        putenv("MANROFFOPT=-rLL=" . PHPMAN_WIDTH . "n");
+        $width = intval(PHPMAN_WIDTH);
+        putenv("MANROFFOPT=-rLL=" . $width . "n");
         // Prefer -Tutf8 (GNU man) for SGR-encoded bold/underline output.
         // Falls back to bare man on BSD/macOS, which uses overstrike (X^HX).
         // Both formats are handled by formatManPerlDoc().
@@ -30,7 +31,7 @@ function getManPage (string $parameter, string $section = "", string $format = "
             // BSD man doesn't support -Tutf8 or groff's -rLL,
             // but it respects MANWIDTH for line-width control.
             $lines = array();
-            putenv("MANWIDTH=" . PHPMAN_WIDTH);
+            putenv("MANWIDTH=" . $width);
             $fallback = "man ";
             if ($section !== "") {
                 $fallback .= escapeshellarg($section)." ";

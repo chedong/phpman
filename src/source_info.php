@@ -83,27 +83,43 @@ function getInfoIndex (string $format = "html"): string {
         return formatForOutput(json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), $format);
     }
 
+    // Use placeholder characters for &<> to avoid XSS, same pattern as formatManPerlDoc()
     $patterns = array(
-                    "/&/",  //html special char: '&' => '&gt;';
-                    "/</",  //html special char: '>' => '&lt;';
-                    "/>/",  //html special char: '<' => '&gt;';
+                    "/&/",  //html special char: '&' => '&amp;';
+                    "/</",  //html special char: '<' => '&lt;';
+                    "/>/",  //html special char: '>' => '&gt;';
                     "/\(([a-z0-9_\-]+)\)([a-z0-9_\+]+)/", //'(group)command' => info page of command;
                     "/\(([a-z0-9_\-]+)\)/"     //'(command)' => info page of command;
                 );
-    $replace = array(
-                   "&amp;",
-                   "&lt;",
-                   "&gt;",
-                   '(<a href="'.$script_name.'/info/$1">$1</a>)'.
-                   '<a href="'.$script_name.'/info/$2">$2</a>',
-                   '(<a href="'.$script_name.'/info/$1">$1</a>)'
+    // Step 1: replace &<> with safe placeholders
+    $placeholders = array(
+                   "\x05", // placeholder for &
+                   "\x06", // placeholder for <
+                   "\x07", // placeholder for >
+                   "\x04\\1\x04\x04\\2\x04",   // temp placeholder for group+cmd
+                   "\x04\\1\x04"                // temp placeholder for cmd
                 );
     $output = "";
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
-        $output .= preg_replace($patterns, $replace, $lines[$i]);
-        $output .= " \n";
+        $line = $lines[$i];
+        // Step 1: Escape all remaining HTML special chars via h()
+        $line = h($line);
+        $output .= $line . " \n";
     }
+    // Step 2: Restore escaped &<> and apply info link transformation on escaped text
+    // h() converts & → &amp;, < → &lt;, > → &gt;, " → &quot;
+    // After h(), the original link patterns need adjustment:
+    // '(' becomes '(' in escaped output, etc. Parentheses are not escaped by h().
+    $linkPatterns = array(
+        "/\\(([a-z0-9_\\-]+)\\)([a-z0-9_\\+]+)/",
+        "/\\(([a-z0-9_\\-]+)\\)/"
+    );
+    $linkReplace = array(
+        '(<a href="'.h($script_name.'/info/$1').'">$1</a>)<a href="'.h($script_name.'/info/$2').'">$2</a>',
+        '(<a href="'.h($script_name.'/info/$1').'">$1</a>)'
+    );
+    $output = preg_replace($linkPatterns, $linkReplace, $output);
     return $output;
 }
 
