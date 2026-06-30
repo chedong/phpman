@@ -931,34 +931,40 @@ body > p:last-of-type a.fmt-link:hover {
         padding: 0;
     }
 
-    /* Form adapts to mobile with horizontal wrap */
+    /* Form adapts to mobile with compact horizontal wrap */
+    form fieldset {
+        padding: var(--space-1) var(--space-2);
+    }
+
     form p {
-        gap: var(--space-2);
+        gap: 4px;
+        font-size: 12px;
     }
 
     input[type='text'] {
-        min-width: 120px;
-        flex: 2;
+        min-width: 100px;
+        flex: 3;
         max-width: 100%;
         box-sizing: border-box;
-        padding: var(--space-2);
+        padding: 4px 6px;
         font-size: 14px;
     }
 
     input[type='submit'] {
-        padding: var(--space-2) var(--space-4);
+        padding: 4px 12px;
         font-size: 14px;
-        min-height: 44px;
+        min-height: 36px;
     }
 
     input[type='radio'] {
-        transform: scale(1.3);
-        margin-right: 2px;
+        transform: scale(1.1);
+        margin: 0 1px 0 2px;
     }
 
     form p label {
-        font-size: 14px;
-        padding: var(--space-1) 0;
+        font-size: 12px;
+        padding: 1px 0;
+        margin-right: 2px;
     }
 
     /* TOC becomes an overlay drawer */
