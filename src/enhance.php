@@ -1,9 +1,52 @@
 <?php
 function callLLM(string $systemPrompt, string $userMessage): string {
-    if (LLM_API_URL === '' || LLM_API_KEY === '') return '';
 
-    $payload = json_encode([
+    // Build ordered list of endpoints: primary + fallbacks
+    $endpoints = [[
+        'url' => LLM_API_URL,
+        'key' => LLM_API_KEY,
         'model' => LLM_MODEL,
+        'label' => 'primary',
+    ]];
+    if (defined('LLM_FALLBACKS') && is_array(LLM_FALLBACKS)) {
+        foreach (LLM_FALLBACKS as $i => $fb) {
+            $fbUrl  = $fb['url'] ?? '';
+            $fbKey  = $fb['key'] ?? '';
+            $fbModel = $fb['model'] ?? '';
+            if ($fbUrl === '' || $fbKey === '') continue;
+            $endpoints[] = [
+                'url' => $fbUrl,
+                'key' => $fbKey,
+                'model' => $fbModel,
+                'label' => 'fallback-' . ($i + 1),
+            ];
+        }
+    }
+
+    if (empty($endpoints[0]['url']) || empty($endpoints[0]['key'])) return '';
+
+    $lastError = '';
+
+    foreach ($endpoints as $ep) {
+        $result = callLLMEndpoint($systemPrompt, $userMessage, $ep);
+        if ($result !== null) return $result;
+        // null = retryable failure (5xx, timeout, connection error) — try next
+        // '' = non-retryable failure (4xx, invalid response) — stop
+        if ($result === '' && $ep['label'] !== 'primary') break;
+    }
+
+    return '';
+}
+
+/**
+ * Call a single LLM endpoint. Returns:
+ *   string       — success (may be empty for reasoning_content)
+ *   null         — retryable failure (try next fallback)
+ *   '' (empty)   — non-retryable failure (stop)
+ */
+function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep): ?string {
+    $payload = json_encode([
+        'model' => $ep['model'],
         'messages' => [
             ['role' => 'system', 'content' => $systemPrompt],
             ['role' => 'user', 'content' => $userMessage],
@@ -12,13 +55,13 @@ function callLLM(string $systemPrompt, string $userMessage): string {
         'temperature' => 0.3,
     ], JSON_UNESCAPED_UNICODE);
 
-    $ch = curl_init(LLM_API_URL);
+    $ch = curl_init($ep['url']);
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => $payload,
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
-            'Authorization: Bearer ' . LLM_API_KEY,
+            'Authorization: Bearer ' . $ep['key'],
             'User-Agent: phpMan/' . GIT_DESCRIBE,
         ],
         CURLOPT_RETURNTRANSFER => true,
@@ -29,34 +72,51 @@ function callLLM(string $systemPrompt, string $userMessage): string {
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
+    $label = $ep['label'];
+
+    // Connection / timeout errors — retryable
     if ($response === false || $response === '') {
-        phpManLog("LLM: API call failed [HTTP " . ($httpCode ?: '0') . "]: " . ($error ?: 'empty response'));
-        return '';
+        $msg = "LLM [{$label}]: API call failed [HTTP " . ($httpCode ?: '0') . "]: " . ($error ?: 'empty response');
+        phpManLog($msg);
+        return ($httpCode >= 500 || $httpCode === 0 || $httpCode === 429) ? null : '';
     }
 
     $data = json_decode($response, true);
     if ($data === null) {
-        phpManLog("LLM: JSON decode failed [HTTP {$httpCode}] (" . strlen($response) . " bytes response)");
-        return '';
+        // 502/503 with non-JSON body — retryable
+        $retryable = ($httpCode >= 500 || $httpCode === 429);
+        phpManLog("LLM [{$label}]: JSON decode failed [HTTP {$httpCode}] (" . strlen($response) . " bytes)" .
+            ($retryable ? ' — retrying with fallback' : ''));
+        return $retryable ? null : '';
     }
-    // Log API-level errors (quota, auth, etc.) with HTTP status for context
+
     if (!empty($data['error'])) {
         $errType = $data['error']['type'] ?? 'unknown';
-        $errMsg = $data['error']['message'] ?? 'no message';
+        $errMsg  = $data['error']['message'] ?? 'no message';
         $errCode = $data['error']['code'] ?? '';
-        phpManLog("LLM: API error [HTTP {$httpCode}] [{$errType}] {$errMsg}" . ($errCode ? " (code: {$errCode})" : ""));
-        return '';
+        // 4xx errors (auth, bad request) — NOT retryable
+        $retryable = ($httpCode >= 500 || $httpCode === 429);
+        phpManLog("LLM [{$label}]: API error [HTTP {$httpCode}] [{$errType}] {$errMsg}" .
+            ($errCode ? " (code: {$errCode})" : "") .
+            ($retryable ? ' — retrying with fallback' : ''));
+        return $retryable ? null : '';
     }
+
     $content = $data['choices'][0]['message']['content'] ?? '';
-    // Fallback: some reasoning models (e.g. deepseek-v4-pro) use reasoning_content
     if ($content === '') {
         $content = $data['choices'][0]['message']['reasoning_content'] ?? '';
     }
-    // Detect truncation (output exceeded max_tokens)
+
     $finishReason = $data['choices'][0]['finish_reason'] ?? '';
     if ($finishReason === 'length') {
-        phpManLog("LLM: output truncated (finish_reason=length), tokens_used=" . json_encode($data['usage'] ?? []));
+        phpManLog("LLM [{$label}]: output truncated (finish_reason=length), tokens_used=" .
+            json_encode($data['usage'] ?? []));
     }
+
+    if ($label !== 'primary') {
+        phpManLog("LLM [{$label}]: fallback succeeded after primary failure");
+    }
+
     return trim($content);
 }
 
