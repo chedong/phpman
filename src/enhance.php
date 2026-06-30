@@ -1,5 +1,5 @@
 <?php
-function callLLM(string $systemPrompt, string $userMessage): string {
+function callLLM(string $systemPrompt, string $userMessage, string $context = ''): string {
 
     // Build ordered list of endpoints: primary + fallbacks
     $endpoints = [[
@@ -28,7 +28,7 @@ function callLLM(string $systemPrompt, string $userMessage): string {
     $lastError = '';
 
     foreach ($endpoints as $ep) {
-        $result = callLLMEndpoint($systemPrompt, $userMessage, $ep);
+        $result = callLLMEndpoint($systemPrompt, $userMessage, $ep, $context);
         if ($result !== null) return $result;
         // null = retryable failure (5xx, timeout, connection error) — try next
         // '' = non-retryable failure (4xx, invalid response) — stop
@@ -44,7 +44,7 @@ function callLLM(string $systemPrompt, string $userMessage): string {
  *   null         — retryable failure (try next fallback)
  *   '' (empty)   — non-retryable failure (stop)
  */
-function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep): ?string {
+function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep, string $context = ''): ?string {
     $payload = json_encode([
         'model' => $ep['model'],
         'messages' => [
@@ -76,7 +76,7 @@ function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep): 
 
     // Connection / timeout errors — retryable
     if ($response === false || $response === '') {
-        $msg = "LLM [{$label}]: API call failed [HTTP " . ($httpCode ?: '0') . "]: " . ($error ?: 'empty response');
+        $msg = "LLM [{$label}] {$context}: API call failed [HTTP " . ($httpCode ?: '0') . "]: " . ($error ?: 'empty response');
         phpManLog($msg);
         return ($httpCode >= 500 || $httpCode === 0 || $httpCode === 429) ? null : '';
     }
@@ -85,7 +85,7 @@ function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep): 
     if ($data === null) {
         // 502/503 with non-JSON body — retryable
         $retryable = ($httpCode >= 500 || $httpCode === 429);
-        phpManLog("LLM [{$label}]: JSON decode failed [HTTP {$httpCode}] (" . strlen($response) . " bytes)" .
+        phpManLog("LLM [{$label}] {$context}: JSON decode failed [HTTP {$httpCode}] (" . strlen($response) . " bytes)" .
             ($retryable ? ' — retrying with fallback' : ''));
         return $retryable ? null : '';
     }
@@ -96,7 +96,7 @@ function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep): 
         $errCode = $data['error']['code'] ?? '';
         // 4xx errors (auth, bad request) — NOT retryable
         $retryable = ($httpCode >= 500 || $httpCode === 429);
-        phpManLog("LLM [{$label}]: API error [HTTP {$httpCode}] [{$errType}] {$errMsg}" .
+        phpManLog("LLM [{$label}] {$context}: API error [HTTP {$httpCode}] [{$errType}] {$errMsg}" .
             ($errCode ? " (code: {$errCode})" : "") .
             ($retryable ? ' — retrying with fallback' : ''));
         return $retryable ? null : '';
@@ -109,12 +109,12 @@ function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep): 
 
     $finishReason = $data['choices'][0]['finish_reason'] ?? '';
     if ($finishReason === 'length') {
-        phpManLog("LLM [{$label}]: output truncated (finish_reason=length), tokens_used=" .
+        phpManLog("LLM [{$label}] {$context}: output truncated (finish_reason=length), tokens_used=" .
             json_encode($data['usage'] ?? []));
     }
 
     if ($label !== 'primary') {
-        phpManLog("LLM [{$label}]: fallback succeeded after primary failure");
+        phpManLog("LLM [{$label}] {$context}: fallback succeeded after primary failure");
     }
 
     return trim($content);
@@ -244,7 +244,7 @@ function enhanceManPage(string $mode, string $name): string {
             }
             $mdUserMessage .= $plainMd;
 
-            $enhancedMd = callLLM($mdPrompt, $mdUserMessage);
+            $enhancedMd = callLLM($mdPrompt, $mdUserMessage, "{$mode}/{$name} emoji_md");
             if ($enhancedMd !== '') {
                 $enhancedMd = preg_replace('/^```(?:markdown|md)?\s*\n?/m', '', $enhancedMd);
                 $enhancedMd = preg_replace('/\n?```\s*$/m', '', $enhancedMd);
@@ -305,7 +305,7 @@ function enhanceManPage(string $mode, string $name): string {
             }
             $htmlUserMessage .= $rawHtml;
 
-            $enhancedHtml = callLLM($htmlPrompt, $htmlUserMessage);
+            $enhancedHtml = callLLM($htmlPrompt, $htmlUserMessage, "{$mode}/{$name} emoji_html");
             if ($enhancedHtml !== '') {
                 $enhancedHtml = preg_replace('/^```(?:html)?\s*\n?/m', '', $enhancedHtml);
                 $enhancedHtml = preg_replace('/\n?```\s*$/m', '', $enhancedHtml);
