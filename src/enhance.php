@@ -19,7 +19,7 @@ function callLLM(string $systemPrompt, string $userMessage): string {
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
             'Authorization: Bearer ' . LLM_API_KEY,
-            'User-Agent: phpMan/' . GIT_DESCRIBE,
+            'User-Agent: phpMan/' . (defined('GIT_DESCRIBE') ? GIT_DESCRIBE : 'unknown'),
         ],
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 300,

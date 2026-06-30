@@ -340,7 +340,7 @@ class PageCache {
             $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
             $stmt->bindValue(':status', $status, SQLITE3_TEXT);
             $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
-            $stmt->bindValue(':genver', GIT_DESCRIBE, SQLITE3_TEXT);
+            $stmt->bindValue(':genver', defined('GIT_DESCRIBE') ? GIT_DESCRIBE : 'unknown', SQLITE3_TEXT);
             $stmt->bindValue(':id', (int)$existing['id'], SQLITE3_INTEGER);
         } else {
             $stmt = $this->db->prepare(
@@ -356,7 +356,7 @@ class PageCache {
             $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
             $stmt->bindValue(':status', $status, SQLITE3_TEXT);
             $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
-            $stmt->bindValue(':genver', GIT_DESCRIBE, SQLITE3_TEXT);
+            $stmt->bindValue(':genver', defined('GIT_DESCRIBE') ? GIT_DESCRIBE : 'unknown', SQLITE3_TEXT);
         }
 
         $maxAttempts = 8;
