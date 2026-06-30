@@ -62,7 +62,7 @@ function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep): 
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
             'Authorization: Bearer ' . $ep['key'],
-            'User-Agent: phpMan/' . GIT_DESCRIBE,
+            'User-Agent: phpMan/' . (defined('GIT_DESCRIBE') ? GIT_DESCRIBE : 'unknown'),
         ],
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 300,

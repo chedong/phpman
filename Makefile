@@ -137,7 +137,10 @@ staging-reindex: test _deploy-code
 	@echo "=== Rebuilding staging search index ==="
 	ssh -p $(TEST_PORT) $(TEST_HOST) \
 		"cd $(STAGING_HOME)/.phpman_test && php cli/build-index.php --cron"
-	@echo "=== Staging index rebuild complete ==="
+	@echo "=== Generating staging sitemap ==="
+	ssh -p $(TEST_PORT) $(TEST_HOST) \
+		"cd $(STAGING_HOME)/.phpman_test && php cli/build-sitemap.php --output $(TEST_PATH)/sitemap.phpman.xml --base-url $(TEST_URL)"
+	@echo "=== Staging index + sitemap complete ==="
 
 # ─── Production ───
 
@@ -196,21 +199,26 @@ release-reindex: test _release-code
 	@echo "=== Rebuilding production search index ==="
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"cd $(DEMO_HOME)/.phpman && php cli/build-index.php --cron"
-	@echo "=== Production index rebuild complete ==="
+	@echo "=== Generating production sitemap ==="
+	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
+		"cd $(DEMO_HOME)/.phpman && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap.phpman.xml --base-url $(DEMO_URL)"
+	@echo "=== Production index + sitemap complete ==="
 
 # ─── Standalone search index rebuild (no code push) ───
 
 reindex:
 	@echo "=== Rebuilding production search index (no code push) ==="
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"cd $(DEMO_HOME)/.phpman && php cli/build-index.php --cron"
-	@echo "=== Done ==="
+		"cd $(DEMO_HOME)/.phpman && php cli/build-index.php --cron \
+		 && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap.phpman.xml --base-url $(DEMO_URL)"
+	@echo "=== Done (index + sitemap) ==="
 
 reindex-staging:
 	@echo "=== Rebuilding staging search index (no code push) ==="
 	ssh -p $(TEST_PORT) $(TEST_HOST) \
-		"cd $(STAGING_HOME)/.phpman_test && php cli/build-index.php --cron"
-	@echo "=== Done ==="
+		"cd $(STAGING_HOME)/.phpman_test && php cli/build-index.php --cron \
+		 && php cli/build-sitemap.php --output $(TEST_PATH)/sitemap.phpman.xml --base-url $(TEST_URL)"
+	@echo "=== Done (index + sitemap) ==="
 
 # ─── Rollback ───
 
@@ -260,9 +268,9 @@ tag:
 		echo "Current: $(GIT_VERSION)"; \
 		exit 1; \
 	fi
-	@# PHPMAN_VERSION is a placeholder — no source edit needed, just tag
+	@# Placeholders are replaced at deploy time — tag only, no source edit needed
 	@git tag -a "v$(VERSION)" -m "v$(VERSION)"
-	@echo "=== v$(VERSION): tagged (PHPMAN_VERSION is placeholder, no source edit) ==="
+	@echo "=== v$(VERSION): tagged (placeholders replaced at deploy) ==="
 	@git push origin master "v$(VERSION)"
 	@echo "Pushed master + tag v$(VERSION)"
 
