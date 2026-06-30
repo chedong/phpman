@@ -51,7 +51,7 @@ FILE ?= phpMan.php
 CSS_FILE ?= phpman.css
 JS_FILE  ?= phpman.js
 
-.PHONY: test staging staging-reindex release release-reindex reindex reindex-staging rollback verify logcheck package upload-release clean cache-flush cache-flush-staging cache-stats tag _deploy-code _release-code
+.PHONY: test staging staging-reindex release release-reindex reindex reindex-staging rollback verify logcheck package upload-release clean cache-flush cache-flush-staging cache-stats tag tag-minor _deploy-code _release-code
 
 GIT_TAG     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "local")
 GIT_VERSION := $(shell (git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0") | sed 's/^v//')
@@ -264,15 +264,32 @@ logcheck:
 
 tag:
 	@if [ -z "$(VERSION)" ]; then \
-		echo "Usage: make tag VERSION=4.1.0"; \
-		echo "Current: $(GIT_VERSION)"; \
-		exit 1; \
+		latest=$$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | sort -V | tail -1 | sed 's/^v//'); \
+		if [ -z "$$latest" ]; then latest="0.0.0"; fi; \
+		major=$$(echo $$latest | cut -d. -f1); \
+		minor=$$(echo $$latest | cut -d. -f2); \
+		patch=$$(echo $$latest | cut -d. -f3); \
+		next="$$major.$$minor.$$((patch + 1))"; \
+		echo "Latest: v$$latest  →  tagging v$$next (patch bump)"; \
+		echo "  minor bump: make tag-minor"; \
+		echo "  explicit:   make tag VERSION=X.Y.Z"; \
+		$(MAKE) tag VERSION=$$next; \
+		exit 0; \
 	fi
 	@# Placeholders are replaced at deploy time — tag only, no source edit needed
 	@git tag -a "v$(VERSION)" -m "v$(VERSION)"
 	@echo "=== v$(VERSION): tagged (placeholders replaced at deploy) ==="
 	@git push origin master "v$(VERSION)"
 	@echo "Pushed master + tag v$(VERSION)"
+
+tag-minor:
+	@latest=$$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | sort -V | tail -1 | sed 's/^v//'); \
+	if [ -z "$$latest" ]; then latest="0.0.0"; fi; \
+	major=$$(echo $$latest | cut -d. -f1); \
+	minor=$$(echo $$latest | cut -d. -f2); \
+	next="$$major.$$((minor + 1)).0"; \
+	echo "Latest: v$$latest  →  tagging v$$next (minor bump)"; \
+	$(MAKE) tag VERSION=$$next
 
 # ─── Cache management ───
 
