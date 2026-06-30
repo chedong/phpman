@@ -467,7 +467,8 @@ foreach ($entries as $idx => $e) {
         }
 
         echo "  Calling LLM for emoji_md (" . strlen($plainMd) . " chars md input)...\n";
-        $enhancedMd = callLLM(getMdEnhancePrompt(), $plainMd);
+        $ctx = "{$mode}/{$name} emoji_md";
+        $enhancedMd = callLLM(getMdEnhancePrompt(), $plainMd, $ctx);
         $lastLlmTime = time();
 
         if ($enhancedMd !== '') {
@@ -510,7 +511,8 @@ foreach ($entries as $idx => $e) {
         }
 
         echo "  Calling LLM for emoji_html (" . strlen($rawHtml) . " chars html input)...\n";
-        $enhancedHtml = callLLM(getHtmlEnhancePrompt(), $rawHtml);
+        $ctx = "{$mode}/{$name} emoji_html";
+        $enhancedHtml = callLLM(getHtmlEnhancePrompt(), $rawHtml, $ctx);
         $lastLlmTime = time();
 
         if ($enhancedHtml !== '') {
