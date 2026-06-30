@@ -133,9 +133,11 @@ Full design system spec: `docs/02-UI-DESIGN.md`.
 
 ### 2.8 Format Links on Detail Pages Only
 
-Markdown | JSON | MCP format links only appear on detail pages (with actual content) in the search bar row. Index pages and no-result pages do not show format links.
+Markdown · JSON · MCP format links only appear on detail pages (with actual content) in the footer
+row, alongside the git version and author credit. Index pages and no-result pages do not show format
+links.
 
-**Code location**: `showForm()`
+**Code location**: `showFooter()` in `src/web_footer.php`
 
 ### 2.9 H1 Breadcrumb + Title Format
 

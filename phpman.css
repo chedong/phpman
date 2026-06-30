@@ -1,4 +1,4 @@
-/* phpMan — Calibrated Terminal stylesheet v4.8 */
+/* phpMan — Calibrated Terminal stylesheet v4.9 */
 /* Geist-inspired token system with terminal-native color palette */
 /* Dark = native mode, Light = "printed page" mode */
 
@@ -331,21 +331,6 @@ form p {
     font-family: var(--font-ui);
     font-size: 13px;
     color: var(--text-secondary);
-}
-
-/* Format links (Markdown | JSON | MCP) */
-form p a {
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 2px 0;
-}
-
-form p a:hover {
-    color: var(--accent-blue);
-    text-decoration: none;
 }
 
 /* Text input */
@@ -889,6 +874,19 @@ body > p:last-of-type a:hover {
     color: var(--text-primary);
 }
 
+/* Format links (Markdown · JSON · MCP) in footer */
+body > p:last-of-type a.fmt-link {
+    color: var(--text-muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+body > p:last-of-type a.fmt-link:hover {
+    color: var(--accent-blue);
+    text-decoration: none;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    18. REDUCED MOTION
    ═══════════════════════════════════════════════════════════════ */
@@ -933,15 +931,14 @@ body > p:last-of-type a:hover {
         padding: 0;
     }
 
-    /* Form stacks vertically */
+    /* Form adapts to mobile with horizontal wrap */
     form p {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--space-1);
+        gap: var(--space-2);
     }
 
     input[type='text'] {
-        width: 100%;
+        min-width: 120px;
+        flex: 2;
         max-width: 100%;
         box-sizing: border-box;
         padding: var(--space-2);
@@ -949,10 +946,9 @@ body > p:last-of-type a:hover {
     }
 
     input[type='submit'] {
-        padding: var(--space-2) var(--space-6);
+        padding: var(--space-2) var(--space-4);
         font-size: 14px;
         min-height: 44px;
-        width: 100%;
     }
 
     input[type='radio'] {
@@ -962,12 +958,7 @@ body > p:last-of-type a:hover {
 
     form p label {
         font-size: 14px;
-    }
-
-    form p a {
-        padding: var(--space-1) var(--space-2);
-        display: inline-block;
-        font-size: 13px;
+        padding: var(--space-1) 0;
     }
 
     /* TOC becomes an overlay drawer */

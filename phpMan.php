@@ -578,7 +578,7 @@ if ($parameter !== "" && $mode !== "" && $mode !== "search") {
     echo "<h1><a href=\"".h(scriptName())."\">".h($PHPMAN_TITLE)."</a></h1>\n";
 }
 
-// Build markdown/JSON URLs for format links (showForm below)
+// Build markdown/JSON URLs for format links (showForm + showFooter)
 $markdownUrl = "";
 $jsonUrl = "";
 $script_name_path = baseUrl();
@@ -748,7 +748,7 @@ showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
     echo $tocSidebar;
     }
 
-showFooter($VALIDATOR, $showNav, $mode, $parameter, $section, $enhancedBy);
+showFooter($VALIDATOR, $showNav, $mode, $parameter, $section, $enhancedBy, $markdownUrl, $jsonUrl);
 
 
 // +--------------------------------------------------------------------------------+
