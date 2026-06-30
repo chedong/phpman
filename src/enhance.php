@@ -2,11 +2,14 @@
 function callLLM(string $systemPrompt, string $userMessage, string $context = ''): string {
 
     // Build ordered list of endpoints: primary + fallbacks
+    // Each endpoint: url, key, model, label, max_tokens, timeout
     $endpoints = [[
         'url' => LLM_API_URL,
         'key' => LLM_API_KEY,
         'model' => LLM_MODEL,
         'label' => 'primary',
+        'max_tokens' => (int)LLM_MAX_TOKENS,
+        'timeout' => 120,
     ]];
     if (defined('LLM_FALLBACKS') && is_array(LLM_FALLBACKS)) {
         foreach (LLM_FALLBACKS as $i => $fb) {
@@ -19,6 +22,8 @@ function callLLM(string $systemPrompt, string $userMessage, string $context = ''
                 'key' => $fbKey,
                 'model' => $fbModel,
                 'label' => 'fallback-' . ($i + 1),
+                'max_tokens' => $fb['max_tokens'] ?? (int)LLM_MAX_TOKENS,
+                'timeout' => $fb['timeout'] ?? 60,
             ];
         }
     }
@@ -45,13 +50,16 @@ function callLLM(string $systemPrompt, string $userMessage, string $context = ''
  *   '' (empty)   — non-retryable failure (stop)
  */
 function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep, string $context = ''): ?string {
+    $maxTokens = $ep['max_tokens'] ?? (int)LLM_MAX_TOKENS;
+    $timeout   = $ep['timeout'] ?? 300;
+
     $payload = json_encode([
         'model' => $ep['model'],
         'messages' => [
             ['role' => 'system', 'content' => $systemPrompt],
             ['role' => 'user', 'content' => $userMessage],
         ],
-        'max_tokens' => (int)LLM_MAX_TOKENS,
+        'max_tokens' => $maxTokens,
         'temperature' => 0.3,
     ], JSON_UNESCAPED_UNICODE);
 
@@ -65,7 +73,7 @@ function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep, s
             'User-Agent: phpMan/' . (defined('GIT_DESCRIBE') ? GIT_DESCRIBE : 'unknown'),
         ],
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 300,
+        CURLOPT_TIMEOUT => $timeout,
     ]);
     $response = curl_exec($ch);
     $error = curl_error($ch);

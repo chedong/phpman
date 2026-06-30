@@ -39,23 +39,29 @@
 // define('LLM_API_KEY', '');
 // define('LLM_API_URL', '');
 // define('LLM_MODEL', '');
-// define('LLM_MAX_TOKENS', 4096);
+// define('LLM_MAX_TOKENS', 128000);  // keep ≤ 131072 for model compatibility
 // define('PHPMAN_ENHANCE_MAX_CHARS', 32000);  // max chars for LLM-enhanced output
 
 // --- Fallback LLM (v4.2.2) ---
 // Optional: multiple fallback endpoints tried in order when primary fails
 // with 5xx/429/timeout. Each entry must have url, key, model.
+// max_tokens (v4.9.6): per-endpoint token limit — defaults to LLM_MAX_TOKENS.
+//   Set this when fallback models have lower limits than primary (e.g. glm-5.2 = 131072).
+// timeout (v4.9.6): per-endpoint timeout in seconds — defaults to 60s for fallbacks.
 // Leave empty array or comment out to skip fallback entirely.
 // define('LLM_FALLBACKS', [
 //     [
 //         'url'   => 'https://api.openai.com/v1/chat/completions',
 //         'key'   => 'sk-xxx',
 //         'model' => 'gpt-4o-mini',
+//         'max_tokens' => 128000,
+//         'timeout' => 60,
 //     ],
 //     [
 //         'url'   => 'https://api.anthropic.com/v1/messages',
 //         'key'   => 'sk-yyy',
 //         'model' => 'claude-haiku-4-5',
+//         'max_tokens' => 128000,
 //     ],
 // ]);
 
