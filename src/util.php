@@ -109,10 +109,11 @@ function normalizeParameter ($parameter): string {
     $parameter = trim((string)$parameter);
     $parameter = str_replace(array("/", "\0"), array(" ", ""), $parameter);
     $parameter = preg_replace("/[\x00-\x1F\x7F]+/", " ", $parameter);
-    // Defense-in-depth: reject shell metacharacters.
+    // Defense-in-depth: reject unambiguous shell metacharacters.
     // All downstream exec() calls use escapeshellarg(), but this guard catches
-    // any future call site that might forget. Allows :: . _ - + @ and Unicode.
-    if (preg_match('/[;|&`$(){}\[\]!~<>\\\\\"\'\*\?#]/u', $parameter)) {
+    // any future call site that might forget. Allows (){}[] for man references
+    // like 'ls(1)', perl modules 'Foo::Bar', Ruby classes 'Array#map'.
+    if (preg_match('/[;&|`$!<>\n\r\\\\]/', $parameter)) {
         return '';
     }
     return trim((string)$parameter);
