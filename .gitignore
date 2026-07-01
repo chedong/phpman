@@ -8,6 +8,8 @@
 *.gz
 *.bak
 *.deploy
+*.xml
+*.xml.gz
 
 # deployed MCP discovery (generated from template per-site)
 .well-known/mcp.json
