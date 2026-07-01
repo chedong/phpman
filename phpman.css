@@ -80,11 +80,11 @@ html {scroll-behavior:smooth;}
 
 /* ——— Theme toggle button ——— */
 #theme-toggle {
-    position:fixed; top:20px; left:16px; z-index:200;
-    width:28px; height:28px; padding:0;
+    position:fixed; bottom:20px; right:20px; z-index:200;
+    width:32px; height:32px; padding:0;
     background:var(--bg-sidebar); color:var(--text-body);
     border:1px solid var(--border-primary); border-radius:4px;
-    font-family:monospace; font-size:14px; line-height:1;
+    font-family:monospace; font-size:16px; line-height:1;
     cursor:pointer; text-align:center;
     transition: background .25s, color .25s, border-color .25s;
 }
@@ -225,7 +225,7 @@ body.ext-nav #back-to-top {display:block;}
     body.toc-open #toc-toggle .toc-open-icon   {display:none;}
     body.toc-open #toc-toggle .toc-close-icon  {display:inline;}
     #back-to-top                               {z-index:210;}
-    #theme-toggle                              {top:8px; left:8px;}
+    #theme-toggle                              {bottom:8px; right:8px; width:28px; height:28px; font-size:14px;}
     #content-wrap                              {margin-right:0; max-width:100%; padding:0 8px;}
 
     body                    {font-size:12px;}
