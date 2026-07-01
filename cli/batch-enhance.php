@@ -520,14 +520,9 @@ foreach ($entries as $idx => $e) {
             $enhanced++;
             $htmlFailures = 0;
         } else {
-            $htmlFailures++;
-            echo "  [html] {$label}: LLM returned empty — skipping ({$htmlFailures}/{$maxConsecutiveFailures} consecutive html)\n";
+            echo "  SKIP: emoji_html LLM returned empty for {$label} (large page?) — continuing\n";
             $errors++;
-            if ($htmlFailures >= $maxConsecutiveFailures) {
-                echo "\nERROR: {$maxConsecutiveFailures} consecutive HTML LLM failures — aborting.\n";
-                echo "  Check phpman_error.log for details. Resume with --resume-from=" . ($entryNum - 1) . "\n";
-                break;
-            }
+            continue;
         }
     } elseif ($doHtml) {
         echo "  [html] already enhanced, skipping\n";
