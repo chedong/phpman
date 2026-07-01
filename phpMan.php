@@ -22,12 +22,8 @@ declare(strict_types=1);
 // $Id$
 
 
-// ASCII character classes for overstrike pattern matching:
-// RE_ASCII — plain printable ASCII, for raw terminal output (cleanTerminalOutput)
-// RE_ASCII_SAFE — printable + placeholder bytes \x05\x06\x07 for &<>, used after
-//                 formatManPerlDoc() replaces &<> with placeholders
-define('RE_ASCII', '[ -~]');
-define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
+// ASCII char classes RE_ASCII / RE_ASCII_SAFE now defined in src/config.php
+// (v4.9.9: moved for CLI tool access)
 
 // #49: Named constants — placeholders replaced by make deploy/release
 define('PHPMAN_HOME', '__PHPMAN_HOME__');

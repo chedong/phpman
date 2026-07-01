@@ -87,6 +87,15 @@ define('PHPMAN_CACHE_DB', PHPMAN_CACHE_DIR . '/phpman_cache.db');
 define('PHPMAN_LOG_FILE', PHPMAN_LOG_DIR . '/phpman_error.log');
 define('CACHE_SCHEMA_VERSION', '5');
 
+// ASCII character classes for overstrike pattern matching:
+// RE_ASCII — plain printable ASCII, for raw terminal output (cleanTerminalOutput)
+// RE_ASCII_SAFE — printable + placeholder bytes \x05\x06\x07 for &<>, used after
+//                 formatManPerlDoc() replaces &<> with placeholders
+// Moved here (v4.9.9) so CLI tools (batch-enhance) can access them without
+// loading phpMan.php. These are used by src/format_common.php.
+define('RE_ASCII', '[ -~]');
+define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');
+
 // #145: Named constants for cache sentinel and format strings
 define('CACHE_SENTINEL_NOT_FOUND', '###NOT_FOUND###');
 define('CACHE_FORMAT_JSON',      'json');
