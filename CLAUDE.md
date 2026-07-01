@@ -79,6 +79,52 @@ All CLI scripts resolve `PHPMAN_HOME`, then require `src/bootstrap.php` directly
 
 **Batch enhance (`cli/batch-enhance.php`)** — Fully offline CLI. `require_once`'s phpMan.php and calls `getManPage()`/`getPerldocPage()`/etc. directly for content generation. Uses shared `PageCache` + `callLLM()` + `cleanEmojiHtml()` from phpMan.php — zero HTTP dependency, no web server needed. Key features: `--status` progress per mode, `--pid-file`/`--stop` lifecycle, `--rebuild` force redo, `--parameter` single-page mode, `--cached-first` sort, 2-min rate limiting, non-existent page skip (NOT_FOUND cache). See `docs/01-PRODUCT.md` §2.12 and `docs/05-PLAN.md` v4.1 for full design.
 
+## Git workflow — CRITICAL: worktree rebase rule
+
+**phpMan uses `master` as the single source of truth. No feature branches, no PRs. Every commit goes directly to master.**
+
+### Rule: rebase before commit in any worktree
+
+Worktrees are snapshots frozen at creation time. If you commit from a worktree without rebasing first, you will **silently overwrite** commits pushed to master since the worktree was created. This has happened multiple times (CSS fixes, font sizes, format link positions all lost to overwrites).
+
+**Before committing from ANY worktree, always:**
+
+```bash
+# 1. Fetch latest from GitHub
+git fetch origin master
+
+# 2. Rebase current work onto latest master
+git rebase origin/master
+
+# 3. If conflicts: resolve, then
+#    git add <resolved-files>
+#    git rebase --continue
+
+# 4. Only now commit
+git add <files>
+git commit -m "..."
+git push origin master
+```
+
+**Pre-commit checklist (Claude Code agents MUST follow):**
+
+1. `git fetch origin master` — get latest remote state
+2. `git log --oneline HEAD..origin/master` — are there commits on remote I don't have?
+3. If yes → `git rebase origin/master` BEFORE any local commit
+4. If no (fast-forward possible) → safe to commit
+5. Never use `-f` (force push) on master
+
+**If you created a worktree for a task and the task is done:**
+- Delete the worktree (`ExitWorktree` with `action: "remove"`)
+- Or keep it but rebase before next use
+
+**When in doubt about which branch/worktree you're in:**
+```bash
+git status          # shows branch and tracking
+git worktree list   # shows all worktrees
+git log --oneline -3  # shows recent commits
+```
+
 ## Key design rules
 
 - **Single-file deployment by design** — one PHP file (`phpMan.php`) in webroot, 22 source files in `src/` outside webroot. No Composer, no autoload. Code structure preserves a single web-accessible entry point.

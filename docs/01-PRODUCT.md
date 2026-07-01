@@ -529,9 +529,12 @@ When reviewing code, follow this order:
 
 | Date | Changes |
 |------|----------|
-| 2026-06-18 | v4.2: Copy button UX — JS wraps `#content-wrap pre` with 📋 Copy (Tokyo Night `#1f2335` bg, italic, rounded); Prompt v2 — forbid `<a>` in code, forbid emoji markers, preserve structure; `PHPMAN_ENHANCE_MAX_CHARS` (32K); TOC regex fix for attributed headings; Makefile version auto-sync from git tag; input truncation removed |
-| 2026-06-17 | v4.0: `cli/batch-enhance.php` — offline batch LLM enhancement with auto-discovery from search index + cache, 2-min rate limiting, resilient resume, dual-format support (§2.11.6) |
-| 2026-06-16 | v4.0: Dual-format LLM enhancement — emoji_html (HTML-direct, default view) + emoji_md (Markdown, /markdown format); TOC from <h2>/<h3> tags with &amp; fix; max_tokens uncapped; finish_reason truncation logging; showFooter section param in original-format link; cli/batch-enhance.php |
+| 2026-06-30 | v4.9.5: Format links (Markdown/JSON/MCP) moved from form → footer with `fmt-link` class; mobile form horizontal wrap layout; CSS footer format link styles |
+| 2026-06-30 | v4.9.6: Compact mobile form — reduced radio option height ~40% (12px labels, 4px gap, scale 1.1, min-height 36px) |
+| 2026-07-01 | v4.9.7: Per-endpoint LLM `max_tokens` + `timeout` — primary 120s, fallbacks 60s; config example lowered LLM_MAX_TOKENS 4096→128000; fixed fallback-2 `max_tokens参数非法` error |
+| 2026-07-01 | v4.9.8: batch-enhance resilience — missing markdown/HTML SKIPs instead of aborting entire batch; only 3 consecutive LLM failures trigger abort |
+| 2026-07-01 | v4.9.9: Moved `RE_ASCII`/`RE_ASCII_SAFE` constants from phpMan.php → src/config.php for CLI tool access; fixed batch-enhance crash on `man/DBI` |
+| 2026-07-01 | v4.9.10: Restored phpman.css (Geist token system) + web_footer.php (format links in footer) overwritten by worktree merge a198949; added worktree rebase rule to CLAUDE.md |
 | 2026-06-09 | v3.7.1: Fix #96 XSS (sources array h), #107 undefined $expanded, #108 SQL prepared stmt, #109 tldr_cache TTL index, #110 INSERT OR REPLACE comments, #111 ticket status table, #112 CLI CACHE_DB constant; add Ticket Status Summary table |
 | 2026-06-08 | v3.7: Security hardening — #95 SQL parameterize, #98 catch block logging, #100 CACHE_DIR validation, #102 perldoc $width escape, #104 FTS5 sanitize, #105 ETag invalidation, #103 rebuildSearchIndex logging | TLDR cache strategy: SQLite `tldr_cache` with 7-day TTL, negative caching; old file-based `tldr_cache/` deprecated |
 | 2026-06-04 | `isLocalRequest` deprecation: HSTS/version hiding moved to Nginx config, debug switched to `PHPMAN_DEBUG` env var; `ob_gzhandler` + `checkRateLimit` marked for cleanup (#84 #89); security hardening table adds status column |
