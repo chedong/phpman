@@ -95,13 +95,13 @@ $TOC_ITEMS = array();
 
 $VALIDATOR = "";
 
-// Unmask comments to show HTML5 + CSS validators
+// Unmask comments to show XHTML 1.0 Strict + CSS validators
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $currentUrl = $scheme . '://' . getSafeHost() . serverValue("REQUEST_URI", scriptName());
-$VALIDATOR = "<a href=\"https://validator.w3.org/nu/?doc=" . urlencode($currentUrl) . "\">".
+$VALIDATOR = "<a href=\"https://validator.w3.org/check?uri=" . urlencode($currentUrl) . "\">".
 "<img style=\"border:0;width:88px;height:31px\"".
-" src=\"https://www.w3.org/Icons/valid-html401\"".
-" alt=\"Valid HTML\" /></a>".
+" src=\"https://www.w3.org/Icons/valid-xhtml10\"".
+" alt=\"Valid XHTML 1.0 Strict\" /></a>".
 "<a href=\"https://jigsaw.w3.org/css-validator/validator?uri=" . urlencode($currentUrl) . "\">".
 "<img style=\"border:0;width:88px;height:31px\"".
 " src=\"https://jigsaw.w3.org/css-validator/images/vcss-blue\"".
