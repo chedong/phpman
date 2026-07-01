@@ -82,7 +82,7 @@ All CLI scripts resolve `PHPMAN_HOME`, then require `src/bootstrap.php` directly
 ## Key design rules
 
 - **Single-file deployment by design** — one PHP file (`phpMan.php`) in webroot, 22 source files in `src/` outside webroot. No Composer, no autoload. Code structure preserves a single web-accessible entry point.
-- **XHTML 1.0 Strict** — `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "...">` triggers full Standards Mode (unlike Transitional which causes Limited Quirks). No HTML5 semantic tags (`<nav>`, `<section>`), no `og:` meta tags. Use `<div id="...">` and `<p>` instead. Self-closing tags must use `/>` syntax.
+- **XHTML 1.0 Transitional** — no HTML5 tags (`<nav>`, `<section>`), no `og:` meta tags. Use `<div id="...">` and `<p>` instead. Underline uses `<span class="u">` (CSS-driven, avoids `<u>` deprecation warnings in validators).
 - **Footer IP + UA display is intentional** — it's for spider/bot tracking in `showFooter()`. Do not remove it. See `docs/01-PRODUCT.md` for the full rationale.
 - **`?debug=1`** only shows sensitive details when `isLocalRequest()` returns true (REMOTE_ADDR is 127.0.0.1, ::1, or empty).
 - **Config architecture (v4.5)** — single config file at `~/.phpman/phpman.config.php` (NEVER in webroot). `PHPMAN_HOME` is baked into `phpMan.php` at deploy time (via `sed`, same as `GIT_DESCRIBE`). `src/config.php` loads defaults then requires the user config. API keys (`LLM_API_KEY`, `MCP_API_KEY`) are outside webroot.
