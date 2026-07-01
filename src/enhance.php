@@ -34,10 +34,10 @@ function callLLM(string $systemPrompt, string $userMessage, string $context = ''
 
     foreach ($endpoints as $ep) {
         $result = callLLMEndpoint($systemPrompt, $userMessage, $ep, $context);
-        if ($result !== null) return $result;
+        if ($result !== null && $result !== false) return $result;
         // null = retryable failure (5xx, timeout, connection error) — try next
-        // '' = non-retryable failure (4xx, invalid response) — stop
-        if ($result === '' && $ep['label'] !== 'primary') break;
+        // false = non-retryable failure (4xx, invalid response) — stop
+        if ($result === false) break;
     }
 
     return '';
@@ -47,9 +47,9 @@ function callLLM(string $systemPrompt, string $userMessage, string $context = ''
  * Call a single LLM endpoint. Returns:
  *   string       — success (may be empty for reasoning_content)
  *   null         — retryable failure (try next fallback)
- *   '' (empty)   — non-retryable failure (stop)
+ *   false        — non-retryable failure (stop)
  */
-function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep, string $context = ''): ?string {
+function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep, string $context = ''): string|false|null {
     $maxTokens = $ep['max_tokens'] ?? (int)LLM_MAX_TOKENS;
     $timeout   = $ep['timeout'] ?? 300;
 
@@ -82,11 +82,11 @@ function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep, s
 
     $label = $ep['label'];
 
-    // Connection / timeout errors — retryable
+    // Connection / timeout errors — retryable (null), non-retryable (false)
     if ($response === false || $response === '') {
         $msg = "LLM [{$label}] {$context}: API call failed [HTTP " . ($httpCode ?: '0') . "]: " . ($error ?: 'empty response');
         phpManLog($msg);
-        return ($httpCode >= 500 || $httpCode === 0 || $httpCode === 429) ? null : '';
+        return ($httpCode >= 500 || $httpCode === 0 || $httpCode === 429) ? null : false;
     }
 
     $data = json_decode($response, true);
@@ -95,7 +95,7 @@ function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep, s
         $retryable = ($httpCode >= 500 || $httpCode === 429);
         phpManLog("LLM [{$label}] {$context}: JSON decode failed [HTTP {$httpCode}] (" . strlen($response) . " bytes)" .
             ($retryable ? ' — retrying with fallback' : ''));
-        return $retryable ? null : '';
+        return $retryable ? null : false;
     }
 
     if (!empty($data['error'])) {
@@ -107,7 +107,7 @@ function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep, s
         phpManLog("LLM [{$label}] {$context}: API error [HTTP {$httpCode}] [{$errType}] {$errMsg}" .
             ($errCode ? " (code: {$errCode})" : "") .
             ($retryable ? ' — retrying with fallback' : ''));
-        return $retryable ? null : '';
+        return $retryable ? null : false;
     }
 
     $content = $data['choices'][0]['message']['content'] ?? '';
