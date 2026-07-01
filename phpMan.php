@@ -236,13 +236,13 @@ if ($format === "html" && $mode !== "mcp" && $mode !== "copyright" && $mode !== 
 
 if ( $parameter != "" ) {
     if ( $section == "" ) {
-        $PHPMAN_TITLE = "phpman > " . $mode . " > " . $parameter;
+        $PHPMAN_TITLE = $mode . " > " . $parameter;
     }
     else {
-        $PHPMAN_TITLE = "phpman > " . $mode . " > " . $parameter . "(" . $section . ")";
+        $PHPMAN_TITLE = $mode . " > " . $parameter . "(" . $section . ")";
     }
 } elseif ($mode !== "" && $mode !== "search" && in_array($mode, PHPMAN_CONTENT_MODES)) {
-    $PHPMAN_TITLE = "phpman > " . $mode;
+    $PHPMAN_TITLE = $mode;
 }
 
 //show GPL
@@ -561,11 +561,10 @@ Profiler::mark('render');
 
 showHeader($PHPMAN_TITLE, $parameter, $section, $mode, $hasRealContent, $showNav, $etag);
 
-// H1 breadcrumb: phpman > mode > command(section)
+// H1 breadcrumb: mode > command(section)
 $modes = ["man" => ["label" => "man", "url" => "/man"], "perldoc" => ["label" => "perldoc", "url" => "/search/perl"], "info" => ["label" => "info", "url" => "/info"], "pydoc" => ["label" => "pydoc", "url" => "/pydoc"], "ri" => ["label" => "ri", "url" => "/ri"]];
 if ($parameter !== "" && $mode !== "" && $mode !== "search") {
     $bc_parts = [];
-    $bc_parts[] = "<a href=\"".h(scriptName())."\">phpman</a>";
     if (isset($modes[$mode])) {
         $bc_parts[] = "<a href=\"".h(scriptName() . $modes[$mode]["url"])."\">".h($modes[$mode]["label"])."</a>";
     }
@@ -573,7 +572,7 @@ if ($parameter !== "" && $mode !== "" && $mode !== "search") {
     $bc_parts[] = h($parameter . $section_label);
     echo "<h1>" . implode(" &gt; ", $bc_parts) . "</h1>\n";
 } elseif ($mode !== "" && $mode !== "search" && isset($modes[$mode])) {
-    echo "<h1><a href=\"".h(scriptName())."\">phpman</a> &gt; " . h($modes[$mode]["label"]) . "</h1>\n";
+    echo "<h1>" . h($modes[$mode]["label"]) . "</h1>\n";
 } else {
     echo "<h1><a href=\"".h(scriptName())."\">".h($PHPMAN_TITLE)."</a></h1>\n";
 }
