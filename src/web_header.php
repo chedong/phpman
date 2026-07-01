@@ -9,7 +9,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
     $csp = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://www.w3.org https://jigsaw.w3.org data:; script-src 'self' 'unsafe-inline'";
     if (defined('PHPMAN_GA_ID') && PHPMAN_GA_ID !== '') {
         $csp .= " https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com";
-        $csp .= "; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com https://*.google.com";
+        $csp .= "; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com https://*.google.com https://*.google.co.jp";
     }
     $csp .= "; frame-ancestors 'none';";
     header("Content-Security-Policy: " . $csp);
