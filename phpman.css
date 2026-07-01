@@ -175,8 +175,8 @@ td pre, td code {white-space:normal; word-break:break-word; font-size:13px;}
 #toc-toggle .toc-close-icon      {display:none;}
 
 /* ——— Back-to-top ——— */
-#back-to-top     {position:fixed; bottom:20px; right:20px; z-index:100; display:none;}
-#back-to-top a   {display:block; padding:8px 14px; background:var(--button-bg); color:var(--btn-text); text-decoration:none; border-radius:6px; font-size:14px; font-family:monospace;}
+#back-to-top     {position:fixed; bottom:20px; right:60px; z-index:100; display:none;}
+#back-to-top a   {display:block; padding:7px 10px; background:var(--button-bg); color:var(--btn-text); text-decoration:none; border-radius:4px; font-size:13px; font-family:monospace; line-height:18px;}
 #back-to-top a:hover {background:var(--button-hover);}
 
 body.ext-nav #toc-sidebar,

@@ -100,7 +100,7 @@ function showFooter (string $validator = "", bool $showNav = false, string $mode
         ($enhancedBy !== "" ? "<br />Enhanced by LLM: " . h($enhancedBy) . " / taotoken.net / " . h(serverValue("HTTP_HOST", "")) . " - <a href=\"" . h(scriptName()) . "/" . h($mode) . "/" . urlencode((string)$parameter) . ($section !== "" ? "/" . h($section) : "") . "/html\">original format</a>" : "") .
         (Profiler::getEnabled() ? profilerHtmlBlock() : "") .
         "</p>" .
-        ($showNav ? '<div id="back-to-top"><a href="#top">^_back to top</a></div>' : "") .
+        ($showNav ? '<div id="back-to-top"><a href="#top">^ top</a></div>' : "") .
         "<script type=\"text/javascript\" src=\"".h(str_replace('phpMan.php', 'phpman.js', scriptName()))."\"></script>\n" .
         ((defined('PHPMAN_GA_ID') && PHPMAN_GA_ID !== '') ?
          "<script type=\"text/javascript\" src=\"https://www.googletagmanager.com/gtag/js?id=".h(PHPMAN_GA_ID)."\"></script>\n".
