@@ -98,7 +98,7 @@ body {
 }
 pre  {font-family:inherit; font-size:inherit;}
 b    {color:var(--text-bold);}
-u    {color:var(--text-underline); text-decoration:underline;}
+.u   {color:var(--text-underline); text-decoration:underline;}
 a    {color:var(--text-link);}
 
 /* ——— Layout ——— */

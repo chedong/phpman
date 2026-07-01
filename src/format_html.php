@@ -56,23 +56,23 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                    chr(6),
                    chr(7),
                    '<b>$1</b>',
-                    '<u>$1</u>',
-                    '<u>$1</u>',
+                    '<span class="u">$1</span>',
+                    '<span class="u">$1</span>',
                     '',  // strip orphan _^H
                     '<b>$1</b>',
                    "&amp;",
                    "&lt;",
                    '<b>$1</b>',
-                   '  <u>$1</u>',
+                   '  <span class="u">$1</span>',
                );
 
     // SGR escape sequences — must process BEFORE linkification so that
     // SGR-split names (e.g. ESC[1mioESC[4m_ESC[24mcancelESC[0m) are rejoined
-    // into clean <b>io<u>_</u>cancel</b> before name(section) linking.
+    // into clean <b>io<span class="u">_</span>cancel</b> before name(section) linking.
     $patterns[] = "/".chr(27)."\[1m(.*?)".chr(27)."\[(?:0|22)m/";
     $replace[] = '<b>$1</b>';
     $patterns[] = "/".chr(27)."\[4m(.*?)".chr(27)."\[(?:0|24)m/";
-    $replace[] = '<u>$1</u>';
+    $replace[] = '<span class="u">$1</span>';
     // Cleanup duplicated / orphan tags from combined overstrike + SGR processing
     $patterns[] = "/<\/u><u>/";
     $replace[] = '';
@@ -112,7 +112,7 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
 
     // Common patterns: email, URL, closing >
     $patterns[] = "/(([\w\-\.]+)@([\w\-]+)(\.[\w\-]+)+)/";  //link to email
-    $replace[] = '<a href="mailto:$2 AT $3$4">$2<u> AT </u>$3$4</a>';
+    $replace[] = '<a href="mailto:$2 AT $3$4">$2<span class="u"> AT </span>$3$4</a>';
     $patterns[] = "/([\w]+:\/\/[\w%\-\?&;#~=\.\/\@]+[\w\/])/i"; //link to url
     $replace[] = '<a href="$1" rel="noopener noreferrer">$1</a>';
     $patterns[] = "/".chr(7)."/";  //reverse '>'

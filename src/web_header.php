@@ -64,9 +64,9 @@ function showHeader (string $title = "", string $parameter = "", string $section
         }
     }
 
-    // XHTML 1.0 Strict — full Standards Mode (no Limited Quirks like Transitional)
-    echo "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" ".
-        "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">".
+    // XHTML 1.0 Transitional
+    echo "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" ".
+        "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">".
         "<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\">\n".
         "<head>\n".
         "<title>".h($title)."</title>\n".
