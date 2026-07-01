@@ -460,9 +460,8 @@ foreach ($entries as $idx => $e) {
             $plainMd = cacheOrExecute($mode, $name, $section, 'markdown', $genFn);
         }
         if ($plainMd === '' || $plainMd === null) {
-            echo "  ERROR: No markdown for {$label}\n";
+            echo "  SKIP: No markdown for {$label}\n";
             $errors++;
-            if (!$skipErrors) break;
             continue;
         }
 
@@ -504,9 +503,8 @@ foreach ($entries as $idx => $e) {
             $rawHtml = cacheOrExecute($mode, $name, $section, 'html', $genFn);
         }
         if ($rawHtml === '' || $rawHtml === null) {
-            echo "  ERROR: No HTML for {$label}\n";
+            echo "  SKIP: No HTML for {$label}\n";
             $errors++;
-            if (!$skipErrors) break;
             continue;
         }
 
