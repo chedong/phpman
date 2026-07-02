@@ -5,7 +5,11 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
 
     echo "<form action=\"".$script_name."\" method=\"get\">\n".
         "<fieldset>\n".
-        "<p><input type=\"text\" id=\"cmd-input\" size=\"20\" name=\"parameter\" value=\"".$parameter_value."\"/>\n".
+        // Row 1: search input + Go button
+        "<p class=\"form-search\"><input type=\"text\" id=\"cmd-input\" size=\"20\" name=\"parameter\" value=\"".$parameter_value."\"/>\n".
+        "&nbsp;<input type=\"submit\" value=\"Go\"/></p>\n".
+        // Row 2: mode selector radio buttons
+        "<p class=\"form-modes\">".
         "<input type=\"radio\" name=\"mode\" value=\"man\" id=\"mode-man\"".$check['man']."/>".
         "<label for=\"mode-man\"><a href=\"".$script_name."/man\">man</a></label>\n".
         "<input type=\"radio\" name=\"mode\" value=\"perldoc\" id=\"mode-perldoc\"".$check['perldoc']."/>".
@@ -17,8 +21,8 @@ function showForm (string $parameter, array $check, string $markdownUrl = "", st
         "<input type=\"radio\" name=\"mode\" value=\"ri\" id=\"mode-ri\"".$check['ri']."/>".
         "<label for=\"mode-ri\"><a href=\"".$script_name."/ri\">ri</a></label>\n".
         "<input type=\"radio\" name=\"mode\" value=\"search\" id=\"mode-search\"".$check['search']."/>".
-        "<label for=\"mode-search\"><a href=\"".$script_name."/man/apropos\">search</a></label>\n".
-        "&nbsp;<input type=\"submit\" value=\"Go\"/></p>".
+        "<label for=\"mode-search\"><a href=\"".$script_name."/man/apropos\">search</a></label>".
+        "</p>".
         "</fieldset>\n".
         "</form>\n";
 

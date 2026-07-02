@@ -322,11 +322,21 @@ form legend {
     display: none;
 }
 
-form p {
+/* Row 1: search input + Go button */
+form p.form-search {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-2);
+    gap: 0;
+    margin: 0 0 var(--space-1) 0;
+}
+
+/* Row 2: radio button mode selector */
+form p.form-modes {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1);
     margin: 0;
     font-family: var(--font-ui);
     font-size: 13px;
@@ -367,14 +377,14 @@ input[type='radio'] {
     cursor: pointer;
 }
 
-form p label {
+form p.form-modes label {
     font-size: 13px;
     cursor: pointer;
     color: var(--text-secondary);
     padding: 2px 0;
 }
 
-form p label:hover {
+form p.form-modes label:hover {
     color: var(--text-primary);
 }
 
@@ -931,13 +941,13 @@ body > p:last-of-type a.fmt-link:hover {
         padding: 0;
     }
 
-    /* Form adapts to mobile with compact horizontal wrap */
-    form fieldset {
-        padding: var(--space-1) var(--space-2);
+    /* Form: search row stays compact, modes row wraps tightly */
+    form p.form-search {
+        gap: 4px;
     }
 
-    form p {
-        gap: 4px;
+    form p.form-modes {
+        gap: 2px;
         font-size: 12px;
     }
 
@@ -961,7 +971,7 @@ body > p:last-of-type a.fmt-link:hover {
         margin: 0 1px 0 2px;
     }
 
-    form p label {
+    form p.form-modes label {
         font-size: 12px;
         padding: 1px 0;
         margin-right: 2px;
