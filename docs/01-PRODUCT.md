@@ -534,6 +534,7 @@ When reviewing code, follow this order:
 | 2026-07-01 | v4.9.7: Per-endpoint LLM `max_tokens` + `timeout` — primary 120s, fallbacks 60s; config example lowered LLM_MAX_TOKENS 4096→128000; fixed fallback-2 `max_tokens参数非法` error |
 | 2026-07-01 | v4.9.8: batch-enhance resilience — missing markdown/HTML SKIPs instead of aborting entire batch; only 3 consecutive LLM failures trigger abort |
 | 2026-07-01 | v4.9.9: Moved `RE_ASCII`/`RE_ASCII_SAFE` constants from phpMan.php → src/config.php for CLI tool access; fixed batch-enhance crash on `man/DBI` |
+| 2026-07-01 | v4.9.11: fix `callLLM()` non-retryable return value — `false` vs `''` disambiguation; v4.9.12: emoji_html LLM empty → SKIP not abort; v4.9.13: `--status` WAL checkpoint; v4.9.14: fix man emoji count `:mode` never bound |
 | 2026-07-01 | v4.9.10: Restored phpman.css (Geist token system) + web_footer.php (format links in footer) overwritten by worktree merge a198949; added worktree rebase rule to CLAUDE.md |
 | 2026-06-09 | v3.7.1: Fix #96 XSS (sources array h), #107 undefined $expanded, #108 SQL prepared stmt, #109 tldr_cache TTL index, #110 INSERT OR REPLACE comments, #111 ticket status table, #112 CLI CACHE_DB constant; add Ticket Status Summary table |
 | 2026-06-08 | v3.7: Security hardening — #95 SQL parameterize, #98 catch block logging, #100 CACHE_DIR validation, #102 perldoc $width escape, #104 FTS5 sanitize, #105 ETag invalidation, #103 rebuildSearchIndex logging | TLDR cache strategy: SQLite `tldr_cache` with 7-day TTL, negative caching; old file-based `tldr_cache/` deprecated |
