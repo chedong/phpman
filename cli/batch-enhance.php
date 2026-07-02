@@ -585,6 +585,10 @@ function showStatus(string $dbPath): void {
     $db = new SQLite3($dbPath);
     $db->enableExceptions(true);
 
+    // WAL checkpoint: flush pending writes so status reads latest data.
+    // Without this, concurrent batch-enhance writers make status show stale 0 counts.
+    $db->exec('PRAGMA wal_checkpoint(TRUNCATE)');
+
     $baseUrl = defined('PHPMAN_BASE_URL') ? PHPMAN_BASE_URL : (getenv('PHPMAN_BASE_URL') ?: 'http://localhost:8080/phpMan.php');
     $baseUrl = rtrim($baseUrl, '/');
     $modes = PHPMAN_CONTENT_MODES;
