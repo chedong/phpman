@@ -74,10 +74,7 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
     $patterns[] = "/".chr(27)."\[4m(.*?)".chr(27)."\[(?:0|24)m/";
     $replace[] = '<span class="u">$1</span>';
     // Cleanup duplicated / orphan tags from combined overstrike + SGR processing
-    $patterns[] = "/<\/u><u>/";
-    $replace[] = '';
-    $patterns[] = "/<u>_<\/u>/";
-    $replace[] = '_';
+    // (v4.9.17: removed /<\/u><u>/ and /<u>_<\/u>/ — no longer emitted after <span class="u"> migration)
     $patterns[] = "/<\/b><b>/";
     $replace[] = '';
 

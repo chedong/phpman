@@ -629,7 +629,7 @@ elseif ($mode === "search" && $parameter !== "") {
 }
 
 echo "<div id=\"content-wrap\">\n";
-showForm($parameter, $check, $markdownUrl, $jsonUrl, $mode, $section);
+showForm($parameter, $check, $mode, $section);
 
 	// v2.2: TLDR block for man section 1 detail pages
 	// Skip TLDR when enhanced HTML is available (already has Quick Reference).

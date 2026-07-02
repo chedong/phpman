@@ -1,5 +1,5 @@
 <?php
-function showForm (string $parameter, array $check, string $markdownUrl = "", string $jsonUrl = "", string $mode = "", string $section = ""): void {
+function showForm (string $parameter, array $check, string $mode = "", string $section = ""): void {
     $script_name = h(scriptName());
     $parameter_value = h($parameter);
 

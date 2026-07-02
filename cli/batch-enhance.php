@@ -27,7 +27,6 @@
  *   php cli/batch-enhance.php --format=md       # Enhance emoji_md only
  *   php cli/batch-enhance.php --format=both     # Both formats (default)
  *   php cli/batch-enhance.php --yes             # Skip confirmation prompt
- *   php cli/batch-enhance.php --skip-errors     # Continue on error
  *   php cli/batch-enhance.php --cached-first    # Prioritize HTML-cached entries
  *
  * Requires phpman.config.php with LLM_API_URL, LLM_API_KEY, LLM_MODEL,
@@ -55,7 +54,7 @@ if (!empty($posArgs)) {
     $argc = count($argv);
 }
 
-$opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'skip-errors', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast']);
+$opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast']);
 
 // Propagate positional mode:name into opts (existing --mode/--parameter take precedence)
 if ($posMode !== '' && !isset($opts['mode'])) {
@@ -72,7 +71,7 @@ foreach (['help','h','yes','y','dry-run','status','stop'] as $k) {
 }
 if (!$hasActionOpt && !isset($opts['mode']) && !isset($opts['limit']) &&
     !isset($opts['format']) && !isset($opts['resume-from']) &&
-    !isset($opts['skip-errors']) && !isset($opts['cached-first'])) {
+    !isset($opts['cached-first'])) {
     $opts['help'] = true;
 }
 
@@ -97,7 +96,6 @@ if (isset($opts['help']) || isset($opts['h'])) {
     echo "  --limit=<n>        Max entries to process (default: unlimited)\n";
     echo "  --format=<f>       html, md, or both (default: both)\n";
     echo "  --resume-from=<n>  Skip first N entries\n";
-    echo "  --skip-errors      Continue on error instead of aborting\n";
     echo "  --cached-first     Sort: entries with HTML cache first\n";
     echo "  --pid-file=<path>  Write PID to file (auto: PHPMAN_HOME/logs/batch_enhance.pid)\n";
     echo "  --help             Show this help\n";
@@ -244,7 +242,6 @@ if (isset($opts['mode'])) {
 $limit        = isset($opts['limit']) ? (int)$opts['limit'] : 0;
 $formatOpt    = $opts['format'] ?? 'both';
 $resumeFrom   = isset($opts['resume-from']) ? (int)$opts['resume-from'] : 0;
-$skipErrors   = isset($opts['skip-errors']);
 $cachedFirst  = isset($opts['cached-first']);
 $fastMode     = isset($opts['fast']) || isset($opts['f']);
 $rebuild      = isset($opts['rebuild']) || isset($opts['r']);
@@ -419,8 +416,8 @@ $startTime = time();
 $totalEntries = count($entries);
 $consecutiveFailures = 0; // per-entry: both phases must fail to increment
 $maxConsecutiveFailures = 3;
-$mdFailures = 0;  // independent counter for emoji_md (reset on md success)
-$htmlFailures = 0; // independent counter for emoji_html (reset on html success)
+$mdFailures = 0;  // counter for emoji_md (reset on md success)
+$htmlFailures = 0; // counter for emoji_html (reset on html success)
 
 foreach ($entries as $idx => $e) {
     $mode = $e['mode'];
@@ -520,8 +517,14 @@ foreach ($entries as $idx => $e) {
             $enhanced++;
             $htmlFailures = 0;
         } else {
-            echo "  SKIP: emoji_html LLM returned empty for {$label} (large page?) — continuing\n";
+            $htmlFailures++;
+            echo "  SKIP: emoji_html LLM returned empty for {$label} (large page?) — skipping ({$htmlFailures}/{$maxConsecutiveFailures} consecutive html)\n";
             $errors++;
+            if ($htmlFailures >= $maxConsecutiveFailures) {
+                echo "\nERROR: {$maxConsecutiveFailures} consecutive HTML LLM failures — aborting.\n";
+                echo "  Check phpman_error.log for details. Resume with --resume-from=" . ($entryNum - 1) . "\n";
+                break;
+            }
             continue;
         }
     } elseif ($doHtml) {
@@ -587,7 +590,18 @@ function showStatus(string $dbPath): void {
 
     // WAL checkpoint: flush pending writes so status reads latest data.
     // Without this, concurrent batch-enhance writers make status show stale 0 counts.
-    $db->exec('PRAGMA wal_checkpoint(TRUNCATE)');
+    // TRUNCATE may fail with SQLITE_BUSY if another process holds a read lock.
+    // Fall back to PASSIVE (non-blocking) on failure.
+    try {
+        $db->exec('PRAGMA wal_checkpoint(TRUNCATE)');
+    } catch (\Throwable $e) {
+        // TRUNCATE failed — try PASSIVE (doesn't block; may leave some WAL data uncheckpointed)
+        try {
+            $db->exec('PRAGMA wal_checkpoint(PASSIVE)');
+        } catch (\Throwable $e2) {
+            // Both failed — continue with possibly stale data
+        }
+    }
 
     $baseUrl = defined('PHPMAN_BASE_URL') ? PHPMAN_BASE_URL : (getenv('PHPMAN_BASE_URL') ?: 'http://localhost:8080/phpMan.php');
     $baseUrl = rtrim($baseUrl, '/');
