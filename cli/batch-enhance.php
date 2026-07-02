@@ -619,6 +619,9 @@ function showStatus(string $dbPath): void {
             $result->finalize();
         }
 
+        // Always bind :mode before emoji counts (man skips the html-count path above)
+        $stmtCount->bindValue(':mode', $mode, SQLITE3_TEXT);
+
         $stmtCount->bindValue(':format', 'emoji_md', SQLITE3_TEXT);
         $result = $stmtCount->execute();
         $md = (int)($result->fetchArray(SQLITE3_NUM)[0] ?: 0);
