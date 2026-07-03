@@ -21,7 +21,7 @@ function showForm (string $parameter, array $check, string $mode = "", string $s
         "<label for=\"mode-search\"><a href=\"".$script_name."/man/apropos\">search</a></label>".
         "</span>\n".
         "<input type=\"text\" id=\"cmd-input\" size=\"20\" name=\"parameter\" value=\"".$parameter_value."\"/>\n".
-        "<input type=\"submit\" value=\"Go\"/>\n".
+        "<input type=\"submit\" id=\"cmd-submit\" value=\"Go\"/>\n".
         "</fieldset>\n".
         "</form>\n";
 
