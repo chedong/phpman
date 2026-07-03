@@ -54,7 +54,7 @@ if (!empty($posArgs)) {
     $argc = count($argv);
 }
 
-$opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast']);
+$opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast', 'cache-only']);
 
 // Propagate positional mode:name into opts (existing --mode/--parameter take precedence)
 if ($posMode !== '' && !isset($opts['mode'])) {
@@ -97,6 +97,7 @@ if (isset($opts['help']) || isset($opts['h'])) {
     echo "  --format=<f>       html, md, or both (default: both)\n";
     echo "  --resume-from=<n>  Skip first N entries\n";
     echo "  --cached-first     Sort: entries with HTML cache first\n";
+    echo "  --cache-only       Generate HTML+MD cache only, skip LLM enhancement\n";
     echo "  --pid-file=<path>  Write PID to file (auto: PHPMAN_HOME/logs/batch_enhance.pid)\n";
     echo "  --help             Show this help\n";
     echo "\nShorthand <mode>:<name> is equivalent to --mode=<mode> --parameter=<name>.\n";
@@ -244,6 +245,7 @@ $formatOpt    = $opts['format'] ?? 'both';
 $resumeFrom   = isset($opts['resume-from']) ? (int)$opts['resume-from'] : 0;
 $cachedFirst  = isset($opts['cached-first']);
 $fastMode     = isset($opts['fast']) || isset($opts['f']);
+$cacheOnly    = isset($opts['cache-only']);
 $rebuild      = isset($opts['rebuild']) || isset($opts['r']);
 $sectionFilter = $opts['section'] ?? '';
 $paramList     = $opts['parameter'] ?? '';
@@ -374,8 +376,9 @@ echo sprintf("%-30s %s\n", "emoji_md exists:",     "{$hasEmojiMd}/{$total}");
 echo sprintf("%-30s %s\n", "emoji_html exists:",   "{$hasEmojiHtml}/{$total}");
 echo sprintf("%-30s %s\n", "Need HTML fetch:",     "{$needsHtml}");
 echo sprintf("%-30s %s\n", "Need LLM enhance:",    "{$needsEmoji}");
-echo sprintf("%-30s %s\n", "Rate limit:",          "{$rateLimitSec}s between calls");
+	echo sprintf("%-30s %s\n", "Rate limit:",          $cacheOnly ? 'N/A (cache-only)' : "{$rateLimitSec}s between calls");
 echo sprintf("%-30s %s\n", "Dry run:",             $dryRun ? 'YES' : 'no');
+	echo sprintf("%-30s %s\n", "Cache-only:",          $cacheOnly ? 'YES' : 'no');
 echo str_repeat('-', 60) . "\n";
 
 if ($dryRun) {
@@ -384,7 +387,13 @@ if ($dryRun) {
     exit;
 }
 
-if ($needsEmoji === 0) {
+	if ($cacheOnly) {
+	    if ($needsHtml === 0) {
+	        echo "\nAll HTML caches already exist. Nothing to do.\n";
+	        exit;
+	    }
+	    echo "Generating content caches for {$needsHtml} entries...\n\n";
+	} else if ($needsEmoji === 0) {
     echo "\nAll entries already enhanced. Nothing to do.\n";
     exit;
 }
@@ -443,6 +452,23 @@ foreach ($entries as $idx => $e) {
         }
         $htmlOk = true;
         echo "  HTML cached (" . strlen($generated) . " chars)\n";
+    }
+
+    // ── cache-only: also generate MD cache, then skip enhancement ──
+    if ($cacheOnly) {
+        $pcache = new PageCache();
+        $plainMd = $pcache->get($mode, $name, '', 'markdown');
+        if ($plainMd === null || PageCache::isNotFound($plainMd) || trim($plainMd) === '') {
+            $genFn = contentGenerator($mode, $name, $section, 'markdown');
+            $plainMd = cacheOrExecute($mode, $name, $section, 'markdown', $genFn);
+            if ($plainMd !== '' && $plainMd !== null) {
+                echo "  MD cached (" . strlen($plainMd) . " chars)\n";
+            }
+        } else {
+            echo "  MD already cached (" . strlen($plainMd) . " chars)\n";
+        }
+        $processed++;
+        continue;
     }
 
     // ── Phase 1: emoji_md ──

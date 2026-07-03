@@ -106,7 +106,7 @@ function fetchCheatShTldr(string $command): array {
     $ctx = stream_context_create([
         "http" => [
             "timeout" => 5,
-            "header" => "User-Agent: phpMan/" . PHPMAN_VERSION . "\r\n",
+            "header" => "User-Agent: phpMan/" . (defined('PHPMAN_VERSION') ? PHPMAN_VERSION : (defined('GIT_DESCRIBE') ? ltrim(GIT_DESCRIBE, 'v') : 'unknown')) . "\r\n",
         ],
     ]);
     $raw = @file_get_contents($url, false, $ctx);

@@ -6,18 +6,27 @@ function showForm (string $parameter, array $check, string $mode = "", string $s
     echo "<form action=\"".$script_name."\" method=\"get\">\n".
         "<fieldset>\n".
         // Single row: mode radios + search input + Go button
+        // Only show radios for tools available on this server
         "<span class=\"form-modes\">".
         "<input type=\"radio\" name=\"mode\" value=\"man\" id=\"mode-man\"".$check['man']."/>".
-        "<label for=\"mode-man\"><a href=\"".$script_name."/man\">man</a></label>\n".
-        "<input type=\"radio\" name=\"mode\" value=\"perldoc\" id=\"mode-perldoc\"".$check['perldoc']."/>".
-        "<label for=\"mode-perldoc\"><a href=\"".$script_name."/search/perl\">perldoc</a></label>\n".
-        "<input type=\"radio\" name=\"mode\" value=\"info\" id=\"mode-info\"".$check['info']."/>".
-        "<label for=\"mode-info\"><a href=\"".$script_name."/info\">info</a></label>\n".
-        "<input type=\"radio\" name=\"mode\" value=\"pydoc\" id=\"mode-pydoc\"".$check['pydoc']."/>".
-        "<label for=\"mode-pydoc\"><a href=\"".$script_name."/pydoc\">pydoc3</a></label>\n".
-        "<input type=\"radio\" name=\"mode\" value=\"ri\" id=\"mode-ri\"".$check['ri']."/>".
-        "<label for=\"mode-ri\"><a href=\"".$script_name."/ri\">ri</a></label>\n".
-        "<input type=\"radio\" name=\"mode\" value=\"search\" id=\"mode-search\"".$check['search']."/>".
+        "<label for=\"mode-man\"><a href=\"".$script_name."/man\">man</a></label>\n";
+    if (PHPMAN_HAS_PERLDOC) {
+        echo "<input type=\"radio\" name=\"mode\" value=\"perldoc\" id=\"mode-perldoc\"".$check['perldoc']."/>".
+        "<label for=\"mode-perldoc\"><a href=\"".$script_name."/search/perl\">perldoc</a></label>\n";
+    }
+    if (PHPMAN_HAS_INFO) {
+        echo "<input type=\"radio\" name=\"mode\" value=\"info\" id=\"mode-info\"".$check['info']."/>".
+        "<label for=\"mode-info\"><a href=\"".$script_name."/info\">info</a></label>\n";
+    }
+    if (PHPMAN_HAS_PYDOC) {
+        echo "<input type=\"radio\" name=\"mode\" value=\"pydoc\" id=\"mode-pydoc\"".$check['pydoc']."/>".
+        "<label for=\"mode-pydoc\"><a href=\"".$script_name."/pydoc\">pydoc3</a></label>\n";
+    }
+    if (PHPMAN_HAS_RI) {
+        echo "<input type=\"radio\" name=\"mode\" value=\"ri\" id=\"mode-ri\"".$check['ri']."/>".
+        "<label for=\"mode-ri\"><a href=\"".$script_name."/ri\">ri</a></label>\n";
+    }
+    echo "<input type=\"radio\" name=\"mode\" value=\"search\" id=\"mode-search\"".$check['search']."/>".
         "<label for=\"mode-search\"><a href=\"".$script_name."/man/apropos\">search</a></label>".
         "</span>\n".
         "<input type=\"text\" id=\"cmd-input\" size=\"20\" name=\"parameter\" value=\"".$parameter_value."\"/>\n".

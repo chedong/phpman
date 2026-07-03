@@ -22,7 +22,7 @@ function callLLM(string $systemPrompt, string $userMessage, string $context = ''
                 'key' => $fbKey,
                 'model' => $fbModel,
                 'label' => 'fallback-' . ($i + 1),
-                'max_tokens' => $fb['max_tokens'] ?? (int)LLM_MAX_TOKENS,
+                'max_tokens' => $fb['max_tokens'] ?? min((int)LLM_MAX_TOKENS, 32768),
                 'timeout' => $fb['timeout'] ?? 60,
             ];
         }
