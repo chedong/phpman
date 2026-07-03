@@ -4,7 +4,7 @@ colors:
   surface-root: "#0b0b14"
   surface-card: "#131320"
   surface-elevated: "#181828"
-  surface-field: "#131320"
+  surface-field: "#1e1e32"
   text-primary: "#e2e2f0"
   text-secondary: "#a8a8bc"
   text-muted: "#62627a"
@@ -115,7 +115,7 @@ is the terminal's natural emphasis.
 | `surface-root` | `#0b0b14` | Deepest page background — ink black with blue undertone |
 | `surface-card` | `#131320` | Cards, sidebar, TLDR block, form fieldset |
 | `surface-elevated` | `#181828` | Code blocks, elevated surfaces |
-| `surface-field` | `#131320` | Input fields |
+| `surface-field` | `#1e1e32` | Input fields — lighter than card for contrast |
 | `text-primary` | `#e2e2f0` | Body text, headings — 4.5:1+ contrast |
 | `text-secondary` | `#a8a8bc` | Metadata, sidebar links, form labels |
 | `text-muted` | `#62627a` | Disabled text, TLDR source, timestamp |
@@ -278,10 +278,12 @@ Instant (0ms) is the default. Motion is added only when it clarifies a change.
 ### Search Form (Toolbar)
 - Wrapped in `<fieldset>` with card background + `card` shadow
 - Legend hidden
-- Text input: mono font, 13px, `lg` radius, focus glow ring (`0 0 0 3px rgba(109,158,240,0.2)`)
-- Radio buttons: `accent-color: blue`, compact inline
-- Submit button: inverted surface (`btn-bg` on `btn-text`), `lg` radius, scale(0.97) on active
-- Mobile: horizontal flex-wrap, text input flex-grows, submit keeps min 44px touch target
+- Single row on desktop: mode radios (`<span>`) → text input → Go button
+- Text input: mono font, 14px, `lg` radius, `flex: 1` fills remaining space, focus glow ring (`0 0 0 3px rgba(109,158,240,0.2)`)
+- Radio buttons: `accent-color: blue`, 14px labels, compact inline in `<span class="form-modes">`
+- Submit button: inverted surface (`btn-bg` on `btn-text`), 14px, `lg` radius, scale(0.97) on active
+- Desktop: single flex row, input `max-width: 400px`
+- Mobile (≤1024px): vertical stack (`flex-direction: column`), input 16px, submit 16px, radios 13px, min 44px touch target
 
 ### TOC Sidebar
 - Fixed position, `lg` radius, card background, `popover` shadow

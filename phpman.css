@@ -10,7 +10,7 @@
     --surface-root:      #0b0b14;
     --surface-card:      #131320;
     --surface-elevated:  #181828;
-    --surface-field:     #131320;
+    --surface-field:     #1e1e32;
 
     /* Text — gray scale ascending to white */
     --text-primary:      #e2e2f0;
@@ -118,7 +118,7 @@
     --surface-root:      #0b0b14;
     --surface-card:      #131320;
     --surface-elevated:  #181828;
-    --surface-field:     #131320;
+    --surface-field:     #1e1e32;
     --text-primary:      #e2e2f0;
     --text-secondary:    #a8a8bc;
     --text-muted:        #62627a;
@@ -326,24 +326,15 @@ form legend {
     display: none;
 }
 
-/* Search row: input + Go button */
-form p.form-search {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0;
-    margin: 0;
-}
-
-/* Radio button mode selector */
-form p.form-modes {
+/* Radio button mode selector — inline in toolbar row */
+form span.form-modes {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-1);
     margin: 0;
     font-family: var(--font-ui);
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-secondary);
 }
 
@@ -355,11 +346,11 @@ input[type='text'] {
     border-radius: var(--btn-radius);
     padding: 6px 10px;
     font-family: var(--font-mono);
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.4;
     min-width: 140px;
     flex: 1;
-    max-width: 240px;
+    max-width: 400px;
     transition: border-color var(--duration-fast) var(--ease-out),
                 box-shadow var(--duration-fast) var(--ease-out);
 }
@@ -381,14 +372,14 @@ input[type='radio'] {
     cursor: pointer;
 }
 
-form p.form-modes label {
-    font-size: 13px;
+form span.form-modes label {
+    font-size: 14px;
     cursor: pointer;
     color: var(--text-secondary);
     padding: 2px 0;
 }
 
-form p.form-modes label:hover {
+form span.form-modes label:hover {
     color: var(--text-primary);
 }
 
@@ -400,7 +391,7 @@ input[type='submit'] {
     border-radius: var(--btn-radius);
     padding: 6px 14px;
     font-family: var(--font-ui);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
     line-height: 1.4;
     cursor: pointer;
@@ -945,21 +936,16 @@ body > p:last-of-type a.fmt-link:hover {
         padding: 0;
     }
 
-    /* Form: stack search row + modes row on narrow screens */
+    /* Form: stack modes + input + button vertically on narrow screens */
     form fieldset {
         flex-direction: column;
         align-items: stretch;
         gap: var(--space-1);
     }
 
-    /* Form: search row stays compact, modes row wraps tightly */
-    form p.form-search {
-        gap: 4px;
-    }
-
-    form p.form-modes {
+    form span.form-modes {
         gap: 2px;
-        font-size: 12px;
+        font-size: 13px;
     }
 
     input[type='text'] {
@@ -968,12 +954,12 @@ body > p:last-of-type a.fmt-link:hover {
         max-width: 100%;
         box-sizing: border-box;
         padding: 4px 6px;
-        font-size: 14px;
+        font-size: 16px;
     }
 
     input[type='submit'] {
         padding: 4px 12px;
-        font-size: 14px;
+        font-size: 16px;
         min-height: 36px;
     }
 
@@ -982,8 +968,8 @@ body > p:last-of-type a.fmt-link:hover {
         margin: 0 1px 0 2px;
     }
 
-    form p.form-modes label {
-        font-size: 12px;
+    form span.form-modes label {
+        font-size: 13px;
         padding: 1px 0;
         margin-right: 2px;
     }
