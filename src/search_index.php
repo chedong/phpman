@@ -466,12 +466,14 @@ function rebuildSearchIndex(): string {
         $db->exec("DELETE FROM search_index_meta");
         $output[] = "Cleared existing search index.\n";
 
-        // Invalidate page caches — FTS5 index rebuild makes cached search
-        // results and man-page search-fallthrough entries stale.
+        // Invalidate search result caches only — FTS5 index rebuild makes
+        // cached search results stale. Individual page caches (html, json,
+        // markdown for man/perldoc/info/pydoc/ri) are NOT search-dependent
+        // and must be preserved to avoid unnecessary regeneration.
         // Preserve emoji_md/emoji_html — LLM-enhanced content is expensive
         // to regenerate (48+ days) and isn't search-index-dependent.
-        $db->exec("DELETE FROM cache WHERE format NOT IN ('emoji_md', 'emoji_html')");
-        $output[] = "Cleared page cache (emoji enhancements preserved).\n";
+        $db->exec("DELETE FROM cache WHERE format IN ('search', 'json') OR section = 'fts'");
+        $output[] = "Cleared search result cache (page caches preserved).\n";
 
         // 5. Wrap INSERTs in a transaction to prevent WAL bloat
         $db->exec("BEGIN IMMEDIATE");
