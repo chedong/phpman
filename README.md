@@ -6,7 +6,7 @@ phpMan is an open-source Linux Command MCP Server and Structured JSON API web in
 
 ## Requirements
 
-- PHP 7.2 or higher (for SQLite3 with FTS5 support)
+- PHP 8.0 or higher (for SQLite3 with FTS5 support)
 - SQLite3 extension (bundled with PHP)
 - FTS5 enabled (checked at runtime via PRAGMA compile_options)
 - Web server (Apache/Nginx) or PHP built-in server

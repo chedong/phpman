@@ -65,10 +65,10 @@ $format = "html";
 $formatSource = "default"; // track where format was decided
 
 // 1) GET parameter always takes highest priority
-if (requestValue($_GET, "format") === "json" || requestValue($_GET, "amp;format") === "json") {
+if (getQueryParam("format") === "json") {
     $format = "json";
     $formatSource = "get";
-} elseif (requestValue($_GET, "format") === "markdown" || requestValue($_GET, "amp;format") === "markdown") {
+} elseif (getQueryParam("format") === "markdown") {
     $format = "markdown";
     $formatSource = "get";
 } else {
@@ -164,30 +164,22 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
     }
 }
 else {
-    if ( requestValue($_GET, "mode") != "" ) {
-        $mode = requestValue($_GET, "mode");
-    } elseif ( requestValue($_GET, "amp;mode") != "" ) {
-        $mode = requestValue($_GET, "amp;mode");
+    if ( getQueryParam("mode") != "" ) {
+        $mode = getQueryParam("mode");
     }
 
-    if ( requestValue($_GET, "parameter") != "" ) {
-        $parameter = requestValue($_GET, "parameter");
-    } elseif ( requestValue($_GET, "amp;parameter") != "" ) {
-        $parameter = requestValue($_GET, "amp;parameter");
+    if ( getQueryParam("parameter") != "" ) {
+        $parameter = getQueryParam("parameter");
     }
 
-    if ( requestValue($_GET, "section") != "") {
-        $section = requestValue($_GET, "section");
-    } elseif ( requestValue($_GET, "amp;section") != "") {
-        $section = requestValue($_GET, "amp;section");
+    if ( getQueryParam("section") != "") {
+        $section = getQueryParam("section");
     }
 }
 
 // GET parameter always overrides
-if ( requestValue($_GET, "format") != "" ) {
-    $format = strtolower(trim(requestValue($_GET, "format")));
-} elseif ( requestValue($_GET, "amp;format") != "" ) {
-    $format = strtolower(trim(requestValue($_GET, "amp;format")));
+if ( getQueryParam("format") != "" ) {
+    $format = strtolower(trim(getQueryParam("format")));
 }
 $format = in_array($format, ["html", "markdown", "json", "mcp"]) ? $format : "html";
 
@@ -219,7 +211,9 @@ if ($format === "html" && $mode !== "mcp" && $mode !== "copyright" && $mode !== 
             $ec = $db->querySingle("SELECT 1 FROM cache WHERE mode = :m AND name = :n AND section = '' AND format = 'emoji_html' AND status = 'found'");
             $hasEnhanced = ($ec !== null);
         }
-    } catch (\Throwable $ignored) {}
+    } catch (\Throwable $ignored) {
+        phpManLog("ETag DB query failed: " . $ignored->getMessage());
+    }
     $etag = '"' . md5($mode . '/' . $parameter . '/' . $section . '/' . PHPMAN_VERSION . '/' . $cacheAge . '/' . ($hasEnhanced ? 'enh' : 'raw')) . '"';
     $ifNoneMatch = serverValue("HTTP_IF_NONE_MATCH", "");
     if ($ifNoneMatch === $etag) {

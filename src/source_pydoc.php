@@ -79,8 +79,6 @@ function getPydocIndex (string $format = "html"): string {
         $results[] = ['name' => $mod, 'section' => '', 'description' => '', 'sources' => ['pydoc']];
     }
     $rendered = renderGroupedResults($results, $script_name);
-    if ($rendered['sidebar'] !== '') {
-    }
     return $rendered['html'];
 }
 

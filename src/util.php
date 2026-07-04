@@ -66,6 +66,10 @@ function getSafeHost (): string {
  */
 function baseUrl(): string {
     $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "http";
+    // Check X-Forwarded-Proto for TLS-terminating reverse proxies (Nginx, Cloudflare, AWS ELB)
+    if ($proto === "http" && !empty($_SERVER['HTTP_X_FORWARDED_PROTO'])) {
+        $proto = $_SERVER['HTTP_X_FORWARDED_PROTO'] === "https" ? "https" : "http";
+    }
     return $proto . "://" . getSafeHost() . scriptName();
 }
 
@@ -87,6 +91,19 @@ function requestValue (array $source, string $key): string {
     }
 
     return trim((string)$source[$key]);
+}
+
+/**
+ * Get a GET parameter with amp; fallback for double-encoded &amp; workaround.
+ * Some server configurations double-encode & to &amp; in query strings,
+ * causing parameter names to be prefixed with "amp;".
+ */
+function getQueryParam (string $key): string {
+    $value = requestValue($_GET, $key);
+    if ($value !== "") {
+        return $value;
+    }
+    return requestValue($_GET, "amp;" . $key);
 }
 
 function normalizeMode ($mode): string {

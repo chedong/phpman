@@ -83,22 +83,6 @@ function getInfoIndex (string $format = "html"): string {
         return formatForOutput(json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), $format);
     }
 
-    // Use placeholder characters for &<> to avoid XSS, same pattern as formatManPerlDoc()
-    $patterns = array(
-                    "/&/",  //html special char: '&' => '&amp;';
-                    "/</",  //html special char: '<' => '&lt;';
-                    "/>/",  //html special char: '>' => '&gt;';
-                    "/\(([a-z0-9_\-]+)\)([a-z0-9_\+]+)/", //'(group)command' => info page of command;
-                    "/\(([a-z0-9_\-]+)\)/"     //'(command)' => info page of command;
-                );
-    // Step 1: replace &<> with safe placeholders
-    $placeholders = array(
-                   "\x05", // placeholder for &
-                   "\x06", // placeholder for <
-                   "\x07", // placeholder for >
-                   "\x04\\1\x04\x04\\2\x04",   // temp placeholder for group+cmd
-                   "\x04\\1\x04"                // temp placeholder for cmd
-                );
     $output = "";
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {

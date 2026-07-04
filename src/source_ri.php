@@ -61,8 +61,6 @@ function getRiIndex (string $format = "html"): string {
         }
     }
     $rendered = renderGroupedResults($results, $script_name);
-    if ($rendered['sidebar'] !== '') {
-    }
     return $rendered['html'];
 }
 
