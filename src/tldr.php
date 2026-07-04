@@ -82,7 +82,7 @@ function fetchTldrPages(string $command): array {
         $ctx = stream_context_create([
             "http" => [
                 "timeout" => 5,
-                "header" => "User-Agent: phpMan/" . GIT_DESCRIBE . "\r\n",
+                "header" => "User-Agent: phpMan/" . (defined('GIT_DESCRIBE') ? GIT_DESCRIBE : (defined('PHPMAN_VERSION') ? PHPMAN_VERSION : 'unknown')) . "\r\n",
             ],
         ]);
         $md = @file_get_contents($url, false, $ctx);
