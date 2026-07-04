@@ -54,7 +54,7 @@ if (!empty($posArgs)) {
     $argc = count($argv);
 }
 
-$opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast', 'cache-only']);
+$opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast', 'cache-only', 'rate-limit:']);
 
 // Propagate positional mode:name into opts (existing --mode/--parameter take precedence)
 if ($posMode !== '' && !isset($opts['mode'])) {
@@ -98,6 +98,7 @@ if (isset($opts['help']) || isset($opts['h'])) {
     echo "  --resume-from=<n>  Skip first N entries\n";
     echo "  --cached-first     Sort: entries with HTML cache first\n";
     echo "  --cache-only       Generate HTML+MD cache only, skip LLM enhancement\n";
+    echo "  --rate-limit=<s>   Seconds between LLM calls (default: 60, was 120)\n";
     echo "  --pid-file=<path>  Write PID to file (auto: PHPMAN_HOME/logs/batch_enhance.pid)\n";
     echo "  --help             Show this help\n";
     echo "\nShorthand <mode>:<name> is equivalent to --mode=<mode> --parameter=<name>.\n";
@@ -252,7 +253,7 @@ $paramList     = $opts['parameter'] ?? '';
 $doMd         = ($formatOpt === 'md' || $formatOpt === 'both');
 $doHtml       = ($formatOpt === 'html' || $formatOpt === 'both');
 
-$rateLimitSec = 120; // 2 minutes between LLM calls
+$rateLimitSec = isset($opts['rate-limit']) ? (int)$opts['rate-limit'] : 60; // seconds between LLM calls
 
 // ── Connect to cache DB for discovery queries ──
 $dbPath = rtrim(PHPMAN_HOME, '/') . '/db/phpman_cache.db';
