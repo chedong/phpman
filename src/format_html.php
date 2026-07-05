@@ -68,7 +68,7 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
 
     // SGR escape sequences — must process BEFORE linkification so that
     // SGR-split names (e.g. ESC[1mioESC[4m_ESC[24mcancelESC[0m) are rejoined
-    // into clean <b>io<span class="u">_</span>cancel</b> before name(section) linking.
+    // into clean <b>io<u>_</u>cancel</b> before name(section) linking.
     $patterns[] = "/".chr(27)."\[1m(.*?)".chr(27)."\[(?:0|22)m/";
     $replace[] = '<b>$1</b>';
     $patterns[] = "/".chr(27)."\[4m(.*?)".chr(27)."\[(?:0|24)m/";
