@@ -425,7 +425,7 @@ $lastLlmTime = 0;
 $startTime = time();
 $totalEntries = count($entries);
 $consecutiveFailures = 0; // per-entry: both phases must fail to increment
-$maxConsecutiveFailures = 3;
+$maxConsecutiveFailures = 10; // abort after N consecutive LLM failures per format
 $mdFailures = 0;  // counter for emoji_md (reset on md success)
 $htmlFailures = 0; // counter for emoji_html (reset on html success)
 
