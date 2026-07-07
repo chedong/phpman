@@ -48,6 +48,9 @@ if (!defined('PHPMAN_ENHANCE_MAX_CHARS')) {
 if (!defined('PHPMAN_GA_ID')) {
     define('PHPMAN_GA_ID', '');                  // Google Analytics GA4 measurement ID (empty = disabled)
 }
+if (!defined('PHPMAN_ADSENSE_ID')) {
+    define('PHPMAN_ADSENSE_ID', '');              // Google AdSense publisher ID (empty = disabled)
+}
 if (!defined('PHPMAN_HOME_TITLE')) {
     define('PHPMAN_HOME_TITLE', 'phpman - Linux Command Reference, JSON API & MCP Server for AI Agents');
 }
