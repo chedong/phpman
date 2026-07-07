@@ -54,7 +54,7 @@ if (!empty($posArgs)) {
     $argc = count($argv);
 }
 
-$opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'cached-first', 'status', 'stop', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast', 'cache-only', 'rate-limit:']);
+$opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'cached-first', 'status', 'stop', 'restart', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast', 'cache-only', 'rate-limit:']);
 
 // Propagate positional mode:name into opts (existing --mode/--parameter take precedence)
 if ($posMode !== '' && !isset($opts['mode'])) {
@@ -66,7 +66,7 @@ if ($posParamList !== '' && !isset($opts['parameter'])) {
 
 // No options → show help
 $hasActionOpt = false;
-foreach (['help','h','yes','y','dry-run','status','stop'] as $k) {
+foreach (['help','h','yes','y','dry-run','status','stop','restart'] as $k) {
     if (isset($opts[$k])) { $hasActionOpt = true; break; }
 }
 if (!$hasActionOpt && !isset($opts['mode']) && !isset($opts['limit']) &&
@@ -87,6 +87,7 @@ if (isset($opts['help']) || isset($opts['h'])) {
     echo "Options:\n";
     echo "  --status           Show enhancement progress + sample URLs per mode\n";
     echo "  --stop             Stop a running batch (reads PID from --pid-file)\n";
+    echo "  --restart          Stop + restart batch (requires --mode)\n";
     echo "  --rebuild, -r      Force re-enhance even if emoji cache exists\n";
     echo "  --section=<s>      Manual section (e.g. '1', '3pm') for --parameter targets\n";
     echo "  --parameter=<p>    Specific pages (semicolon-separated, needs --mode)\n";
@@ -159,6 +160,34 @@ if ($stopMode) {
     @unlink($pidFile);
     echo "PID file removed.\n";
     exit(0);
+}
+
+// ── Restart mode: stop existing process, then start a new one ──
+$restartMode = isset($opts['restart']);
+if ($restartMode) {
+    if (!isset($opts['mode'])) {
+        fwrite(STDERR, "ERROR: --restart requires --mode\n");
+        exit(1);
+    }
+    if (file_exists($pidFile)) {
+        $pidContent = trim(file_get_contents($pidFile));
+        $parts = explode(' ', $pidContent, 2);
+        $pid = (int)$parts[0];
+        if ($pid > 0 && posix_kill($pid, 0)) {
+            echo "Stopping existing process PID {$pid}...\n";
+            posix_kill($pid, SIGTERM);
+            sleep(2);
+            if (posix_kill($pid, 0)) {
+                posix_kill($pid, SIGKILL);
+                echo "Process didn't stop — sent SIGKILL.\n";
+            } else {
+                echo "Process stopped.\n";
+            }
+        }
+    }
+    @unlink($pidFile);
+    echo "Restarting batch-enhance...\n";
+    // Fall through to normal execution below
 }
 
 // ── SSL verification skip for localhost ──
