@@ -5,11 +5,29 @@ function showHeader (string $title = "", string $parameter = "", string $section
     header("X-Content-Type-Options: nosniff");
     header("X-Frame-Options: DENY");
     header("Referrer-Policy: strict-origin-when-cross-origin");
-    // CSP: allow GA domains only when GA is enabled (#158)
+    // CSP: allow GA/AdSense domains only when enabled (#158)
     $csp = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://www.w3.org https://jigsaw.w3.org data:; script-src 'self' 'unsafe-inline'";
+    // script-src: extend with GA + AdSense domains as needed
     if (defined('PHPMAN_GA_ID') && PHPMAN_GA_ID !== '') {
         $csp .= " https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com";
-        $csp .= "; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com https://*.google.com https://*.google.co.jp";
+    }
+    if (defined('PHPMAN_ADSENSE_ID') && PHPMAN_ADSENSE_ID !== '') {
+        $csp .= " https://pagead2.googlesyndication.com";
+    }
+    // connect-src: GA + AdSense domains
+    $connectSrc = '';
+    if (defined('PHPMAN_GA_ID') && PHPMAN_GA_ID !== '') {
+        $connectSrc .= " https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com https://*.google.com https://*.google.co.jp";
+    }
+    if (defined('PHPMAN_ADSENSE_ID') && PHPMAN_ADSENSE_ID !== '') {
+        $connectSrc .= " https://*.adtrafficquality.google https://pagead2.googlesyndication.com";
+    }
+    if ($connectSrc !== '') {
+        $csp .= "; connect-src 'self'" . $connectSrc;
+    }
+    // frame-src: needed for AdSense ad iframes (default-src 'self' would block them)
+    if (defined('PHPMAN_ADSENSE_ID') && PHPMAN_ADSENSE_ID !== '') {
+        $csp .= "; frame-src 'self' https://*.googlesyndication.com";
     }
     $csp .= "; frame-ancestors 'none';";
     header("Content-Security-Policy: " . $csp);
