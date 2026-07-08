@@ -98,6 +98,30 @@ if (serverValue("PATH_INFO") !== "" && strpos(serverValue("PATH_INFO"), "/.well-
     exit;
 }
 
+// Reject malformed URL attacks (e.g. /man/DUPLICITY/sftp:/onedrive:/gdocs:/...)
+// These put protocol prefixes in path segments, producing endless crawl traps.
+$rawPath = serverValue("PATH_INFO", "");
+if ($rawPath !== "") {
+    // 1. Path length limit — any sane URL is < 300 chars
+    if (strlen($rawPath) > 300) {
+        http_response_code(400);
+        header("Content-Type: text/plain");
+        die("Bad Request: URL too long");
+    }
+    // 2. Reject segments with consecutive colons or too many non-module colons.
+    //    Valid: /man/File::Basename (Perl modules with ::), /ri/Net::HTTP
+    //    Invalid: /man/DUPLICITY/sftp:/onedrive:/scp:/... (protocol prefix trap)
+    $segments = explode('/', trim($rawPath, '/'));
+    foreach ($segments as $seg) {
+        // More than 2 colons → likely protocol prefix pattern (sftp:, gdocs:, etc.)
+        if (substr_count(rawurldecode($seg), ':') > 2) {
+            http_response_code(400);
+            header("Content-Type: text/plain");
+            die("Bad Request: malformed URL");
+        }
+    }
+}
+
 /**
  * parse parameters from $_SERVER["PATH_INFO"]: phpMan.php/MODE/COMMAND/SECTION/FORMAT
  * or parse parameters from HTTP/GET
