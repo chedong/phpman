@@ -98,27 +98,24 @@ if (serverValue("PATH_INFO") !== "" && strpos(serverValue("PATH_INFO"), "/.well-
     exit;
 }
 
-// Reject malformed URL attacks (e.g. /man/DUPLICITY/sftp:/onedrive:/gdocs:/...)
-// These put protocol prefixes in path segments, producing endless crawl traps.
-$rawPath = serverValue("PATH_INFO", "");
-if ($rawPath !== "") {
-    // 1. Path length limit — any sane URL is < 300 chars
-    if (strlen($rawPath) > 300) {
-        http_response_code(400);
-        header("Content-Type: text/plain");
-        die("Bad Request: URL too long");
+// Guard: reject URL attacks and scanner probes (restored from ec489ee, lost in code split)
+// Normal URLs like /man/tar/1/markdown (4 segments, ~24 chars) are unaffected.
+// Catches: /man/DUPLICITY/sftp:/onedrive:/gdocs:/... (protocol prefix crawl trap)
+$pathInfo = serverValue("PATH_INFO", "");
+if ($pathInfo !== "") {
+    $rawSegments = explode('/', trim($pathInfo, '/'));
+    $tooLong  = strlen($pathInfo) > 100;        // no valid phpMan URL exceeds 100 chars
+    $tooDeep  = count($rawSegments) > 5;        // max: /mode/name/section/format = 4 segments
+    $hasProto = preg_match('#:/#', $pathInfo) === 1;  // protocol prefix like sftp:, gdocs:
+    // Extra: path segment with > 2 colons (not Perl ::, must be protocol pattern)
+    $multiColon = false;
+    foreach ($rawSegments as $seg) {
+        if (substr_count(rawurldecode($seg), ':') > 2) { $multiColon = true; break; }
     }
-    // 2. Reject segments with consecutive colons or too many non-module colons.
-    //    Valid: /man/File::Basename (Perl modules with ::), /ri/Net::HTTP
-    //    Invalid: /man/DUPLICITY/sftp:/onedrive:/scp:/... (protocol prefix trap)
-    $segments = explode('/', trim($rawPath, '/'));
-    foreach ($segments as $seg) {
-        // More than 2 colons → likely protocol prefix pattern (sftp:, gdocs:, etc.)
-        if (substr_count(rawurldecode($seg), ':') > 2) {
-            http_response_code(400);
-            header("Content-Type: text/plain");
-            die("Bad Request: malformed URL");
-        }
+    if ($tooLong || $tooDeep || $hasProto || $multiColon) {
+        http_response_code(403);
+        header("Content-Type: text/plain; charset=UTF-8");
+        die("403 Forbidden: malformed PATH_INFO\n");
     }
 }
 
