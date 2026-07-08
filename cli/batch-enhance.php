@@ -754,6 +754,107 @@ function showStatus(string $dbPath): void {
         $remaining, $totalAll - $totalMd, $totalAll - $totalHtml, $estMin);
     echo str_repeat('=', 70) . "\n";
 
+    // ── Process runtime status ──
+    echo "\n┌─ Processes ───────────────────────────────────────────────────────────┐\n";
+    $logsDir = rtrim(PHPMAN_HOME, '/') . '/logs';
+    $errorLog = $logsDir . '/phpman_error.log';
+    $now = time();
+
+    // Known PID file locations per mode
+    $pidFiles = [
+        'man'     => $logsDir . '/batch_man.pid',
+        'perldoc' => '/tmp/bp.pid',
+        'info'    => '/tmp/bi.pid',
+        'pydoc'   => '/tmp/bpy.pid',
+        'ri'      => '/tmp/br.pid',
+    ];
+
+    foreach ($pidFiles as $mode => $pidFile) {
+        $pid = 0;
+        $startTime = 0;
+        $running = false;
+
+        if (file_exists($pidFile)) {
+            $content = @file_get_contents($pidFile);
+            if ($content !== false) {
+                $parts = explode(' ', trim($content), 2);
+                $pid = (int)($parts[0] ?? 0);
+                $startTime = (int)($parts[1] ?? 0);
+            }
+        }
+
+        if ($pid > 0 && function_exists('posix_kill')) {
+            $running = posix_kill($pid, 0);
+        } elseif ($pid > 0) {
+            // macOS/BSD fallback — check /proc or ps
+            $running = (trim((string)@shell_exec("ps -p $pid -o pid= 2>/dev/null")) !== '');
+        }
+
+        // Count recent errors for this mode (past hour, or since process start)
+        $errCount = 0;
+        $sinceTime = $startTime > 0 ? $startTime : ($now - 3600);
+        if (file_exists($errorLog)) {
+            $escMode = preg_quote($mode, '/');
+            $lines = @file($errorLog);
+            if ($lines) {
+                foreach ($lines as $line) {
+                    // Check timestamp roughly — error lines start with [DD-Mon-YYYY]
+                    if (preg_match('/^\[(\d{2}-[A-Za-z]{3}-\d{4})\s+(\d{2}):(\d{2}):(\d{2})\]/', $line, $m)) {
+                        $errTs = strtotime("{$m[1]} {$m[2]}:{$m[3]}:{$m[4]}");
+                        if ($errTs < $sinceTime) continue;
+                    }
+                    if (strpos($line, "mode={$mode}") !== false || strpos($line, "--mode={$mode}") !== false) {
+                        $errCount++;
+                    }
+                }
+            }
+        }
+
+        // Runtime
+        $uptime = '';
+        if ($running && $startTime > 0) {
+            $elapsed = $now - $startTime;
+            $h = intdiv($elapsed, 3600);
+            $m = intdiv($elapsed % 3600, 60);
+            $uptime = ($h > 0 ? "{$h}h{$m}m" : "{$m}m");
+        }
+
+        // Status indicator
+        $statusIcon = '';
+        $statusText = '';
+        if ($running) {
+            $idleThreshold = 300; // 5 min idle = stalled
+            $lastEnhanced = 0;
+            // Quick check: when was the last emoji entry written?
+            try {
+                $lastMd = $db->querySingle("SELECT MAX(updated_at) FROM cache WHERE mode='{$mode}' AND format='emoji_md'") ?: 0;
+                $lastHtml = $db->querySingle("SELECT MAX(updated_at) FROM cache WHERE mode='{$mode}' AND format='emoji_html'") ?: 0;
+                $lastEnhanced = (int)max($lastMd, $lastHtml);
+            } catch (\Throwable $e) {}
+
+            if ($lastEnhanced > 0 && ($now - $lastEnhanced) > $idleThreshold) {
+                $statusIcon = '⚠️ ';
+                $statusText = "(stalled — last enhanced " . ceil(($now - $lastEnhanced)/60) . "m ago)";
+            } elseif ($lastEnhanced > 0) {
+                $statusIcon = '✅ ';
+                $statusText = "(@ " . date('H:i', $lastEnhanced) . ")";
+            }
+        } else {
+            $statusIcon = '⏸️ ';
+            $statusText = '(stopped)';
+        }
+
+        printf("  %s%-8s %-10s %5d errors%s  %s\n",
+            $statusIcon,
+            $mode,
+            $running ? "running {$uptime}" : '',
+            $errCount,
+            ($pid > 0 ? "  PID $pid" : ''),
+            $statusText
+        );
+    }
+    echo "└──────────────────────────────────────────────────────────────────────────┘\n";
+
     // ── Config dump ──
     echo "\n┌─ Config ──────────────────────────────────────────────────────────────┐\n";
     $configs = ["PHPMAN_HOME", "PHPMAN_BASE_URL", "PHPMAN_GA_ID", "PHPMAN_WIDTH", "PHPMAN_TOC_THRESHOLD", "PHPMAN_GZIP_MIN_BYTES", "PHPMAN_TLDR_MAX_EXAMPLES", "PHPMAN_ENHANCE_MAX_CHARS", "LLM_API_URL", "LLM_API_KEY", "LLM_MODEL", "LLM_MAX_TOKENS", "MCP_API_KEY", "PHPMAN_DEBUG", "CACHE_SCHEMA_VERSION"];
