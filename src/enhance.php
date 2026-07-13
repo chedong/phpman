@@ -63,6 +63,10 @@ function callLLMEndpoint(string $systemPrompt, string $userMessage, array $ep, s
         'temperature' => 0.3,
     ], JSON_UNESCAPED_UNICODE);
 
+    // PHP default_socket_timeout (60s on most servers) preempts CURLOPT_TIMEOUT.
+    // Set it high enough that only our cURL timeout controls the request lifecycle.
+    ini_set('default_socket_timeout', max($timeout + 30, 900));
+
     $ch = curl_init($ep['url']);
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
