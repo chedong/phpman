@@ -133,7 +133,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
         }
     }
     
-    $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp", ".well-known", "pydoc", "ri");
+    $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp", ".well-known", "pydoc", "ri", "status");
     $seg_count = count($segments);
     
     if ($seg_count >= 1) {
@@ -266,6 +266,123 @@ else if ( $mode == "copyright" ) {
 // MCP (Model Context Protocol) mode: JSON-RPC over HTTP POST
 if ( $mode == "mcp" ) {
     handleMcp();
+    exit;
+}
+// Batch enhance status endpoint (JSON only, requires MCP_API_KEY or local request)
+if ( $mode == "status" ) {
+    header("Content-Type: application/json; charset=UTF-8");
+    header("Cache-Control: no-cache");
+
+    // Security: require valid key
+    $statusKey = getQueryParam("key");
+    $isLocal   = isLocalRequest();
+    $mcpKey    = defined('MCP_API_KEY') ? MCP_API_KEY : '';
+    if (! $isLocal && ($mcpKey === '' || $statusKey !== $mcpKey)) {
+        http_response_code(403);
+        echo json_encode(["error" => "Forbidden: requires ?key= parameter"]);
+        exit;
+    }
+
+    // PID file paths (aligned with batch-enhance.php defaults)
+    $pidPaths = [
+        "man"     => "/tmp/bm.pid",
+        "perldoc" => "/tmp/bp.pid",
+        "info"    => "/tmp/bi.pid",
+        "pydoc"   => "/tmp/bpy.pid",
+        "ri"      => "/tmp/br.pid",
+    ];
+
+    $errorLog = ini_get('error_log');
+    $db       = cacheDb();
+    $result   = [];
+    $now      = time();
+    $running  = 0;
+    $stopped  = 0;
+
+    foreach ($pidPaths as $m => $pidFile) {
+        $entry = [
+            "mode"      => $m,
+            "running"   => false,
+            "pid"       => null,
+            "started"   => null,
+            "uptime"    => null,
+            "errors"    => 0,
+            "stalled"   => false,
+            "last_emoji_min_ago" => null,
+        ];
+
+        // 1. PID file check
+        $pf = __DIR__ . '/' . $pidFile;
+        if (strpos($pidFile, '/tmp/') === 0) $pf = $pidFile;
+
+        if (file_exists($pf)) {
+            $pidRaw = trim(file_get_contents($pf));
+            $parts  = explode(' ', $pidRaw);
+            $pid    = (int)$parts[0];
+            $start  = isset($parts[1]) ? (int)$parts[1] : null;
+
+            if ($pid > 0) {
+                $alive = false;
+                if (function_exists('posix_kill')) {
+                    $alive = posix_kill($pid, 0);
+                } else {
+                    $alive = file_exists("/proc/$pid");
+                }
+                if ($alive) {
+                    $entry["running"] = true;
+                    $entry["pid"]     = $pid;
+                    $entry["started"] = $start;
+                    if ($start) {
+                        $entry["uptime"] = $now - $start;
+                    }
+                    $running++;
+                }
+            }
+        }
+
+        if (! $entry["running"]) {
+            $stopped++;
+        }
+
+        // 2. Error count from error_log
+        if ($errorLog && file_exists($errorLog)) {
+            $escapedMode = escapeshellarg($m);
+            $entry["errors"] = (int)shell_exec(
+                "grep -c 'mode='{$escapedMode} " . escapeshellarg($errorLog) . " 2>/dev/null"
+            ) ?: 0;
+        }
+
+        // 3. Last emoji enhanced (staleness check)
+        try {
+            if ($db) {
+                $stmt = $db->prepare(
+                    "SELECT MAX(updated_at) FROM cache WHERE mode = :m AND format IN ('emoji_html','emoji_md') AND status='found'"
+                );
+                $stmt->bindValue(':m', $m, SQLITE3_TEXT);
+                $res = $stmt->execute();
+                $row = $res->fetchArray(SQLITE3_NUM);
+                if ($row && $row[0]) {
+                    $lastTs = (int)$row[0];
+                    $minAgo = (int)(($now - $lastTs) / 60);
+                    $entry["last_emoji_min_ago"] = $minAgo;
+                    $entry["stalled"] = ($entry["running"] && $minAgo > 15);
+                }
+                $res->finalize();
+            }
+        } catch (\Throwable $ignored) {}
+
+        $result[] = $entry;
+    }
+
+    $summary = [
+        "running" => $running,
+        "stopped" => $stopped,
+        "total_errors" => array_sum(array_column($result, "errors")),
+        "checked_at" => date('c', $now),
+        "server_time" => $now,
+    ];
+
+    echo json_encode(["summary" => $summary, "processes" => $result], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     exit;
 }
 /**
