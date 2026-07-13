@@ -9,7 +9,7 @@ function callLLM(string $systemPrompt, string $userMessage, string $context = ''
         'model' => LLM_MODEL,
         'label' => 'primary',
         'max_tokens' => (int)LLM_MAX_TOKENS,
-        'timeout' => 120,
+        'timeout' => 600,
     ]];
     if (defined('LLM_FALLBACKS') && is_array(LLM_FALLBACKS)) {
         foreach (LLM_FALLBACKS as $i => $fb) {
@@ -23,7 +23,7 @@ function callLLM(string $systemPrompt, string $userMessage, string $context = ''
                 'model' => $fbModel,
                 'label' => 'fallback-' . ($i + 1),
                 'max_tokens' => $fb['max_tokens'] ?? min((int)LLM_MAX_TOKENS, 32768),
-                'timeout' => $fb['timeout'] ?? 60,
+                'timeout' => $fb['timeout'] ?? 300,
             ];
         }
     }
