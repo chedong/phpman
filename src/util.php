@@ -117,6 +117,7 @@ function normalizeMode ($mode): string {
         "mcp" => true,
         "pydoc" => true,
         "ri" => true,
+        "status" => true,
     );
 
     return isset($allowed_modes[$mode]) ? $mode : "man";
