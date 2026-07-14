@@ -146,5 +146,48 @@ function normalizeSection ($section): string {
     return $section;
 }
 
+/**
+ * Validate raw PATH_INFO before segment parsing. Rejects URL attacks and
+ * scanner probes (e.g. /man/DUPLICITY/sftp:/onedrive:/gdocs:/...).
+ *
+ * Catches four malformed shapes:
+ *   - tooLong:  total path length > 100 chars (no valid phpMan URL is this long)
+ *   - tooDeep:  more than 5 path segments
+ *   - hasProto: ':/' pattern (URI scheme prefix like sftp://, http://)
+ *   - hasProtocolColon: any segment contains a ':' that is NOT part of a '::'
+ *                       pair (Perl package separator). Single colons indicate
+ *                       protocol-prefix crawlers like sftp:, onedrive:, gdocs:.
+ *                       Valid Perl modules (Dpkg::Control::HashCore, std::string)
+ *                       always have colons in '::' pairs and pass through.
+ *
+ * Returns the failing condition name, or empty string if PATH_INFO is valid.
+ */
+function validatePathInfo (string $pathInfo): string {
+    if ($pathInfo === "") {
+        return "";
+    }
+    $rawSegments = explode('/', trim($pathInfo, '/'));
+    if (strlen($pathInfo) > 100) {
+        return "tooLong";
+    }
+    if (count($rawSegments) > 5) {
+        return "tooDeep";
+    }
+    if (preg_match('#:/#', $pathInfo) === 1) {
+        return "hasProto";
+    }
+    foreach ($rawSegments as $seg) {
+        // Count ':' not adjacent to another ':' (i.e. NOT part of Perl '::').
+        // Dpkg::Control::HashCore -> 0 single colons (all 4 colons are paired).
+        // sftp:onedrive:gdocs:   -> 3 single colons (none are paired).
+        $decoded = rawurldecode($seg);
+        $singleColons = preg_match_all('/(?<!:):(?!:)/', $decoded);
+        if ($singleColons > 0) {
+            return "hasProtocolColon";
+        }
+    }
+    return "";
+}
+
 
 // normalizeMode: validate and normalize the display mode parameter
