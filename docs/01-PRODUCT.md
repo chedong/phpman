@@ -179,153 +179,34 @@ All three use placeholders in the repo — never committed with real values. `ma
 
 Footer displays `phpMan v4.7-3-g1cea00a`. Local dev shows placeholder values: `PHPMAN_HOME = __PHPMAN_HOME__`, `GIT_DESCRIBE = __GIT_DESCRIBE__`.
 
-### 2.12 LLM Emoji Enhancement (v4.0)
+### 2.12 LLM Enhancement — Moved to External Project
 
-phpMan v4.0 introduces an optional LLM-powered enhancement layer that transforms raw documentation into emoji-rich, visually scannable versions. The enhancement is **additive** — base HTML/JSON/Markdown/MCP output is unaffected and remains the fallback.
+**As of 2026-07-14, LLM-based enhancement is no longer a phpMan feature.**
 
-**v4.0 uses a dual-format architecture**: 2 LLM calls per document, producing two independent caches:
-- `emoji_html` — Enhanced HTML served as the **default view**
-- `emoji_md` — Enhanced Markdown served for **/markdown format**
+What moved out of phpMan:
+- `enhanceManPage()`, `callLLM()`, `cleanEmojiHtml()` — LLM orchestration
+- `formatMarkdownToHTML()`, `formatInlineMarkdown()` — emoji_md → HTML rendering
+- `renderTocSidebar()` — TOC built from LLM-enhanced HTML structure
+- `emoji_html` / `emoji_md` SQLite cache fields
+- LLM config keys: `LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`, `LLM_MAX_TOKENS`, `PHPMAN_ENHANCE_MAX_CHARS`
+- `cli/batch-enhance.php` — moved to the standalone `doc-enhance` project
+- The `--enhance` flag (formerly `phpMan.php --enhance=...`)
 
-#### 2.11.1 Architecture
+**Why**: the 2026-07 myblog MT→markdown migration made it clear that LLM work is dominated by **task management, prompt versioning, and flow orchestration** — concerns that don't belong in a documentation server. Pushing the same prompts through phpMan, the myblog migration, and future projects is the right shape; embedding it in phpMan was not.
 
-```
-man page ──→ getManPage($name, '', 'html') → raw HTML (with <pre><code>/<b>/<u>/<a>)
-         │                                       ↓
-         │                           callLLM() → emoji_html cache (default view)
-         │
-         └──→ getManPage($name, '', 'markdown') → raw Markdown
-                                                 ↓
-                                     callLLM() → emoji_md cache (/markdown view)
-```
+**What this means for phpMan**:
+- phpMan's HTML output is the **raw** terminal/man HTML (via `formatManPerlDoc()`), not LLM-enhanced
+- phpMan's Markdown output is the **raw** markdown (via `formatManPerlDocToMarkdown()`)
+- The `Markdown → HTML` conversion path that existed only for `emoji_md` rendering is removed; users wanting HTML read the HTML endpoint
+- **0 LLM calls** in phpMan's request path
+- Cache remains for raw output (just storage, no enhancement)
 
-- **Input (HTML path)**: Rendered HTML content block (extracted from `<div id="man-content">` or `<pre>`), full document, no truncation (v4.2)
-- **Input (Markdown path)**: Full man page Markdown, no truncation (v4.2)
-- **Output size**: Controlled by `PHPMAN_ENHANCE_MAX_CHARS` (default 32,000) in prompt instruction (v4.2)
-- **Output**: Two cache entries per document — `emoji_html` and `emoji_md`
-- **Default view**: When `emoji_html` cache exists, served directly as HTML; `?format=html` or PATH_INFO `/html` bypasses
-- **Markdown view**: `/markdown` format prefers `emoji_md` cache over raw Markdown
-- **TOC**: `renderTocSidebar()` builds floating sidebar from `<h2>`/`<h3>` tags (v4.2: regex fixed to match tags with `id="..."` attributes)
-- **Code blocks (v4.2)**: External JS `phpman.js` wraps all `#content-wrap pre` in `.code-block` div with `📋 Copy` button top-right. Tokyo Night styling: `#1f2335` bg, italic font, rounded border. Extracted from inline `<script>` to separate file (v4.4.4+) for XHTML validity and browser caching.
-- **Theme toggle (v4.7)**: CSS custom properties with Tokyo Night (dark) + Hakusho (白書, light) palettes. Auto-follows `prefers-color-scheme`; manual toggle button (☀/☾) in top-left corner with localStorage persistence. `phpman.js` handles toggle logic.
-- **Prompt rules (v4.2)**: forbid `<a>` inside `<pre><code>`, forbid emoji as list markers, preserve original structure, condense output under configurable limit
+**What this means for consumers**:
+- The `doc-enhance` project (external) reads phpMan's raw markdown via HTTP, applies LLM transforms, and serves the enhanced output from its own cache
+- phpMan is unaware of `doc-enhance`'s existence
+- The enhanced `html` and `markdown` formats are no longer available from phpMan; the raw versions are the default and the only options
 
-#### 2.11.2 LLM Integration
-
-Uses OpenAI-compatible chat completions API:
-
-| Config | Purpose |
-|--------|---------|
-| `LLM_API_URL` | API endpoint (default: `https://taotoken.net/api/v1/chat/completions`) |
-| `LLM_API_KEY` | Bearer token |
-| `LLM_MODEL` | Model name (e.g. `deepseek-v4-pro`) |
-| `LLM_MAX_TOKENS` | Max completion tokens (no hard cap — passes through directly) |
-
-- `callLLM()`: cURL with 300s timeout, JSON error logging to `phpman_error.log`
-- **No hard max_tokens cap**: `LLM_MAX_TOKENS` used directly (was capped at 16,384)
-- **Truncation detection**: `finish_reason: "length"` logged with token usage stats
-- Empty API key = enhancement disabled (offline-safe)
-
-#### 2.11.3 HTML-Direct Rendering Pipeline
-
-The emoji_html path sends rendered HTML to the LLM directly, avoiding the Markdown→HTML conversion round-trip. Key advantages:
-- LLM-selected code blocks are already properly wrapped in `<pre><code>`
-- Cross-reference links (`<a>` tags) are preserved natively
-- Bold/underline formatting (`<b>`, `<u>`) stays intact
-- No regex-based Markdown parsing needed for enhanced content
-
-**HTML LLM prompt rules**:
-- Output ONLY valid HTML fragment — no `<html>`, `<head>`, `<body>` wrappers
-- Preserve `<pre>`, `<code>`, `<b>`, `<u>`, `<a>` tags
-- `<h2>` section headings with emoji prefix, `<h3>` subsections
-- Quick Reference as `<table>`, options as `<li>` with emoji
-- Code blocks (shell, Perl, Python, Ruby) wrapped in `<pre><code>`
-
-**Markdown rendering** (for /markdown format and legacy fallback):
-`formatMarkdownToHTML()` / `formatInlineMarkdown()` are custom lightweight parsers handling headings, lists, tables, code blocks, blockquotes, bold/italic/code/links with recursive nested formatting. Used only for emoji_md → HTML fallback, not in the primary rendering path.
-
-#### 2.11.4 CLI Enhancement: `--enhance`
-
-```bash
-# Batch mode — generates BOTH emoji_html and emoji_md (2 LLM calls per doc)
-php phpMan.php --enhance=man:ls,tar,grep
-php phpMan.php --enhance=perldoc:File::Basename,Getopt::Long
-php phpMan.php --enhance=pydoc:os,json,re
-```
-
-`enhanceManPage()` runs two phases: Phase 1 generates `emoji_md` (Markdown → LLM), Phase 2 generates `emoji_html` (HTML → LLM). Each checks cache first, skips if already enhanced.
-
-#### 2.11.5 Single-Page CLI: `cli/batch-enhance.php`
-
-**Problem**: On shared hosting (e.g., DreamHost), the `man` command spawns 5+ subprocesses (zsoelim → manconv → preconv → tbl → groff). Under high system load (load average 25+), `fork()` fails with `Resource temporarily unavailable`. Direct `man ls` works, but PHP's `shell_exec("man ls")` fails because the PHP process already consumes memory, leaving insufficient resources for the man pipeline fork chain.
-
-The web server (Apache/mod_fcgid) can still serve man pages because its worker processes have different resource limits and the pages are cached after first request.
-
-**Solution**: `cli/batch-enhance.php` fetches the Markdown from the running phpMan web instance via HTTP, sends it to the LLM, and writes the enhanced result directly into the SQLite cache — bypassing the `man` fork entirely.
-
-```bash
-# Requires PHPMAN_BASE_URL env var or defaults to http://localhost:8080/phpMan.php
-PHPMAN_BASE_URL=https://test.chedong.com/phpMan.php php cli/batch-enhance.php man ls
-
-# Batch enhance via shell loop (NOT recommended — use batch_enhance.php instead)
-for cmd in ls tar grep; do
-  php cli/batch-enhance.php man $cmd
-done
-```
-
-#### 2.11.6 Offline Batch Enhancement: `cli/batch-enhance.php`
-
-Bulk emoji enhancement for all indexed pages. Designed for long-running background execution on staging/production servers.
-
-**Entry discovery**: Reads from `search_index_meta` (man pages from `cli/build-index.php --cron`) + cache-discovered perldoc/info/pydoc/ri entries — total ~35K entries on a typical server.
-
-**Execution flow per entry**:
-1. Check emoji cache → skip if already enhanced (idempotent resume)
-2. Check HTML cache → if missing, fetch HTML via the phpMan web instance (auto-caches to `html` format)
-3. Call LLM → write `emoji_md` and/or `emoji_html` to SQLite cache
-4. Wait 120s between LLM calls (rate limit for API quotas)
-
-```bash
-# Dry-run preview
-php cli/batch-enhance.php --dry-run
-
-# Full batch: emoji_md only, HTML-cached entries first (fast path)
-nohup php cli/batch-enhance.php --cached-first --skip-errors --yes --format=md \
-  > logs/batch_enhance_md.log 2>&1 &
-
-# After md pass: emoji_html only
-nohup php cli/batch-enhance.php --cached-first --skip-errors --yes --format=html \
-  > logs/batch_enhance_html.log 2>&1 &
-
-# Filter by mode, limit entries
-php cli/batch-enhance.php --mode=man,perldoc --limit=100 --dry-run
-```
-
-**Key features**:
-- **Resilient resume**: Every enhanced entry written to SQLite immediately; stopping/restarting auto-skips cached entries
-- **Rate limiting**: Configurable 120s minimum between LLM calls (respects API quotas)
-- **Sort strategy**: `--cached-first` prioritizes entries with existing HTML cache (no HTTP fetch needed)
-- **Error handling**: `--skip-errors` continues past failures; 404s and empty pages are logged and skipped
-- **Progress tracking**: Per-10-entry progress reports with elapsed time and ETA
-- **Timeline**: ~35K entries × 2 min/call ≈ 48 days for single format, ~97 days for both formats on a single server
-
-**Key differences from `--enhance` and `enhance_page.php`**:
-| Aspect | `--enhance` (CLI) | `cli/batch-enhance.php` | `cli/batch-enhance.php` |
-|--------|-------------------|--------------------------|---------------------------|
-| Content source | `shell_exec("man ...")` | HTTP fetch from phpMan web | HTTP fetch from phpMan web |
-| Cache format | `emoji_html` + `emoji_md` (dual) | `emoji_md` only | `emoji_md` + `emoji_html` (configurable) |
-| Entry discovery | Manual name list | Single name per invocation | Auto-discover from index + cache |
-| Works under load | No (fork fails) | Yes (web server handles man) | Yes (web server handles man) |
-| Rate limiting | None | Manual (shell loop) | Built-in 120s between calls |
-| Resume support | Cache-based skip | Manual tracking | Auto-skip + offset resume |
-| Scale | ~10 entries | 1 entry per run | 35K entries, ~48 days |
-| Execution mode | CLI one-shot | CLI one-shot | CLI long-running (nohup/cron) |
-
-#### 2.11.7 Format Negotiation
-
-Enhanced pages respect the same 4-tier format priority as regular pages (GET param → PATH_INFO → Accept header → default HTML). Explicit `?format=html` or PATH_INFO `/html` bypasses enhancement to show the original `<pre>` rendering.
-
-The "Enhanced by LLM" credit line in the footer links to the original (un-enhanced) HTML view with the correct section parameter.
+Historical design of the LLM features (phpMan v4.0–v4.9) is preserved in git history for reference.
 
 ### 2.13 Command Name Case & Platform Differences (Linux vs BSD)
 
