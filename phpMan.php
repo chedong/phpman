@@ -98,25 +98,16 @@ if (serverValue("PATH_INFO") !== "" && strpos(serverValue("PATH_INFO"), "/.well-
     exit;
 }
 
-// Guard: reject URL attacks and scanner probes (restored from ec489ee, lost in code split)
+// Guard: reject URL attacks and scanner probes.
 // Normal URLs like /man/tar/1/markdown (4 segments, ~24 chars) are unaffected.
 // Catches: /man/DUPLICITY/sftp:/onedrive:/gdocs:/... (protocol prefix crawl trap)
+//          /man/Dpkg::Control::HashCore (Perl module with ::) is ALLOWED.
 $pathInfo = serverValue("PATH_INFO", "");
-if ($pathInfo !== "") {
-    $rawSegments = explode('/', trim($pathInfo, '/'));
-    $tooLong  = strlen($pathInfo) > 100;        // no valid phpMan URL exceeds 100 chars
-    $tooDeep  = count($rawSegments) > 5;        // max: /mode/name/section/format = 4 segments
-    $hasProto = preg_match('#:/#', $pathInfo) === 1;  // protocol prefix like sftp:, gdocs:
-    // Extra: path segment with > 2 colons (not Perl ::, must be protocol pattern)
-    $multiColon = false;
-    foreach ($rawSegments as $seg) {
-        if (substr_count(rawurldecode($seg), ':') > 2) { $multiColon = true; break; }
-    }
-    if ($tooLong || $tooDeep || $hasProto || $multiColon) {
-        http_response_code(403);
-        header("Content-Type: text/plain; charset=UTF-8");
-        die("403 Forbidden: malformed PATH_INFO\n");
-    }
+$pathError = validatePathInfo($pathInfo);
+if ($pathInfo !== "" && $pathError !== "") {
+    http_response_code(403);
+    header("Content-Type: text/plain; charset=UTF-8");
+    die("403 Forbidden: malformed PATH_INFO ({$pathError})\n");
 }
 
 /**
