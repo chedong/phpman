@@ -54,7 +54,7 @@ if (!empty($posArgs)) {
     $argc = count($argv);
 }
 
-$opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'cached-first', 'status', 'stop', 'restart', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast', 'cache-only', 'rate-limit:']);
+$opts = getopt('hyrf', ['help', 'yes', 'dry-run', 'mode:', 'limit:', 'format:', 'resume-from:', 'cached-first', 'status', 'stop', 'restart', 'pid-file:', 'rebuild', 'section:', 'parameter:', 'fast', 'cache-only', 'rate-limit:', 'force']);
 
 // Propagate positional mode:name into opts (existing --mode/--parameter take precedence)
 if ($posMode !== '' && !isset($opts['mode'])) {
@@ -101,6 +101,7 @@ if (isset($opts['help']) || isset($opts['h'])) {
     echo "  --cache-only       Generate HTML+MD cache only, skip LLM enhancement\n";
     echo "  --rate-limit=<s>   Seconds between LLM calls (default: 60, was 120)\n";
     echo "  --pid-file=<path>  Write PID to file (auto: PHPMAN_HOME/logs/batch_enhance.pid)\n";
+    echo "  --force            Auto-kill existing process with same PID file on start\n";
     echo "  --help             Show this help\n";
     echo "\nShorthand <mode>:<name> is equivalent to --mode=<mode> --parameter=<name>.\n";
     echo "Multiple names separated by commas are converted to semicolons automatically.\n";
@@ -109,9 +110,38 @@ if (isset($opts['help']) || isset($opts['h'])) {
 
 $dbPath = rtrim(PHPMAN_HOME, '/') . '/db/phpman_cache.db';
 $logsDir = rtrim(PHPMAN_HOME, '/') . '/logs';
-$pidFile = $opts['pid-file'] ?? ($logsDir . '/batch_enhance.pid');
 
-// ── Stop mode ──
+// ── Deterministic PID file naming (mode + format → canonical path) ──
+// Same options always produce the same PID file → --restart/--stop can find it.
+function buildPidFilePath(array $opts, string $logsDir): string {
+    // Explicit --pid-file always wins
+    if (!empty($opts['pid-file'])) return $opts['pid-file'];
+
+    $mode = isset($opts['mode']) ? strtolower(trim($opts['mode'])) : '';
+    // Only single-mode gets a mode-specific PID file
+    if ($mode === '' || strpos($mode, ',') !== false) {
+        return $logsDir . '/batch_enhance.pid';
+    }
+
+    // Standard mappings (same as phpMan.php /status endpoint)
+    $modeAbbrev = [
+        'man'     => '/tmp/bm',
+        'perldoc' => '/tmp/bp',
+        'info'    => '/tmp/bi',
+        'pydoc'   => '/tmp/bpy',
+        'ri'      => '/tmp/br',
+    ];
+    $base = $modeAbbrev[$mode] ?? ($logsDir . '/batch_' . $mode);
+
+    // Append format suffix for non-default (format=html|md, not "both")
+    $format = isset($opts['format']) ? strtolower(trim($opts['format'])) : 'both';
+    if ($format === 'html' || $format === 'md') {
+        return "{$base}_{$format}.pid";
+    }
+    return "{$base}.pid";
+}
+
+$pidFile = buildPidFilePath($opts, $logsDir);
 $stopMode = isset($opts['stop']);
 if ($stopMode) {
     // Status first if requested
@@ -214,10 +244,28 @@ if ($ownPid) {
             $parts = explode(' ', $existing, 2);
             $oldPid = (int)$parts[0];
             if ($oldPid > 0 && posix_kill($oldPid, 0)) {
-                fwrite(STDERR, "ERROR: Another batch_enhance is already running (PID {$oldPid}). Use --stop first or wait.\n");
-                flock($pidFh, LOCK_UN);
-                fclose($pidFh);
-                exit(1);
+                $force = isset($opts['force']) || isset($opts['yes']) || isset($opts['y']);
+                if ($force) {
+                    echo "Old process PID {$oldPid} still alive — sending SIGTERM...\n";
+                    posix_kill($oldPid, SIGTERM);
+                    $waited = 0;
+                    while (posix_kill($oldPid, 0) && $waited < 15) {
+                        usleep(500000); // 0.5s
+                        $waited++;
+                    }
+                    if (posix_kill($oldPid, 0)) {
+                        posix_kill($oldPid, SIGKILL);
+                        echo "Sent SIGKILL to PID {$oldPid}.\n";
+                        usleep(500000);
+                    } else {
+                        echo "Old process stopped after {$waited} ticks.\n";
+                    }
+                } else {
+                    fwrite(STDERR, "ERROR: Another batch_enhance is already running (PID {$oldPid}). Use --stop, --restart, or --force first.\n");
+                    flock($pidFh, LOCK_UN);
+                    fclose($pidFh);
+                    exit(1);
+                }
             }
             ftruncate($pidFh, 0);
             rewind($pidFh);
