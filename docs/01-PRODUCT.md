@@ -208,6 +208,76 @@ What moved out of phpMan:
 
 Historical design of the LLM features (phpMan v4.0–v4.9) is preserved in git history for reference.
 
+#### 2.12.1 batch-enhance.php CLI Reference (transitional)
+
+While extraction is ongoing, `cli/batch-enhance.php` remains available for offline batch LLM emoji enhancement. It `require_once`s phpMan.php and calls `getManPage()`/`getPerldocPage()`/etc. directly — zero HTTP dependency, no web server needed.
+
+**Quick enhance (shorthand):**
+
+```bash
+php cli/batch-enhance.php man:ls                     # Single page
+php cli/batch-enhance.php man:ls,tar,grep            # Multiple pages
+php cli/batch-enhance.php man:ls,tar,grep --rebuild  # Force redo
+php cli/batch-enhance.php perldoc:File::Basename     # Perl module
+```
+
+**Full batch mode:**
+
+```bash
+# Dry-run preview
+php cli/batch-enhance.php --dry-run
+
+# All modes, HTML-cached first, both formats
+nohup php cli/batch-enhance.php --cached-first --yes \
+  >> logs/batch-enhance.log 2>&1 &
+
+# Single mode only
+nohup php cli/batch-enhance.php --mode=man --yes \
+  --pid-file=/tmp/bm.pid >> logs/batch-enhance.log 2>&1 &
+
+# HTML format only (skip emoji_md)
+php cli/batch-enhance.php --format=html --yes
+```
+
+**Process management:**
+
+```bash
+# Show per-mode progress with counts, percentages, sample URLs
+php cli/batch-enhance.php --status
+
+# Show status then stop running batch
+php cli/batch-enhance.php --status --stop
+
+# Stop + restart (requires --mode)
+php cli/batch-enhance.php --restart --mode=man --yes
+```
+
+**All options:**
+
+| Option | Description |
+|--------|-------------|
+| `--status` | Show enhancement progress + sample URLs per mode |
+| `--stop` | Stop a running batch (reads PID from `--pid-file`) |
+| `--restart` | Stop + restart batch (requires `--mode`) |
+| `--rebuild, -r` | Force re-enhance even if emoji cache exists |
+| `--mode=<m>` | Filter: `man`, `perldoc`, `info`, `pydoc`, `ri` (comma-separated) |
+| `--parameter=<p>` | Specific pages (semicolon-separated, needs `--mode`) |
+| `--section=<s>` | Manual section (e.g. `1`, `3pm`) for `--parameter` targets |
+| `--dry-run` | Show what would be done, no LLM calls |
+| `--yes, -y` | Skip confirmation prompt (for cron/SSH) |
+| `--limit=<n>` | Max entries to process (default: unlimited) |
+| `--format=<f>` | `html`, `md`, or `both` (default: `both`) |
+| `--resume-from=<n>` | Skip first N entries |
+| `--cached-first` | Sort: entries with HTML cache first |
+| `--cache-only` | Generate HTML+MD cache only, skip LLM enhancement |
+| `--rate-limit=<s>` | Seconds between LLM calls (default: 60) |
+| `--pid-file=<path>` | Write PID to file (auto: `PHPMAN_HOME/logs/batch_enhance.pid`) |
+| `--help` | Show help text |
+
+Key features: idempotent resume (every entry written to SQLite immediately), 2-min rate limiting, `--cached-first` sort, non-existent page skip (NOT_FOUND cache), max 10 consecutive failures before abort.
+
+See also `docs/05-PLAN.md` §batch_enhance lifecycle for design details.
+
 ### 2.13 Command Name Case & Platform Differences (Linux vs BSD)
 
 phpMan's `normalizeParameter()` routing preserves original case in command names (no `strtolower`), relying on downstream systems to handle it.
