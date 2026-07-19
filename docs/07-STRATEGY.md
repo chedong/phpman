@@ -132,7 +132,32 @@ Google 未有效索引 phpMan 页面。传统 SEO 策略失败。
 
 phpMan 当前处于第二层（API 化），应迈向第三层（工具化）。
 
-### 3.3 LLM 增强 vs 原始格式：哪个对 Agent 更有价值？
+### 3.3 架构悖论：数据源本身就是 CLI
+
+更根本的问题：phpMan 的数据源（`man`, `perldoc`, `info`, `ri`, `pydoc3`）**本来就是命令行工具**。整个架构是一个环形：
+
+```
+LLM 需要 man 文档:
+  phpMan 路径:  LLM → MCP → HTTP → phpMan.php → shell_exec("man ls") → formatManPerlDoc() → HTML → MCP → JSON → LLM
+  直接路径:     LLM → shell_exec("man ls") → LLM
+```
+
+phpMan 在这个环形链路中增加的价值仅在于：
+
+| 能力 | 是否 CLI 已有 | phpMan 增量 |
+|------|:---:|------|
+| `man` 文档 | ✅ `man ls` | HTML 渲染（LLM 不需要） |
+| `perldoc` 文档 | ✅ `perldoc -f` | 同上 |
+| `info` 文档 | ✅ `info make` | 同上 |
+| `ri` 文档 | ✅ `ri String` | 同上 |
+| `pydoc3` 文档 | ✅ `pydoc3 os` | 同上 |
+| TLDR cheatsheet | ❌ 无 | **唯一增量**：GitHub 抓取 + 缓存 |
+| 跨 mode 全文搜索 | ❌ 各自独立 | **增量价值**：统一 FTS5 索引 |
+| emoji 增强 | ❌ 无 | **负价值**（浪费 LLM token） |
+
+**结论**：phpMan 的 Web 接口层（HTML 渲染、format negotiation、emoji 增强、XHTML 合规）对 LLM Agent 用例是多余的。MCP server 只需 200 行：直接 `shell_exec("man $cmd")` → raw text → MCP response。所有 22 个 `src/` 源文件中，真正服务于 Agent 用例的只有 `mcp_server.php` + `search_index.php` + `tldr.php`。
+
+### 3.4 LLM 增强 vs 原始格式：哪个对 Agent 更有价值？
 
 **emoji 增强是为人类设计的**，对 AI Agent：
 - ❌ emoji 增加 token 消耗
