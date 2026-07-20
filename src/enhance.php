@@ -317,7 +317,13 @@ function enhanceManPage(string $mode, string $name): string {
             }
             $htmlUserMessage .= $rawHtml;
 
-            $enhancedHtml = callLLM($htmlPrompt, $htmlUserMessage, "{$mode}/{$name} emoji_html");
+            $htmlLen = strlen($rawHtml);
+            if ($htmlLen > PHPMAN_ENHANCE_CHUNK_THRESHOLD) {
+                // Large page — split into sections, enhance each independently
+                $enhancedHtml = enhanceManPageChunked($mode, $name, $rawHtml, $htmlPrompt, $htmlUserMessage);
+            } else {
+                $enhancedHtml = callLLM($htmlPrompt, $htmlUserMessage, "{$mode}/{$name} emoji_html");
+            }
             if ($enhancedHtml !== '') {
                 $enhancedHtml = preg_replace('/^```(?:html)?\s*\n?/m', '', $enhancedHtml);
                 $enhancedHtml = preg_replace('/\n?```\s*$/m', '', $enhancedHtml);
@@ -336,6 +342,208 @@ function enhanceManPage(string $mode, string $name): string {
     }
 
     return $enhancedHtml ?? '';
+}
+
+/**
+ * Split HTML into sections at heading boundaries, each under $maxChars.
+ * Never breaks inside <pre>, <table>, <dl>, <ul>, <ol> blocks.
+ * Returns array of {heading, body, charCount} dicts.
+ */
+function splitHtmlIntoSections(string $html, int $maxChars = 120000): array {
+    // Find all h1/h2 heading positions
+    preg_match_all('#<(h[12])\b[^>]*>(.+?)</\1>#i', $html, $matches, PREG_OFFSET_CAPTURE);
+    if (empty($matches[0])) {
+        // No headings found — return as single chunk if small enough, or force-split
+        if (strlen($html) <= $maxChars) return [['heading' => '', 'body' => $html, 'charCount' => strlen($html)]];
+        // Force-split at paragraph boundaries
+        return forceSplitAtParagraphs($html, $maxChars);
+    }
+
+    $sections = [];
+    $positions = $matches[0]; // full tag matches with offsets
+    $n = count($positions);
+
+    for ($i = 0; $i < $n; $i++) {
+        $tag = $positions[$i][0];
+        $start = $positions[$i][1];
+        $end = $start + strlen($tag);
+        // Content from end of this heading to start of next heading (or end of html)
+        $nextStart = ($i + 1 < $n) ? $positions[$i + 1][1] : strlen($html);
+        $body = substr($html, $end, $nextStart - $end);
+        $fullChunk = $tag . $body;
+        $chunkLen = strlen($fullChunk);
+
+        // If chunk fits, add it directly
+        if ($chunkLen <= $maxChars) {
+            $sections[] = ['heading' => strip_tags($tag), 'body' => $fullChunk, 'charCount' => $chunkLen];
+            continue;
+        }
+
+        // Chunk too large — split body at h2 boundaries or paragraph breaks
+        $subSections = splitBodyAtSubHeadings($tag, $body, $maxChars);
+        foreach ($subSections as $sub) {
+            $sections[] = $sub;
+        }
+    }
+
+    // Handle content before the first heading (preamble)
+    $firstHeadingPos = $positions[0][1];
+    if ($firstHeadingPos > 0) {
+        $preamble = trim(substr($html, 0, $firstHeadingPos));
+        if ($preamble !== '') {
+            // Prepend to first section's body
+            $sections[0]['body'] = $preamble . "\n" . $sections[0]['body'];
+            $sections[0]['charCount'] = strlen($sections[0]['body']);
+        }
+    }
+
+    return $sections;
+}
+
+/** Split body text at sub-headings or paragraph boundaries, never inside inline blocks. */
+function splitBodyAtSubHeadings(string $parentHeading, string $body, int $maxChars): array {
+    // Try h2 splits first
+    preg_match_all('#<h2\b[^>]*>(.+?)</h2>#i', $body, $h2Matches, PREG_OFFSET_CAPTURE);
+    if (!empty($h2Matches[0]) && count($h2Matches[0]) >= 2) {
+        $sections = [];
+        $h2Positions = $h2Matches[0];
+        for ($i = 0; $i < count($h2Positions); $i++) {
+            $h2Start = $h2Positions[$i][1];
+            $h2End = $h2Start + strlen($h2Positions[$i][0]);
+            $nextH2Start = ($i + 1 < count($h2Positions)) ? $h2Positions[$i + 1][1] : strlen($body);
+            $subBody = substr($body, $h2Start, $nextH2Start - $h2Start);
+            if (strlen($subBody) > $maxChars) {
+                // Still too large — force-split
+                $forced = forceSplitAtParagraphs($subBody, $maxChars);
+                foreach ($forced as $f) $sections[] = $f;
+            } else {
+                $heading = $parentHeading . ' › ' . strip_tags($h2Positions[$i][0]);
+                $sections[] = ['heading' => $heading, 'body' => $subBody, 'charCount' => strlen($subBody)];
+            }
+        }
+        return $sections;
+    }
+
+    // No h2s — force-split at paragraph boundaries, preserving parent heading
+    $chunks = forceSplitAtParagraphs($body, $maxChars, $parentHeading);
+
+    // If any chunk is still over limit, fall back to sentence-level split
+    $final = [];
+    foreach ($chunks as $chunk) {
+        if ($chunk['charCount'] <= $maxChars) {
+            $final[] = $chunk;
+        } else {
+            // Hard split at sentence boundaries: .␣ or \n\n
+            $sentences = preg_split('/(?<=[.!?])\s+(?=[A-Z]|--?[a-z])/', $chunk['body'], -1, PREG_SPLIT_NO_EMPTY);
+            if (count($sentences) <= 1) {
+                // Single sentence or no match — split at any period+space
+                $sentences = preg_split('/(?<=[.!?])\s+/', $chunk['body'], -1, PREG_SPLIT_NO_EMPTY);
+            }
+            $cur = '';
+            foreach ($sentences as $sent) {
+                if (strlen($cur . $sent) > $maxChars && $cur !== '') {
+                    $final[] = ['heading' => $chunk['heading'], 'body' => $cur, 'charCount' => strlen($cur)];
+                    $cur = $sent;
+                } else {
+                    $cur .= ($cur ? ' ' : '') . $sent;
+                }
+            }
+            if ($cur !== '') {
+                $final[] = ['heading' => $chunk['heading'], 'body' => $cur, 'charCount' => strlen($cur)];
+            }
+        }
+    }
+    return $final;
+}
+
+/** Last-resort split: break at paragraph/block boundaries, never inside <pre>/<table>/<dl>. */
+function forceSplitAtParagraphs(string $html, int $maxChars, string $heading = ''): array {
+    $sections = [];
+    // Split at safe boundaries: </p>, </div>, <br>, double-newline after </pre>/</table>/</dl>
+    $safeSplit = '#(</p>|</div>|<br\s*/?>|</pre>\s*\n|</table>\s*\n|</dl>\s*\n|</li>|</dd>|</dt>)\s*#i';
+    $parts = preg_split($safeSplit, $html, -1, PREG_SPLIT_DELIM_CAPTURE);
+
+    $current = '';
+    $chunkHeading = $heading;
+    // PREG_SPLIT_DELIM_CAPTURE interleaves: text0, delim0, text1, delim1, ...
+    // Pair each delimiter with its preceding text block to avoid orphans.
+    for ($i = 0; $i < count($parts); $i += 2) {
+        $block = $parts[$i];
+        if ($i + 1 < count($parts)) {
+            $block .= $parts[$i + 1]; // reattach delimiter to text
+        }
+        $candidate = $current . $block;
+        if (strlen($candidate) > $maxChars && $current !== '') {
+            $sections[] = ['heading' => $chunkHeading, 'body' => $current, 'charCount' => strlen($current)];
+            $current = $block;
+            $chunkHeading = $heading . ' (cont.)';
+        } else {
+            $current = $candidate;
+        }
+    }
+    if ($current !== '') {
+        $sections[] = ['heading' => $chunkHeading, 'body' => $current, 'charCount' => strlen($current)];
+    }
+    return $sections;
+}
+
+/**
+ * Enhance a large man page by splitting it into sections and processing
+ * each section independently. Chunks processed sequentially (rate limit
+ * applies per chunk). Failed chunks fall back to original HTML.
+ *
+ * Called automatically from enhanceManPage() when HTML exceeds
+ * PHPMAN_ENHANCE_CHUNK_THRESHOLD (default 200KB).
+ */
+function enhanceManPageChunked(string $mode, string $name, string $rawHtml,
+                                string $htmlPrompt, string $htmlUserMessagePrefix): string {
+    $maxChars = (int)PHPMAN_ENHANCE_MAX_CHARS;
+    if ($maxChars <= 0) $maxChars = 120000;
+
+    $chunks = splitHtmlIntoSections($rawHtml, $maxChars);
+    $total = count($chunks);
+
+    if ($total <= 1) {
+        // Single chunk — fall back to normal callLLM
+        return callLLM($htmlPrompt, $htmlUserMessagePrefix . $rawHtml, "{$mode}/{$name} emoji_html");
+    }
+
+    echo "  [chunked] {$mode}/{$name}: {$total} sections, " . strlen($rawHtml) . " chars total\n";
+
+    $enhancedParts = [];
+    foreach ($chunks as $i => $chunk) {
+        $n = $i + 1;
+        $heading = $chunk['heading'] ?: 'Section ' . $n;
+        echo "    chunk {$n}/{$total}: \"{$heading}\" (" . $chunk['charCount'] . " chars)... ";
+
+        $chunkPrompt = $htmlPrompt . "\n\n"
+            . "IMPORTANT: You are enhancing PART {$n} of {$total} of the man page for '{$name}'.\n"
+            . "Section heading: {$heading}\n"
+            . "Only enhance THIS section. Do NOT wrap in <html>/<head>/<body>.\n"
+            . "Preserve the section heading. Output only the enhanced HTML fragment.\n";
+
+        $chunkMessage = $htmlUserMessagePrefix;
+        // Include TLDR context in first chunk only
+        $chunkMessage .= $chunk['body'];
+
+        $result = callLLM($chunkPrompt, $chunkMessage, "{$mode}/{$name} emoji_html [{$n}/{$total}]");
+        if ($result !== '') {
+            $result = preg_replace('/^```(?:html)?\s*\n?/m', '', $result);
+            $result = preg_replace('/\n?```\s*$/m', '', $result);
+            $result = cleanEmojiHtml($result);
+            $result = trim($result);
+        }
+
+        if ($result !== '') {
+            echo "enhanced (" . strlen($result) . " chars)\n";
+            $enhancedParts[] = $result;
+        } else {
+            echo "FAILED — using original\n";
+            $enhancedParts[] = $chunk['body']; // fallback to original
+        }
+    }
+
+    return implode("\n", $enhancedParts);
 }
 
 /**

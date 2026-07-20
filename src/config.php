@@ -45,6 +45,9 @@ if (!defined('PHPMAN_TLDR_MAX_EXAMPLES')) {
 if (!defined('PHPMAN_ENHANCE_MAX_CHARS')) {
     define('PHPMAN_ENHANCE_MAX_CHARS', 32000);  // max chars for LLM enhance output
 }
+if (!defined('PHPMAN_ENHANCE_CHUNK_THRESHOLD')) {
+    define('PHPMAN_ENHANCE_CHUNK_THRESHOLD', 200000);  // pages larger than this get chunked
+}
 if (!defined('PHPMAN_GA_ID')) {
     define('PHPMAN_GA_ID', '');                  // Google Analytics GA4 measurement ID (empty = disabled)
 }
