@@ -611,7 +611,16 @@ foreach ($entries as $idx => $e) {
 
         echo "  Calling LLM for emoji_html (" . strlen($rawHtml) . " chars html input)...\n";
         $ctx = "{$mode}/{$name} emoji_html";
-        $enhancedHtml = callLLM(getHtmlEnhancePrompt(), $rawHtml, $ctx);
+
+        // Large pages: split into chunks at section boundaries
+        $htmlLen = strlen($rawHtml);
+        if ($htmlLen > PHPMAN_ENHANCE_CHUNK_THRESHOLD && function_exists('enhanceManPageChunked')) {
+            $htmlPrompt = getHtmlEnhancePrompt();
+            $htmlPrefix = "Transform this man page HTML into an emoji-enhanced version:\n\n";
+            $enhancedHtml = enhanceManPageChunked($mode, $name, $rawHtml, $htmlPrompt, $htmlPrefix);
+        } else {
+            $enhancedHtml = callLLM(getHtmlEnhancePrompt(), $rawHtml, $ctx);
+        }
         $lastLlmTime = time();
 
         if ($enhancedHtml !== '') {
