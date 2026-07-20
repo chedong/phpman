@@ -735,7 +735,7 @@ function showStatus(string $dbPath): void {
 
     $totalAll = 0; $totalMd = 0; $totalHtml = 0;
 
-    $stmtCount = $db->prepare("SELECT COUNT(*) FROM cache WHERE mode=:mode AND format=:format AND name != '__index__'");
+    $stmtCount = $db->prepare("SELECT COUNT(*) FROM cache WHERE mode=:mode AND format=:format AND name != '__index__' AND status='found'");
     $stmtSample = $db->prepare("SELECT name FROM cache WHERE mode=:mode AND format='emoji_html' AND name != '__index__' ORDER BY RANDOM() LIMIT {$sampleCount}");
 
     foreach ($modes as $mode) {
