@@ -350,8 +350,14 @@ function enhanceManPage(string $mode, string $name): string {
  * Returns array of {heading, body, charCount} dicts.
  */
 function splitHtmlIntoSections(string $html, int $maxChars = 120000): array {
-    // Find all h1/h2 heading positions
-    preg_match_all('#<(h[12])\b[^>]*>(.+?)</\1>#i', $html, $matches, PREG_OFFSET_CAPTURE);
+    // Detect man-page headings: <a id="section-NAME"></a><b>SECTION TITLE</b>
+    // Sub-sections: <a id="sub-NAME"></a><b>Sub Title</b>
+    // Also match standard <h1>/<h2> tags (perldoc, info, pydoc, ri modes).
+    $headingPattern = '#'
+        . '<a\s+id="(?:section|sub)-[^"]*"></a>\s*<b>([^<]+)</b>'  // man: <a id="section-..."><b>NAME</b>
+        . '|'
+        . '<(h[12])\b[^>]*>(.+?)</\1>'  // standard: <h1>...</h1>
+        . '#i';
     if (empty($matches[0])) {
         // No headings found — return as single chunk if small enough, or force-split
         if (strlen($html) <= $maxChars) return [['heading' => '', 'body' => $html, 'charCount' => strlen($html)]];
@@ -359,18 +365,34 @@ function splitHtmlIntoSections(string $html, int $maxChars = 120000): array {
         return forceSplitAtParagraphs($html, $maxChars);
     }
 
+    preg_match_all($headingPattern, $html, $matches, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
+    if (empty($matches)) {
+        // No headings found — return as single chunk if small enough, or force-split
+        if (strlen($html) <= $maxChars) return [['heading' => '', 'body' => $html, 'charCount' => strlen($html)]];
+        // Force-split at paragraph boundaries
+        return forceSplitAtParagraphs($html, $maxChars);
+    }
+
     $sections = [];
-    $positions = $matches[0]; // full tag matches with offsets
-    $n = count($positions);
+    $n = count($matches);
 
     for ($i = 0; $i < $n; $i++) {
-        $tag = $positions[$i][0];
-        $start = $positions[$i][1];
-        $end = $start + strlen($tag);
-        // Content from end of this heading to start of next heading (or end of html)
-        $nextStart = ($i + 1 < $n) ? $positions[$i + 1][1] : strlen($html);
+        $m = $matches[$i];
+        $fullTag = $m[0][0];       // the full matched text
+        $start = $m[0][1];         // offset of the match
+        $end = $start + strlen($fullTag);
+
+        // Extract heading text: try <b> capture first, then <h1>/<h2>
+        $headingText = '';
+        if (!empty($m[1][0])) {
+            $headingText = trim($m[1][0]);        // <b>ALL_CAPS</b>
+        } elseif (!empty($m[3][0])) {
+            $headingText = trim($m[3][0]);        // <h1>/<h2> content
+        }
+
+        $nextStart = ($i + 1 < $n) ? $matches[$i + 1][0][1] : strlen($html);
         $body = substr($html, $end, $nextStart - $end);
-        $fullChunk = $tag . $body;
+        $fullChunk = $fullTag . $body;
         $chunkLen = strlen($fullChunk);
 
         // If chunk fits, add it directly
