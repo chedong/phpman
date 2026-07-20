@@ -582,6 +582,8 @@ foreach ($entries as $idx => $e) {
         } else {
             $mdFailures++;
             echo "  [md] {$label}: LLM returned empty — skipping ({$mdFailures}/{$maxConsecutiveFailures} consecutive md)\n";
+            // Cache NOT_FOUND to prevent retry on next run (persistent failures waste failure quota)
+            $pcache->set($mode, $name, '', 'emoji_md', '', 'not_found');
             $errors++;
             if ($mdFailures >= $maxConsecutiveFailures) {
                 echo "\nERROR: {$maxConsecutiveFailures} consecutive MD LLM failures — aborting.\n";
@@ -632,6 +634,8 @@ foreach ($entries as $idx => $e) {
         } else {
             $htmlFailures++;
             echo "  SKIP: emoji_html LLM returned empty for {$label} (large page?) — skipping ({$htmlFailures}/{$maxConsecutiveFailures} consecutive html)\n";
+            // Cache NOT_FOUND to prevent retry on next run (persistent failures waste failure quota)
+            $pcache->set($mode, $name, '', 'emoji_html', '', 'not_found');
             $errors++;
             if ($htmlFailures >= $maxConsecutiveFailures) {
                 echo "\nERROR: {$maxConsecutiveFailures} consecutive HTML LLM failures — aborting.\n";

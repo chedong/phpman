@@ -272,6 +272,9 @@ function enhanceManPage(string $mode, string $name): string {
                 if ($enhancedMd !== '') {
                     $cache->set($mode, $name, '', 'emoji_md', $enhancedMd, 'found');
                     echo "  [md] {$mode}/{$name}: enhanced (" . strlen($enhancedMd) . " chars)\n";
+                } else {
+                    $cache->set($mode, $name, '', 'emoji_md', '', 'not_found');
+                    echo "  [md] {$mode}/{$name}: LLM returned empty — caching NOT_FOUND\n";
                 }
             }
         }
@@ -334,6 +337,9 @@ function enhanceManPage(string $mode, string $name): string {
                 if ($enhancedHtml !== '') {
                     $cache->set($mode, $name, '', 'emoji_html', $enhancedHtml, 'found');
                     echo "  [html] {$mode}/{$name}: enhanced (" . strlen($enhancedHtml) . " chars)\n";
+                } else {
+                    $cache->set($mode, $name, '', 'emoji_html', '', 'not_found');
+                    echo "  [html] {$mode}/{$name}: LLM returned empty — caching NOT_FOUND\n";
                 }
             }
         }
