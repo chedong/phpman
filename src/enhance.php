@@ -358,12 +358,6 @@ function splitHtmlIntoSections(string $html, int $maxChars = 120000): array {
         . '|'
         . '<(h[12])\b[^>]*>(.+?)</\1>'  // standard: <h1>...</h1>
         . '#i';
-    if (empty($matches[0])) {
-        // No headings found — return as single chunk if small enough, or force-split
-        if (strlen($html) <= $maxChars) return [['heading' => '', 'body' => $html, 'charCount' => strlen($html)]];
-        // Force-split at paragraph boundaries
-        return forceSplitAtParagraphs($html, $maxChars);
-    }
 
     preg_match_all($headingPattern, $html, $matches, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
     if (empty($matches)) {
@@ -397,19 +391,19 @@ function splitHtmlIntoSections(string $html, int $maxChars = 120000): array {
 
         // If chunk fits, add it directly
         if ($chunkLen <= $maxChars) {
-            $sections[] = ['heading' => strip_tags($tag), 'body' => $fullChunk, 'charCount' => $chunkLen];
+            $sections[] = ['heading' => $headingText, 'body' => $fullChunk, 'charCount' => $chunkLen];
             continue;
         }
 
         // Chunk too large — split body at h2 boundaries or paragraph breaks
-        $subSections = splitBodyAtSubHeadings($tag, $body, $maxChars);
+        $subSections = splitBodyAtSubHeadings($headingText, $body, $maxChars);
         foreach ($subSections as $sub) {
             $sections[] = $sub;
         }
     }
 
     // Handle content before the first heading (preamble)
-    $firstHeadingPos = $positions[0][1];
+    $firstHeadingPos = $matches[0][0][1];
     if ($firstHeadingPos > 0) {
         $preamble = trim(substr($html, 0, $firstHeadingPos));
         if ($preamble !== '') {
