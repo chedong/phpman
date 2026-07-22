@@ -121,6 +121,12 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `src/Source/` + `src/Formatter/` + `src/Cache/` + `src/Config/`
 - Single-file entry point preserved
 
+### v4.9 (planned) — CSP nonce + strict-dynamic
+- Replace `'unsafe-inline'` with `'nonce-{CSP_NONCE}' 'strict-dynamic'` (Google-recommended pattern)
+- Per-request `random_bytes(16)` nonce shared via `define('CSP_NONCE', ...)` between `showHeader()` and `showFooter()`
+- Keep domain allowlist as Safari <15.4 fallback, keep `'unsafe-inline'` during transition
+- See `docs/01-PRODUCT.md` §3.2 for full strategy
+
 ### v4.8 — Calibrated Terminal CSS (2026-06-26)
 
 - **CSS rewrites from scratch**: Geist-inspired semantic design token system — 6 surface tokens, 4 text tokens, 4 alpha overlay tokens, border strength scale

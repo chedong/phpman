@@ -431,6 +431,35 @@ The following are **security hardening completed in v2.3**:
 | IP-level rate limiting | #69 → #84 | `checkRateLimit` based on file lock + JSON storage, default 30 req/60s | 🔄 Pending cleanup: move to Nginx `limit_req`, remove PHP-layer implementation (#84) |
 | MCP error message sanitization | #71 | `sendMcpError` returns `Method not found` without exposing internal method names | ✅ Retained |
 | Shell argument defense | #62 | `$width` already `intval` before interpolating into shell command | ✅ Retained |
+| CSP nonce + strict-dynamic | #158 | `script-src 'self' 'nonce-{random}' 'strict-dynamic'` + per-request `CSP_NONCE` on all `<script>` tags | 🔄 Planned (v4.9): removes `'unsafe-inline'`, transitional with domain fallback for Safari <15.4 |
+
+### 3.2 CSP Strategy — nonce + strict-dynamic
+
+**Current state** (`src/web_header.php`):
+```
+script-src 'self' 'unsafe-inline' [GA domains] [AdSense domains]
+```
+
+`'unsafe-inline'` is required because GA/AdSense inline config scripts cannot be externally hosted. This weakens CSP's XSS protection.
+
+**Target state** (Google-recommended pattern):
+```
+script-src 'self' 'nonce-{CSP_NONCE}' 'strict-dynamic' [GA domains] [AdSense domains]
+```
+
+| Component | Role |
+|---|---|
+| `'nonce-{random}'` | Per-request cryptographically random token (`random_bytes(16)` base64-encoded) |
+| `'strict-dynamic'` | Trust propagation: scripts loaded by a nonced script inherit trust automatically |
+| Domain fallback | Safari <15.4 doesn't support `'strict-dynamic'` — domain allowlist kept for backward compat |
+
+**Transition plan** (from [chedong.com PR #49](https://github.com/chedong/chedong.com/pull/49)):
+
+1. Add nonce + strict-dynamic, KEEP `'unsafe-inline'` (transitional — nonce adds no security yet)
+2. Monitor CSP reports to verify all scripts carry nonce
+3. Remove `'unsafe-inline'`, `'unsafe-hashes'`, `sha256-*` hashes
+
+**Implementation note**: Nonce must be shared between `showHeader()` (CSP header) and `showFooter()` (`<script nonce="...">` tags). In PHP, `define('CSP_NONCE', ...)` at request start makes it available to both.
 
 The following are **product features** and should not be removed:
 
