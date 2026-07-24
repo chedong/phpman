@@ -28,6 +28,19 @@ if (!defined('PHPMAN_HOME') || PHPMAN_HOME === '') {
     define('PHPMAN_HOME', getenv('PHPMAN_HOME') ?: $home . '/.phpman');
 }
 
-// Load phpMan core functions directly from src/ — no web dispatcher needed
+// Load phpMan core functions directly from src/ — no web dispatcher needed.
+// Prefer the checked-out project source for maintainer CLI runs; fall back to
+// PHPMAN_HOME/src for installed deployments.
 define('PHPMAN_NO_CLI_DISPATCH', true);
-require_once PHPMAN_HOME . '/src/bootstrap.php';
+$project_bootstrap = dirname(__DIR__) . '/src/bootstrap.php';
+$installed_bootstrap = rtrim(PHPMAN_HOME, '/') . '/src/bootstrap.php';
+if (file_exists($project_bootstrap)) {
+    require_once $project_bootstrap;
+} elseif (file_exists($installed_bootstrap)) {
+    require_once $installed_bootstrap;
+} else {
+    fwrite(STDERR, "phpMan bootstrap not found. Checked:\n");
+    fwrite(STDERR, "  - {$project_bootstrap}\n");
+    fwrite(STDERR, "  - {$installed_bootstrap}\n");
+    exit(1);
+}

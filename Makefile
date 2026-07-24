@@ -11,8 +11,8 @@
 #   make staging-reindex          # staging: push code + rebuild search index
 #   make release                  # production: push code + CSS/JS only
 #   make release-reindex          # production: push code + rebuild search index
-#   make reindex                  # production: rebuild search index only (no code push)
-#   make reindex-staging          # staging: rebuild search index only
+#   make reindex                  # production: rebuild search index + sitemap (no code push)
+#   make reindex-staging          # staging: rebuild search index + sitemap
 #   make rollback
 #   make verify
 #   make logcheck
@@ -212,7 +212,7 @@ release-reindex: test _release-code
 		"cd $(DEMO_HOME)/.phpman && php cli/build-index.php --cron"
 	@echo "=== Generating production sitemap ==="
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"cd $(DEMO_HOME)/.phpman && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap.phpman.xml --base-url $(DEMO_URL)"
+		"cd $(DEMO_HOME)/.phpman && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman.xml.gz --formats html,markdown,json --max-urls 50000"
 	@echo "=== Production index + sitemap complete ==="
 
 # ─── Standalone search index rebuild (no code push) ───
@@ -221,14 +221,14 @@ reindex:
 	@echo "=== Rebuilding production search index (no code push) ==="
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"cd $(DEMO_HOME)/.phpman && php cli/build-index.php --cron \
-		 && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap.phpman.xml --base-url $(DEMO_URL)"
+		 && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman.xml.gz --formats html,markdown,json --max-urls 50000"
 	@echo "=== Done (index + sitemap) ==="
 
 reindex-staging:
 	@echo "=== Rebuilding staging search index (no code push) ==="
 	ssh -p $(TEST_PORT) $(TEST_HOST) \
 		"cd $(STAGING_HOME)/.phpman_test && php cli/build-index.php --cron \
-		 && php cli/build-sitemap.php --output $(TEST_PATH)/sitemap.phpman.xml --base-url $(TEST_URL)"
+		 && php cli/build-sitemap.php --output $(TEST_PATH)/sitemap-phpman.xml.gz --base-url $(TEST_URL) --sitemap-url https://test.chedong.com/sitemap-phpman.xml.gz --formats html,markdown,json --max-urls 50000"
 	@echo "=== Done (index + sitemap) ==="
 
 # ─── Rollback ───
