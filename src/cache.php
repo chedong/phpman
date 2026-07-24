@@ -306,6 +306,17 @@ class PageCache {
 
     public function set(string $mode, string $name, string $section, string $format, ?string $content, string $status = 'found'): bool {
         if (!$this->db) return false;
+
+        // Guard: never overwrite valid (non-empty) content with empty not_found.
+        // WAL-mode stale reads can cause batch-enhance to miss existing emoji data,
+        // and the UPSERT would blindly destroy valid cached results.
+        if ($status === 'not_found' && ($content === null || $content === '')) {
+            $existing = $this->get($mode, $name, $section, $format);
+            if ($existing !== null && $existing !== '' && !PageCache::isNotFound($existing)) {
+                return false;  // preserve existing valid content, skip overwrite
+            }
+        }
+
         $compressed = ($content !== null && $content !== '') ? gzcompress($content) : null;
         $contentLen = ($content !== null) ? strlen($content) : 0;
         $ttl = ($status === 'not_found') ? 86400 : 604800;  // 1 day for 404, 7 days for found
