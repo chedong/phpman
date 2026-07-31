@@ -324,6 +324,11 @@ class PageCache {
         if ($mode === 'search' && $status === 'not_found') {
             $ttl = 604800;
         }
+        // Emoji enhancements are expensive LLM calls — never auto-expire them.
+        // 7-day TTL causes ~12K entries to vanish every week, wasting ~¥2K in LLM cost.
+        if ($format === 'emoji_md' || $format === 'emoji_html') {
+            $ttl = 0;  // never expire
+        }
 
         // UPSERT: single INSERT ... ON CONFLICT DO UPDATE replaces SELECT-then-UPDATE/INSERT.
         // Eliminates the SELECT round-trip and the SELECT→INSERT race window.
