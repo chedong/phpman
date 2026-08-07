@@ -1,24 +1,69 @@
 #!/bin/bash
 # tailscale-mesh-bench.sh — Tailscale 全网状 iperf3 带宽测试
-# 用法: ./tailscale-mesh-bench.sh [control_node] [options]
-#   control_node: 默认 macminidong（用于发现 tailscale 节点列表）
-#   --port=N:      iperf3 端口，默认 5201
-#   --duration=N:  每次测试秒数，默认 4
-#   --json:        输出 machines.json 原始数据
-#   --skip=host1,host2: 跳过指定节点
-#   --only=host1,host2: 仅测试指定节点
-# 输出: 终端表格 + machines.json 原始数据
 set -euo pipefail
 
+# ── Help ──
+usage() {
+  cat <<'EOF'
+Usage: tailscale-mesh-bench.sh [control_node] [options]
+
+  Tailscale 全网状 iperf3 带宽测试工具。
+  自动发现 Tailscale 网络中的 macOS 节点，两两测试带宽，输出矩阵报表。
+
+Positional:
+  control_node              用于发现节点列表的参考机器，默认 macminidong
+
+Options:
+  -h, --help                显示此帮助
+  --port=N                  iperf3 端口，默认 5201
+  --duration=N              每次测试秒数，默认 4
+  --json                    同时输出 machines.json 原始数据
+  --skip=host1,host2        跳过指定节点（逗号分隔）
+  --only=host1,host2        仅测试指定节点（逗号分隔）
+
+Examples:
+  # 全量测试，5 秒每次
+  ./tailscale-mesh-bench.sh --duration=5
+
+  # 仅测试北京办公室节点到 Vancouver
+  ./tailscale-mesh-bench.sh --only=macminidong,mbairdong --duration=4
+
+  # 跳过问题节点，输出 JSON
+  ./tailscale-mesh-bench.sh --skip=mbairdong --json
+
+  # 指定其他控制节点
+  ./tailscale-mesh-bench.sh mbairm2dong --duration=3
+
+Node labels (auto-detected from tailscale status):
+  exit   — 活跃 exit node，可做网关出口
+EOF
+  exit 0
+}
+
+# Check for help before anything else
+for arg in "$@"; do
+  case "$arg" in -h|--help) usage ;; esac
+done
+
 CONTROL="${1:-macminidong}"
+# If first arg starts with --, it's an option, not a control node
+if [[ "${1:-}" == --* ]]; then
+  CONTROL="macminidong"
+fi
+
 PORT=5201
 DURATION=4
 SKIP=""
 ONLY=""
 OUTPUT_JSON=""
 
-# ── Parse options ──
-for arg in "${@:2}"; do
+# Re-parse: first arg might be control_node
+ALL_ARGS=("$@")
+if [[ "${1:-}" != --* && -n "${1:-}" ]]; then
+  ALL_ARGS=("${@:2}")
+fi
+
+for arg in "${ALL_ARGS[@]}"; do
   case "$arg" in
     --port=*)    PORT="${arg#*=}" ;;
     --duration=*) DURATION="${arg#*=}" ;;
