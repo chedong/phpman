@@ -121,6 +121,14 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `src/Source/` + `src/Formatter/` + `src/Cache/` + `src/Config/`
 - Single-file entry point preserved
 
+### v4.10 — LLM Enhancement Removal (2026-08-08)
+
+- **Remove**: `cli/batch-enhance.php`, `src/enhance.php`, `start-enhance-all.sh`, `test/unit/test_enhance.php`
+- **Remove**: `LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`, `LLM_MAX_TOKENS` from `src/config.php`
+- **Remove**: `$enhancedBy` footer credit, `cleanEmojiHtml()` render path, LLM enhancement docs
+- **Keep**: `CACHE_FORMAT_EMOJI_MD`/`CACHE_FORMAT_EMOJI_HTML` cache serving — existing ~69% enhanced pages continue to render
+- **Rationale**: STRATEGY.md analysis — AI bots prefer raw markdown/json/mcp, emoji adds no value for agents. Meta (9,217/day) and ClaudeBot (905/day) confirm this.
+
 ### v4.9 (planned) — CSP nonce + strict-dynamic
 - Replace `'unsafe-inline'` with `'nonce-{CSP_NONCE}' 'strict-dynamic'` (Google-recommended pattern)
 - Per-request `random_bytes(16)` nonce shared via `define('CSP_NONCE', ...)` between `showHeader()` and `showFooter()`

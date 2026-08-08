@@ -67,7 +67,7 @@ function showForm (string $parameter, array $check, string $mode = "", string $s
 }
 
 //show footer
-function showFooter (string $validator = "", bool $showNav = false, string $mode = "", string $parameter = "", string $section = "", string $enhancedBy = "", string $markdownUrl = "", string $jsonUrl = ""): void {
+function showFooter (string $validator = "", bool $showNav = false, string $mode = "", string $parameter = "", string $section = "", string $markdownUrl = "", string $jsonUrl = ""): void {
     $script_name = h(scriptName());
     $remote_addr = h(serverValue("REMOTE_ADDR", "unknown"));
     $user_agent = h(serverValue("HTTP_USER_AGENT", "unknown"));
@@ -104,8 +104,6 @@ function showFooter (string $validator = "", bool $showNav = false, string $mode
         date("Y-m-d H:i") . " @" . $remote_addr .
         "<br />CrawledBy " . $user_agent .
         "<br />" . $validator .
-        // v4.0: show LLM enhancement credit when emoji cache is active
-        ($enhancedBy !== "" ? "<br />Enhanced by LLM: " . h($enhancedBy) . " / taotoken.net / " . h(preg_replace('/[\r\n]/', '', serverValue("HTTP_HOST", ""))) . " - <a href=\"" . h(scriptName()) . "/" . h($mode) . "/" . urlencode((string)$parameter) . ($section !== "" ? "/" . h($section) : "") . "/html\">original format</a>" : "") .
         (Profiler::getEnabled() ? profilerHtmlBlock() : "") .
         "</p>" .
         ($showNav ? '<div id="back-to-top"><a href="#top">^_top_^</a></div>' : "") .

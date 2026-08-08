@@ -209,7 +209,7 @@ Profiler::mark('parse');
 
 // ETag/304 check before exec-heavy dispatch (#83)
 // Key-based ETag: include cache timestamp so re-indexing invalidates stale ETags.
-// #175: Also include enhanced HTML cache status — batch-enhance can generate
+// #175: Also include enhanced HTML cache status
 // emoji_html cache without changing search_index_updated, so the ETag must
 // reflect whether enhanced content is available.
 if ($format === "html" && $mode !== "mcp" && $mode !== "copyright" && $mode !== "search" && $parameter !== "") {
@@ -802,16 +802,12 @@ showForm($parameter, $check, $mode, $section);
 
 
 	// v4.0: enhanced HTML routing — default view uses LLM-enhanced MD if available
-	// v4.0: enhanced HTML routing. Skip when format explicitly set.
+	// v4.0: Serve enhanced HTML from cache when available and format not explicit.
 	$formatExplicit = (requestValue($_GET, "format") !== "") || (serverValue("PATH_INFO") !== "" && preg_match("#/(html|markdown|json|mcp)$#", serverValue("PATH_INFO")));
 	$isEnhanced = false;
-	// #144: Reuse $enhancedCacheContent from TLDR block above — single cache lookup per request.
-	// #145: Replace $GLOBALS with a local variable passed to showFooter().
-	$enhancedBy = '';
 	if (!$formatExplicit && $parameter !== "" && $hasEnhancedCache && $enhancedCacheContent !== null) {
-	    $content = cleanEmojiHtml($enhancedCacheContent);
+	    $content = $enhancedCacheContent;
 	    $isEnhanced = true;
-	    $enhancedBy = LLM_MODEL;
 	}
 
 	// For man page content, add section anchors and floating TOC
@@ -866,7 +862,7 @@ showForm($parameter, $check, $mode, $section);
     echo $tocSidebar;
     }
 
-showFooter($VALIDATOR, $showNav, $mode, $parameter, $section, $enhancedBy, $markdownUrl, $jsonUrl);
+showFooter($VALIDATOR, $showNav, $mode, $parameter, $section, $markdownUrl, $jsonUrl);
 
 
 // +--------------------------------------------------------------------------------+

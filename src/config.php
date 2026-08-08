@@ -144,9 +144,3 @@ if (!defined('MCP_API_KEY')) define('MCP_API_KEY', '');
 if (!defined('PHPMAN_DEBUG')) define('PHPMAN_DEBUG', getenv('PHPMAN_DEBUG') === 'true');
 // Profiler::init() called by cache.php after class definition
 
-// LLM config (v3.0 reserved, not yet used)
-if (!defined('LLM_API_KEY'))    define('LLM_API_KEY', '');
-if (!defined('LLM_API_URL'))    define('LLM_API_URL', '');
-if (!defined('LLM_MODEL'))      define('LLM_MODEL', '');
-if (!defined('LLM_MAX_TOKENS')) define('LLM_MAX_TOKENS', 8192);
-
