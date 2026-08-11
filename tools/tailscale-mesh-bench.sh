@@ -123,6 +123,27 @@ fi
 # mbprolia are picked up too). Full DNS names are normalized to the short alias.
 SSH_CONFIG="${SSH_CONFIG:-$HOME/.ssh/config}"
 
+# Identify the local node (the machine running this script) from the first
+# status line. It can run iperf3 directly without SSH, so it is always included
+# even if it has no ~/.ssh/config alias.
+LOCAL_HOST=""
+LOCAL_IP=""
+if [ -n "$STATUS" ]; then
+  local_first=$(echo "$STATUS" | head -1)
+  LOCAL_IP=$(echo "$local_first" | awk '{print $1}')
+  LOCAL_HOST=$(echo "$local_first" | awk '{print $2}')
+fi
+
+# Run a command on a node: locally for the local host, via SSH otherwise.
+run_on() {
+  local node="$1"; shift
+  if [ "$node" = "$LOCAL_HOST" ]; then
+    sh -c "$*"
+  else
+    ssh -o ConnectTimeout=10 "$node" "$*"
+  fi
+}
+
 # Return the short Host alias for a tailscale hostname, or "" if not in config.
 # The incoming name may be a short name (mbprolia) or a full FQDN
 # (mbprolia.tail2bbe8a.ts.net). Match either the Host alias itself or its HostName.
@@ -160,6 +181,9 @@ while IFS= read -r line; do
   alias=$(resolve_alias "$host" || echo "")
   if [ -n "$alias" ]; then
     host="$alias"
+  elif [ "$host" = "$LOCAL_HOST" ]; then
+    # Local node: usable without SSH, always include it
+    log "  local node: $host ($ip)"
   else
     warn "skipping (no .ssh/config alias): $host"; continue
   fi
@@ -210,14 +234,14 @@ get_label() {
 log "Phase 2: starting iperf3 servers (port $PORT) ..."
 IPERF_AVAILABLE=""
 for host in "${HOSTS[@]}"; do
-  bin=$(ssh -o ConnectTimeout=10 "$host" \
+  bin=$(run_on "$host" \
     "find /usr/local /opt/homebrew -name iperf3 -type f 2>/dev/null | head -1" 2>/dev/null || true)
   if [ -z "$bin" ]; then
     warn "$host: iperf3 not found — skipping as server"
     continue
   fi
   IPERF_AVAILABLE="$IPERF_AVAILABLE $host"
-  ssh -o ConnectTimeout=10 "$host" \
+  run_on "$host" \
     "pkill iperf3 2>/dev/null; nohup $bin -s -p $PORT --daemon 2>&1" 2>/dev/null &
   log "  $host: server started ($bin)"
 done
@@ -235,7 +259,7 @@ has_iperf() {
 
 # Helper: get iperf3 path on host
 get_iperf_path() {
-  ssh -o ConnectTimeout=10 "$1" \
+  run_on "$1" \
     "find /usr/local /opt/homebrew -name iperf3 -type f 2>/dev/null | head -1" 2>/dev/null || true
 }
 
@@ -263,7 +287,7 @@ for src_host in "${HOSTS[@]}"; do
     done_count=$((done_count + 1))
     pct=$(( done_count * 100 / total ))
 
-    result=$(ssh -o ConnectTimeout=10 -o ServerAliveInterval=5 "$src_host" \
+    result=$(run_on "$src_host" \
       "$src_iperf -c $dst_ip -p $PORT -t $DURATION 2>&1" 2>/dev/null || true)
 
     if echo "$result" | grep -q "Connection refused"; then
@@ -296,7 +320,7 @@ matrix_get() {
 # ── Phase 4: Cleanup ──
 log "Phase 4: stopping servers ..."
 for host in "${HOSTS[@]}"; do
-  ssh -o ConnectTimeout=5 "$host" "pkill iperf3" 2>/dev/null &
+  run_on "$host" "pkill iperf3" 2>/dev/null &
 done
 wait
 
