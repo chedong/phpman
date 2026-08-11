@@ -9,9 +9,11 @@ Usage: tailscale-mesh-bench.sh [control_node] [options]
 
   Tailscale 全网状 iperf3 带宽测试工具。
   自动发现 Tailscale 网络中的 macOS 节点，两两测试带宽，输出矩阵报表。
+  无参数时显示本帮助。
 
 Positional:
-  control_node              用于发现节点列表的参考机器，默认 macminidong
+  control_node              回退用的参考机器（仅当本机 tailscale status
+                            不可用时才 SSH 到它发现节点），默认 macminidong
 
 Options:
   -h, --help                显示此帮助
@@ -21,7 +23,16 @@ Options:
   --skip=host1,host2        跳过指定节点（逗号分隔）
   --only=host1,host2        仅测试指定节点（逗号分隔）
 
+节点发现（任选其一，优先前者）:
+  1. 本机 tailscale status（本机在网格内时）
+  2. SSH 到 control_node 跑 tailscale status
+  收编条件：status 里的 macOS 节点，且主机名能在 ~/.ssh/config
+  解析为 Host 别名（不再限定 chedong@ 账号，liyangche@ 等亦可）。
+
 Examples:
+  # 无参数：显示本帮助
+  ./tailscale-mesh-bench.sh
+
   # 全量测试，5 秒每次
   ./tailscale-mesh-bench.sh --duration=5
 
@@ -44,6 +55,11 @@ EOF
 for arg in "$@"; do
   case "$arg" in -h|--help) usage ;; esac
 done
+
+# No arguments: show help instead of silently running
+if [ $# -eq 0 ]; then
+  usage
+fi
 
 CONTROL="${1:-macminidong}"
 # If first arg starts with --, it's an option, not a control node
@@ -78,22 +94,75 @@ log()  { echo "[$(date +%H:%M:%S)] $*" >&2; }
 warn() { echo "[$(date +%H:%M:%S)] WARN: $*" >&2; }
 
 # ── Phase 1: Discover nodes ──
-log "Phase 1: discovering Tailscale nodes from $CONTROL ..."
+# tailscale status works on ANY node in the mesh, so prefer the local machine
+# and only fall back to SSH'ing into the control node if needed.
 TAILSCALE="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
-STATUS=$(ssh -o ConnectTimeout=10 "$CONTROL" "$TAILSCALE status 2>/dev/null" 2>/dev/null)
+log "Phase 1: discovering Tailscale nodes ..."
+STATUS=""
+# Try local tailscale CLI first (covers chedong@-owned machines where the app runs)
+if command -v tailscale >/dev/null 2>&1; then
+  STATUS=$(tailscale status 2>/dev/null)
+  if [ -z "$STATUS" ]; then
+    # /usr/local/bin/tailscale may need the app path; try the app bundle
+    [ -x "$TAILSCALE" ] && STATUS=$($TAILSCALE status 2>/dev/null)
+  fi
+fi
+# Fall back to SSH'ing into the control node
 if [ -z "$STATUS" ]; then
-  log "ERROR: cannot get tailscale status from $CONTROL"
+  log "  local tailscale unavailable, falling back to $CONTROL ..."
+  STATUS=$(ssh -o ConnectTimeout=10 "$CONTROL" "$TAILSCALE status 2>/dev/null" 2>/dev/null)
+fi
+if [ -z "$STATUS" ]; then
+  log "ERROR: cannot get tailscale status (local or via $CONTROL)"
   exit 1
 fi
 
 # Build parallel arrays: HOSTS, IPS, LABELS
+# Instead of hard-coding the chedong@ account, include any macOS node whose
+# hostname resolves to a Host alias in ~/.ssh/config (so liyangche@ nodes like
+# mbprolia are picked up too). Full DNS names are normalized to the short alias.
+SSH_CONFIG="${SSH_CONFIG:-$HOME/.ssh/config}"
+
+# Return the short Host alias for a tailscale hostname, or "" if not in config.
+# The incoming name may be a short name (mbprolia) or a full FQDN
+# (mbprolia.tail2bbe8a.ts.net). Match either the Host alias itself or its HostName.
+resolve_alias() {
+  local name="$1"
+  # 1. Direct match as a Host alias (short name)
+  if grep -qE "^[[:space:]]*Host[[:space:]]+${name}([[:space:]]|$)" "$SSH_CONFIG" 2>/dev/null; then
+    echo "$name"; return
+  fi
+  # 2. Single-pass scan: track current Host alias, and if a HostName equals the
+  #    incoming name, return that alias. Skips the "*" wildcard block.
+  awk -v target="$name" '
+    /^[[:space:]]*Host[[:space:]]+/ {
+      alias=""
+      for (i=2; i<=NF; i++) { if ($i != "*") { alias=$i; break } }
+      next
+    }
+    /^[[:space:]]*HostName[[:space:]]+/ {
+      if (alias != "" && $2 == target) { print alias; found=1; exit }
+    }
+    END { if (!found) exit 1 }
+  ' "$SSH_CONFIG" 2>/dev/null
+}
+
 HOSTS=""
 IPS=""
 LABELS=""
 while IFS= read -r line; do
   ip=$(echo "$line" | awk '{print $1}')
   host=$(echo "$line" | awk '{print $2}')
-  if ! echo "$line" | grep -q "chedong@.*macOS"; then continue; fi
+  # Only macOS nodes (this is a macOS mesh bench)
+  if ! echo "$line" | grep -q "macOS"; then continue; fi
+  # Normalize full DNS name to a resolvable .ssh/config alias
+  # (|| echo "" guards against set -e killing the loop when awk finds no match)
+  alias=$(resolve_alias "$host" || echo "")
+  if [ -n "$alias" ]; then
+    host="$alias"
+  else
+    warn "skipping (no .ssh/config alias): $host"; continue
+  fi
   if echo "$line" | grep -q "offline"; then
     warn "skipping offline: $host"; continue
   fi
