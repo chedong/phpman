@@ -200,14 +200,15 @@ while IFS= read -r line; do
   if echo "$line" | grep -q "exit node"; then lab="exit"; fi
   HOSTS="$HOSTS $host"
   IPS="$IPS $ip"
-  LABELS="$LABELS $lab"
+  [ -n "$LABELS" ] && LABELS="$LABELS,"
+  LABELS="$LABELS$lab"
   log "  discovered: $host ($ip) $lab"
 done <<< "$STATUS"
 
-# Convert to arrays
+# Convert to arrays (comma-separated LABELS/EXIT_USAGE so empty entries survive)
 HOSTS=($HOSTS)
 IPS=($IPS)
-LABELS=($LABELS)
+IFS=',' read -r -a LABELS <<< "$LABELS"
 
 if [ ${#HOSTS[@]} -lt 2 ]; then
   log "ERROR: need at least 2 nodes, found ${#HOSTS[@]}"
@@ -215,6 +216,66 @@ if [ ${#HOSTS[@]} -lt 2 ]; then
 fi
 
 log "  ${#HOSTS[@]} nodes: ${HOSTS[*]}"
+
+# ── Collect node StableID → hostname mapping (from tailscale status --json) ──
+# Needed to translate each node's ExitNodeID (a stable ID) back to a hostname.
+ID_STATUS=$(tailscale status --json 2>/dev/null)
+if [ -z "$ID_STATUS" ]; then
+  ID_STATUS=$($TAILSCALE status --json 2>/dev/null)
+fi
+IDS=""
+ID_HOSTS=""
+if [ -n "$ID_STATUS" ]; then
+  while IFS="|" read -r id hn; do
+    [ -z "$id" ] && continue
+    IDS="$IDS $id"
+    ID_HOSTS="$ID_HOSTS $hn"
+  done <<< "$(echo "$ID_STATUS" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+nodes=[d.get("Self",{})]+[p for p in d.get("Peer",{}).values()]
+for n in nodes:
+    hn=n.get("HostName","")
+    if hn: print("%s|%s" % (n.get("ID",""), hn))
+' 2>/dev/null)"
+fi
+ID_ARR=($IDS)
+IDHOST_ARR=($ID_HOSTS)
+
+# Lookup hostname by StableID
+id_to_host() {
+  for i in "${!ID_ARR[@]}"; do
+    [ "${ID_ARR[$i]}" = "$1" ] && echo "${IDHOST_ARR[$i]}" && return
+  done
+  echo "$1"
+}
+
+# ── Determine each node's active exit node (if any) ──
+# Query each node's tailscale prefs for its ExitNodeID, then map to a hostname.
+EXIT_USAGE=""      # space-separated hostname → exit node usage
+EXIT_USAGE_HOSTS=""
+for host in "${HOSTS[@]}"; do
+  prefs=$(run_on "$host" "$TAILSCALE debug prefs 2>/dev/null" 2>/dev/null || true)
+  enid=$(echo "$prefs" | grep -E '"ExitNodeID"' | sed -E 's/.*"ExitNodeID"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
+  if [ -n "$enid" ]; then
+    enhost=$(id_to_host "$enid")
+    EXIT_USAGE_HOSTS="$EXIT_USAGE_HOSTS $host"
+    EXIT_USAGE="$EXIT_USAGE $enhost"
+    log "  $host: uses exit node $enhost"
+  else
+    log "  $host: no exit node"
+  fi
+done
+EXITUSAGE_ARR=($EXIT_USAGE)
+EXITUSAGE_HOSTS_ARR=($EXIT_USAGE_HOSTS)
+
+# Lookup the exit-node hostname a node uses ("" if none)
+exit_usage_of() {
+  for i in "${!EXITUSAGE_HOSTS_ARR[@]}"; do
+    [ "${EXITUSAGE_HOSTS_ARR[$i]}" = "$1" ] && echo "${EXITUSAGE_ARR[$i]}" && return
+  done
+  echo ""
+}
 
 # Helper: get IP by hostname
 get_ip() {
@@ -224,10 +285,15 @@ get_ip() {
   echo "?"
 }
 get_label() {
-  for i in "${!HOSTS[@]}"; do
-    [ "${HOSTS[$i]}" = "$1" ] && echo "${LABELS[$i]:-}" && return
-  done
-  echo ""
+  # Determine if a node offers exit-node service by scanning the raw status
+  # line for that hostname (avoids array-index alignment issues).
+  # Matches the short name, or the full FQDN that begins with it (mbprolia).
+  line=$(echo "$STATUS" | awk -v h="$1" '$2==h || $2 ~ ("^"h"\\.") {print $0; exit}')
+  if echo "$line" | grep -q "exit node"; then
+    echo "exit"
+  else
+    echo ""
+  fi
 }
 
 # ── Phase 2: Find iperf3, start servers ──
@@ -364,7 +430,18 @@ echo "  Node details:"
 for host in "${HOSTS[@]}"; do
   ip=$(get_ip "$host")
   lab=$(get_label "$host")
-  echo "    $host  $ip  ${lab:-}"
+  eu=""
+  if [ -n "$lab" ]; then
+    eu="(is exit node)"
+  else
+    used=$(exit_usage_of "$host")
+    if [ -n "$used" ]; then
+      eu="→ exit: $used"
+    else
+      eu="(no exit node)"
+    fi
+  fi
+  echo "    $host  $ip  ${lab:-}  $eu"
 done
 
 # ── Phase 6: JSON ──
