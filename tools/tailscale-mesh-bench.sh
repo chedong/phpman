@@ -190,25 +190,28 @@ while IFS= read -r line; do
   if echo "$line" | grep -q "offline"; then
     warn "skipping offline: $host"; continue
   fi
-  if [ -n "$SKIP" ] && echo "$SKIP" | grep -q "$host"; then
+  # Match --skip/--only tokens word-boundary style, accepting either the full
+  # hostname or its short form (mbprolia.tail2bbe8a.ts.net vs mbprolia).
+  skippable_match() {
+    local token="$1" short="${host%%.*}"
+    echo "$token" | grep -qE "(^|,)($host|$short)(,|$)"
+  }
+  if [ -n "$SKIP" ] && skippable_match "$SKIP"; then
     warn "skipping (--skip): $host"; continue
   fi
-  if [ -n "$ONLY" ] && ! echo "$ONLY" | grep -q "$host"; then
+  if [ -n "$ONLY" ] && ! skippable_match "$ONLY"; then
     continue
   fi
   lab=""
   if echo "$line" | grep -q "exit node"; then lab="exit"; fi
   HOSTS="$HOSTS $host"
   IPS="$IPS $ip"
-  [ -n "$LABELS" ] && LABELS="$LABELS,"
-  LABELS="$LABELS$lab"
   log "  discovered: $host ($ip) $lab"
 done <<< "$STATUS"
 
-# Convert to arrays (comma-separated LABELS/EXIT_USAGE so empty entries survive)
+# Convert to arrays
 HOSTS=($HOSTS)
 IPS=($IPS)
-IFS=',' read -r -a LABELS <<< "$LABELS"
 
 if [ ${#HOSTS[@]} -lt 2 ]; then
   log "ERROR: need at least 2 nodes, found ${#HOSTS[@]}"
@@ -219,9 +222,14 @@ log "  ${#HOSTS[@]} nodes: ${HOSTS[*]}"
 
 # ── Collect node StableID → hostname mapping (from tailscale status --json) ──
 # Needed to translate each node's ExitNodeID (a stable ID) back to a hostname.
+# Mirrors the STATUS discovery fallback: local CLI first, then app path, then SSH.
+: "${CONTROL:=macminidong}"
 ID_STATUS=$(tailscale status --json 2>/dev/null)
 if [ -z "$ID_STATUS" ]; then
   ID_STATUS=$($TAILSCALE status --json 2>/dev/null)
+fi
+if [ -z "$ID_STATUS" ]; then
+  ID_STATUS=$(ssh -o ConnectTimeout=10 "$CONTROL" "$TAILSCALE status --json 2>/dev/null" 2>/dev/null)
 fi
 IDS=""
 ID_HOSTS=""
@@ -256,18 +264,23 @@ EXIT_USAGE=""      # space-separated hostname → exit node usage
 EXIT_USAGE_HOSTS=""
 for host in "${HOSTS[@]}"; do
   prefs=$(run_on "$host" "$TAILSCALE debug prefs 2>/dev/null" 2>/dev/null || true)
-  enid=$(echo "$prefs" | grep -E '"ExitNodeID"' | sed -E 's/.*"ExitNodeID"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
+  # Robustly extract ExitNodeID: quoted value or null/absent → treat as no exit node.
+  enid=$(echo "$prefs" \
+    | sed -nE 's/.*"ExitNodeID"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' \
+    | head -1)
   if [ -n "$enid" ]; then
     enhost=$(id_to_host "$enid")
-    EXIT_USAGE_HOSTS="$EXIT_USAGE_HOSTS $host"
-    EXIT_USAGE="$EXIT_USAGE $enhost"
+    [ -n "$EXIT_USAGE" ] && EXIT_USAGE="$EXIT_USAGE,"
+    EXIT_USAGE="$EXIT_USAGE$enhost"
+    [ -n "$EXIT_USAGE_HOSTS" ] && EXIT_USAGE_HOSTS="$EXIT_USAGE_HOSTS,"
+    EXIT_USAGE_HOSTS="$EXIT_USAGE_HOSTS$host"
     log "  $host: uses exit node $enhost"
   else
     log "  $host: no exit node"
   fi
 done
-EXITUSAGE_ARR=($EXIT_USAGE)
-EXITUSAGE_HOSTS_ARR=($EXIT_USAGE_HOSTS)
+IFS=',' read -r -a EXITUSAGE_ARR <<< "$EXIT_USAGE"
+IFS=',' read -r -a EXITUSAGE_HOSTS_ARR <<< "$EXIT_USAGE_HOSTS"
 
 # Lookup the exit-node hostname a node uses ("" if none)
 exit_usage_of() {
@@ -362,13 +375,28 @@ for src_host in "${HOSTS[@]}"; do
       bw="UNREACH"
     elif echo "$result" | grep -q "sender"; then
       sender=$(echo "$result" | grep "sender" | tail -1)
-      val=$(echo "$sender" | awk '{for(i=1;i<=NF;i++) if($i=="Mbits/sec") print $(i-1)}')
-      if [ -n "$val" ]; then
-        bw="${val} Mbps"
-      else
-        val=$(echo "$sender" | awk '{for(i=1;i<=NF;i++) if($i=="Kbits/sec") print $(i-1)}')
-        [ -n "$val" ] && bw="${val} Kbps" || bw="ERR"
-      fi
+      # Parse iperf3 sender line; support Gbits/sec / Mbits/sec / Kbits/sec,
+      # and normalize everything to a single unit (Mb/s) so the report and JSON
+      # are consistently labelled. Value+unit are stored as a single compact
+      # token (e.g. "96.5Mb/s", "0.262Mb/s") so awk $3 stays parseable.
+      unit=$(echo "$sender" | awk '{for(i=1;i<=NF;i++) if($i=="Gbits/sec"||$i=="Mbits/sec"||$i=="Kbits/sec") print $i}')
+      case "$unit" in
+        Mbits/sec)
+          v=$(echo "$sender" | awk '{for(i=1;i<=NF;i++) if($i=="Mbits/sec") print $(i-1)}')
+          bw=$(printf '%gMb/s' "$v")
+          ;;
+        Kbits/sec)
+          v=$(echo "$sender" | awk '{for(i=1;i<=NF;i++) if($i=="Kbits/sec") print $(i-1)}')
+          bw=$(printf '%gMb/s' "$(echo "scale=4; $v/1000" | bc 2>/dev/null || awk -v x="$v" 'BEGIN{printf "%.4f", x/1000}')")
+          ;;
+        Gbits/sec)
+          v=$(echo "$sender" | awk '{for(i=1;i<=NF;i++) if($i=="Gbits/sec") print $(i-1)}')
+          bw=$(printf '%gMb/s' "$(echo "scale=3; $v*1000" | bc 2>/dev/null || awk -v x="$v" 'BEGIN{printf "%.3f", x*1000}')")
+          ;;
+        *)
+          bw="ERR"
+          ;;
+      esac
     else
       bw="ERR"
     fi
@@ -395,6 +423,7 @@ echo ""
 echo "══════════════════════════════════════════════════════════════════"
 echo "  Tailscale Mesh Bandwidth Report"
 echo "  $(date '+%Y-%m-%d %H:%M:%S %Z') | ${#HOSTS[@]} nodes | ${DURATION}s tests"
+echo "  (带宽统一单位: Mb/s；REFUSED/UNREACH/ERR/N/A 为链路状态)"
 echo "══════════════════════════════════════════════════════════════════"
 echo ""
 
