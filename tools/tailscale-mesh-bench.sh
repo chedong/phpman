@@ -134,6 +134,57 @@ if [ -n "$STATUS" ]; then
   LOCAL_HOST=$(echo "$local_first" | awk '{print $2}')
 fi
 
+# ── Detect cross-tailnet peers (shared nodes from another account's tailnet) ──
+# A node shared into our tailnet carries a different DNSName suffix (e.g.
+# "mbprolia.tail2bbe8a.ts.net" vs our "…tail8433bf.ts.net"). Such nodes cannot
+# form outbound links using our tailnet's IPs, so mesh tests against them would
+# always UNREACH — skip them during discovery. Also collect StableID → hostname
+# mapping from the same JSON for later exit-node resolution.
+# Mirrors the STATUS discovery fallback: local CLI first, then app path, then SSH.
+: "${CONTROL:=macminidong}"
+ID_STATUS=$(tailscale status --json 2>/dev/null)
+if [ -z "$ID_STATUS" ]; then
+  ID_STATUS=$($TAILSCALE status --json 2>/dev/null)
+fi
+if [ -z "$ID_STATUS" ]; then
+  ID_STATUS=$(ssh -o ConnectTimeout=10 "$CONTROL" "$TAILSCALE status --json 2>/dev/null" 2>/dev/null)
+fi
+CROSSNET_HOSTS=""
+IDS=""
+ID_HOSTS=""
+if [ -n "$ID_STATUS" ]; then
+  parsed=$(echo "$ID_STATUS" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+self_dns=(d.get("Self",{}).get("DNSName") or "")
+self_tail=self_dns.split(".",1)[1] if "." in self_dns else ""
+out=[]
+idmap=[]
+nodes=[d.get("Self",{})]+[p for p in d.get("Peer",{}).values()]
+for n in nodes:
+    hn=n.get("HostName","")
+    if not hn: continue
+    dn=n.get("DNSName","") or ""
+    pt=dn.split(".",1)[1] if "." in dn else ""
+    if n is d.get("Self",{}) or pt==self_tail:
+        pass  # same tailnet; keep
+    else:
+        out.append(hn)
+    nid=n.get("ID","")
+    idmap.append(nid+"|"+hn)
+print("CROSS:"+",".join(out))
+print("IDS:"+";".join(idmap))
+' 2>/dev/null)
+  CROSSNET_HOSTS=$(echo "$parsed" | grep '^CROSS:' | sed 's/^CROSS://')
+  while IFS='|' read -r id hn; do
+    [ -z "$id" ] && continue
+    IDS="$IDS $id"
+    ID_HOSTS="$ID_HOSTS $hn"
+  done <<< "$(echo "$parsed" | grep '^IDS:' | sed 's/^IDS://' | tr ';' '\n')"
+fi
+ID_ARR=($IDS)
+IDHOST_ARR=($ID_HOSTS)
+
 # Run a command on a node: locally for the local host, via SSH otherwise.
 run_on() {
   local node="$1"; shift
@@ -176,6 +227,11 @@ while IFS= read -r line; do
   host=$(echo "$line" | awk '{print $2}')
   # Only macOS nodes (this is a macOS mesh bench)
   if ! echo "$line" | grep -q "macOS"; then continue; fi
+  # Skip nodes from another tailnet (shared into ours): they cannot form
+  # outbound links using our tailnet IPs, so mesh tests against them UNREACH.
+  if [ -n "$CROSSNET_HOSTS" ] && echo "$CROSSNET_HOSTS" | grep -qE "(^|,)(${host}|${host%%.*})(,|$)"; then
+    warn "skipping (cross-tailnet): $host"; continue
+  fi
   # Normalize full DNS name to a resolvable .ssh/config alias
   # (|| echo "" guards against set -e killing the loop when awk finds no match)
   alias=$(resolve_alias "$host" || echo "")
@@ -220,37 +276,7 @@ fi
 
 log "  ${#HOSTS[@]} nodes: ${HOSTS[*]}"
 
-# ── Collect node StableID → hostname mapping (from tailscale status --json) ──
-# Needed to translate each node's ExitNodeID (a stable ID) back to a hostname.
-# Mirrors the STATUS discovery fallback: local CLI first, then app path, then SSH.
-: "${CONTROL:=macminidong}"
-ID_STATUS=$(tailscale status --json 2>/dev/null)
-if [ -z "$ID_STATUS" ]; then
-  ID_STATUS=$($TAILSCALE status --json 2>/dev/null)
-fi
-if [ -z "$ID_STATUS" ]; then
-  ID_STATUS=$(ssh -o ConnectTimeout=10 "$CONTROL" "$TAILSCALE status --json 2>/dev/null" 2>/dev/null)
-fi
-IDS=""
-ID_HOSTS=""
-if [ -n "$ID_STATUS" ]; then
-  while IFS="|" read -r id hn; do
-    [ -z "$id" ] && continue
-    IDS="$IDS $id"
-    ID_HOSTS="$ID_HOSTS $hn"
-  done <<< "$(echo "$ID_STATUS" | python3 -c '
-import json,sys
-d=json.load(sys.stdin)
-nodes=[d.get("Self",{})]+[p for p in d.get("Peer",{}).values()]
-for n in nodes:
-    hn=n.get("HostName","")
-    if hn: print("%s|%s" % (n.get("ID",""), hn))
-' 2>/dev/null)"
-fi
-ID_ARR=($IDS)
-IDHOST_ARR=($ID_HOSTS)
-
-# Lookup hostname by StableID
+# Lookup hostname by StableID (ID mapping was collected before discovery)
 id_to_host() {
   for i in "${!ID_ARR[@]}"; do
     [ "${ID_ARR[$i]}" = "$1" ] && echo "${IDHOST_ARR[$i]}" && return
