@@ -81,11 +81,11 @@ All CLI scripts resolve `PHPMAN_HOME`, then require `src/bootstrap.php` directly
 
 ## Git workflow — CRITICAL: worktree rebase rule
 
-### 分支约定（2026-09 过渡期：default 计划统一为 `main`）
+### 分支约定（2026-09）
 
-- **当前 default 仍是 `master`**：push 一律 `git push origin master`，master 是唯一主干。
-- **计划把 default 统一为 `main`**（与 chedong 名下其他仓库一致）。**在切换完成前远程还没有 `main` 分支——禁止 `git push origin main`**，否则会意外创建一个非主干分支（myblog 的教训：default=main 却 push master，养出了旁支）。
-- 待 GitHub 已把 `main` 设为 default 且 `main` 分支存在后，本节将更新为「push 一律 `origin main`」。
+- **default 是 `master`**：push 一律 `git push origin master`，master 是唯一主干。
+- **不要 push 其他分支名**（如 `git push origin main`）：远程没有该分支时会意外创建一个非主干分支（myblog 的教训：default=main 却 push master，养出了旁支）。若日后决定调整 default 分支，再更新本节。
+- 无 feature branch、无 PR，提交直接进 master。
 
 **phpMan uses `master` as the single source of truth. No feature branches, no PRs. Every commit goes directly to master.**
 
