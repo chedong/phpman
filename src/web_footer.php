@@ -107,7 +107,7 @@ function showFooter (string $validator = "", bool $showNav = false, string $mode
         (Profiler::getEnabled() ? profilerHtmlBlock() : "") .
         "</p>" .
         ($showNav ? '<div id="back-to-top"><a href="#top">^_top_^</a></div>' : "") .
-        "<script type=\"text/javascript\" src=\"".h(str_replace('phpMan.php', 'phpman.js', scriptName()))."\"></script>\n" .
+        "<script type=\"text/javascript\" src=\"".h(str_replace('phpMan.php', 'phpman.js', scriptName()))."?v=".h(PHPMAN_VERSION)."\"></script>\n" .
         ((defined('PHPMAN_GA_ID') && PHPMAN_GA_ID !== '') ?
          "<script async=\"async\" type=\"text/javascript\" src=\"https://www.googletagmanager.com/gtag/js?id=".h(PHPMAN_GA_ID)."\"></script>\n".
          "<script type=\"text/javascript\">\n//<![CDATA[\n".

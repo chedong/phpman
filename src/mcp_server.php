@@ -21,7 +21,7 @@ function getMcpToolDefinitions (): array {
         ],
         [
             "name" => "cli_search",
-            "description" => "Search Unix/Linux man pages by keyword using apropos. Also searches Python 3 modules via pydoc3. Returns matching command names with sections and detail links.",
+            "description" => "Search Unix/Linux man pages, Perl modules, Python docs, and Ruby docs by keyword. Uses full-text search (FTS5) across all documentation sources. Returns matching command names with sections, one-line descriptions, and detail links. Faster and more comprehensive than apropos.",
             "inputSchema" => [
                 "type" => "object",
                 "properties" => [
@@ -205,7 +205,9 @@ function handleMcpInitialize ($id): void {
         "instructions" => "phpMan provides structured access to Unix/Linux man pages, Perl perldoc modules, and GNU info pages. "
             . "Use cli_help to retrieve the full manual for a command or module (e.g. command='ls', command='git', or command='File::Basename' for Perl; "
             . "optionally pass section='3pm' for Perl modules or another manual section). "
-            . "Use cli_search to find commands by keyword via apropos (e.g. query='recursive delete', query='network'). "
+            . "Use cli_search to find commands by keyword across all documentation sources (man, perldoc, info, pydoc3, ri) via full-text FTS5 search. "
+            . "Supports partial matches, prefix queries, and Perl module names with :: separators (e.g. query='Apache::Session'). "
+            . "More comprehensive than apropos — includes Python, Ruby, and GNU info results in one query. "
             . "Responses include a section outline, synopsis, flag/option table, examples, and see-also references — prefer the section outline to locate "
             . "specific content before reading full sections. "
             . "Web endpoint: {$base}/mcp"

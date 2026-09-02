@@ -101,7 +101,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
         "<link rel=\"icon\" type=\"image/x-icon\" href=\"/favicon.ico\"/>\n";
 
     $css_path = str_replace('phpMan.php', 'phpman.css', scriptName());
-    echo "<link rel=\"stylesheet\" type=\"text/css\" href=\"".h($css_path)."\"/>\n";
+    echo "<link rel=\"stylesheet\" type=\"text/css\" href=\"".h($css_path)."?v=".h(PHPMAN_VERSION)."\"/>\n";
 
     // JSON-LD structured data for SEO/GEO (#64)
     if ($parameter !== "" && in_array($mode, PHPMAN_CONTENT_MODES)) {
