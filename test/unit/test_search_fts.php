@@ -88,6 +88,46 @@ assert_contains('"recursive delete"', $q6, "exact phrase → preserved as-is");
 $q7 = buildFtsQuery("");
 assert_equals("", $q7, "empty query → empty");
 
+echo "\n--- buildFtsQuery() operator detection must be whole-token ---\n";
+// Regression: \b(AND|OR|NOT|NEAR)\b also matched inside hyphenated and
+// double-colon names, so real command/module names were returned unquoted.
+// Unquoted '-'/':' makes the FTS5 query parser read the next word as a column
+// name → "no such column: and". Inputs below are real production log entries.
+$q8 = buildFtsQuery("placeholders-and-bind-values");
+assert_contains('"placeholders-and-bind-values"*', $q8, "...-and-... quoted as one term");
+assert_not_contains(' AND ', $q8, "...-and-... not split into AND");
+
+$q9 = buildFtsQuery("not-forwarding");
+assert_contains('"not-forwarding"*', $q9, "not-... quoted as one term");
+
+$q10 = buildFtsQuery("SQL::Statement::Operation::And");
+assert_contains('"SQL::Statement::Operation::And"*', $q10, "::And quoted as one term");
+assert_not_contains(' AND ', $q10, "::And not split into AND");
+
+$q11 = buildFtsQuery("SQL::Statement::Or");
+assert_contains('"SQL::Statement::Or"*', $q11, "::Or quoted as one term");
+
+$q12 = buildFtsQuery("definitely-not-a-real-command-xyz");
+assert_contains('"definitely-not-a-real-command-xyz"*', $q12, "-not- inside name quoted as one term");
+
+echo "\n--- buildFtsQuery() explicit operators still honoured ---\n";
+$q13 = buildFtsQuery("git OR svn");
+assert_contains('"git"* OR "svn"*', $q13, "space-separated OR kept as operator");
+
+$q14 = buildFtsQuery("git AND svn");
+assert_contains('"git"* AND "svn"*', $q14, "space-separated AND kept as operator");
+
+$q15 = buildFtsQuery("git NOT svn");
+assert_contains('"git"* NOT "svn"*', $q15, "space-separated NOT kept as operator");
+
+// A leading operator has no left operand — FTS5 rejects it. Drop it and keep
+// the remaining term rather than emitting a syntax error.
+$q16 = buildFtsQuery("OR svn");
+assert_equals('"svn"*', $q16, "leading OR dropped");
+
+$q17 = buildFtsQuery("git AND");
+assert_equals('"git"*', $q17, "trailing AND dropped");
+
 echo "\n--- mergeSearchResults() ---\n";
 // Single result
 $single = [

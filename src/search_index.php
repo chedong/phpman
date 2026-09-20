@@ -40,37 +40,59 @@ function buildFtsQuery(string $raw): string {
     // already stripped by the [^\p{L}\p{N}\.\-_:] regex below.
     $raw = preg_replace('/[、，；]/u', ' ', $raw);
 
-    // Detect explicit FTS5 operators — validate and pass through
-    if (preg_match('/\b(AND|OR|NOT|NEAR)\b/i', $raw)) {
-        // Strip dangerous FTS5 syntax: column filters, special commands
-        $sanitized = preg_replace('/[{}^!@#]/', '', $raw);
-        return $sanitized;
-    }
-
-    // Exact phrase (quoted) — sanitize and pass through
+    // Exact phrase (quoted) — sanitize and pass through.
+    // Checked before operator handling so a quoted phrase is never split on an
+    // inner AND/OR/NOT/NEAR.
     if (preg_match('/^".*"$/', $raw)) {
         $sanitized = preg_replace('/[{}^!@#]/', '', $raw);
         return $sanitized;
     }
 
-    // Default: prefix-match each term with AND
-    $terms = preg_split('/\s+/', $raw);
+    // Rebuild the query term by term. An operator is honoured only as a whole
+    // space-separated token: a \b word boundary also matches inside hyphenated
+    // and double-colon names ("placeholders-and-bind-values",
+    // "SQL::Statement::Operation::And"), and passing those through unquoted made
+    // FTS5 read the word after '-'/':' as a column name → "no such column: and".
     $parts = [];
-    foreach ($terms as $t) {
-        $t = trim($t);
-        if ($t !== '') {
-            // Preserve hyphens, underscores, dots, internal colons — critical for commands.
-            // Strip leading/trailing colons to prevent FTS5 column-filter misinterpretation.
-            // E.g. "SQL:" → FTS5 reads "SQL" as column name; "Apache::Session" stays intact.
-            $t = preg_replace('/[^\p{L}\p{N}\.\-_:]/u', '', $t);
-            $t = preg_replace('/^:+|:+$/', '', $t);
-            if ($t !== '') {
-                $parts[] = '"' . $t . '"*';
+    foreach (preg_split('/\s+/', $raw) as $term) {
+        $term = trim($term);
+        if ($term === '') continue;
+
+        if (preg_match('/^(AND|OR|NOT|NEAR)$/i', $term)) {
+            $op = strtoupper($term);
+            // Adjacent terms are already joined by AND, and bare NEAR is not a
+            // usable FTS5 operator (it needs the NEAR(a b, N) form), so only
+            // OR/NOT change the query — and only between two terms.
+            if (($op === 'OR' || $op === 'NOT')
+                && $parts !== []
+                && end($parts) !== 'OR'
+                && end($parts) !== 'NOT') {
+                $parts[] = $op;
             }
+            continue;
         }
+
+        // Preserve hyphens, underscores, dots, internal colons — critical for commands.
+        // Strip leading/trailing colons to prevent FTS5 column-filter misinterpretation.
+        // E.g. "SQL:" → FTS5 reads "SQL" as column name; "Apache::Session" stays intact.
+        $term = preg_replace('/[^\p{L}\p{N}\.\-_:]/u', '', $term);
+        $term = preg_replace('/^:+|:+$/', '', $term);
+        if ($term === '') continue;
+
+        // A term following another term is joined by AND; after OR/NOT the
+        // operator already binds it.
+        if ($parts !== [] && end($parts) !== 'OR' && end($parts) !== 'NOT') {
+            $parts[] = 'AND';
+        }
+        $parts[] = '"' . $term . '"*';
     }
 
-    return $parts === [] ? '' : implode(' AND ', $parts);
+    // A trailing OR/NOT has no right operand — FTS5 rejects it.
+    while ($parts !== [] && (end($parts) === 'OR' || end($parts) === 'NOT')) {
+        array_pop($parts);
+    }
+
+    return $parts === [] ? '' : implode(' ', $parts);
 }
 
 /**

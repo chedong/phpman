@@ -250,4 +250,42 @@ assert_equals(80, $merged[0]['hits'], "merged hits = 80 (sum of 80+0)");
 echo "\n--- Edge: empty query not tested at this level ---\n";
 echo "       searchFts() handles empty query at the caller level\n";
 
+echo "\n--- Regression: names containing and/or/not must reach FTS5 quoted ---\n";
+// Production logs (~/.phpman/logs/phpman_error.log) carried 134 entries like
+//   FTS5 search fallback: Unable to execute statement: no such column: and
+// for real pages: /placeholders-and-bind-values, /man/not-forwarding/2,
+// /man/SQL::Statement::Operation::And. buildFtsQuery() let \b match inside
+// hyphen/colon names and returned them unquoted, so the FTS5 parser read the
+// word after '-'/':' as a column name. These cases exercise buildFtsQuery()
+// against a real FTS5 table — the string-only tests cannot catch this.
+insertTestRow($db, 'placeholders-and-bind-values', '1', 'SQLite3 placeholder binding', 'sqlite3 placeholders and bind values.', 'man', 3);
+insertTestRow($db, 'not-forwarding', '2', 'not forwarding system call', 'not forwarding syscall details.', 'man', 2);
+insertTestRow($db, 'SQL::Statement::Operation::And', '3pm', 'SQL statement And operation', 'SQL Statement Operation And node.', 'perldoc', 1);
+
+$regressionCases = [
+    ['placeholders-and-bind-values', '1', true],
+    ['not-forwarding', '2', true],
+    ['SQL::Statement::Operation::And', '3pm', true],
+    ['SQL::Statement::Or', '3pm', false],
+    ['definitely-not-a-real-command-xyz', '', false],
+];
+foreach ($regressionCases as [$input, $section, $expectHits]) {
+    $ftsQuery = buildFtsQuery($input);
+    $error = null;
+    $results = [];
+    try {
+        $results = searchFtsQuery($db, $ftsQuery, $input, $section, 50);
+    } catch (\Throwable $e) {
+        $error = $e->getMessage();
+    }
+    assert_equals(null, $error, "no FTS5 error for '{$input}' (query: {$ftsQuery})");
+    if ($expectHits) {
+        assert_not_equals(0, count($results), "'{$input}' matches its indexed page");
+    }
+}
+
+echo "\n--- Regression: explicit operators still execute ---\n";
+$orResults = searchFtsQuery($db, buildFtsQuery('cp OR perl'), 'cp OR perl', '', 50);
+assert_not_equals(0, count($orResults), "explicit OR query executes and returns results");
+
 exit(test_summary());
