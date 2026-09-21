@@ -200,7 +200,14 @@ function formatMcpMarkdown (array $data): string {
             $extra = $subCount > 0 ? " ({$subCount} subsections)" : "";
             $out .= "- **{$name}**{$extra}\n";
         }
-        $out .= "\nUse structuredContent.sections for detailed options, examples, and full documentation.\n";
+        if (!empty($data["content_truncated"])) {
+            // Don't promise full documentation the payload no longer carries.
+            $out .= "\nSection text is capped at " . number_format((int)($data["content_budget_bytes"] ?? 0))
+                 . " bytes for this page; entries marked truncated carry content_bytes/content_lines."
+                 . " The section list above is complete.\n";
+        } else {
+            $out .= "\nUse structuredContent.sections for detailed options, examples, and full documentation.\n";
+        }
     }
 
     return $out;
@@ -261,7 +268,7 @@ function formatMcpStructured (array $data): array {
     $tldrExamples = !empty($tldrData) ? array_slice($tldrData["examples"] ?? [], 0, 12) : [];
     $tldrSource = !empty($tldrData) ? ($tldrData["source"] ?? null) : null;
 
-    return [
+    $out = [
         "command" => $data["parameter"] ?? "",
         "section" => $data["section"] ?? "",
         "mode" => $data["mode"] ?? "man",
@@ -276,6 +283,14 @@ function formatMcpStructured (array $data): array {
         "section_outline" => $outline,
         "sections" => $data["sections"] ?? [],  // full section content for agent consumption
     ];
+    // Surface the cap in the envelope as well: a consumer reading only
+    // structuredContent would otherwise have no way to tell the text was cut.
+    if (!empty($data["content_truncated"])) {
+        $out["content_truncated"] = true;
+        $out["content_budget_bytes"] = $data["content_budget_bytes"] ?? 0;
+        $out["content_retained_bytes"] = $data["content_retained_bytes"] ?? 0;
+    }
+    return $out;
 }
 
 /**

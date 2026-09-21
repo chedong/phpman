@@ -77,4 +77,16 @@ assert_equals("-a", $data["flags"][0]["flag"] ?? null, "flag parsed despite the 
 assert_equals(true, count($data["examples"] ?? []) > 0, "examples derived despite the cap");
 assert_equals(true, count($data["see_also"] ?? []) > 0, "see_also derived despite the cap");
 
+echo "\n--- the MCP envelope carries the cap too ---\n";
+// formatMcpStructured() picks fields explicitly, so the cap has to be surfaced
+// there as well — a consumer reading only structuredContent sees no sections
+// metadata otherwise.
+$copy2 = $lines;
+$envelope = json_decode(formatMcpEnvelope(buildJsonData($copy2, "ls", "1", "man")), true);
+assert_equals(true, is_array($envelope), "mcp envelope is valid JSON");
+assert_equals(true, $envelope["structuredContent"]["content_truncated"] ?? null, "envelope declares truncation");
+assert_equals(300, $envelope["structuredContent"]["content_budget_bytes"] ?? null, "envelope reports the budget");
+assert_equals(true, str_contains($envelope["content"][0]["text"], "Section text is capped"), "markdown says the text is capped");
+assert_equals("ls - list directory contents", $envelope["structuredContent"]["summary"] ?? null, "envelope summary intact");
+
 exit(test_summary());
