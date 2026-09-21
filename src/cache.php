@@ -40,6 +40,25 @@ class Profiler {
 }
 
 /**
+ * Append profiling data to an already-serialised JSON body.
+ *
+ * Injected as a string rather than json_decode()+json_encode(): re-serialising
+ * a multi-MB response just to add one key costs a second copy of the whole
+ * payload (info py peaks at 62MB / 127.6MB of chunks against a 128MB
+ * memory_limit). Only a JSON object can take the extra key, so JSON arrays and
+ * non-JSON bodies are returned unchanged.
+ */
+function appendProfilingJson (string $content, array $report): string {
+    $profiling = json_encode($report, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    $body = rtrim($content);
+    if ($profiling === false || strlen($body) < 2 || $body[0] !== "{" || substr($body, -1) !== "}") {
+        return $content;
+    }
+    $head = rtrim(substr($body, 0, -1));
+    return $head . (substr($head, -1) === "{" ? "" : ",") . "\n    \"_profiling\": " . $profiling . "\n}";
+}
+
+/**
  * Render profiling data as an HTML block for debug mode in showFooter().
  */
 function profilerHtmlBlock (): string {

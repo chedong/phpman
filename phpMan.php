@@ -622,14 +622,11 @@ if ($format === "markdown") {
 
 // Show JSON or MCP output
 if ($format === "json" || $format === "mcp") {
-    // Append profiling data as _profiling key
+    // Append profiling data as _profiling key.
+    // See appendProfilingJson() — injected into the serialised body rather than
+    // decoded and re-encoded, which would double the peak of a large response.
     if (Profiler::getEnabled()) {
-        $data = json_decode($content, true);
-        if ($data !== null && is_array($data)) {
-            $profiling = Profiler::getReport();
-            $data['_profiling'] = $profiling;
-            $content = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        }
+        $content = appendProfilingJson($content, Profiler::getReport());
     }
     header("Content-Type: application/json; charset=UTF-8");
     header("X-Content-Type-Options: nosniff");
