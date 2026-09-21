@@ -29,6 +29,7 @@ function formatSearchResults(array $results, string $parameter, string $section,
             'count'      => count($formatted),
             'engine'     => 'fts5',
         ];
+        if ($format === "mcp") return formatMcpEnvelope($jsonData);
         return formatForOutput(json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), $format);
     }
 
@@ -71,15 +72,43 @@ function formatForOutput (string $jsonStr, string $format): string {
             $result = ["content" => [["type" => "text", "text" => $jsonStr]]];
             return json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         }
-        $markdown = formatMcpMarkdown($data);
-        $structured = formatMcpStructured($data);
-        $result = [
-            "content" => [["type" => "text", "text" => $markdown]],
-            "structuredContent" => $structured
-        ];
-        return json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        // The IR string is dead weight once decoded, and the envelope built
+        // below is larger than it (sections are re-serialised), so drop it
+        // before building the envelope.
+        $jsonStr = "";
+        return formatMcpEnvelope($data);
     }
     return $jsonStr;
+}
+
+/**
+ * Wrap already-decoded page data in the MCP envelope.
+ *
+ * Prefer this over formatForOutput() whenever the caller still holds the array:
+ * encoding the IR and decoding it straight back is pure overhead (~15MB for
+ * `info py`, which is enough to run the request out of its 128MB limit).
+ */
+function formatMcpEnvelope (array $data): string {
+    $markdown = formatMcpMarkdown($data);
+    $structured = formatMcpStructured($data);
+    $result = [
+        "content" => [["type" => "text", "text" => $markdown]],
+        "structuredContent" => $structured
+    ];
+    return json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+}
+
+/**
+ * Render a man/perldoc/info page buffer for the json or mcp format.
+ *
+ * For mcp the IR array is handed straight to the envelope builder, so the
+ * intermediate IR string is never allocated.
+ */
+function formatPageOutput (array &$lines, string $parameter, string $section, string $mode, string $format): string {
+    if ($format === "mcp") {
+        return formatMcpEnvelope(buildJsonData($lines, $parameter, $section, $mode));
+    }
+    return formatToJSON($lines, $parameter, $section, $mode);
 }
 
 /**

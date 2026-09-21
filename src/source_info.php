@@ -6,7 +6,7 @@ function getInfoPage (string $parameter, string $format = "html"): string {
     if ($exitCode !== 0 || empty($lines)) {
         return "";
     }
-    if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "info");    if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "info"), $format);
+    if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "info");    if ($format === "json" || $format === "mcp") return formatPageOutput($lines, $parameter, "", "info", $format);
     return formatManPerlDoc($lines, "info");
 }
 
@@ -80,6 +80,7 @@ function getInfoIndex (string $format = "html"): string {
             "items" => $items,
             "count" => count($items),
         );
+        if ($format === "mcp") return formatMcpEnvelope($jsonData);
         return formatForOutput(json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), $format);
     }
 

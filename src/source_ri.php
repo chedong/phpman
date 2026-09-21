@@ -6,7 +6,7 @@ function getRiPage (string $parameter, string $format = "html"): string {
         return "";
     }
     if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "ri");
-    if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "ri"), $format);
+    if ($format === "json" || $format === "mcp") return formatPageOutput($lines, $parameter, "", "ri", $format);
     return formatManPerlDoc($lines, "ri");
 }
 
@@ -77,7 +77,7 @@ function getRiSearchPage (string $parameter, string $format = "html"): string {
         return "";
     }
     if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "ri");
-    if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "ri"), $format);
+    if ($format === "json" || $format === "mcp") return formatPageOutput($lines, $parameter, "", "ri", $format);
     return formatManPerlDoc($lines, "ri");
 }
 

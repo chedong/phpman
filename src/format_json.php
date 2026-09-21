@@ -1,5 +1,13 @@
 <?php
-function formatToJSON (array $lines, string $parameter, string $section = "", string $mode = "man"): string {
+/**
+ * Build the JSON intermediate representation for a page as an array.
+ *
+ * $lines is taken by reference and *released* as soon as it has been folded
+ * into $sections. That matters for very large pages: `info py` is ~430k lines,
+ * and keeping the line buffer alive through the build pushed the request past
+ * PHP's 128MB memory_limit.
+ */
+function buildJsonData (array &$lines, string $parameter, string $section = "", string $mode = "man"): array {
     // #44: use shared cleanTerminalOutput() instead of inline patterns
     $lines = cleanTerminalOutput($lines);
 
@@ -81,6 +89,12 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
             }
         }
     }
+
+    // Every line has been folded into $sections, so the line buffer is dead
+    // weight from here on. Assigning through the by-reference parameter drops
+    // the caller's reference too — unset() would only drop this local alias and
+    // leave the buffer alive for the whole caller frame.
+    $lines = array();
 
     // Build JSON structure
     $jsonData = array(
@@ -234,13 +248,30 @@ function formatToJSON (array $lines, string $parameter, string $section = "", st
     }
     $jsonData["see_also"] = $seeAlso;
 
+    // $sections (raw per-line arrays, one zval per line) has been fully folded
+    // into $jsonData by now — $jsonData["sections"] holds freshly imploded
+    // strings. Releasing the raw structure before encoding avoids holding both
+    // representations at once.
+    unset($sections);
+
     // v2.2: Inject TLDR from official sources (only for man section 1)
     $tldr = fetchOfficialTldr($parameter, $mode, $section);
     if (!empty($tldr)) {
         $jsonData["tldr"] = $tldr;
     }
 
-    $result = json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    return $jsonData;
+}
+
+/**
+ * Render a page as the JSON IR string (format=json).
+ *
+ * format=mcp goes through buildJsonData() + formatMcpEnvelope() instead: that
+ * skips this encode and the matching decode in the envelope builder, which for
+ * a huge page is a ~15MB string the MCP path would only throw away.
+ */
+function formatToJSON (array &$lines, string $parameter, string $section = "", string $mode = "man"): string {
+    $result = json_encode(buildJsonData($lines, $parameter, $section, $mode), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     return $result !== false ? $result : '{}';
 }
 

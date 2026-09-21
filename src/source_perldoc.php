@@ -9,7 +9,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $cmd = "perldoc -l ".escapeshellarg($parameter)." 2>/dev/null | head -1 | tr '\\n' '\\0' | xargs -0 pod2text -w " . escapeshellarg((string)$width) . " 2>/dev/null";  // #24: xargs -0 for space-safe paths
     exec($cmd, $lines, $return_code);
     if ($return_code === 0 && count($lines) > 0) {
-        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "perldoc");        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "perldoc"), $format);
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "perldoc");        if ($format === "json" || $format === "mcp") return formatPageOutput($lines, $parameter, "", "perldoc", $format);
         return formatManPerlDoc($lines, "perldoc");
     }
 
@@ -17,7 +17,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
     exec("perldoc ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
-        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "perldoc");        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "perldoc"), $format);
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "perldoc");        if ($format === "json" || $format === "mcp") return formatPageOutput($lines, $parameter, "", "perldoc", $format);
         return formatManPerlDoc($lines, "perldoc");
     }
 
@@ -25,7 +25,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
     exec("perldoc -f ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
-        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "perldoc", "-f");        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "-f", "perldoc"), $format);
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "perldoc", "-f");        if ($format === "json" || $format === "mcp") return formatPageOutput($lines, $parameter, "-f", "perldoc", $format);
         return formatManPerlDoc($lines, "perldoc");
     }
 
@@ -33,7 +33,7 @@ function getPerldocPage (string $parameter, string $format = "html"): string {
     $lines = array();
     exec("perldoc -q ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code === 0) {
-        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "perldoc", "-q");        if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "-q", "perldoc"), $format);
+        if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "perldoc", "-q");        if ($format === "json" || $format === "mcp") return formatPageOutput($lines, $parameter, "-q", "perldoc", $format);
         return formatManPerlDoc($lines, "perldoc");
     }
 

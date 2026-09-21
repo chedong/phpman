@@ -6,7 +6,7 @@ function getPydocPage (string $parameter, string $format = "html"): string {
         return "";
     }
     if ($format === "markdown") return formatManPerlDocToMarkdown($lines, $parameter, "pydoc");
-    if ($format === "json" || $format === "mcp") return formatForOutput(formatToJSON($lines, $parameter, "", "pydoc"), $format);
+    if ($format === "json" || $format === "mcp") return formatPageOutput($lines, $parameter, "", "pydoc", $format);
     return formatManPerlDoc($lines, "pydoc");
 }
 

@@ -45,7 +45,7 @@ function getManPage (string $parameter, string $section = "", string $format = "
         if ($format === "markdown") {
             return formatManPerlDocToMarkdown($lines, $parameter, "man", $section);        }
         if ($format === "json" || $format === "mcp") {
-            return formatForOutput(formatToJSON($lines, $parameter, $section, "man"), $format);
+            return formatPageOutput($lines, $parameter, $section, "man", $format);
         }
         return formatManPerlDoc($lines, "man");
     } finally {
@@ -111,6 +111,7 @@ function getManIndex (string $format = "html"): string {
             "sections" => $sectionItems,
             "count" => count($sectionItems),
         );
+        if ($format === "mcp") return formatMcpEnvelope($jsonData);
         return formatForOutput(json_encode($jsonData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), $format);
     }
 
