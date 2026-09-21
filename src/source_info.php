@@ -75,7 +75,9 @@ function getInfoIndex (string $format = "html"): string {
             "name" => "info pages index",
             "mode" => "index",
             "index_type" => "info",
-            "url" => $script_name . "/info/json",
+            // See getManIndex(): the index has no command segment, so the format
+            // has to travel as a query param — "/info/json" is a page lookup.
+            "url" => $script_name . "?mode=info&format=json",
             "generated" => gmdate("Y-m-d\TH:i:s\Z"),
             "items" => $items,
             "count" => count($items),

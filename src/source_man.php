@@ -106,7 +106,11 @@ function getManIndex (string $format = "html"): string {
             "name" => "man pages index",
             "mode" => "index",
             "index_type" => "man",
-            "url" => $script_name . "/man/json",
+            // The index has no command segment, so PATH_INFO cannot carry the
+            // format: "/man/json" routes to a man page named "json". The index
+            // is reachable as ?mode=man&format=json — the same form the format
+            // links generated in phpMan.php use.
+            "url" => $script_name . "?mode=man&format=json",
             "generated" => gmdate("Y-m-d\TH:i:s\Z"),
             "sections" => $sectionItems,
             "count" => count($sectionItems),
