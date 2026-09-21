@@ -48,6 +48,12 @@ if (!defined('PHPMAN_ENHANCE_MAX_CHARS')) {
 if (!defined('PHPMAN_ENHANCE_CHUNK_THRESHOLD')) {
     define('PHPMAN_ENHANCE_CHUNK_THRESHOLD', 200000);  // pages larger than this get chunked
 }
+if (!defined('PHPMAN_JSON_MAX_CONTENT_BYTES')) {
+    define('PHPMAN_JSON_MAX_CONTENT_BYTES', 1048576);  // total section text kept for json/mcp output (1MB)
+}
+if (!defined('PHPMAN_JSON_MAX_SECTION_BYTES')) {
+    define('PHPMAN_JSON_MAX_SECTION_BYTES', 524288);   // per-section share of that budget (512KB)
+}
 if (!defined('PHPMAN_GA_ID')) {
     define('PHPMAN_GA_ID', '');                  // Google Analytics GA4 measurement ID (empty = disabled)
 }
@@ -143,4 +149,3 @@ if (!defined('MCP_API_KEY')) define('MCP_API_KEY', '');
 // Debug mode: phpman.config.php > env var > default false
 if (!defined('PHPMAN_DEBUG')) define('PHPMAN_DEBUG', getenv('PHPMAN_DEBUG') === 'true');
 // Profiler::init() called by cache.php after class definition
-

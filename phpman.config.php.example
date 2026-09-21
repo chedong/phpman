@@ -42,6 +42,15 @@
 // define('LLM_MAX_TOKENS', 128000);  // keep ≤ 131072 for model compatibility
 // define('PHPMAN_ENHANCE_MAX_CHARS', 32000);  // max chars for LLM-enhanced output
 
+// --- JSON / MCP payload size (v4.11) ---
+// Section text kept when serialising a page. Very large pages (info py is
+// ~19.5MB of text) would otherwise be held in memory in full just to be
+// serialised, which exceeds PHP's memory_limit. Text past the budget is
+// dropped, and the payload then carries content_truncated/content_bytes/
+// content_lines so consumers can tell how much of each section they got.
+// define('PHPMAN_JSON_MAX_CONTENT_BYTES', 1048576);  // total (1MB)
+// define('PHPMAN_JSON_MAX_SECTION_BYTES', 524288);   // per section (512KB)
+
 // --- Fallback LLM (v4.2.2) ---
 // Optional: multiple fallback endpoints tried in order when primary fails
 // with 5xx/429/timeout. Each entry must have url, key, model.

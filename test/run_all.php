@@ -25,6 +25,7 @@ $suites = [
         "{$testDir}/integration/test_formatter_json.php",
         "{$testDir}/integration/test_formatter_mcp.php",
         "{$testDir}/integration/test_formatter_tldr.php",
+        "{$testDir}/integration/test_json_content_cap.php",
     ],
 ];
 
