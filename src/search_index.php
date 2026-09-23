@@ -482,7 +482,11 @@ function rebuildSearchIndex(): string {
         // mode values and are NOT search-dependent — must be preserved.
         // Preserve emoji_md/emoji_html — LLM-enhanced content is expensive
         // to regenerate (48+ days) and isn't search-index-dependent.
-        $db->exec("DELETE FROM cache WHERE mode = 'search'");
+        // v4.11: search page cache is sharded per mode → clear the search shard.
+        $searchShard = pageCacheDb('search');
+        if ($searchShard) {
+            $searchShard->exec("DELETE FROM cache");
+        }
         $output[] = "Cleared search result cache (page caches preserved).\n";
 
         // 5. Wrap INSERTs in a transaction to prevent WAL bloat

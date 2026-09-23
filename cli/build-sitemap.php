@@ -65,19 +65,30 @@ if ($sitemapUrl !== null) {
     $sitemapUrl = trim($sitemapUrl);
 }
 
-// --- Open cache DB ---
-$cacheDbPath = PHPMAN_CACHE_DIR . '/phpman_cache.db';
-if (!file_exists($cacheDbPath)) {
-    fwrite(STDERR, "Cache DB not found: {$cacheDbPath}\n");
+// --- Open cache DBs (v4.11: page cache is sharded per mode) ---
+$modes  = ['man', 'perldoc', 'info', 'pydoc', 'ri'];
+$modeDbs = [];
+$anyFound = false;
+foreach ($modes as $m) {
+    $shardPath = PHPMAN_CACHE_DIR . '/phpman_cache_' . $m . '.db';
+    if (!file_exists($shardPath)) continue;
+    $shard = new SQLite3($shardPath);
+    $shard->enableExceptions(true);
+    $modeDbs[$m] = $shard;
+    $anyFound = true;
+}
+// Fall back to the legacy central DB (pre-shard) for backward compatibility
+if (!$anyFound && file_exists(PHPMAN_CACHE_DIR . '/phpman_cache.db')) {
+    $legacy = new SQLite3(PHPMAN_CACHE_DIR . '/phpman_cache.db');
+    $legacy->enableExceptions(true);
+    $modeDbs['_legacy'] = $legacy;
+    $anyFound = true;
+}
+if (!$anyFound) {
+    fwrite(STDERR, "Cache DB not found: " . PHPMAN_CACHE_DIR . "/phpman_cache_{mode}.db\n");
     fwrite(STDERR, "Run build-index.php first to populate the cache.\n");
     exit(1);
 }
-
-$db = new SQLite3($cacheDbPath);
-$db->enableExceptions(true);
-
-// --- Query all successfully-cached content pages ---
-$modes  = ['man', 'perldoc', 'info', 'pydoc', 'ri'];
 $modeNames = [
     'man'     => 'Linux man page',
     'perldoc' => 'Perl documentation',
@@ -97,43 +108,64 @@ $changeFreq = [
 
 $entries = [];
 
-$stmt = $db->prepare(
-    "SELECT mode, name, section, updated_at
-     FROM cache
-     WHERE format = 'html'
-       AND status = 'found'
-       AND name != '__index__'
-       AND mode IN ('man','perldoc','info','pydoc','ri')
-     ORDER BY mode, name, section"
-);
-$result = $stmt->execute();
-
-while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-    $mode    = $row['mode'];
-    $name    = $row['name'];
-    $section = $row['section'];
-    $updated = (int)$row['updated_at'];
-
-    // Build canonical URL: /phpMan.php/{mode}/{name}[/section]
-    $url  = $baseUrl . '/' . rawurlencode($mode) . '/' . rawurlencode($name);
-    if ($section !== '' && $section !== '0') {
-        $url .= '/' . rawurlencode($section);
+// v4.11: query each per-mode shard. Legacy fallback (_legacy) holds all modes
+// in one central table's rows → reuse the filtered query there.
+foreach ($modeDbs as $shardMode => $shardDb) {
+    if ($shardMode === '_legacy') {
+        $stmt = $shardDb->prepare(
+            "SELECT mode, name, section, updated_at
+             FROM cache
+             WHERE format = 'html'
+               AND status = 'found'
+               AND name != '__index__'
+               AND mode IN ('man','perldoc','info','pydoc','ri')
+             ORDER BY mode, name, section"
+        );
+    } else {
+        // Per-mode shard: mode column is constant, filter by the shard mode.
+        $stmt = $shardDb->prepare(
+            "SELECT mode, name, section, updated_at
+             FROM cache
+             WHERE format = 'html'
+               AND status = 'found'
+               AND name != '__index__'
+               AND mode = :mode
+             ORDER BY name, section"
+        );
+        $stmt->bindValue(':mode', $shardMode, SQLITE3_TEXT);
     }
+    $result = $stmt->execute();
 
-    foreach ($formats as $format) {
-        $entryUrl = $url;
-        if ($format !== 'html') {
-            $entryUrl .= '/' . $format;
+    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+        $mode    = $row['mode'];
+        $name    = $row['name'];
+        $section = $row['section'];
+        $updated = (int)$row['updated_at'];
+
+        // Build canonical URL: /phpMan.php/{mode}/{name}[/section]
+        $url  = $baseUrl . '/' . rawurlencode($mode) . '/' . rawurlencode($name);
+        if ($section !== '' && $section !== '0') {
+            $url .= '/' . rawurlencode($section);
         }
-        $entries[] = [
-            'url'        => $entryUrl,
-            'lastmod'    => gmdate('Y-m-d', $updated),
-            'changefreq' => $changeFreq[$mode] ?? 'monthly',
-            'priority'   => priorityFor($mode, $format),
-        ];
+
+        foreach ($formats as $format) {
+            $entryUrl = $url;
+            if ($format !== 'html') {
+                $entryUrl .= '/' . $format;
+            }
+            $entries[] = [
+                'url'        => $entryUrl,
+                'lastmod'    => gmdate('Y-m-d', $updated),
+                'changefreq' => $changeFreq[$mode] ?? 'monthly',
+                'priority'   => priorityFor($mode, $format),
+            ];
+        }
     }
+} // end foreach ($modeDbs ...)
+
+foreach ($modeDbs as $shardDb) {
+    if ($shardDb instanceof SQLite3) $shardDb->close();
 }
-$db->close();
 
 // --- Output ---
 if ($outputFile !== null) {

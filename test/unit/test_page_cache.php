@@ -90,7 +90,8 @@ $cache->get('man', 'grep', '1', 'html');
 $cache->get('man', 'grep', '1', 'html');
 $cache->get('man', 'grep', '1', 'html');
 
-$db = cacheDb();
+// v4.11: page cache is sharded per mode → verify against the man shard
+$db = pageCacheDb('man');
 $hitsRow = $db->querySingle("SELECT hits FROM cache WHERE mode='man' AND name='grep' AND section='1'", false);
 assert_equals(3, (int)$hitsRow, "hit counter incremented to 3 after 3 get() calls");
 
@@ -112,7 +113,8 @@ assert_equals(604800, (int)$ttlFound, "found entry TTL = 604800 (7 days)");
 
 echo "\n--- TTL: search not_found entries have 7-day TTL ---\n";
 $cache->set('search', 'noresults', '', 'html', '', 'not_found');
-$ttlSearch = $db->querySingle("SELECT ttl FROM cache WHERE mode='search' AND name='noresults'", false);
+$searchDb = pageCacheDb('search');
+$ttlSearch = $searchDb->querySingle("SELECT ttl FROM cache WHERE mode='search' AND name='noresults'", false);
 assert_equals(604800, (int)$ttlSearch, "search not_found entry TTL = 604800 (7 days)");
 
 // ─── delete() ───
@@ -154,7 +156,8 @@ cleanupTmpDir();
 $cache = new PageCache();
 $cache->set('man', 'ftstest', '1', 'html', 'FTS sync test content');
 
-$db = cacheDb();
+// v4.11: cache_fts lives in the man shard
+$db = pageCacheDb('man');
 // cache_fts is a content table (content='cache'), so direct SELECT reads from
 // the cache table. Verify via the FTS5 rowid mapping instead.
 $ftsRow = $db->querySingle("SELECT COUNT(*) FROM cache_fts WHERE cache_fts MATCH 'ftstest'", false);
@@ -172,7 +175,7 @@ assert_equals(0, (int)$ftsSearch, "cache_fts has no entry for search mode (MATCH
 
 echo "\n--- FTS: overwrite preserves stable rowid (#118) ---\n";
 $cache->set('man', 'ftsoverwrite', '1', 'html', 'original FTS content for overwrite test');
-$overwriteDb = cacheDb();
+$overwriteDb = pageCacheDb('man');
 $beforeId = $overwriteDb->querySingle("SELECT id FROM cache WHERE mode='man' AND name='ftsoverwrite' AND section='1' AND format='html'", false);
 // Overwrite the same key
 $cache->set('man', 'ftsoverwrite', '1', 'html', 'updated FTS content after overwrite');

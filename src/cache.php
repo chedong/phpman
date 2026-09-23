@@ -267,12 +267,117 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
 
 /**
  * PageCache — SQLite-based cache for rendered man/perldoc/info/pydoc/ri pages.
+ * Since v4.11 the page cache is sharded per mode (see pageCacheDb below).
+ *
+ * Per-mode page-cache shard connection.
+ *
+ * Sharding rationale: the page `cache` table is the hot, high-concurrency
+ * write path (every request that misses cache does an UPSERT). Before v4.11
+ * all modes shared ONE SQLite file (phpman_cache.db) along with the search
+ * infrastructure (search_fts, search_index_meta, tldr_cache). Under concurrent
+ * bot/man traffic that single file became a write bottleneck → "database is
+ * locked" / "cache set retries exhausted" in production.
+ *
+ * Now each mode gets its own file: phpman_cache_{mode}.db holding just the
+ * `cache` + `cache_fts` tables for that mode. man/perldoc/info/pydoc/ri/search
+ * writes land in independent files → no cross-mode lock contention. The
+ * central DB (cacheDb()) keeps only the search/tldr infrastructure tables,
+ * which are written mostly during batch reindex (single writer).
+ *
+ * Mode list: PHPMAN_CONTENT_MODES + 'search' (search results are cached with
+ * mode='search').
  */
+function pageCacheModes(): array {
+    $modes = defined('PHPMAN_CONTENT_MODES') ? PHPMAN_CONTENT_MODES : ['man', 'perldoc', 'info', 'pydoc', 'ri'];
+    $modes[] = 'search';
+    return $modes;
+}
+
+function pageCacheDb(string $mode, ?bool $reset = null): ?SQLite3 {
+    static $shards = [];
+    if ($reset === true) { $shards = []; return null; }
+
+    // Sanitize mode into a safe filename fragment (mode=[a-z0-9_-]+ from normalizeMode).
+    $safeMode = preg_replace('/[^a-z0-9_-]/i', '_', (string)$mode);
+    if ($safeMode === '') $safeMode = 'default';
+    if (isset($shards[$safeMode])) return $shards[$safeMode];
+
+    $dir = PHPMAN_CACHE_DIR;
+    if (!is_dir($dir)) {
+        if (!@mkdir($dir, 0755, true)) {
+            phpManLog("PHPMAN_CACHE_DIR not writable: " . $dir);
+            return null;
+        }
+    }
+    if (!is_writable($dir)) {
+        phpManLog("PHPMAN_CACHE_DIR not writable: " . $dir);
+        return null;
+    }
+
+    $dbPath = $dir . '/phpman_cache_' . $safeMode . '.db';
+    $isNew = !file_exists($dbPath);
+
+    $db = new SQLite3($dbPath);
+    $db->enableExceptions(true);
+    $db->busyTimeout(10000);
+
+    if ($isNew) {
+        try { $db->exec('PRAGMA journal_mode=WAL'); }
+        catch (\Throwable $e) { phpManLog("pageCache init WAL: " . $e->getMessage()); }
+    }
+    $db->exec('PRAGMA synchronous=NORMAL');
+
+    if ($isNew) {
+        // Same cache schema as the (legacy) central table, but per-mode.
+        $db->exec("CREATE TABLE IF NOT EXISTS cache (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            mode        TEXT NOT NULL,
+            name        TEXT NOT NULL,
+            section     TEXT NOT NULL DEFAULT '',
+            format      TEXT NOT NULL DEFAULT 'raw',
+            content     BLOB,
+            content_len INTEGER DEFAULT 0,
+            status      TEXT NOT NULL DEFAULT 'found'
+                        CHECK(status IN ('found','not_found')),
+            ttl         INTEGER NOT NULL DEFAULT 0,
+            hits        INTEGER NOT NULL DEFAULT 0,
+            created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+            updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+            generator_version TEXT,
+            UNIQUE(mode, name, section, format)
+        )");
+        try {
+            $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS cache_fts
+                       USING fts5(mode, name, section, title,
+                                  tokenize='unicode61',
+                                  content='cache',
+                                  content_rowid='id')");
+        } catch (\Throwable $e) {
+            phpManLog("pageCache FTS5 content table: " . $e->getMessage());
+        }
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_lookup ON cache(mode, name, section, format)");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_status ON cache(status, updated_at)");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_hits ON cache(hits DESC)");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_expiry ON cache(updated_at) WHERE ttl > 0");
+    }
+
+    $shards[$safeMode] = $db;
+    return $db;
+}
+
 class PageCache {
     private ?SQLite3 $db;
 
     public function __construct() {
+        // Pre-warm the central connection; per-call page ops use the mode shard
+        // resolved lazily in each method via pageCacheDb($mode).
         $this->db = cacheDb();
+    }
+
+    /** Resolve the DB shard for a given mode (falls back to central on failure). */
+    private function dbFor(string $mode): ?SQLite3 {
+        $shard = pageCacheDb($mode);
+        return $shard !== null ? $shard : $this->db;
     }
 
     /**
@@ -284,8 +389,9 @@ class PageCache {
     }
 
     public function get(string $mode, string $name, string $section, string $format): ?string {
-        if (!$this->db) return null;
-        $stmt = $this->db->prepare(
+        $db = $this->dbFor($mode);
+        if (!$db) return null;
+        $stmt = $db->prepare(
             "SELECT id, content, status, ttl, updated_at FROM cache
              WHERE mode = :mode AND name = :name AND section = :section AND format = :format"
         );
@@ -307,7 +413,7 @@ class PageCache {
 
         // Count this cache hit (found or not_found) — non-critical, ignore lock errors
         try {
-            $hitStmt = $this->db->prepare("UPDATE cache SET hits = hits + 1 WHERE id = :id");
+            $hitStmt = $db->prepare("UPDATE cache SET hits = hits + 1 WHERE id = :id");
             $hitStmt->bindValue(':id', $row['id'], SQLITE3_INTEGER);
             $hitStmt->execute();
         } catch (\Throwable $e) {}
@@ -324,7 +430,8 @@ class PageCache {
     }
 
     public function set(string $mode, string $name, string $section, string $format, ?string $content, string $status = 'found'): bool {
-        if (!$this->db) return false;
+        $db = $this->dbFor($mode);
+        if (!$db) return false;
 
         // Guard: never overwrite valid (non-empty) content with empty not_found.
         // WAL-mode stale reads can cause batch-enhance to miss existing emoji data,
@@ -351,7 +458,7 @@ class PageCache {
 
         // UPSERT: single INSERT ... ON CONFLICT DO UPDATE replaces SELECT-then-UPDATE/INSERT.
         // Eliminates the SELECT round-trip and the SELECT→INSERT race window.
-        $stmt = $this->db->prepare(
+        $stmt = $db->prepare(
             "INSERT INTO cache (mode, name, section, format, content, content_len, status, ttl, created_at, updated_at, generator_version)
              VALUES (:mode, :name, :section, :format, :content, :content_len, :status, :ttl,
                      strftime('%s','now'), strftime('%s','now'), :genver)
@@ -378,7 +485,7 @@ class PageCache {
         for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
             try {
                 $ok = $stmt->execute() !== false;
-                $cacheId = $ok ? $this->db->lastInsertRowID() : 0;
+                $cacheId = $ok ? $db->lastInsertRowID() : 0;
 
                 // Sync FTS5 index for found entries (skip search mode — search results aren't indexed)
                 if ($ok && $status === 'found' && $mode !== 'search') {
@@ -414,17 +521,44 @@ class PageCache {
     }
 
     public function clear(): bool {
-        if (!$this->db) return false;
-        $this->db->exec("DELETE FROM cache");
-        return true;
+        $ok = true;
+        foreach (pageCacheModes() as $mode) {
+            $shard = pageCacheDb($mode);
+            if ($shard === null) { $ok = false; continue; }
+            try { $shard->exec("DELETE FROM cache"); }
+            catch (\Throwable $e) { $ok = false; }
+        }
+        // Also clear the legacy central cache table (may hold pre-shard entries)
+        if ($this->db) {
+            try { $this->db->exec("DELETE FROM cache"); }
+            catch (\Throwable $e) { $ok = false; }
+        }
+        return $ok;
     }
 
     public function stats(): array {
-        $total = $this->db->querySingle("SELECT COUNT(*) FROM cache");
-        $found = $this->db->querySingle("SELECT COUNT(*) FROM cache WHERE status='found'");
-        $notFound = $this->db->querySingle("SELECT COUNT(*) FROM cache WHERE status='not_found'");
-        $totalHits = $this->db->querySingle("SELECT SUM(hits) FROM cache") ?: 0;
-        $dbSize = file_exists(PHPMAN_CACHE_DB) ? filesize(PHPMAN_CACHE_DB) : 0;
+        $total = 0; $found = 0; $notFound = 0; $totalHits = 0; $dbSize = 0;
+        foreach (pageCacheModes() as $mode) {
+            $shard = pageCacheDb($mode);
+            if ($shard === null) continue;
+            try {
+                $total += (int)$shard->querySingle("SELECT COUNT(*) FROM cache");
+                $found += (int)$shard->querySingle("SELECT COUNT(*) FROM cache WHERE status='found'");
+                $notFound += (int)$shard->querySingle("SELECT COUNT(*) FROM cache WHERE status='not_found'");
+                $totalHits += (int)($shard->querySingle("SELECT SUM(hits) FROM cache") ?: 0);
+                $path = PHPMAN_CACHE_DIR . '/phpman_cache_' . preg_replace('/[^a-z0-9_-]/i', '_', $mode) . '.db';
+                if (file_exists($path)) $dbSize += filesize($path);
+            } catch (\Throwable $e) {}
+        }
+        if ($this->db) {
+            try {
+                $total += (int)$this->db->querySingle("SELECT COUNT(*) FROM cache");
+                $found += (int)$this->db->querySingle("SELECT COUNT(*) FROM cache WHERE status='found'");
+                $notFound += (int)$this->db->querySingle("SELECT COUNT(*) FROM cache WHERE status='not_found'");
+                $totalHits += (int)($this->db->querySingle("SELECT SUM(hits) FROM cache") ?: 0);
+            } catch (\Throwable $e) {}
+            if (file_exists(PHPMAN_CACHE_DB)) $dbSize += filesize(PHPMAN_CACHE_DB);
+        }
 
         return [
             'total' => (int)$total,
@@ -436,13 +570,14 @@ class PageCache {
     }
 
     private function deleteEntry(string $mode, string $name, string $section, string $format): void {
-        if (!$this->db) return;
+        $db = $this->dbFor($mode);
+        if (!$db) return;
         if ($format === '%') {
-            $stmt = $this->db->prepare(
+            $stmt = $db->prepare(
                 "DELETE FROM cache WHERE mode = :mode AND name = :name AND section = :section"
             );
         } else {
-            $stmt = $this->db->prepare(
+            $stmt = $db->prepare(
                 "DELETE FROM cache WHERE mode = :mode AND name = :name AND section = :section AND format = :format"
             );
             $stmt->bindValue(':format', $format, SQLITE3_TEXT);
@@ -454,6 +589,8 @@ class PageCache {
     }
 
     private function syncFts(int $cacheId, string $mode, string $name, string $section, ?string $content): void {
+        $db = $this->dbFor($mode);
+        if (!$db) return;
         $title = '';
         if ($content !== null && $content !== '') {
             // Extract first meaningful line as title for FTS
@@ -468,7 +605,7 @@ class PageCache {
         }
         try {
             // INSERT OR REPLACE is DELETE+INSERT: replaces any existing FTS row for same rowid
-            $stmt = $this->db->prepare(
+            $stmt = $db->prepare(
                 "INSERT OR REPLACE INTO cache_fts (rowid, mode, name, section, title)
                  VALUES (:id, :mode, :name, :section, :title)"
             );
@@ -499,11 +636,15 @@ function cacheOrExecute(string $mode, string $name, string $section, string $for
     }
     // 1% chance: clean up expired cache entries to prevent unbounded growth
     if (mt_rand(0, 99) === 0) {
-        try {
-            $db = cacheDb();
-            $db->exec("DELETE FROM cache WHERE ttl > 0 AND (strftime('%s','now') - updated_at) > ttl");
-        } catch (\Throwable $e) {
-            phpManLog("cache TTL cleanup: " . $e->getMessage());
+        foreach (pageCacheModes() as $cleanupMode) {
+            try {
+                $cleanupDb = pageCacheDb($cleanupMode);
+                if ($cleanupDb) {
+                    $cleanupDb->exec("DELETE FROM cache WHERE ttl > 0 AND (strftime('%s','now') - updated_at) > ttl");
+                }
+            } catch (\Throwable $e) {
+                phpManLog("cache TTL cleanup: " . $e->getMessage());
+            }
         }
     }
     return $content;

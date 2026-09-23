@@ -220,7 +220,9 @@ if ($format === "html" && $mode !== "mcp" && $mode !== "copyright" && $mode !== 
         if ($db) {
             $cacheAge = $db->querySingle("SELECT value FROM meta WHERE key = 'search_index_updated'") ?: '';
             // Check if emoji_html cache exists for this page — single lookup
-            $ec = $db->querySingle("SELECT 1 FROM cache WHERE mode = :m AND name = :n AND section = '' AND format = 'emoji_html' AND status = 'found'");
+            // (page cache is sharded per mode since v4.11; emoji lives in the mode shard)
+            $shard = pageCacheDb($mode);
+            $ec = $shard ? $shard->querySingle("SELECT 1 FROM cache WHERE mode = :m AND name = :n AND section = '' AND format = 'emoji_html' AND status = 'found'") : null;
             $hasEnhanced = ($ec !== null);
         }
     } catch (\Throwable $ignored) {
@@ -343,10 +345,11 @@ if ( $mode == "status" ) {
             ) ?: 0;
         }
 
-        // 3. Last emoji enhanced (staleness check)
+        // 3. Last emoji enhanced (staleness check) — emoji lives in the mode shard
         try {
-            if ($db) {
-                $stmt = $db->prepare(
+            $shard = pageCacheDb($m);
+            if ($shard) {
+                $stmt = $shard->prepare(
                     "SELECT MAX(updated_at) FROM cache WHERE mode = :m AND format IN ('emoji_html','emoji_md') AND status='found'"
                 );
                 $stmt->bindValue(':m', $m, SQLITE3_TEXT);
