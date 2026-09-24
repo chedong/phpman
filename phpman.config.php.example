@@ -51,6 +51,12 @@
 // define('PHPMAN_JSON_MAX_CONTENT_BYTES', 1048576);  // total (1MB)
 // define('PHPMAN_JSON_MAX_SECTION_BYTES', 524288);   // per section (512KB)
 
+// --- Cache TTL (v4.11) ---
+// Unified expiry for PageCache found entries and the TLDR cache, in months
+// (1 month = 30 days). not_found entries always expire after 1 day; emoji
+// LLM output never expires regardless of this setting.
+// define('PHPMAN_CACHE_TTL_MONTHS', 7);  // 7 months = 210 days
+
 // --- Fallback LLM (v4.2.2) ---
 // Optional: multiple fallback endpoints tried in order when primary fails
 // with 5xx/429/timeout. Each entry must have url, key, model.

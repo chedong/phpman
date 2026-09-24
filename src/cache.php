@@ -445,13 +445,13 @@ class PageCache {
 
         $compressed = ($content !== null && $content !== '') ? gzcompress($content) : null;
         $contentLen = ($content !== null) ? strlen($content) : 0;
-        $ttl = ($status === 'not_found') ? 86400 : 604800;  // 1 day for 404, 7 days for found
-        // Search not-found entries live longer (7 days vs 1 day)
+        $ttl = ($status === 'not_found') ? PHPMAN_CACHE_TTL_NOT_FOUND : PHPMAN_CACHE_TTL_FOUND;
+        // Search not-found entries live as long as found entries
         if ($mode === 'search' && $status === 'not_found') {
-            $ttl = 604800;
+            $ttl = PHPMAN_CACHE_TTL_FOUND;
         }
         // Emoji enhancements are expensive LLM calls — never auto-expire them.
-        // 7-day TTL causes ~12K entries to vanish every week, wasting ~¥2K in LLM cost.
+        // Short TTLs caused ~12K entries to vanish weekly, wasting ~¥2K in LLM cost.
         if ($format === 'emoji_md' || $format === 'emoji_html') {
             $ttl = 0;  // never expire
         }

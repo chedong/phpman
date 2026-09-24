@@ -15,7 +15,7 @@ Single `phpman_cache.db` file containing page cache + FTS5 full-text search inde
 | `cache_fts` | FTS5 virtual (content) | — | Cached page title index (linked to cache.id) |
 | `search_fts` | FTS5 virtual (standalone) | 13,835 | Offline full-text search index (man+pydoc+ri) |
 | `search_index_meta` | Regular | 13,835 | Index entry metadata (dedup, sort, stats) |
-| `tldr_cache` | Regular | On demand | TLDR cheatsheet cache (7-day TTL) |
+| `tldr_cache` | Regular | On demand | TLDR cheatsheet cache (unified TTL, default 7 months) |
 | `meta` | Regular | 3 | Schema version, index count, update time |
 
 ---
@@ -52,7 +52,7 @@ CREATE INDEX idx_cache_expiry  ON cache(updated_at) WHERE ttl > 0;
 
 - **Cache key**: (mode, name, section, format) uniquely identifies a cached entry
 - **Compression**: PHP `gzcompress()`, SQLite BLOB storage, ~70% average compression ratio
-- **TTL**: found entries 604800s (7 days), not_found entries 86400s (1 day). Expired entries auto-deleted on `get()`
+- **TTL**: found entries `PHPMAN_CACHE_TTL_FOUND` (default 7 months = 18144000s, override via `PHPMAN_CACHE_TTL_MONTHS`), not_found entries 86400s (1 day). Expired entries auto-deleted on `get()`
 - **LLM enhancement formats** (`emoji_md`, `emoji_html`): Written with TTL=0 (permanent, no auto-expiry). Generated offline by `cli/batch-enhance.php` or online by `enhanceManPage()`. Preserved across `--build-index-cron` runs (reindex skips emoji formats to avoid wasting 48+ days of LLM work).
 - **Auto-cleanup**: `cacheOrExecute()` has 1% probability of triggering `DELETE FROM cache WHERE expired`
 - **search mode**: Not written to `cache_fts` index, no hits counting, emits `<meta name="robots" content="noindex">`
@@ -168,7 +168,7 @@ CREATE TABLE IF NOT EXISTS tldr_cache (
 
 ### 6.2 Notes
 
-- **TTL**: Checked on read via `(strftime('%s','now') - fetched_at) < 604800` (7 days)
+- **TTL**: Checked on read via `(strftime('%s','now') - fetched_at) < PHPMAN_CACHE_TTL_FOUND` (unified with PageCache found entries, default 7 months)
 - **Negative cache**: `source='not_found'` caches missing TLDR commands to avoid repeated GitHub requests
 - **Data flow**: `fetchOfficialTldr()` → check SQLite → miss → tldr-pages/cheat.sh → write SQLite
 - **Source priority**: tldr-pages (common/ → linux/ → osx/) → cheat.sh fallback

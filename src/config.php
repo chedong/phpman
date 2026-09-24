@@ -54,6 +54,19 @@ if (!defined('PHPMAN_JSON_MAX_CONTENT_BYTES')) {
 if (!defined('PHPMAN_JSON_MAX_SECTION_BYTES')) {
     define('PHPMAN_JSON_MAX_SECTION_BYTES', 524288);   // per-section share of that budget (512KB)
 }
+// Unified data-cache TTL: PageCache found entries + TLDR cache expire on the
+// same schedule so no cache tier silently outlives another. "Month" = 30 days
+// for determinism → 7 months = 210 days = 18,144,000s.
+// (Emoji LLM output is intentionally exempt — never expires, see cache.php.)
+if (!defined('PHPMAN_CACHE_TTL_MONTHS')) {
+    define('PHPMAN_CACHE_TTL_MONTHS', 7);
+}
+if (!defined('PHPMAN_CACHE_TTL_FOUND')) {
+    define('PHPMAN_CACHE_TTL_FOUND', PHPMAN_CACHE_TTL_MONTHS * 30 * 86400);
+}
+if (!defined('PHPMAN_CACHE_TTL_NOT_FOUND')) {
+    define('PHPMAN_CACHE_TTL_NOT_FOUND', 86400);  // 1 day — retry missing pages sooner
+}
 if (!defined('PHPMAN_GA_ID')) {
     define('PHPMAN_GA_ID', '');                  // Google Analytics GA4 measurement ID (empty = disabled)
 }

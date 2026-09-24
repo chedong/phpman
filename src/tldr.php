@@ -18,13 +18,14 @@ function fetchOfficialTldr(string $command, string $mode = "man", string $sectio
     // Skip commands with non-simple names (dots, special chars beyond [-_.])
     if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]*$/', $command)) return [];
 
-    // SQLite persistent cache — 7-day TTL (#80)
+    // SQLite persistent cache — same TTL as PageCache found entries
+    // (PHPMAN_CACHE_TTL_FOUND, was 7 days / #80)
     try {
         $db = cacheDb();
         $stmt = $db->prepare(
             "SELECT content FROM tldr_cache
              WHERE command = :cmd
-               AND (strftime('%s','now') - fetched_at) < 604800"
+               AND (strftime('%s','now') - fetched_at) < " . (int)PHPMAN_CACHE_TTL_FOUND
         );
         $stmt->bindValue(':cmd', $command, SQLITE3_TEXT);
         $cached = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
@@ -48,7 +49,7 @@ function fetchOfficialTldr(string $command, string $mode = "man", string $sectio
     if (empty($result)) $result = fetchCheatShTldr($command);
     $cache[$cacheKey] = $result;
 
-    // Persist to SQLite cache — 7-day TTL for future requests
+    // Persist to SQLite cache — same TTL as PageCache (read-side check above)
     // Cache both successful and empty/missing results (negative cache, #80)
     try {
         $db = cacheDb();

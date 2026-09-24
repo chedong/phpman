@@ -530,7 +530,7 @@ This means any MCP client can `GET /man/ls/1/mcp` and parse the result identical
 
 ### TLDR (Integrated in Man Pages)
 
-TLDR cheatsheets are embedded directly in man page detail pages. When viewing a man section 1 command page, phpMan fetches from [tldr-pages](https://github.com/tldr-pages/tldr) (with [cheat.sh](https://cheat.sh) fallback) and caches results in SQLite for 7 days. The TLDR block appears at the top of the man page with collapsible examples.
+TLDR cheatsheets are embedded directly in man page detail pages. When viewing a man section 1 command page, phpMan fetches from [tldr-pages](https://github.com/tldr-pages/tldr) (with [cheat.sh](https://cheat.sh) fallback) and caches results in SQLite with the same TTL as page content (default 7 months). The TLDR block appears at the top of the man page with collapsible examples.
 
 ```bash
 # TLDR is integrated directly into man page output

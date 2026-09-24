@@ -106,16 +106,16 @@ $cache->set('man', 'expired_cmd', '1', 'html', '', 'not_found');
 $ttlRow = $db->querySingle("SELECT ttl FROM cache WHERE mode='man' AND name='expired_cmd' AND section='1'", false);
 assert_equals(86400, (int)$ttlRow, "not_found entry TTL = 86400 (1 day)");
 
-echo "\n--- TTL: found entries have 7-day TTL ---\n";
+echo "\n--- TTL: found entries use unified PHPMAN_CACHE_TTL_FOUND ---\n";
 $cache->set('man', 'valid_cmd', '1', 'html', 'some content', 'found');
 $ttlFound = $db->querySingle("SELECT ttl FROM cache WHERE mode='man' AND name='valid_cmd' AND section='1'", false);
-assert_equals(604800, (int)$ttlFound, "found entry TTL = 604800 (7 days)");
+assert_equals(PHPMAN_CACHE_TTL_FOUND, (int)$ttlFound, "found entry TTL = PHPMAN_CACHE_TTL_FOUND (" . PHPMAN_CACHE_TTL_FOUND . ")");
 
-echo "\n--- TTL: search not_found entries have 7-day TTL ---\n";
+echo "\n--- TTL: search not_found entries use unified PHPMAN_CACHE_TTL_FOUND ---\n";
 $cache->set('search', 'noresults', '', 'html', '', 'not_found');
 $searchDb = pageCacheDb('search');
 $ttlSearch = $searchDb->querySingle("SELECT ttl FROM cache WHERE mode='search' AND name='noresults'", false);
-assert_equals(604800, (int)$ttlSearch, "search not_found entry TTL = 604800 (7 days)");
+assert_equals(PHPMAN_CACHE_TTL_FOUND, (int)$ttlSearch, "search not_found entry TTL = PHPMAN_CACHE_TTL_FOUND (" . PHPMAN_CACHE_TTL_FOUND . ")");
 
 // ─── delete() ───
 echo "\n--- delete() removes specific mode/name/section ---\n";

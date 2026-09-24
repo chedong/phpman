@@ -80,7 +80,7 @@ phpMan maintains XHTML 1.0 Transitional compliance, not upgrading to HTML5:
 
 ### 2.5 TLDR Cache Strategy
 
-TLDR results are persistently cached in the SQLite `tldr_cache` table (7-day TTL):
+TLDR results are persistently cached in the SQLite `tldr_cache` table (unified cache TTL, default 7 months — same as PageCache found entries):
 
 - `fetchOfficialTldr()` fetches from tldr-pages GitHub Raw (cheat.sh fallback)
 - Cached in `phpm_cache.db` `tldr_cache` table
