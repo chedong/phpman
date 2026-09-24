@@ -21,6 +21,21 @@ function formatManPerlDocToMarkdown (array $lines, string $parameter = "", strin
     }
 
     $count = count($lines);
+
+    // Perf: baseUrl() is request-constant — compute once, not per match.
+    // Link closures hoisted out of the loop too (closure creation per line adds up
+    // on 30k-line pages like zshall).
+    $base = baseUrl();
+    $linkMan = function ($matches) use ($base) {
+        $name = str_replace(['**', '_'], '', $matches[1]);
+        $sec = str_replace(['**', '_'], '', $matches[2]);
+        return '[' . $matches[0] . '](' . $base . '/man/' . urlencode($name) . '/' . urlencode($sec) . '/markdown)';
+    };
+    $linkPerl = function ($matches) use ($base) {
+        $name = str_replace(['**', '_'], '', $matches[1]);
+        return '[' . $matches[0] . '](' . $base . '/perldoc/' . urlencode($name) . '/markdown)';
+    };
+
     for ( $i = 0; $i < $count; $i ++ ) {
         $line = $lines[$i];
 
@@ -39,33 +54,35 @@ function formatManPerlDocToMarkdown (array $lines, string $parameter = "", strin
             }
         }
 
+        // Fast path: each regex below can only match when its trigger substring
+        // is present (@ / http / ( / ::). strpos() is a C-level scan — on plain
+        // prose lines (the majority) it skips the preg pass entirely.
         // Email
-        $line = preg_replace('/([\w\-\.]+)@([\w\-]+(?:\.[\w\-]+)+)/', '<$0>', $line);
+        if (strpos($line, '@') !== false) {
+            $line = preg_replace('/([\w\-\.]+)@([\w\-]+(?:\.[\w\-]+)+)/', '<$0>', $line);
+        }
         // URL: wrap as autolink, no need to escape :: in markdown
-        $line = preg_replace('/(https?:\/\/[\w%\-\?&;#~=\.\/\@\:]+[\w\/])/i', '<$0>', $line);
+        if (stripos($line, 'http') !== false) {
+            $line = preg_replace('/(https?:\/\/[\w%\-\?&;#~=\.\/\@\:]+[\w\/])/i', '<$0>', $line);
+        }
 
         // Command references: show as absolute markdown links
-        $line = preg_replace_callback(
-            '/(?<![\w])(?:\*\*|_)?([\w\-\.\+]+)(?:\*\*|_)?\((?:\*\*|_)?((\d\w*|n)\w*)(?:\*\*|_)?\)/',
-            function ($matches) {
-                $name = str_replace(['**', '_'], '', $matches[1]);
-                $sec = str_replace(['**', '_'], '', $matches[2]);
-                $base = baseUrl();
-                return '[' . $matches[0] . '](' . $base . '/man/' . urlencode($name) . '/' . urlencode($sec) . '/markdown)';
-            },
-            $line
-        );
-        
+        if (strpos($line, '(') !== false) {
+            $line = preg_replace_callback(
+                '/(?<![\w])(?:\*\*|_)?([\w\-\.\+]+)(?:\*\*|_)?\((?:\*\*|_)?((\d\w*|n)\w*)(?:\*\*|_)?\)/',
+                $linkMan,
+                $line
+            );
+        }
+
         // Perl modules: Module::Name → show as absolute markdown links
-        $line = preg_replace_callback(
-            '/(?<![\w])(?:\*\*|_)?(\w+(?:::\w+)+)(?:\*\*|_)?/',
-            function ($matches) {
-                $name = str_replace(['**', '_'], '', $matches[1]);
-                $base = baseUrl();
-                return '[' . $matches[0] . '](' . $base . '/perldoc/' . urlencode($name) . '/markdown)';
-            },
-            $line
-        );
+        if (strpos($line, '::') !== false) {
+            $line = preg_replace_callback(
+                '/(?<![\w])(?:\*\*|_)?(\w+(?:::\w+)+)(?:\*\*|_)?/',
+                $linkPerl,
+                $line
+            );
+        }
 
         $output .= $line . "\n";
     }
