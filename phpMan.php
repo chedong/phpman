@@ -276,7 +276,7 @@ if ( $mode == "status" ) {
         exit;
     }
 
-    // PID file paths (aligned with batch-enhance.php defaults)
+    // PID file paths (legacy batch-enhance convention)
     $pidPaths = [
         "man"     => "/tmp/bm.pid",
         "perldoc" => "/tmp/bp.pid",
@@ -614,7 +614,7 @@ if ($format === "markdown") {
     // v4.0: enhanced Markdown for /markdown format — prefer emoji_md cache
     if ($parameter !== "" && isset($mode) && in_array($mode, PHPMAN_CONTENT_MODES)) {
         $mdcache = new PageCache();
-        $enhancedMd = $mdcache->get($mode, $parameter, '', 'emoji_md');
+        $enhancedMd = $mdcache->get($mode, $parameter, '', CACHE_FORMAT_EMOJI_MD);
         if ($enhancedMd !== null && !PageCache::isNotFound($enhancedMd)) {
             $content = $enhancedMd;
         }
@@ -765,7 +765,6 @@ showForm($parameter, $check, $mode, $section, $markdownUrl, $jsonUrl);
 	    $hasEnhancedCache = ($enhancedCacheContent !== null && !PageCache::isNotFound($enhancedCacheContent));
 	}
 	if (!$hasEnhancedCache) {
-	// v2.2: TLDR block for man section 1 detail pages
 	if ($mode === "man" && $parameter !== "" && trim($content) !== "") {
 	    $tldrData = fetchOfficialTldr($parameter, $mode, $section);
 	    // Filter out empty commands from malformed data before checking
@@ -801,7 +800,6 @@ showForm($parameter, $check, $mode, $section, $markdownUrl, $jsonUrl);
 	}
 
 
-	// v4.0: enhanced HTML routing — default view uses LLM-enhanced MD if available
 	// v4.0: Serve enhanced HTML from cache when available and format not explicit.
 	$formatExplicit = (requestValue($_GET, "format") !== "") || (serverValue("PATH_INFO") !== "" && preg_match("#/(html|markdown|json|mcp)$#", serverValue("PATH_INFO")));
 	$isEnhanced = false;

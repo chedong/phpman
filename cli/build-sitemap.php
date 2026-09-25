@@ -66,11 +66,13 @@ if ($sitemapUrl !== null) {
 }
 
 // --- Open cache DBs (v4.11: page cache is sharded per mode) ---
-$modes  = ['man', 'perldoc', 'info', 'pydoc', 'ri'];
+// Mode list and shard path resolve through the single definitions in
+// src/config.php (PHPMAN_CONTENT_MODES) and src/cache.php (pageCachePath).
+$modes  = PHPMAN_CONTENT_MODES;
 $modeDbs = [];
 $anyFound = false;
 foreach ($modes as $m) {
-    $shardPath = PHPMAN_CACHE_DIR . '/phpman_cache_' . $m . '.db';
+    $shardPath = pageCachePath($m);
     if (!file_exists($shardPath)) continue;
     $shard = new SQLite3($shardPath);
     $shard->enableExceptions(true);
@@ -110,6 +112,10 @@ $entries = [];
 
 // v4.11: query each per-mode shard. Legacy fallback (_legacy) holds all modes
 // in one central table's rows → reuse the filtered query there.
+$modeInList = implode(',', array_map(
+    fn($m) => "'" . SQLite3::escapeString((string)$m) . "'",
+    $modes
+));
 foreach ($modeDbs as $shardMode => $shardDb) {
     if ($shardMode === '_legacy') {
         $stmt = $shardDb->prepare(
@@ -118,7 +124,7 @@ foreach ($modeDbs as $shardMode => $shardDb) {
              WHERE format = 'html'
                AND status = 'found'
                AND name != '__index__'
-               AND mode IN ('man','perldoc','info','pydoc','ri')
+               AND mode IN ($modeInList)
              ORDER BY mode, name, section"
         );
     } else {

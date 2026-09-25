@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS cache (
     content_len INTEGER NOT NULL DEFAULT 0, -- uncompressed byte size
     status      TEXT NOT NULL DEFAULT 'found'
                     CHECK(status IN ('found','not_found')),
-    ttl         INTEGER NOT NULL DEFAULT 0, -- 604800=found(7d), 86400=not_found(1d)
+    ttl         INTEGER NOT NULL DEFAULT 0, -- seconds; 0 = never expires (emoji formats)
     hits        INTEGER NOT NULL DEFAULT 0, -- cache hit count
     created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
     updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
@@ -52,8 +52,8 @@ CREATE INDEX idx_cache_expiry  ON cache(updated_at) WHERE ttl > 0;
 
 - **Cache key**: (mode, name, section, format) uniquely identifies a cached entry
 - **Compression**: PHP `gzcompress()`, SQLite BLOB storage, ~70% average compression ratio
-- **TTL**: found entries `PHPMAN_CACHE_TTL_FOUND` (default 7 months = 18144000s, override via `PHPMAN_CACHE_TTL_MONTHS`), not_found entries 86400s (1 day). Expired entries auto-deleted on `get()`
-- **LLM enhancement formats** (`emoji_md`, `emoji_html`): Written with TTL=0 (permanent, no auto-expiry). Generated offline by `cli/batch-enhance.php` or online by `enhanceManPage()`. Preserved across `--build-index-cron` runs (reindex skips emoji formats to avoid wasting 48+ days of LLM work).
+- **TTL**: found entries `PHPMAN_CACHE_TTL_FOUND` (default 7 months = 18144000s, override via `PHPMAN_CACHE_TTL_MONTHS`), not_found entries 86400s (1 day) — except `mode='search'`, whose not_found entries also use `PHPMAN_CACHE_TTL_FOUND`. Expired entries auto-deleted on `get()`
+- **Legacy emoji formats** (`emoji_md`, `emoji_html`): Written with TTL=0 (permanent, no auto-expiry). **Nothing generates them since v4.10** — the LLM enhancement layer (`enhanceManPage()`, `cli/batch-enhance.php`) was deleted in v4.10.0 (commit `7740029`). Existing rows are still served read-only and preserved across `--build-index-cron` runs (reindex skips emoji formats).
 - **Auto-cleanup**: `cacheOrExecute()` has 1% probability of triggering `DELETE FROM cache WHERE expired`
 - **search mode**: Not written to `cache_fts` index, no hits counting, emits `<meta name="robots" content="noindex">`
 
@@ -233,21 +233,9 @@ php cli/build-index.php
 0 3 * * * /usr/bin/php /path/to/phpman/cli/build-index.php --cron
 ```
 
-### 10.2 LLM Emoji Enhancement (Batch)
+### 10.2 Emoji Enhancement (Removed in v4.10)
 
-```bash
-# Dry-run preview
-php cli/batch-enhance.php --dry-run
-
-# Full batch (md only, HTML-cached first)
-nohup php cli/batch-enhance.php --cached-first --skip-errors --yes --format=md \
-  > logs/batch_enhance_md.log 2>&1 &
-
-# Single page (CLI)
-php cli/batch-enhance.php man ls
-```
-
-See `docs/01-PRODUCT.md` §2.11.5–2.11.6 for full design.
+`cli/batch-enhance.php` was deleted in v4.10.0 (commit `7740029`); nothing generates `emoji_md` / `emoji_html` rows any more. Existing rows are still served and never expire. See `docs/01-PRODUCT.md` §2.12.
 
 ### 10.3 Cache Cleanup
 

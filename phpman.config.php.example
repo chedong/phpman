@@ -10,11 +10,6 @@
 //   define('PHPMAN_HOME', getenv('HOME') . '/.phpman');
 //   define('PHPMAN_BASE_URL', 'https://www.example.com/phpMan.php');
 //
-// === Add LLM emoji enhancement ===
-//   define('LLM_API_KEY',  'sk-xxx');
-//   define('LLM_API_URL',  'https://api.openai.com/v1/chat/completions');
-//   define('LLM_MODEL',    'gpt-4o-mini');
-//
 // Leave values commented to use defaults in src/config.php.
 
 // --- PHPMAN_HOME ---
@@ -30,17 +25,10 @@
 // define('PHPMAN_BACKUP_DIR', '/path/to/custom/backups');
 
 // --- Base URL (v4.3.3) ---
-// Public web URL of this phpMan instance. Used by CLI scripts (batch_enhance,
-// build-index, enhance) to generate correct links when running offline.
+// Public web URL of this phpMan instance. Used by CLI scripts (build-index,
+// build-sitemap) to generate correct links when running offline.
 // Default: PHPMAN_BASE_URL env var, then 'http://localhost:8080/phpMan.php'
 // define('PHPMAN_BASE_URL', 'https://www.chedong.com/phpMan.php');
-
-// --- LLM Enhancement (v4.0) ---
-// define('LLM_API_KEY', '');
-// define('LLM_API_URL', '');
-// define('LLM_MODEL', '');
-// define('LLM_MAX_TOKENS', 128000);  // keep ≤ 131072 for model compatibility
-// define('PHPMAN_ENHANCE_MAX_CHARS', 32000);  // max chars for LLM-enhanced output
 
 // --- JSON / MCP payload size (v4.11) ---
 // Section text kept when serialising a page. Very large pages (info py is
@@ -53,32 +41,9 @@
 
 // --- Cache TTL (v4.11) ---
 // Unified expiry for PageCache found entries and the TLDR cache, in months
-// (1 month = 30 days). not_found entries always expire after 1 day; emoji
-// LLM output never expires regardless of this setting.
+// (1 month = 30 days). not_found entries always expire after 1 day; emoji-
+// enhanced output never expires regardless of this setting.
 // define('PHPMAN_CACHE_TTL_MONTHS', 7);  // 7 months = 210 days
-
-// --- Fallback LLM (v4.2.2) ---
-// Optional: multiple fallback endpoints tried in order when primary fails
-// with 5xx/429/timeout. Each entry must have url, key, model.
-// max_tokens (v4.9.6): per-endpoint token limit — defaults to LLM_MAX_TOKENS.
-//   Set this when fallback models have lower limits than primary (e.g. glm-5.2 = 131072).
-// timeout (v4.9.6): per-endpoint timeout in seconds — defaults to 60s for fallbacks.
-// Leave empty array or comment out to skip fallback entirely.
-// define('LLM_FALLBACKS', [
-//     [
-//         'url'   => 'https://api.openai.com/v1/chat/completions',
-//         'key'   => 'sk-xxx',
-//         'model' => 'gpt-4o-mini',
-//         'max_tokens' => 128000,
-//         'timeout' => 60,
-//     ],
-//     [
-//         'url'   => 'https://api.anthropic.com/v1/messages',
-//         'key'   => 'sk-yyy',
-//         'model' => 'claude-haiku-4-5',
-//         'max_tokens' => 128000,
-//     ],
-// ]);
 
 // --- Google Analytics (v4.4.4+) ---
 // Set your GA4 measurement ID to enable pageview tracking.

@@ -35,11 +35,6 @@ Then open **http://localhost:45678/** in your browser.
 > ```bash
 > cd ~/.phpman && php cli/build-index.php
 > ```
->
-> Batch LLM emoji enhancement (optional — requires API key):
-> ```bash
-> php cli/batch-enhance.php man:ls,tar,grep
-> ```
 
 
 ## Screenshot
@@ -67,12 +62,9 @@ All settings live in a **single file**: `~/.phpman/phpman.config.php`. The webro
 define('PHPMAN_BASE_URL', 'https://www.example.com/phpMan.php');
 ```
 
-**With emoji enhancement + MCP auth**:
+**With MCP auth**:
 ```php
 define('PHPMAN_BASE_URL', 'https://www.example.com/phpMan.php');
-define('LLM_API_KEY', 'sk-xxx');
-define('LLM_API_URL', 'https://api.openai.com/v1/chat/completions');
-define('LLM_MODEL', 'gpt-4o-mini');
 define('MCP_API_KEY', 'your-secret-key-here');
 ```
 
@@ -855,15 +847,6 @@ php cli/build-index.php
 
 # Rebuild index (cron mode with timestamp)
 php cli/build-index.php --cron
-
-# Enhance a single page (shorthand: mode:name)
-php cli/batch-enhance.php man:ls
-php cli/batch-enhance.php man:ls,tar,grep --rebuild
-
-# Batch enhance with full options
-php cli/batch-enhance.php --help
-php cli/batch-enhance.php --status
-php cli/batch-enhance.php --cached-first --skip-errors --yes
 ```
 
 Cron example (daily at 3am):

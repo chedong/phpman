@@ -73,9 +73,7 @@ function formatForOutput (string $jsonStr, string $format): string {
             return json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         }
         // The IR string is dead weight once decoded, and the envelope built
-        // below is larger than it (sections are re-serialised), so drop it
-        // before building the envelope.
-        $jsonStr = "";
+        // below is larger than it (sections are re-serialised).
         return formatMcpEnvelope($data);
     }
     return $jsonStr;
@@ -293,18 +291,6 @@ function formatMcpStructured (array $data): array {
     return $out;
 }
 
-/**
- * Convert man page structured JSON to TLDR-style cheatsheet markdown.
- *
- * Auto-generates from man pages: extracts description, key examples,
- * and common flags. Follows tldr-pages format conventions:
- * - Title matches command name
- * - Description in > blockquote
- * - Examples as bullet list with code blocks
- * - Uses {{placeholder}} for user-supplied values
- * - 5-8 examples max
- * - --help and --version at the end
- */
 // ────────────────────────────────────────────
 //  v2.2: Official tldr-pages + cheat.sh fetcher
 // ────────────────────────────────────────────

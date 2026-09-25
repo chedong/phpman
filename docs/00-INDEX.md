@@ -21,17 +21,19 @@
 ## External Projects (References)
 - **[06-ANALYTICS.md](06-ANALYTICS.md)** — `site-stats` 独立项目设计：站点流量统计 (GA4) 暴露为 MCP + HTTP。**不是 phpMan 功能** — phpMan 是其中一个消费者。
 
-## What phpMan Does NOT Do (Moved Out 2026-07-14)
+## What phpMan Does NOT Do (Removed in v4.10, 2026-07)
 
-| Capability | Where it lives now |
+| Capability | Status |
 |---|---|
-| LLM emoji/OKF enhancement | `doc-enhance` project (external) |
+| LLM emoji/OKF enhancement | Deleted in v4.10.0 (commit `7740029`) — `07-STRATEGY.md` measured it at ⚠️ marginal value |
+| `cli/batch-enhance.php` | Deleted in v4.10.0 — not moved to another repository |
+| `enhanceManPage()`, `callLLM()`, `cleanEmojiHtml()` | Deleted in v4.10.0 |
+| `formatMarkdownToHTML()` | Removed (only existed for the LLM `emoji_md` path) |
 | Site analytics (GA4 MCP tool) | `site-stats` project (external) |
-| `cli/batch-enhance.php` | `doc-enhance` project (moved as-is) |
-| `enhanceManPage()`, `callLLM()` | `doc-enhance` project (extracted) |
-| `formatMarkdownToHTML()` | Removed (only existed for LLM `emoji_md` path) |
 
-The `## External Projects` section in `05-PLAN.md` has the full design for both.
+`emoji_md` / `emoji_html` cache rows written before v4.10 are still served and never expire — read-only legacy, see `01-PRODUCT.md` §2.12.
+
+`05-PLAN.md` §`## External Projects` covers `site-stats`.
 
 ## Archive
 - **[archive/](archive/)** — 历史研究笔记

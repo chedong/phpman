@@ -58,7 +58,7 @@ phpMan's webroot contains **only 3 files**: `phpMan.php`, `phpman.css`, `phpman.
 
 | File/Dir | Why not |
 |----------|---------|
-| `cli/` | CLI-only utilities (build-index, enhance, batch-enhance) — have `PHP_SAPI !== 'cli'` guards but shouldn't be HTTP-accessible at all |
+| `cli/` | CLI-only utilities (build-index, build-sitemap, detect-tools) — have `PHP_SAPI !== 'cli'` guards but shouldn't be HTTP-accessible at all |
 | `test/` | Test files — may leak internal paths, test data, or expose attack surfaces |
 | `docs/` | Design documents — internal architecture info, not for public consumption |
 | `.deploy.mk` | Deployment credentials — SSH host/port/path, already gitignored |
@@ -179,104 +179,34 @@ All three use placeholders in the repo — never committed with real values. `ma
 
 Footer displays `phpMan v4.7-3-g1cea00a`. Local dev shows placeholder values: `PHPMAN_HOME = __PHPMAN_HOME__`, `GIT_DESCRIBE = __GIT_DESCRIBE__`.
 
-### 2.12 LLM Enhancement — Moved to External Project
+### 2.12 LLM Enhancement — Removed in v4.10
 
-**As of 2026-07-14, LLM-based enhancement is no longer a phpMan feature.**
+**As of v4.10.0 (commit `7740029`, 2026-07), LLM-based enhancement is no longer a phpMan feature.**
 
-What moved out of phpMan:
+What was deleted from phpMan:
 - `enhanceManPage()`, `callLLM()`, `cleanEmojiHtml()` — LLM orchestration
 - `formatMarkdownToHTML()`, `formatInlineMarkdown()` — emoji_md → HTML rendering
-- `renderTocSidebar()` — TOC built from LLM-enhanced HTML structure
-- `emoji_html` / `emoji_md` SQLite cache fields
+- `renderTocSidebar()` — TOC built from the enhanced HTML structure
 - LLM config keys: `LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`, `LLM_MAX_TOKENS`, `PHPMAN_ENHANCE_MAX_CHARS`
-- `cli/batch-enhance.php` — moved to the standalone `doc-enhance` project
+- `cli/batch-enhance.php`, `src/enhance.php`, `start-enhance-all.sh`, `test/unit/test_enhance.php`
 - The `--enhance` flag (formerly `phpMan.php --enhance=...`)
 
-**Why**: the 2026-07 myblog MT→markdown migration made it clear that LLM work is dominated by **task management, prompt versioning, and flow orchestration** — concerns that don't belong in a documentation server. Pushing the same prompts through phpMan, the myblog migration, and future projects is the right shape; embedding it in phpMan was not.
+**Why**: `docs/07-STRATEGY.md` measured the enhancement at ⚠️ marginal value — both major AI crawlers (GPTBot, ClaudeBot) already preferred raw markdown/JSON/MCP over enhanced HTML, and the roadmap's Phase 1 was to stop starting new enhancement rounds. LLM work is also dominated by **task management, prompt versioning, and flow orchestration** — concerns that don't belong in a documentation server.
 
 **What this means for phpMan**:
 - phpMan's HTML output is the **raw** terminal/man HTML (via `formatManPerlDoc()`), not LLM-enhanced
 - phpMan's Markdown output is the **raw** markdown (via `formatManPerlDocToMarkdown()`)
 - The `Markdown → HTML` conversion path that existed only for `emoji_md` rendering is removed; users wanting HTML read the HTML endpoint
 - **0 LLM calls** in phpMan's request path
-- Cache remains for raw output (just storage, no enhancement)
 
-**What this means for consumers**:
-- The `doc-enhance` project (external) reads phpMan's raw markdown via HTTP, applies LLM transforms, and serves the enhanced output from its own cache
-- phpMan is unaware of `doc-enhance`'s existence
-- The enhanced `html` and `markdown` formats are no longer available from phpMan; the raw versions are the default and the only options
+**Legacy emoji cache (read-only)**:
+- No new enhanced content can be produced. Pages enhanced before v4.10 still serve from the retained `emoji_html` / `emoji_md` cache rows: `emoji_html` is the default view when present (`?format=html` bypasses it), `emoji_md` is preferred for `/markdown`
+- Those rows never expire and nothing regenerates them — read-only legacy, not a live feature
+- Historical design (phpMan v4.0–v4.9) is preserved in git history for reference
 
-Historical design of the LLM features (phpMan v4.0–v4.9) is preserved in git history for reference.
+#### 2.12.1 batch-enhance.php — deleted in v4.10
 
-#### 2.12.1 batch-enhance.php CLI Reference (transitional)
-
-While extraction is ongoing, `cli/batch-enhance.php` remains available for offline batch LLM emoji enhancement. It `require_once`s phpMan.php and calls `getManPage()`/`getPerldocPage()`/etc. directly — zero HTTP dependency, no web server needed.
-
-**Quick enhance (shorthand):**
-
-```bash
-php cli/batch-enhance.php man:ls                     # Single page
-php cli/batch-enhance.php man:ls,tar,grep            # Multiple pages
-php cli/batch-enhance.php man:ls,tar,grep --rebuild  # Force redo
-php cli/batch-enhance.php perldoc:File::Basename     # Perl module
-```
-
-**Full batch mode:**
-
-```bash
-# Dry-run preview
-php cli/batch-enhance.php --dry-run
-
-# All modes, HTML-cached first, both formats
-nohup php cli/batch-enhance.php --cached-first --yes \
-  >> logs/batch-enhance.log 2>&1 &
-
-# Single mode only
-nohup php cli/batch-enhance.php --mode=man --yes \
-  --pid-file=/tmp/bm.pid >> logs/batch-enhance.log 2>&1 &
-
-# HTML format only (skip emoji_md)
-php cli/batch-enhance.php --format=html --yes
-```
-
-**Process management:**
-
-```bash
-# Show per-mode progress with counts, percentages, sample URLs
-php cli/batch-enhance.php --status
-
-# Show status then stop running batch
-php cli/batch-enhance.php --status --stop
-
-# Stop + restart (requires --mode)
-php cli/batch-enhance.php --restart --mode=man --yes
-```
-
-**All options:**
-
-| Option | Description |
-|--------|-------------|
-| `--status` | Show enhancement progress + sample URLs per mode |
-| `--stop` | Stop a running batch (reads PID from `--pid-file`) |
-| `--restart` | Stop + restart batch (requires `--mode`) |
-| `--rebuild, -r` | Force re-enhance even if emoji cache exists |
-| `--mode=<m>` | Filter: `man`, `perldoc`, `info`, `pydoc`, `ri` (comma-separated) |
-| `--parameter=<p>` | Specific pages (semicolon-separated, needs `--mode`) |
-| `--section=<s>` | Manual section (e.g. `1`, `3pm`) for `--parameter` targets |
-| `--dry-run` | Show what would be done, no LLM calls |
-| `--yes, -y` | Skip confirmation prompt (for cron/SSH) |
-| `--limit=<n>` | Max entries to process (default: unlimited) |
-| `--format=<f>` | `html`, `md`, or `both` (default: `both`) |
-| `--resume-from=<n>` | Skip first N entries |
-| `--cached-first` | Sort: entries with HTML cache first |
-| `--cache-only` | Generate HTML+MD cache only, skip LLM enhancement |
-| `--rate-limit=<s>` | Seconds between LLM calls (default: 60) |
-| `--pid-file=<path>` | Write PID to file (auto: `PHPMAN_HOME/logs/batch_enhance.pid`) |
-| `--help` | Show help text |
-
-Key features: idempotent resume (every entry written to SQLite immediately), 2-min rate limiting, `--cached-first` sort, non-existent page skip (NOT_FOUND cache), max 10 consecutive failures before abort.
-
-See also `docs/05-PLAN.md` §batch_enhance lifecycle for design details.
+`cli/batch-enhance.php` was **deleted in v4.10.0** (commit `7740029`), not extracted into another repository. There is no replacement CLI here. Its full CLI reference survives in git history (`v4.0`–`v4.9`).
 
 ### 2.13 Command Name Case & Platform Differences (Linux vs BSD)
 
@@ -364,7 +294,7 @@ CLI:  _bootstrap.php → resolve PHPMAN_HOME → src/bootstrap.php → src/confi
 
 ```php
 if (!defined('PHPMAN_GA_ID'))  define('PHPMAN_GA_ID', '');     // default
-if (!defined('LLM_API_KEY'))   define('LLM_API_KEY', '');     // default
+if (!defined('MCP_API_KEY'))   define('MCP_API_KEY', '');      // default
 // ... then: require PHPMAN_HOME . '/phpman.config.php';      // overrides
 ```
 
@@ -373,11 +303,11 @@ if (!defined('LLM_API_KEY'))   define('LLM_API_KEY', '');     // default
 | File | Location | Contents |
 |------|----------|----------|
 | `phpMan.php` | webroot | `PHPMAN_HOME`, `PHPMAN_VERSION`, `GIT_DESCRIBE` — injected at deploy time |
-| `phpman.config.php` | `~/.phpman/` | All user settings: `PHPMAN_BASE_URL`, `PHPMAN_GA_ID`, `LLM_API_KEY`, `MCP_API_KEY`, `PHPMAN_DEBUG`, `LLM_FALLBACKS` |
+| `phpman.config.php` | `~/.phpman/` | All user settings: `PHPMAN_BASE_URL`, `PHPMAN_GA_ID`, `MCP_API_KEY`, `PHPMAN_DEBUG`, `PHPMAN_CACHE_TTL_MONTHS` |
 | `src/config.php` | `~/.phpman/src/` | Defaults for all constants, `define()` guard pattern |
 | `phpman.config.php.example` | `~/.phpman/` (git) | Template, copied by `install.sh generate_config()` |
 
-**Security**: API keys (`LLM_API_KEY`, `MCP_API_KEY`) are never in webroot. If PHP parsing fails, only the baked-in constants (`PHPMAN_HOME`, version strings) are exposed — no secrets.
+**Security**: API keys (`MCP_API_KEY`) are never in webroot. If PHP parsing fails, only the baked-in constants (`PHPMAN_HOME`, version strings) are exposed — no secrets.
 
 **install.sh flow**:
 1. `generate_config()` — copies `.example` → `~/.phpman/phpman.config.php`, generates `MCP_API_KEY`
@@ -878,11 +808,4 @@ pydoc output has no overstrike/ANSI; `cleanTerminalOutput` is a pass-through. Bu
 | `detectHeadingType()` | phpMan.php | 429–461 |
 | `formatManPerlDoc()` | phpMan.php | 2285–2393 |
 | `formatToJSON` | phpMan.php | 3100–3338 |
-| `enhanceManPage()` | phpMan.php | 2133 |
-| `callLLM()` | phpMan.php | 2072 |
-| `formatMarkdownToHTML()` | phpMan.php | 2229 |
-| `formatInlineMarkdown()` | phpMan.php | 2328 |
-| `renderTocSidebar()` | phpMan.php | 2363 |
 | `showFooter()` enhanced link | phpMan.php | 3387 |
-| `cli/batch-enhance.php` | cli/batch-enhance.php | — |
-| `cli/batch-enhance.php` | cli/batch-enhance.php | — |

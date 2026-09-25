@@ -42,12 +42,6 @@ if (!defined('PHPMAN_GZIP_MIN_BYTES')) {
 if (!defined('PHPMAN_TLDR_MAX_EXAMPLES')) {
     define('PHPMAN_TLDR_MAX_EXAMPLES', 16);     // max examples in TLDR output
 }
-if (!defined('PHPMAN_ENHANCE_MAX_CHARS')) {
-    define('PHPMAN_ENHANCE_MAX_CHARS', 32000);  // max chars for LLM enhance output
-}
-if (!defined('PHPMAN_ENHANCE_CHUNK_THRESHOLD')) {
-    define('PHPMAN_ENHANCE_CHUNK_THRESHOLD', 200000);  // pages larger than this get chunked
-}
 if (!defined('PHPMAN_JSON_MAX_CONTENT_BYTES')) {
     define('PHPMAN_JSON_MAX_CONTENT_BYTES', 1048576);  // total section text kept for json/mcp output (1MB)
 }
@@ -57,7 +51,7 @@ if (!defined('PHPMAN_JSON_MAX_SECTION_BYTES')) {
 // Unified data-cache TTL: PageCache found entries + TLDR cache expire on the
 // same schedule so no cache tier silently outlives another. "Month" = 30 days
 // for determinism → 7 months = 210 days = 18,144,000s.
-// (Emoji LLM output is intentionally exempt — never expires, see cache.php.)
+// (Emoji-enhanced output is intentionally exempt — never expires, see cache.php.)
 if (!defined('PHPMAN_CACHE_TTL_MONTHS')) {
     define('PHPMAN_CACHE_TTL_MONTHS', 7);
 }
@@ -136,7 +130,7 @@ if (file_exists($toolsConfig)) {
 // RE_ASCII — plain printable ASCII, for raw terminal output (cleanTerminalOutput)
 // RE_ASCII_SAFE — printable + placeholder bytes \x05\x06\x07 for &<>, used after
 //                 formatManPerlDoc() replaces &<> with placeholders
-// Moved here (v4.9.9) so CLI tools (batch-enhance) can access them without
+// Moved here (v4.9.9) so CLI tools can access them without
 // loading phpMan.php. These are used by src/format_common.php.
 define('RE_ASCII', '[ -~]');
 define('RE_ASCII_SAFE', '[ -~' . "\x05\x06\x07" . ']');

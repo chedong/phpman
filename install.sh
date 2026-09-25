@@ -171,7 +171,7 @@ generate_config() {
     echo "  Generated: $config_file"
     echo "  MCP_API_KEY: $mcp_key"
     echo "  → MCP clients must send: X-API-Key: $mcp_key"
-    echo "  → Edit $config_file to set PHPMAN_BASE_URL, PHPMAN_GA_ID, LLM_API_KEY"
+    echo "  → Edit $config_file to set PHPMAN_BASE_URL, PHPMAN_GA_ID"
 }
 
 # ─── Deploy to Webroot ────────────────────────────────────────────────────────
@@ -211,7 +211,6 @@ do_deploy_webroot() {
     echo "  Next: configure your web server to serve PHP from $target"
     echo "  Edit $HOME/.phpman/phpman.config.php to configure:"
     echo "    PHPMAN_BASE_URL  — your public URL for correct link generation"
-    echo "    LLM_API_KEY      — for emoji enhancement"
     echo "    PHPMAN_GA_ID     — for Google Analytics"
 }
 

@@ -29,7 +29,7 @@ function cleanTerminalOutput (array $lines): array {
 
 /**
  * Extract flags from subsections when top-level flags array is empty.
- * Shared by formatMcpStructured(), buildLlmContext(), and formatTldr().
+ * Shared by formatMcpStructured() and formatTldr().
  */
 function extractFlagsFromSections (array $data): array {
     $flags = [];

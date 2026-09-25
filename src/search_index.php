@@ -739,12 +739,3 @@ function rebuildSearchIndex(): string {
 if (defined('PHPMAN_TEST_MODE')) {
     return;
 }
-
-// +--------------------------------------------------------------------------------+
-// | LLM Enhancement Engine (v4.0 Phase 3)                                           |
-// +--------------------------------------------------------------------------------+
-
-/**
- * Call OpenAI-compatible chat completions API.
- * Returns response text or empty string on failure.
- */

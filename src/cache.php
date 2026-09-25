@@ -266,9 +266,28 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
 }
 
 /**
- * PageCache — SQLite-based cache for rendered man/perldoc/info/pydoc/ri pages.
- * Since v4.11 the page cache is sharded per mode (see pageCacheDb below).
- *
+ * Modes that have their own page-cache shard: PHPMAN_CONTENT_MODES + 'search'
+ * (search results are cached with mode='search').
+ */
+function pageCacheModes(): array {
+    $modes = defined('PHPMAN_CONTENT_MODES') ? PHPMAN_CONTENT_MODES : ['man', 'perldoc', 'info', 'pydoc', 'ri'];
+    $modes[] = 'search';
+    return $modes;
+}
+
+/**
+ * Filesystem path of a mode's page-cache shard.
+ * Single source of the shard-naming rule: pageCacheDb() and PageCache::stats()
+ * both resolve through it.
+ */
+function pageCachePath(string $mode): string {
+    // Sanitize mode into a safe filename fragment (mode=[a-z0-9_-]+ from normalizeMode).
+    $safeMode = preg_replace('/[^a-z0-9_-]/i', '_', (string)$mode);
+    if ($safeMode === '') $safeMode = 'default';
+    return PHPMAN_CACHE_DIR . '/phpman_cache_' . $safeMode . '.db';
+}
+
+/**
  * Per-mode page-cache shard connection.
  *
  * Sharding rationale: the page `cache` table is the hot, high-concurrency
@@ -283,24 +302,13 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
  * writes land in independent files → no cross-mode lock contention. The
  * central DB (cacheDb()) keeps only the search/tldr infrastructure tables,
  * which are written mostly during batch reindex (single writer).
- *
- * Mode list: PHPMAN_CONTENT_MODES + 'search' (search results are cached with
- * mode='search').
  */
-function pageCacheModes(): array {
-    $modes = defined('PHPMAN_CONTENT_MODES') ? PHPMAN_CONTENT_MODES : ['man', 'perldoc', 'info', 'pydoc', 'ri'];
-    $modes[] = 'search';
-    return $modes;
-}
-
 function pageCacheDb(string $mode, ?bool $reset = null): ?SQLite3 {
     static $shards = [];
     if ($reset === true) { $shards = []; return null; }
 
-    // Sanitize mode into a safe filename fragment (mode=[a-z0-9_-]+ from normalizeMode).
-    $safeMode = preg_replace('/[^a-z0-9_-]/i', '_', (string)$mode);
-    if ($safeMode === '') $safeMode = 'default';
-    if (isset($shards[$safeMode])) return $shards[$safeMode];
+    $dbPath = pageCachePath($mode);
+    if (isset($shards[$dbPath])) return $shards[$dbPath];
 
     $dir = PHPMAN_CACHE_DIR;
     if (!is_dir($dir)) {
@@ -314,7 +322,6 @@ function pageCacheDb(string $mode, ?bool $reset = null): ?SQLite3 {
         return null;
     }
 
-    $dbPath = $dir . '/phpman_cache_' . $safeMode . '.db';
     $isNew = !file_exists($dbPath);
 
     $db = new SQLite3($dbPath);
@@ -361,10 +368,14 @@ function pageCacheDb(string $mode, ?bool $reset = null): ?SQLite3 {
         $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_expiry ON cache(updated_at) WHERE ttl > 0");
     }
 
-    $shards[$safeMode] = $db;
+    $shards[$dbPath] = $db;
     return $db;
 }
 
+/**
+ * PageCache — SQLite-based cache for rendered man/perldoc/info/pydoc/ri pages.
+ * Since v4.11 the page cache is sharded per mode (see pageCacheDb above).
+ */
 class PageCache {
     private ?SQLite3 $db;
 
@@ -434,8 +445,8 @@ class PageCache {
         if (!$db) return false;
 
         // Guard: never overwrite valid (non-empty) content with empty not_found.
-        // WAL-mode stale reads can cause batch-enhance to miss existing emoji data,
-        // and the UPSERT would blindly destroy valid cached results.
+        // Any transient content-generation failure can race a reader that has
+        // already cached the good result, and the UPSERT would blindly destroy it.
         if ($status === 'not_found' && ($content === null || $content === '')) {
             $existing = $this->get($mode, $name, $section, $format);
             if ($existing !== null && $existing !== '' && !PageCache::isNotFound($existing)) {
@@ -450,9 +461,9 @@ class PageCache {
         if ($mode === 'search' && $status === 'not_found') {
             $ttl = PHPMAN_CACHE_TTL_FOUND;
         }
-        // Emoji enhancements are expensive LLM calls — never auto-expire them.
-        // Short TTLs caused ~12K entries to vanish weekly, wasting ~¥2K in LLM cost.
-        if ($format === 'emoji_md' || $format === 'emoji_html') {
+        // Emoji-enhanced entries are expensive to regenerate — never auto-expire
+        // them. Short TTLs once caused ~12K entries to vanish weekly.
+        if ($format === CACHE_FORMAT_EMOJI_MD || $format === CACHE_FORMAT_EMOJI_HTML) {
             $ttl = 0;  // never expire
         }
 
@@ -546,7 +557,7 @@ class PageCache {
                 $found += (int)$shard->querySingle("SELECT COUNT(*) FROM cache WHERE status='found'");
                 $notFound += (int)$shard->querySingle("SELECT COUNT(*) FROM cache WHERE status='not_found'");
                 $totalHits += (int)($shard->querySingle("SELECT SUM(hits) FROM cache") ?: 0);
-                $path = PHPMAN_CACHE_DIR . '/phpman_cache_' . preg_replace('/[^a-z0-9_-]/i', '_', $mode) . '.db';
+                $path = pageCachePath($mode);
                 if (file_exists($path)) $dbSize += filesize($path);
             } catch (\Throwable $e) {}
         }

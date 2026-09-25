@@ -113,9 +113,9 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `cli/batch-enhance.php`: single-page CLI tool for shared hosts where man(1) can't fork
 - `cli/batch-enhance.php`: offline batch enhancement — auto-discovers ~35K entries from search_index_meta + cache, 2-min rate limiting, resilient resume, `--cached-first` sort, idempotent per-entry cache writes (2026-06-17)
 - `DELETE FROM cache` now preserves emoji_md/emoji_html during reindex (2026-06-17)
-- Lives on as the standalone `doc-enhance` project (see `## External Projects`)
+- **Removed in v4.10.0** (commit `7740029`) — every symbol listed above is gone; only the `emoji_md`/`emoji_html` cache rows survive, served read-only and never expiring
 - Historical design preserved in git history (v4.0..v4.9) for reference
-- See `docs/01-PRODUCT.md` §2.12 for what moved and why
+- See `docs/01-PRODUCT.md` §2.12 for what was removed and why
 
 **Phase 4: Code split** (planned)
 - `src/Source/` + `src/Formatter/` + `src/Cache/` + `src/Config/`
@@ -276,10 +276,10 @@ while preserving a single-file web entry point. Minimize web output: only
 
 ```
 repo/                               # Git repository root
-├── phpMan.php                      # Thin dispatcher (753 lines) — only PHP file in webroot
+├── phpMan.php                      # Thin dispatcher (870 lines) — only PHP file in webroot
 ├── phpman.css                      # Stylesheet
 │
-├── src/                            # 22 source files (5080 lines total, loaded by bootstrap.php)
+├── src/                            # 21 source files (5345 lines total, loaded by bootstrap.php)
 │   ├── bootstrap.php               # require all src files in dependency order
 │   ├── config.php                  # PHPMAN_* default constants (defined() guard)
 │   ├── util.php                    # h(), serverValue(), baseUrl(), scriptName(),
@@ -302,8 +302,6 @@ repo/                               # Git repository root
 │   ├── source_pydoc.php            # getPydocPage(), getPydocIndex(), getPydocSearchPage()
 │   ├── source_ri.php               # getRiPage(), getRiIndex(), getRiSearchPage()
 │   ├── source_search.php           # getSearchPage(), renderGroupedResults()
-│   ├── enhance.php                 # enhanceManPage(), callLLM(), cleanEmojiHtml(),
-│   │                               #   getMdEnhancePrompt(), getHtmlEnhancePrompt()
 │   ├── tldr.php                    # fetchOfficialTldr() + all TLDR parsers/formatters
 │   ├── mcp_server.php              # handleMcp(), handleWellKnown() + 8 MCP helpers
 │   ├── web_header.php              # showHeader() — HTTP headers, SEO meta, CSS
@@ -313,8 +311,8 @@ repo/                               # Git repository root
 │   ├── _bootstrap.php              # Shared bootstrap: PHP_SAPI guard + PHPMAN_HOME resolve
 │   │                               #   + phpman.config.php load + require phpMan.php
 │   ├── build-index.php             # php cli/build-index.php [--cron]
-│   └── batch-enhance.php           # php cli/batch-enhance.php [mode:names] [--status|...]
-│                                   #   Shorthand: php cli/batch-enhance.php man:ls,tar
+│   ├── build-sitemap.php           # php cli/build-sitemap.php --output sitemap-phpman.xml.gz
+│   └── detect-tools.php            # report which of man/perldoc/info/pydoc3/ri/apropos exist
 │
 ├── test/                           # Test suite (require phpMan.php → all src/ loaded)
 │   ├── run_all.php                 # All 296 tests entry point
@@ -384,7 +382,6 @@ require $srcDir . '/source_info.php';    // 4: getInfoPage()
 require $srcDir . '/source_pydoc.php';   // 4: getPydocPage()
 require $srcDir . '/source_ri.php';      // 4: getRiPage()
 require $srcDir . '/source_search.php';  // 4: getSearchPage()
-require $srcDir . '/enhance.php';        // 5: enhanceManPage(), callLLM()
 require $srcDir . '/tldr.php';           // 5: fetchOfficialTldr()
 require $srcDir . '/mcp_server.php';     // 6: handleMcp(), handleWellKnown()
 require $srcDir . '/web_header.php';     // 7: showHeader()
@@ -394,19 +391,19 @@ $PHPMAN_TITLE = PHPMAN_HOME_TITLE;
 $TOC_ITEMS = array();
 ```
 
-**Shared CLI bootstrap** (`cli/_bootstrap.php`, 28 lines):
+**Shared CLI bootstrap** (`cli/_bootstrap.php`, 46 lines):
 
 ```php
 <?php
 if (PHP_SAPI !== 'cli') { http_response_code(400); die("CLI only\n"); }
 
-$config_file = __DIR__ . '/../phpman.config.php';
-if (file_exists($config_file)) { require $config_file; }
+// Load site config: project root first, then $HOME/.phpman/ (matches src/config.php)
+// Resolve PHPMAN_HOME if the config did not define it.
 
-if (!defined('PHPMAN_HOME') || PHPMAN_HOME === '') { /* resolve HOME */ }
-
+// Load phpMan core directly from src/ — no web dispatcher needed.
+// Prefer the checked-out project source; fall back to PHPMAN_HOME/src.
 define('PHPMAN_NO_CLI_DISPATCH', true);
-require_once PHPMAN_HOME . '/phpMan.php';
+require_once <project>/src/bootstrap.php;   // else PHPMAN_HOME/src/bootstrap.php
 ```
 
 **Note**: The web dispatch code (~700 lines) remains inline in `phpMan.php`.
@@ -458,32 +455,19 @@ See `## External Projects` below for the full design of `site-stats`.
 
 ## External Projects (Out of Scope for phpMan)
 
-Two capabilities were extracted from phpMan into standalone projects
-on 2026-07-14. They are listed here for reference only — they are
-**not** part of the phpMan codebase, do not ship in `make release`,
-and have their own repositories / deployments.
+One capability was extracted from phpMan into a standalone project on
+2026-07-14. It is listed here for reference only — it is **not** part of
+the phpMan codebase, does not ship in `make release`, and has its own
+repository / deployment.
 
-### doc-enhance — LLM-based doc enhancement
+### doc-enhance — abandoned (never created)
 
-- **Purpose**: Apply LLM transforms (emoji, OKF, custom prompts) to
-  any markdown content (phpMan output, MT-imported posts, etc.)
-- **Why external**: LLM work is dominated by task management, prompt
-  versioning, and flow orchestration — concerns that don't belong
-  in a doc server. Same prompts serve phpMan, myblog, and future
-  projects; sharing via a standalone project is the right shape.
-- **What it replaces** (formerly in phpMan):
-  - `enhanceManPage()`, `callLLM()`, `cleanEmojiHtml()`
-  - `formatMarkdownToHTML()`, `formatInlineMarkdown()`
-  - `renderTocSidebar()` (the LLM-enhanced HTML TOC)
-  - `emoji_html` / `emoji_md` SQLite cache fields
-  - LLM config: `LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`,
-    `LLM_MAX_TOKENS`, `PHPMAN_ENHANCE_MAX_CHARS`
-  - `cli/batch-enhance.php` (moved as-is)
-  - `--enhance` flag (formerly `phpMan.php --enhance=...`)
-- **Interface**: CLI + HTTP API + (optionally) MCP; reads source
-  markdown via HTTP, writes enhanced output to its own cache store
-- **Tech stack**: Python (LLM client maturity, MCP tooling maturity)
-- **Status**: design → implementation (in progress, 2026-07)
+The plan was to move LLM-based doc enhancement into a standalone Python
+project (CLI + HTTP API, reading source markdown over HTTP). **No such
+repository exists** — `chedong/doc-enhance` was never created, and the
+capability was instead deleted outright from phpMan in v4.10.0 (commit
+`7740029`). See `docs/01-PRODUCT.md` §2.12. This entry is kept only as a
+record of the intent; treat the design as dead.
 
 ### site-stats — Standalone site analytics
 
@@ -513,6 +497,13 @@ and have their own repositories / deployments.
 
 ## Migration Plan: phpMan → `llm_enhance` + `site_stats`
 
+> **⚠️ SUPERSEDED (2026-09) — do not follow this plan.**
+> Neither `llm_enhance` nor `site_stats` was ever created as a repository. LLM
+> enhancement was instead deleted outright from phpMan in v4.10.0 (commit
+> `7740029`); see `docs/01-PRODUCT.md` §2.12. The `site-stats` design survives
+> separately in `docs/06-ANALYTICS.md`. The text below is kept as a record of
+> the intent only.
+>
 > **Date:** 2026-07-14
 > **Trigger:** `docs/01-PRODUCT.md` §2.12 — LLM features moved out
 > **Outcome:** phpMan becomes pure doc server; two new standalone repos
@@ -1281,11 +1272,7 @@ as needed. Single source of truth: `.example` file defines the canonical config 
 | `PHPMAN_WIDTH` | 100 | No |
 | `PHPMAN_TOC_THRESHOLD` | 80 | No |
 | `PHPMAN_TLDR_MAX_EXAMPLES` | 16 | No |
-| `PHPMAN_ENHANCE_MAX_CHARS` | 32000 | No |
-| `LLM_API_KEY` | `''` | For emoji enhancement |
-| `LLM_API_URL` | `''` | For emoji enhancement |
-| `LLM_MODEL` | `''` | For emoji enhancement |
-| `LLM_MAX_TOKENS` | 4096 | No |
+| `PHPMAN_CACHE_TTL_MONTHS` | 7 | No |
 | `MCP_API_KEY` | `''` | For MCP auth |
 | `PHPMAN_DEBUG` | false | No |
 | `PHPMAN_HOME_TITLE` | `'phpman - Linux...'` | No |

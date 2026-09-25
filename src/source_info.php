@@ -48,26 +48,21 @@ function getInfoIndex (string $format = "html"): string {
     $validFiles = getValidInfoFiles();
 
     if ($format === "markdown") {
+        // Hoisted out of the per-line loop: both capture only loop-invariant values.
+        $linkFileAndNode = function ($m) use ($validFiles, $script_name) {
+            if (!isset($validFiles[$m[1]])) return $m[0];
+            return '([' . $m[1] . '](' . $script_name . '/info/' . $m[1] . '/markdown))[' . $m[2] . '](' . $script_name . '/info/' . $m[2] . '/markdown)';
+        };
+        $linkFileOnly = function ($m) use ($validFiles, $script_name) {
+            if (!isset($validFiles[$m[1]])) return $m[0];
+            return '([' . $m[1] . '](' . $script_name . '/info/' . $m[1] . '/markdown))';
+        };
         $output = "";
         foreach ($lines as $line) {
             // Two-part "(file)node" — link file and node only if file exists
-            $line = preg_replace_callback(
-                "/\(([a-z0-9_\-]+)\)([a-z0-9_\+]+)/",
-                function ($m) use ($validFiles, $script_name) {
-                    if (!isset($validFiles[$m[1]])) return $m[0];
-                    return '([' . $m[1] . '](' . $script_name . '/info/' . $m[1] . '/markdown))[' . $m[2] . '](' . $script_name . '/info/' . $m[2] . '/markdown)';
-                },
-                $line
-            );
+            $line = preg_replace_callback("/\(([a-z0-9_\-]+)\)([a-z0-9_\+]+)/", $linkFileAndNode, $line);
             // One-part "(name)" — link only if the info file exists
-            $line = preg_replace_callback(
-                "/\(([a-z0-9_\-]+)\)/",
-                function ($m) use ($validFiles, $script_name) {
-                    if (!isset($validFiles[$m[1]])) return $m[0];
-                    return '([' . $m[1] . '](' . $script_name . '/info/' . $m[1] . '/markdown))';
-                },
-                $line
-            );
+            $line = preg_replace_callback("/\(([a-z0-9_\-]+)\)/", $linkFileOnly, $line);
             $output .= $line . "\n";
         }
         return $output;

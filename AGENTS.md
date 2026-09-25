@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project overview
 
-phpMan is a PHP web app (`phpMan.php` ~753 lines + 22 source files in `src/`) that wraps Unix `man`, `perldoc`, `info`, `pydoc3`, `ri`, and `apropos` commands into HTML, Markdown, JSON, and MCP responses. It also runs as an MCP Server for AI agent integration. CLI tools (search index rebuild, batch LLM enhancement) are in `cli/`.
+phpMan is a PHP web app (`phpMan.php` ~870 lines + 21 source files in `src/`) that wraps Unix `man`, `perldoc`, `info`, `pydoc3`, `ri`, and `apropos` commands into HTML, Markdown, JSON, and MCP responses. It also runs as an MCP Server for AI agent integration. CLI tools (search index rebuild, sitemap generation) are in `cli/`.
 
 ## Build / test / deploy
 
@@ -48,10 +48,8 @@ CLI functionality has been split into standalone scripts under `cli/`:
 php cli/build-index.php              # Rebuild FTS5 search index
 php cli/build-index.php --cron       # Rebuild with UTC timestamp
 
-# LLM emoji enhancement
-php cli/batch-enhance.php man:ls           # Single page (shorthand)
-php cli/batch-enhance.php man:ls,tar,grep  # Comma-separated batch
-php cli/batch-enhance.php --help   # Full batch (rate-limited, resumable)
+# Sitemap
+php cli/build-sitemap.php --output sitemap-phpman.xml.gz
 ```
 
 All CLI scripts resolve `PHPMAN_HOME`, then require `src/bootstrap.php` directly
@@ -71,13 +69,11 @@ All CLI scripts resolve `PHPMAN_HOME`, then require `src/bootstrap.php` directly
 
 **MCP server** — `handleMcp()` implements JSON-RPC 2.0 over Streamable HTTP POST at `/mcp`. Two tools: `cli_help` and `cli_search`. MCP responses wrap JSON in `{content: [{type: "text", text: ...}], structuredContent: {...}}`.
 
-**TLDR** — TLDR cheatsheets are embedded inline in man page detail pages. `fetchOfficialTldr()` fetches from tldr-pages GitHub raw (primary) or cheat.sh (fallback), caches in SQLite `tldr_cache` table with the unified cache TTL (`PHPMAN_CACHE_TTL_FOUND`, default 7 months — same as PageCache found entries). No LLM/API key needed. The old `/tldr` route is removed.
+**TLDR** — TLDR cheatsheets are embedded inline in man page detail pages. `fetchOfficialTldr()` fetches from tldr-pages GitHub raw (primary) or cheat.sh (fallback), caches in SQLite `tldr_cache` table under the unified cache TTL (`PHPMAN_CACHE_TTL_FOUND`, default 7 months; set via `PHPMAN_CACHE_TTL_MONTHS`). No LLM/API key needed. The old `/tldr` route is removed.
 
-**LLM Enhancement (v4.0–4.2)** — Optional LLM-powered emoji enhancement layer. Dual-format: `enhanceManPage()` generates both `emoji_html` (HTML-direct, for default view) and `emoji_md` (Markdown, for /markdown format) via 2 LLM calls. `callLLM()` handles the API call with 300s timeout and `finish_reason: "length"` truncation detection. `cleanEmojiHtml()` post-processes LLM output: strips DOCTYPE/html/head/body wrappers, removes `<script>`/`<style>`/`<meta>`/`<link>`/`<title>` with content, then `strip_tags()` with safe allowlist. Enhanced HTML is the default view when `emoji_html` cache exists; `?format=html` bypasses. v4.2: output size controlled by `PHPMAN_ENHANCE_MAX_CHARS` (default 32KB) via prompt instruction, no input truncation.
+**Emoji-enhanced cache (legacy, read-only)** — `emoji_html` / `emoji_md` cache rows predate v4.10, which removed the LLM enhancement layer (`enhanceManPage()`, `callLLM()`, `cleanEmojiHtml()`, `cli/batch-enhance.php`). Nothing generates them any more, but existing rows still render: `emoji_html` is served as the default view when present (`?format=html` bypasses), `emoji_md` is preferred for `/markdown`. They never expire. Historical design lives in git history v4.0–v4.9 and `docs/01-PRODUCT.md` §2.12.
 
 **UX: code blocks + copy button** — External JS `phpman.js` (loaded in `showFooter()`) wraps all `#content-wrap pre` blocks in `<div class="code-block">` with a `📋 Copy` button positioned top-right. Clicking copies the `<code>` (or `<pre>`) textContent to clipboard with `✓ Copied!` feedback. CSS: Tokyo Night `#1f2335` background, `italic` font, rounded border, button hidden until hover (.code-block:hover .copy-btn).
-
-**Batch enhance (`cli/batch-enhance.php`)** — Fully offline CLI. `require_once`'s phpMan.php and calls `getManPage()`/`getPerldocPage()`/etc. directly for content generation. Uses shared `PageCache` + `callLLM()` + `cleanEmojiHtml()` from phpMan.php — zero HTTP dependency, no web server needed. Key features: `--status` progress per mode, `--pid-file`/`--stop` lifecycle, `--rebuild` force redo, `--parameter` single-page mode, `--cached-first` sort, 2-min rate limiting, non-existent page skip (NOT_FOUND cache). See `docs/01-PRODUCT.md` §2.12 and `docs/05-PLAN.md` v4.1 for full design.
 
 ## Git workflow — CRITICAL: worktree rebase rule
 
@@ -127,11 +123,11 @@ git log --oneline -3  # shows recent commits
 
 ## Key design rules
 
-- **Single-file deployment by design** — one PHP file (`phpMan.php`) in webroot, 22 source files in `src/` outside webroot. No Composer, no autoload. Code structure preserves a single web-accessible entry point.
+- **Single-file deployment by design** — one PHP file (`phpMan.php`) in webroot, 21 source files in `src/` outside webroot. No Composer, no autoload. Code structure preserves a single web-accessible entry point.
 - **XHTML 1.0 Transitional** — no HTML5 tags (`<nav>`, `<section>`), no `og:` meta tags. Use `<div id="...">` and `<p>` instead. Underline uses `<span class="u">` (CSS-driven, avoids `<u>` deprecation warnings in validators).
 - **Footer IP + UA display is intentional** — it's for spider/bot tracking in `showFooter()`. Do not remove it. See `docs/01-PRODUCT.md` for the full rationale.
 - **`?debug=1`** only shows sensitive details when `isLocalRequest()` returns true (REMOTE_ADDR is 127.0.0.1, ::1, or empty).
-- **Config architecture (v4.5)** — single config file at `~/.phpman/phpman.config.php` (NEVER in webroot). `PHPMAN_HOME` is baked into `phpMan.php` at deploy time (via `sed`, same as `GIT_DESCRIBE`). `src/config.php` loads defaults then requires the user config. API keys (`LLM_API_KEY`, `MCP_API_KEY`) are outside webroot.
+- **Config architecture (v4.5)** — single config file at `~/.phpman/phpman.config.php` (NEVER in webroot). `PHPMAN_HOME` is baked into `phpMan.php` at deploy time (via `sed`, same as `GIT_DESCRIBE`). `src/config.php` loads defaults then requires the user config. API keys (`MCP_API_KEY`) are outside webroot.
 - **Cap word style** for new code: functionNames, variableNames, arrayKeys. Existing code uses mixed styles — match the surrounding convention.
 - **Output format purity** — each format must produce self-consistent output with no cross-format contamination. Markdown output MUST NOT contain HTML tags (`<ul>`, `<li>`, `<a>`) — use pure Markdown (`- ` list items, `[text](url)` links). JSON MUST be valid parseable JSON. HTML MUST be XHTML 1.0 Transitional compliant.
 - **`h()` and `serverValue()`** are the canonical helpers for HTML escaping and reading `$_SERVER`. Use them instead of direct access.
