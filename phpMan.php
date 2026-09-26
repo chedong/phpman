@@ -238,15 +238,50 @@ if ($format === "html" && $mode !== "mcp" && $mode !== "copyright" && $mode !== 
     $etag = "";
 }
 
+/**
+ * 获取标题用的一句话说明（man page NAME 段 / apropos description）。
+ * 仅 man/pydoc/ri 有 FTS5 索引；perldoc/info 无 description 返回空串。
+ * 查询失败时安全退化为空串，不影响页面渲染。
+ */
+function getTitleDescription (string $mode, string $parameter, string $section): string {
+    if (!in_array($mode, ['man', 'pydoc', 'ri'], true)) {
+        return '';
+    }
+    try {
+        $db = cacheDb();
+        if ($db === null) return '';
+        $sec = ($mode === 'man') ? $section : $mode;
+        if ($sec === '') {
+            $stmt = $db->prepare("SELECT description FROM search_fts WHERE name = :n OR name LIKE :p LIMIT 1");
+            $stmt->bindValue(':n', $parameter, SQLITE3_TEXT);
+            $stmt->bindValue(':p', $parameter . ' %', SQLITE3_TEXT);
+        } else {
+            $stmt = $db->prepare("SELECT description FROM search_fts WHERE section = :s AND (name = :n OR name LIKE :p) LIMIT 1");
+            $stmt->bindValue(':s', $sec, SQLITE3_TEXT);
+            $stmt->bindValue(':n', $parameter, SQLITE3_TEXT);
+            $stmt->bindValue(':p', $parameter . ' %', SQLITE3_TEXT);
+        }
+        $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+        if ($row && !empty($row['description'])) {
+            $desc = trim(strip_tags((string)$row['description']));
+            if (function_exists('mb_strlen') && mb_strlen($desc) > 80) {
+                $desc = mb_substr($desc, 0, 80) . '...';
+            }
+            return $desc;
+        }
+    } catch (\Throwable $ignored) {
+        // 忽略 description 查询失败，标题退化为无 description
+    }
+    return '';
+}
+
 if ( $parameter != "" ) {
-    if ( $section == "" ) {
-        $PHPMAN_TITLE = $mode . " > " . $parameter;
-    }
-    else {
-        $PHPMAN_TITLE = $mode . " > " . $parameter . "(" . $section . ")";
-    }
+    $desc = getTitleDescription($mode, $parameter, $section);
+    $namePart = $parameter . ($desc !== "" ? " - " . $desc : "");
+    $modePart = ($section !== "") ? $mode . "(" . $section . ")" : $mode;
+    $PHPMAN_TITLE = $namePart . " - " . $modePart . " - [phpMan]";
 } elseif ($mode !== "" && $mode !== "search" && in_array($mode, PHPMAN_CONTENT_MODES)) {
-    $PHPMAN_TITLE = $mode;
+    $PHPMAN_TITLE = $mode . " - [phpMan]";
 }
 
 //show GPL
