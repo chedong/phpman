@@ -240,17 +240,23 @@ if ($format === "html" && $mode !== "mcp" && $mode !== "copyright" && $mode !== 
 
 /**
  * 获取标题用的一句话说明（man page NAME 段 / apropos description）。
- * 仅 man/pydoc/ri 有 FTS5 索引；perldoc/info 无 description 返回空串。
+ * man/pydoc/ri/perldoc 都在 search_fts 有 description（perldoc 的 name 在
+ * section 3perl/3pm 段）；info 无 FTS5 索引返回空串。
  * 查询失败时安全退化为空串，不影响页面渲染。
  */
 function getTitleDescription (string $mode, string $parameter, string $section): string {
-    if (!in_array($mode, ['man', 'pydoc', 'ri'], true)) {
-        return '';
-    }
+    if ($mode === 'info') return '';  // info 无 FTS5 索引
     try {
         $db = cacheDb();
         if ($db === null) return '';
-        $sec = ($mode === 'man') ? $section : $mode;
+        // section 过滤：pydoc/ri 用模式名；man 有 section 用真实 section；
+        // man 无 section / perldoc 不按 section 过滤（perldoc name 在 3perl/3pm 段）
+        $sec = '';
+        if ($mode === 'pydoc' || $mode === 'ri') {
+            $sec = $mode;
+        } elseif ($mode === 'man' && $section !== '') {
+            $sec = $section;
+        }
         if ($sec === '') {
             $stmt = $db->prepare("SELECT description FROM search_fts WHERE name = :n OR name LIKE :p LIMIT 1");
             $stmt->bindValue(':n', $parameter, SQLITE3_TEXT);
