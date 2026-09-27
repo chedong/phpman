@@ -35,3 +35,6 @@ vendor/
 
 # placeholder leak (local dev runs before deploy patches PHPMAN_HOME)
 __PHPMAN_HOME__/
+
+# Codex agent local state
+.codex/
