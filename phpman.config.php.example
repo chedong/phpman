@@ -50,6 +50,21 @@
 // Leave empty to disable (default).
 // define('PHPMAN_GA_ID', 'G-XXXXXXXXXX');
 
+// --- Google AdSense (v4.9.26+) ---
+// Set your AdSense publisher ID to load the adsbygoogle.js loader script.
+// Leave empty to disable (default).
+//
+// NOTE: this only injects the loader — phpman ships no
+// <ins class="adsbygoogle"> ad units. Ads therefore appear only if Auto Ads
+// is enabled for the site in the AdSense console. Enabling this also widens
+// the CSP automatically (script-src / connect-src / frame-src), so no CSP
+// edit is needed. Do not set this on staging: serving ads from a test host
+// counts as invalid traffic.
+//
+// Use the ca-pub-... form here — that is what the loader's client= param
+// expects. ads.txt uses the bare pub-... form, without the ca- prefix.
+// define('PHPMAN_ADSENSE_ID', 'ca-pub-XXXXXXXXXXXXXXXX');
+
 // --- MCP Authentication (#97) ---
 // Set a secret key to require X-API-Key header on all MCP requests.
 // Leave empty to allow unauthenticated access (default, for local/trusted networks).

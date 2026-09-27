@@ -117,6 +117,14 @@ _deploy-code:
 	@echo "$(TEST_URL)"
 	@echo ""
 	@# Check for new config options not in server's phpman.config.php
+	@# NOTE on the sed escaping below: the expression crosses two double-quoted
+	@# shell layers (this recipe's shell, then the shell ssh spawns), and each
+	@# layer halves every backslash run. So the four backslashes you see before
+	@# ( and ) are what arrives at sed as \( and \) — a BRE capture group. Write
+	@# six there and sed gets \\( (literal backslash + literal paren), the group
+	@# never opens, and the check dies with "Unmatched ) or \)" while still
+	@# printing "✓ Config up to date" — a silent false negative that hid a missing
+	@# PHPMAN_ADSENSE_ID until 2026-09-27. The 4/4/4 symmetry is deliberate.
 	@echo "--- Checking for new config options ---"; \
 		missing=$$(ssh -p $(TEST_PORT) $(TEST_HOST) " \
 			example=$(STAGING_HOME)/.phpman_test/phpman.config.php.example; \
@@ -128,7 +136,7 @@ _deploy-code:
 				hint=\$$(grep -B5 \"define('\$$key'\" \"\$$example\" | grep '//' | tail -1 | sed 's/^[[:space:]]*\/\/[[:space:]]*//'); \
 				[ -z \"\$$hint\" ] && hint=\"\$$key\"; \
 				echo \"  \$$key — \$$hint\"; \
-			done < <(sed -n \"s/.*define('\\\\\\([A-Z_][A-Z_0-9]*\\\\)'.*/\\\\1/p\" \"\$$example\" | sort -u) \
+			done < <(sed -n \"s/.*define('\\\\([A-Z_][A-Z_0-9]*\\\\)'.*/\\\\1/p\" \"\$$example\" | sort -u) \
 		"); \
 		if [ -n "$$missing" ]; then \
 			echo "  ⚠  New config options not in your phpman.config.php:"; \
@@ -182,6 +190,7 @@ _release-code:
 	@echo "Rollback: make rollback"
 	@echo ""
 	@# Check for new config options not in server's phpman.config.php
+	@# (sed escaping explained in the staging copy of this check — same 4/4/4.)
 	@echo "--- Checking for new config options ---"; \
 		missing=$$(ssh -p $(DEMO_PORT) $(DEMO_HOST) " \
 			example=$(DEMO_HOME)/.phpman/phpman.config.php.example; \
@@ -193,7 +202,7 @@ _release-code:
 				hint=\$$(grep -B5 \"define('\$$key'\" \"\$$example\" | grep '//' | tail -1 | sed 's/^[[:space:]]*\/\/[[:space:]]*//'); \
 				[ -z \"\$$hint\" ] && hint=\"\$$key\"; \
 				echo \"  \$$key — \$$hint\"; \
-			done < <(sed -n \"s/.*define('\\\\\\([A-Z_][A-Z_0-9]*\\\\)'.*/\\\\1/p\" \"\$$example\" | sort -u) \
+			done < <(sed -n \"s/.*define('\\\\([A-Z_][A-Z_0-9]*\\\\)'.*/\\\\1/p\" \"\$$example\" | sort -u) \
 		"); \
 		if [ -n "$$missing" ]; then \
 			echo "  ⚠  New config options not in your phpman.config.php:"; \
