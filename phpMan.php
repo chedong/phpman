@@ -137,7 +137,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
             }
             if ($seg_count >= 3) {
                 $third_seg_lower = strtolower($segments[2]);
-                if ($third_seg_lower === "html" || $third_seg_lower === "markdown" || $third_seg_lower === "json" || $third_seg_lower === "mcp") {
+                if (in_array($third_seg_lower, PHPMAN_OUTPUT_FORMATS)) {
                     $format = $third_seg_lower;
                 } else {
                     $section = $segments[2];
@@ -145,7 +145,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
             }
             if ($seg_count >= 4) {
                 $fourth_seg_lower = strtolower($segments[3]);
-                if ($fourth_seg_lower === "html" || $fourth_seg_lower === "markdown" || $fourth_seg_lower === "json" || $fourth_seg_lower === "mcp") {
+                if (in_array($fourth_seg_lower, PHPMAN_OUTPUT_FORMATS)) {
                     $format = $fourth_seg_lower;
                 } else {
                     $section = $segments[3];
@@ -158,7 +158,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
             
             if ($seg_count >= 2) {
                 $second_seg_lower = strtolower($segments[1]);
-                if ($second_seg_lower === "html" || $second_seg_lower === "markdown" || $second_seg_lower === "json" || $second_seg_lower === "mcp") {
+                if (in_array($second_seg_lower, PHPMAN_OUTPUT_FORMATS)) {
                     $format = $second_seg_lower;
                 } else {
                     $section = $segments[1];
@@ -166,7 +166,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
             }
             if ($seg_count >= 3) {
                 $third_seg_lower = strtolower($segments[2]);
-                if ($third_seg_lower === "html" || $third_seg_lower === "markdown" || $third_seg_lower === "json" || $third_seg_lower === "mcp") {
+                if (in_array($third_seg_lower, PHPMAN_OUTPUT_FORMATS)) {
                     $format = $third_seg_lower;
                 } else {
                     $section = $segments[2];
@@ -193,7 +193,7 @@ else {
 if ( getQueryParam("format") != "" ) {
     $format = strtolower(trim(getQueryParam("format")));
 }
-$format = in_array($format, ["html", "markdown", "json", "mcp"]) ? $format : "html";
+$format = in_array($format, PHPMAN_OUTPUT_FORMATS) ? $format : "html";
 
 // .well-known discovery endpoint (e.g. /.well-known/mcp.json)
 if ( $mode === ".well-known" ) {

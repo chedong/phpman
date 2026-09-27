@@ -146,6 +146,14 @@ define('CACHE_STATUS_FOUND',     'found');
 define('CACHE_STATUS_NOT_FOUND', 'not_found');
 define('PHPMAN_CONTENT_MODES', ['man', 'perldoc', 'info', 'pydoc', 'ri']);
 
+// Output formats selectable from a URL segment or ?format=.
+// `mcp` is deliberately NOT here: it is an internal rendering core that
+// handleMcp() calls (getManPage(..., "mcp")), not a public output format.
+// Exposing it as /{mode}/{param}/mcp served the same envelope without any of
+// the JSON-RPC endpoint's guards — no API key, no 64KB body cap, no POST-only
+// check — and was cacheable for 7 days. See CHANGELOG (Unreleased).
+define('PHPMAN_OUTPUT_FORMATS', ['html', 'markdown', 'json']);
+
 // Ensure log dir exists, then set error_log target
 if (!is_dir(PHPMAN_LOG_DIR)) @mkdir(PHPMAN_LOG_DIR, 0755, true);
 @ini_set('error_log', PHPMAN_LOG_FILE);

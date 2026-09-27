@@ -1,7 +1,7 @@
 # MCP Mode Test Cases
 
 Deployment: `https://www.chedong.com/phpMan.php/mcp`
-Methods: POST (JSON-RPC 2.0) and GET (REST /mcp format)
+Methods: POST (JSON-RPC 2.0) only — send `X-Api-Key` when `MCP_API_KEY` is set
 
 ---
 
@@ -115,49 +115,9 @@ Expected: results from section 3 only
 
 ---
 
-## REST GET /mcp Format Tests
-
-REST GET `/mcp` endpoints return the SAME `{"content":[{"type":"text","text":"<json-man-page>"}]}` format
-as MCP POST `tools/call`. The REST URL mirrors the existing `/json` format but wraps output for MCP clients.
-
-### T13: GET man page with /mcp format
-```bash
-curl -s 'https://www.chedong.com/phpMan.php/man/ls/1/mcp' \
-  | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'content' in d; assert d['content'][0]['type']=='text'; r=json.loads(d['content'][0]['text']); assert r['mode']=='man'; assert r['name']=='ls(1)'; print('PASS')"
-```
-Expected: MCP content wrapper, inner JSON has `mode=man`, `name=ls(1)`
-
-### T14: GET search with /mcp format
-```bash
-curl -s 'https://www.chedong.com/phpMan.php/search/cron/mcp' \
-  | python3 -c "import sys,json; d=json.load(sys.stdin); r=json.loads(d['content'][0]['text']); assert r['mode']=='search'; assert r['count']>0; assert any(m['name']=='cron' for m in r['results']); print('PASS')"
-```
-Expected: MCP content wrapper, inner JSON has search results containing `cron`
-
-### T15: GET perldoc with /mcp format
-```bash
-curl -s 'https://www.chedong.com/phpMan.php/perldoc/Digest::MD5/mcp' \
-  | python3 -c "import sys,json; d=json.load(sys.stdin); r=json.loads(d['content'][0]['text']); assert r['mode']=='perldoc'; assert 'Digest::MD5' in r['name']; print('PASS')"
-```
-Expected: MCP content wrapper, inner JSON has `mode=perldoc`
-
-### T16: GET /mcp and POST /mcp return identical inner JSON
-```bash
-# Compare REST GET vs MCP POST for same man page
-REST=$(curl -s 'https://www.chedong.com/phpMan.php/man/cat/1/mcp' | python3 -c "import sys,json; print(json.loads(json.load(sys.stdin)['content'][0]['text'])['name'])")
-MCP=$(curl -s -X POST 'https://www.chedong.com/phpMan.php/mcp' \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"cli_help","arguments":{"command":"cat","section":"1"}}}' \
-  | python3 -c "import sys,json; print(json.loads(json.load(sys.stdin)['result']['content'][0]['text'])['name'])")
-[ "$REST" = "$MCP" ] && echo "PASS: both return '$REST'" || echo "FAIL: REST='$REST' MCP='$MCP'"
-```
-Expected: REST GET and MCP POST return identical inner man page data
-
----
-
 ## Run All Tests
 ```bash
-for i in $(seq 1 16); do
+for i in $(seq 1 12); do
   echo "=== T${i} ==="
   # copy each test block here
 done

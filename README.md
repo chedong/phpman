@@ -156,9 +156,6 @@ For clients that don't support MCP, use the REST endpoints directly:
 ```bash
 # Get structured man page as JSON
 curl "https://www.chedong.com/phpMan.php/man/ls/1/json"
-
-# Get MCP-wrapped output (same format as MCP tools/call response)
-curl "https://www.chedong.com/phpMan.php/man/ls/1/mcp"
 ```
 
 
@@ -441,7 +438,7 @@ Search results aggregate three documentation sources:
 
 ### MCP Wrapper Format
 
-When using `/mcp` endpoint or MCP POST, the response is wrapped:
+When using MCP POST, the response is wrapped:
 
 ```json
 {
@@ -501,24 +498,6 @@ curl "https://www.chedong.com/phpMan.php/search/git/json"
 # Accept header (works on any URL)
 curl -H "Accept: application/json" "https://www.chedong.com/phpMan.php/man/bash"
 ```
-
-### MCP Format (REST GET)
-
-The `/mcp` format suffix wraps JSON output in MCP's `content` array — making REST GET and MCP POST responses identical:
-
-```bash
-# Same man page, same output format as MCP POST tools/call
-curl "https://www.chedong.com/phpMan.php/man/ls/1/mcp"
-# → {"content":[{"type":"text","text":"..."}],"structuredContent":{...}}
-
-# Search with MCP format
-curl "https://www.chedong.com/phpMan.php/search/cron/mcp"
-
-# Perldoc with MCP format
-curl "https://www.chedong.com/phpMan.php/perldoc/Digest::MD5/mcp"
-```
-
-This means any MCP client can `GET /man/ls/1/mcp` and parse the result identically to `POST /mcp` `tools/call`.
 
 ### TLDR (Integrated in Man Pages)
 
@@ -663,7 +642,6 @@ This adds the newly discovered ri classes to `search_fts`, making them searchabl
 - **TOC Sidebar** — Two-level floating table of contents for navigation
 - **Markdown Output** — Append `/markdown` for machine-readable format
 - **JSON API** — Append `/json` for structured JSON output with semantic fields
-- **MCP Format** — Append `/mcp` for MCP-compatible output
 - **MCP Server** — Model Context Protocol endpoint for AI agent integration
 - **TLDR Integration** — Inline cheatsheets from tldr-pages + cheat.sh, cached in SQLite
 - **SEO Optimized** — Canonical URLs, meta description, robots directives

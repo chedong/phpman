@@ -13,6 +13,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Docs synced to the code** — `PHPMAN_ADSENSE_ID` documented in `01-PRODUCT.md` (loader-only, needs Auto Ads, don't set on staging); the stale LLM-era config recipe removed from `05-PLAN.md`, which also had `phpman.config.php` living in the webroot — it lives in `~/.phpman/`, outside the webroot, which is where the secrets are.
 - **`.codex/` gitignored** — agent local state no longer shows up in `git status`.
 
+### Removed
+- **`mcp` is no longer a public output format** — `/{mode}/{param}/mcp`, `/search/{query}/mcp` and `?format=mcp` fall back to HTML now; use `POST /mcp` for the MCP envelope. It was never MCP: parameters came from the URL path, GET was allowed, and it bypassed the JSON-RPC endpoint's API-key check, 64KB body cap and POST-only guard, while being served with `Expires: +7d`. The format string itself stays — `handleMcp()` renders through `getManPage(..., "mcp")` — it is simply no longer reachable from a URL. **Breaking** for callers that used the suffix.
+
 ### Fixed
 - **Title format (#226)** — `<title>` is now `Name - description - mode(section) - [phpMan]`; the mode/section segment is dropped when there is no mode.
 - **perldoc title description** — resolves again; a perldoc page's `name` lives in the `3perl`/`3pm` sections of `search_fts`, which the lookup did not cover.
