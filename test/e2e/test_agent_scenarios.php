@@ -123,11 +123,18 @@ echo "\nA09: ETag 304 caching\n";
 $ch = curl_init("{$BASE}/man/ls/1/json");
 curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HEADER => true, CURLOPT_TIMEOUT => 30]);
 $resp = curl_exec($ch);
-$headers = substr($resp, 0, curl_getinfo($ch, CURLINFO_HEADER_SIZE));
+$hsize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+$headers = substr($resp, 0, $hsize);
+$body = substr($resp, $hsize);
 curl_close($ch);
 preg_match('/ETag: (.+)/i', $headers, $m);
 $etag = trim($m[1] ?? "");
-if ($etag) {
+// A target running with PHPMAN_DEBUG embeds per-request profiling timings in the
+// JSON body, so the content hash behind the ETag changes on every request and 304
+// is unreachable there by design. That is the debug host, not a caching bug.
+if (strpos($body, '_profiling') !== false) {
+    echo "  ⚠️  Target serves _profiling (PHPMAN_DEBUG) — ETag is per-request by design, skipping\n";
+} elseif ($etag) {
     $ch = curl_init("{$BASE}/man/ls/1/json");
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,

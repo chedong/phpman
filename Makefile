@@ -125,6 +125,9 @@ _deploy-code:
 	@# never opens, and the check dies with "Unmatched ) or \)" while still
 	@# printing "✓ Config up to date" — a silent false negative that hid a missing
 	@# PHPMAN_ADSENSE_ID until 2026-09-27. The 4/4/4 symmetry is deliberate.
+	@# The two `.` around the key match either quote character: both live configs
+	@# write PHPMAN_BASE_URL with double quotes, which the earlier single-quoted
+	@# pattern reported as missing on every deploy.
 	@echo "--- Checking for new config options ---"; \
 		missing=$$(ssh -p $(TEST_PORT) $(TEST_HOST) " \
 			example=$(STAGING_HOME)/.phpman_test/phpman.config.php.example; \
@@ -132,7 +135,7 @@ _deploy-code:
 			if [ ! -f \"\$$config\" ] || [ ! -f \"\$$example\" ]; then exit 0; fi; \
 			while IFS= read -r key; do \
 				[ -z \"\$$key\" ] && continue; \
-				grep -q \"define('\$$key'\" \"\$$config\" && continue; \
+				grep -q \"define(.\$$key.\" \"\$$config\" && continue; \
 				hint=\$$(grep -B5 \"define('\$$key'\" \"\$$example\" | grep '//' | tail -1 | sed 's/^[[:space:]]*\/\/[[:space:]]*//'); \
 				[ -z \"\$$hint\" ] && hint=\"\$$key\"; \
 				echo \"  \$$key — \$$hint\"; \
@@ -190,7 +193,8 @@ _release-code:
 	@echo "Rollback: make rollback"
 	@echo ""
 	@# Check for new config options not in server's phpman.config.php
-	@# (sed escaping explained in the staging copy of this check — same 4/4/4.)
+	@# (sed escaping and the quote-agnostic key match explained in the staging copy
+	@#  of this check — same 4/4/4.)
 	@echo "--- Checking for new config options ---"; \
 		missing=$$(ssh -p $(DEMO_PORT) $(DEMO_HOST) " \
 			example=$(DEMO_HOME)/.phpman/phpman.config.php.example; \
@@ -198,7 +202,7 @@ _release-code:
 			if [ ! -f \"\$$config\" ] || [ ! -f \"\$$example\" ]; then exit 0; fi; \
 			while IFS= read -r key; do \
 				[ -z \"\$$key\" ] && continue; \
-				grep -q \"define('\$$key'\" \"\$$config\" && continue; \
+				grep -q \"define(.\$$key.\" \"\$$config\" && continue; \
 				hint=\$$(grep -B5 \"define('\$$key'\" \"\$$example\" | grep '//' | tail -1 | sed 's/^[[:space:]]*\/\/[[:space:]]*//'); \
 				[ -z \"\$$hint\" ] && hint=\"\$$key\"; \
 				echo \"  \$$key — \$$hint\"; \
