@@ -1,4 +1,13 @@
 <?php
+
+/**
+ * Raised by the MCP tool implementations when the caller's arguments are at
+ * fault — an unknown tool name, or a required parameter left out. These are
+ * JSON-RPC -32602 "Invalid params" with the message kept intact, not -32603
+ * "Internal error": the request was malformed, nothing broke on our side.
+ */
+class McpInvalidParams extends Exception {}
+
 function getMcpToolDefinitions (): array {
     return [
         [
@@ -246,6 +255,10 @@ function handleMcpToolsCall ($id, array $params): void {
             return;
         }
         sendMcpResult($id, $result);
+    } catch (McpInvalidParams $e) {
+        // The caller's fault — name the offending argument instead of hiding
+        // it behind a generic "Internal error".
+        sendMcpError($id, -32602, "Invalid params: " . $e->getMessage());
     } catch (Throwable $e) {
         phpManLog("MCP internal error: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine());
         sendMcpError($id, -32603, "Internal error");
@@ -259,7 +272,7 @@ function executeMcpTool (string $name, array $args): string {
         case "cli_search":
             return executeCliSearch($args);
         default:
-            throw new Exception("Unknown tool: {$name}");
+            throw new McpInvalidParams("Unknown tool: {$name}");
     }
 }
 
@@ -268,7 +281,7 @@ function executeCliHelp (array $args): string {
     $section = trim($args["section"] ?? "");
 
     if ($command === "") {
-        throw new Exception("Missing required parameter: command");
+        throw new McpInvalidParams("Missing required parameter: command");
     }
 
     // Auto-detect documentation source
@@ -300,8 +313,14 @@ function executeCliHelp (array $args): string {
     
     $content = getRiPage($command, "mcp");
     if ($content !== "") return $content;
-    
-    return $content;
+
+    // Nothing matched anywhere. The call itself succeeded — the command simply
+    // has no man/perldoc/info/pydoc/ri page here — so answer with an empty
+    // envelope. Returning "" reached handleMcpToolsCall() as unparseable output
+    // and was reported as an internal error, which told the agent nothing about
+    // whether the command or the server was at fault.
+    $empty = [];
+    return formatMcpEnvelope(buildJsonData($empty, $command, $section, "man"));
 }
 
 function executeCliSearch (array $args): string {
@@ -309,7 +328,7 @@ function executeCliSearch (array $args): string {
     $section = trim($args["section"] ?? "");
 
     if ($query === "") {
-        throw new Exception("Missing required parameter: query");
+        throw new McpInvalidParams("Missing required parameter: query");
     }
 
     // getSearchPage returns plain JSON for "mcp" format — wrap ONCE here

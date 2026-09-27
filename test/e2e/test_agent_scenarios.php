@@ -14,6 +14,10 @@
  *   A08: MCP error handling → invalid tool name
  *   A09: ETag caching → 304 on repeat request
  *   A10: Gzip compression → smaller payload
+ *   A11: cli_help for a command with no page → empty result, not an error
+ *
+ * Set PHPMAN_TEST_MCP_KEY to the target's MCP_API_KEY — POST /mcp is
+ * fail-closed and answers 401 without it.
  */
 require_once __DIR__ . '/../test_helper.php';
 
@@ -86,6 +90,10 @@ $r = mcpCall("tools/call", ["name" => "cli_help", "arguments" => ["command" => "
 assert_equals(true, isset($r["data"]["result"]["content"]), "has content");
 $text = $r["data"]["result"]["content"][0]["text"] ?? "";
 assert_contains("ls", $text, "response mentions ls");
+// content[0].text is markdown; the structured payload is a sibling field.
+$sc = $r["data"]["result"]["structuredContent"] ?? [];
+assert_equals("man", $sc["mode"] ?? "", "structuredContent.mode = man");
+assert_equals(true, count($sc["sections"] ?? []) > 0, "structuredContent has sections");
 
 // A05: MCP cli_search
 echo "\nA05: POST /mcp cli_search file\n";
@@ -147,5 +155,18 @@ $resp = curl_exec($ch);
 $headers = substr($resp, 0, curl_getinfo($ch, CURLINFO_HEADER_SIZE));
 curl_close($ch);
 assert_contains("gzip", strtolower($headers), "Content-Encoding: gzip");
+
+// A11: cli_help for a command with no page anywhere — an empty result, not an
+// error. This used to come back as -32603 "Internal error: invalid MCP output",
+// which told the agent nothing about whether the command or the server was at
+// fault.
+echo "\nA11: POST /mcp cli_help nonexistent command\n";
+$r = mcpCall("tools/call", ["name" => "cli_help", "arguments" => ["command" => "this_command_does_not_exist_xyz"]]);
+assert_equals(true, !isset($r["data"]["error"]), "no JSON-RPC error");
+$sc = $r["data"]["result"]["structuredContent"] ?? null;
+assert_equals(true, $sc !== null, "returns structuredContent");
+assert_equals("man", $sc["mode"] ?? "", "mode = man");
+assert_equals(0, count($sc["sections"] ?? ["sentinel"]), "no sections");
+assert_equals(true, ($sc["summary"] ?? null) === null, "summary is null");
 
 exit(test_summary());
