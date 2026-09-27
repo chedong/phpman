@@ -158,7 +158,9 @@ define('PHPMAN_OUTPUT_FORMATS', ['html', 'markdown', 'json']);
 if (!is_dir(PHPMAN_LOG_DIR)) @mkdir(PHPMAN_LOG_DIR, 0755, true);
 @ini_set('error_log', PHPMAN_LOG_FILE);
 
-// MCP API key: if defined in config, all MCP requests require this key in X-API-Key header
+// MCP API key: every POST /mcp request must carry it in the X-Api-Key header.
+// Fail-closed — the default is empty, and an empty key returns 401 for every
+// request rather than disabling the check. Set it in ~/.phpman/phpman.config.php.
 if (!defined('MCP_API_KEY')) define('MCP_API_KEY', '');
 
 // Debug mode: phpman.config.php > env var > default false

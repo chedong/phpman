@@ -110,13 +110,16 @@ function handleMcp (): void {
     }
 
     // API key authentication (#97)
-    if (MCP_API_KEY !== '') {
-        $apiKey = serverValue("HTTP_X_API_KEY", "");
-        if ($apiKey !== MCP_API_KEY) {
-            http_response_code(401);
-            sendMcpError(null, -32001, "Unauthorized: invalid or missing API key");
-            return;
-        }
+    // Fail-closed: an empty MCP_API_KEY denies every request instead of
+    // disabling the check. A mis-generated or emptied phpman.config.php must
+    // not silently publish the endpoint — that is how it behaved before, and
+    // it is the same shape phpMan.php's status endpoint already uses.
+    // hash_equals() keeps the comparison constant-time.
+    $apiKey = serverValue("HTTP_X_API_KEY", "");
+    if (MCP_API_KEY === '' || !hash_equals(MCP_API_KEY, $apiKey)) {
+        http_response_code(401);
+        sendMcpError(null, -32001, "Unauthorized: invalid or missing API key");
+        return;
     }
 
     // Limit request body size to 64KB (#31, #42)

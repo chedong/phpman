@@ -36,12 +36,20 @@ function fetchJson(string $url): array {
 function mcpCall(string $method, array $params = [], int $id = 1): array {
     $url = $GLOBALS["BASE"] . "/mcp";
     $payload = json_encode(["jsonrpc" => "2.0", "method" => $method, "params" => $params, "id" => $id]);
+    // POST /mcp is fail-closed: without a key the endpoint answers 401 and
+    // nothing below is reachable. Set PHPMAN_TEST_MCP_KEY to the target's
+    // MCP_API_KEY to run these.
+    $headers = ["Content-Type: application/json"];
+    $key = getenv("PHPMAN_TEST_MCP_KEY");
+    if ($key !== false && $key !== "") {
+        $headers[] = "X-Api-Key: {$key}";
+    }
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => $payload,
-        CURLOPT_HTTPHEADER => ["Content-Type: application/json"],
+        CURLOPT_HTTPHEADER => $headers,
         CURLOPT_TIMEOUT => 30,
     ]);
     $body = curl_exec($ch);

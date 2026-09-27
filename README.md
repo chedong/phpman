@@ -55,14 +55,14 @@ All settings live in a **single file**: `~/.phpman/phpman.config.php`. The webro
 | `phpman.config.php` | `~/.phpman/` | **Your settings** — API keys, MCP auth, GA tracking, debug mode | **Yes** |
 | `phpman.config.php.example` | `~/.phpman/` (git) | **Template** — copied by `install.sh` on first run | No |
 
-**Zero config**: If `~/.phpman/phpman.config.php` doesn't exist, everything works with defaults — no LLM, no MCP auth, no GA tracking.
+**Zero config**: If `~/.phpman/phpman.config.php` doesn't exist, everything works with defaults — no LLM, no GA tracking, and MCP switched off (`POST /mcp` returns `401` without a key).
 
 **Minimal config** (production):
 ```php
 define('PHPMAN_BASE_URL', 'https://www.example.com/phpMan.php');
 ```
 
-**With MCP auth**:
+**Required to use MCP** (the key is fail-closed — empty means `401` for everyone):
 ```php
 define('PHPMAN_BASE_URL', 'https://www.example.com/phpMan.php');
 define('MCP_API_KEY', 'your-secret-key-here');
@@ -90,6 +90,8 @@ define('MCP_API_KEY', 'your-secret-key-here');
 ## Quick Start for Agents
 
 phpMan implements [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) via **Streamable HTTP** transport — no local installation or `npx` wrapper needed. Just point your MCP client at the endpoint URL.
+
+> **Authentication**: `POST /mcp` is fail-closed — it answers `401` until you set `MCP_API_KEY` in `~/.phpman/phpman.config.php`, and then every request must send it in the `X-Api-Key` header. Add `"headers": {"X-Api-Key": "your-secret-key-here"}` to the `phpman` block in any config below.
 
 ### Claude Desktop
 

@@ -26,6 +26,18 @@ function fetch(string $url): array {
 
 echo "=== E2E: Security Tests ===\n\n";
 
+// POST /mcp is fail-closed: it answers 401 unless MCP_API_KEY is sent, so the
+// malformed-body paths below are only reachable once authenticated. Set
+// PHPMAN_TEST_MCP_KEY to the target's MCP_API_KEY to exercise them.
+function mcpHeaders(): array {
+    $headers = ["Content-Type: application/json"];
+    $key = getenv("PHPMAN_TEST_MCP_KEY");
+    if ($key !== false && $key !== "") {
+        $headers[] = "X-Api-Key: {$key}";
+    }
+    return $headers;
+}
+
 // P01: Command injection via parameter
 echo "P01: Command injection\n";
 $r = fetch("{$BASE}/man/ls;cat /etc/passwd");
@@ -89,13 +101,15 @@ curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_POST => true,
     CURLOPT_POSTFIELDS => "not json at all",
-    CURLOPT_HTTPHEADER => ["Content-Type: application/json"],
+    CURLOPT_HTTPHEADER => mcpHeaders(),
     CURLOPT_TIMEOUT => 15,
 ]);
 $body = curl_exec($ch);
 $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 curl_close($ch);
-assert_equals(true, $code === 200 || $code === 400, "graceful error (HTTP {$code})");
+// 401 = fail-closed auth with no key for this target; the malformed-body
+// handling is not reachable until authenticated.
+assert_equals(true, in_array($code, [200, 400, 401], true), "graceful error (HTTP {$code})");
 
 // P10: MCP unknown method
 echo "\nP10: MCP unknown JSON-RPC method\n";
@@ -104,7 +118,7 @@ curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_POST => true,
     CURLOPT_POSTFIELDS => json_encode(["jsonrpc" => "2.0", "method" => "nonexistent", "id" => 1]),
-    CURLOPT_HTTPHEADER => ["Content-Type: application/json"],
+    CURLOPT_HTTPHEADER => mcpHeaders(),
     CURLOPT_TIMEOUT => 15,
 ]);
 $body = curl_exec($ch);

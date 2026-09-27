@@ -22,6 +22,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **GA4 beacon CSP** — `doubleclick` and `ga-audiences` added to `connect-src`; GA4 measurement beacons were being blocked.
 - **config-check sed escaping** — the deploy-time config check mangled values containing sed metacharacters.
 
+### Security
+- **MCP API key check is now fail-closed** — `handleMcp()` used to skip authentication entirely when `MCP_API_KEY` was empty (`if (MCP_API_KEY !== '')`), so a missing or emptied `phpman.config.php` silently published `POST /mcp` to the world instead of denying. An unset key now rejects every request with 401 — the shape `phpMan.php`'s `status` endpoint already used. Both comparisons (`handleMcp()` and `status`) also use `hash_equals()` rather than `!==`, so they no longer leak the key's length and matching prefix through timing. **Breaking** for a deployment that intentionally ran MCP unauthenticated: set `MCP_API_KEY` in `~/.phpman/phpman.config.php`.
+
 ## [4.11.1] — 2026-09-26
 
 ### Removed

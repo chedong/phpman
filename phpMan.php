@@ -307,11 +307,13 @@ if ( $mode == "status" ) {
     header("Content-Type: application/json; charset=UTF-8");
     header("Cache-Control: no-cache");
 
-    // Security: require valid key
+    // Security: require valid key. Fail-closed when MCP_API_KEY is unset.
+    // hash_equals() keeps the comparison constant-time (both operands are
+    // strings: getQueryParam() is typed, and '' short-circuits before the call).
     $statusKey = getQueryParam("key");
     $isLocal   = isLocalRequest();
     $mcpKey    = defined('MCP_API_KEY') ? MCP_API_KEY : '';
-    if (! $isLocal && ($mcpKey === '' || $statusKey !== $mcpKey)) {
+    if (! $isLocal && ($mcpKey === '' || ! hash_equals($mcpKey, $statusKey))) {
         http_response_code(403);
         echo json_encode(["error" => "Forbidden: requires ?key= parameter"]);
         exit;
