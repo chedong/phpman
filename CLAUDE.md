@@ -85,6 +85,22 @@ All CLI scripts resolve `PHPMAN_HOME`, then require `src/bootstrap.php` directly
 
 **phpMan uses `master` as the single source of truth. No feature branches, no PRs. Every commit goes directly to master.**
 
+### Commit 署名格式
+
+`Co-Authored-By` 行用固定格式，三个值**动态读取**（不要写死 `Claude <noreply@anthropic.com>`）：
+
+```
+Co-Authored-By: Claude code <版本> with <模型名> <noreply@<域名>>
+```
+
+| 部分 | 来源 |
+|---|---|
+| 版本 | `claude --version` |
+| 模型名 | `ANTHROPIC_MODEL` 环境变量 |
+| 域名 | `ANTHROPIC_BASE_URL` 的 host（如 `https://taotoken.net/api` → `taotoken.net`） |
+
+示例：`Co-Authored-By: Claude code 2.1.274 with glm-5.3-flash <noreply@taotoken.net>`
+
 ### Rule: rebase before commit in any worktree
 
 Worktrees are snapshots frozen at creation time. If you commit from a worktree without rebasing first, you will **silently overwrite** commits pushed to master since the worktree was created. This has happened multiple times (CSS fixes, font sizes, format link positions all lost to overwrites).
