@@ -294,13 +294,12 @@ tag:
 		echo "  minor bump: make tag-minor"; \
 		echo "  explicit:   make tag VERSION=X.Y.Z"; \
 		$(MAKE) tag VERSION=$$next; \
-		exit 0; \
+	else \
+		git tag -a "v$(VERSION)" -m "v$(VERSION)"; \
+		echo "=== v$(VERSION): tagged (placeholders replaced at deploy) ==="; \
+		git push origin master "v$(VERSION)"; \
+		echo "Pushed master + tag v$(VERSION)"; \
 	fi
-	@# Placeholders are replaced at deploy time — tag only, no source edit needed
-	@git tag -a "v$(VERSION)" -m "v$(VERSION)"
-	@echo "=== v$(VERSION): tagged (placeholders replaced at deploy) ==="
-	@git push origin master "v$(VERSION)"
-	@echo "Pushed master + tag v$(VERSION)"
 
 tag-minor:
 	@latest=$$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | sort -V | tail -1 | sed 's/^v//'); \
