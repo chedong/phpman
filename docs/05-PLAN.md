@@ -18,7 +18,7 @@ git push origin v3.6.3
 ## Version Roadmap
 
 ```
-v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 → v4.2 → v4.3 → v4.4 → v4.5 → v4.6 → v4.7 → v4.8 (current)
+v2.1 → v2.3 → v3.6 → v3.7.12 → v4.0 → v4.1 → v4.2 → v4.3 → v4.4 → v4.5 → v4.6 → v4.7 → v4.8
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 man/perldoc/info   pydoc3/ri        Config overridables   JSON canonical cache   batch PID/stop    Copy button UX   OKF Markdown    Code Split
 MCP Server         structured out   Underscore link fix   LLM emoji enhancement   XSS hardening     Prompt v2 tuning  PHPMAN_BASE_URL thin dispatcher
@@ -28,6 +28,12 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
                                                                                                                rsync deploy   Calibrated Terminal CSS
                                                                                                                theme toggle   Geist-inspired token system
 ```
+
+> The grid above charts the **v2.1 → v4.8** progression. Releases after it:
+> **v4.9.0** (2026-06-27), **v4.9.26** (2026-07-24 — AdSense), **v4.10.0**
+> (2026-08-08 — LLM enhancement removed), **v4.11.0** (2026-09-24 — per-mode
+> cache sharding, JSON/MCP payload limits), **v4.11.1** (2026-09-26 — LLM-era
+> cleanup). **Current release: v4.11.1.**
 
 ---
 
@@ -121,6 +127,18 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `src/Source/` + `src/Formatter/` + `src/Cache/` + `src/Config/`
 - Single-file entry point preserved
 
+### v4.11 — Cache Sharding & Payload Limits (✅ released 2026-09-24; v4.11.1 on 2026-09-26)
+
+- **Per-mode page cache sharding**: `pageCachePath()` is the single source of the shard naming rule — eliminates SQLite write-lock contention between search and page rendering
+- **Unified cache TTL**: `PageCache` found-entries and the TLDR cache expire on the same schedule. `PHPMAN_CACHE_TTL_FOUND` derives from `PHPMAN_CACHE_TTL_MONTHS` (default 7 months); `PHPMAN_CACHE_TTL_NOT_FOUND` stays at 1 day so missing pages are retried sooner
+- **JSON/MCP payload limits**: `PHPMAN_JSON_MAX_CONTENT_BYTES` (1 MB) and `PHPMAN_JSON_MAX_SECTION_BYTES` (512 KB). `formatMcpStructured()` is whitelist-based, so the limits had to be added to the envelope explicitly; derived fields are computed in a single pass when wrapping lines
+- **Large-page memory fix**: `info` pages no longer route through an IR string for MCP/JSON output
+- **FTS5 `and`/`not`**: a page whose name matches an operator keyword was parsed as an operator (`no such column`); such terms are escaped
+- **Markdown formatter fast path**: `baseUrl` and the closures hoisted out of the loop, regex passes guarded with `strpos()`
+- **Cache-busting**: CSS/JS URLs carry a version query string
+- **`?debug=1`**: no longer re-serializes the whole response to append the `_profiling` key
+- **v4.11.1** (2026-09-26): removed the last LLM-era scaffolding — orphaned hooks in `src/search_index.php`, the dead `PHPMAN_ENHANCE_*` constants, and docs claiming the layer moved to a `doc-enhance` repository that never existed
+
 ### v4.10 — LLM Enhancement Removal (2026-08-08)
 
 - **Remove**: `cli/batch-enhance.php`, `src/enhance.php`, `start-enhance-all.sh`, `test/unit/test_enhance.php`
@@ -129,7 +147,11 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - **Keep**: `CACHE_FORMAT_EMOJI_MD`/`CACHE_FORMAT_EMOJI_HTML` cache serving — existing ~69% enhanced pages continue to render
 - **Rationale**: STRATEGY.md analysis — AI bots prefer raw markdown/json/mcp, emoji adds no value for agents. Meta (9,217/day) and ClaudeBot (905/day) confirm this.
 
-### v4.9 (planned) — CSP nonce + strict-dynamic
+### v4.9 — CSP nonce + strict-dynamic (proposed, not shipped)
+
+> v4.9.0 shipped 2026-06-27 **without** this. The CSP still uses `'unsafe-inline'`
+> plus a domain allowlist; the nonce work below remains open.
+
 - Replace `'unsafe-inline'` with `'nonce-{CSP_NONCE}' 'strict-dynamic'` (Google-recommended pattern)
 - Per-request `random_bytes(16)` nonce shared via `define('CSP_NONCE', ...)` between `showHeader()` and `showFooter()`
 - Keep domain allowlist as Safari <15.4 fallback, keep `'unsafe-inline'` during transition
@@ -159,7 +181,7 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - **PATH_INFO guard hoist** (#181): strlen check before explode() for DoS protection
 - See `docs/02-UI-DESIGN.md` for full palette and design rationale
 
-### v4.1 — Tooling & Security Hardening (current, 2026-06-17)
+### v4.1 — Tooling & Security Hardening (2026-06-17)
 
 **batch_enhance.php lifecycle**:
 - `--pid-file` + `--stop`: PID-based process management, safe kill via SIGTERM→SIGKILL
@@ -1272,7 +1294,12 @@ as needed. Single source of truth: `.example` file defines the canonical config 
 | `PHPMAN_WIDTH` | 100 | No |
 | `PHPMAN_TOC_THRESHOLD` | 80 | No |
 | `PHPMAN_TLDR_MAX_EXAMPLES` | 16 | No |
+| `PHPMAN_GZIP_MIN_BYTES` | 1000 | No |
+| `PHPMAN_JSON_MAX_CONTENT_BYTES` | 1048576 | No |
+| `PHPMAN_JSON_MAX_SECTION_BYTES` | 524288 | No |
 | `PHPMAN_CACHE_TTL_MONTHS` | 7 | No |
+| `PHPMAN_CACHE_TTL_FOUND` | `TTL_MONTHS × 30d` | No — derived from `PHPMAN_CACHE_TTL_MONTHS` |
+| `PHPMAN_CACHE_TTL_NOT_FOUND` | 86400 (1 day) | No — retries missing pages sooner |
 | `PHPMAN_GA_ID` | `''` | For GA4 tracking |
 | `PHPMAN_ADSENSE_ID` | `''` | For AdSense |
 | `MCP_API_KEY` | `''` | For MCP auth |

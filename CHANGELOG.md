@@ -4,6 +4,124 @@ All notable changes to phpMan are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- **`PHPMAN_ADSENSE_ID` in `phpman.config.php.example`** — the constant was real since v4.9.26 but missing from the example config, so there was nothing to uncomment.
+
+### Changed
+- **Docs synced to the code** — `PHPMAN_ADSENSE_ID` documented in `01-PRODUCT.md` (loader-only, needs Auto Ads, don't set on staging); the stale LLM-era config recipe removed from `05-PLAN.md`, which also had `phpman.config.php` living in the webroot — it lives in `~/.phpman/`, outside the webroot, which is where the secrets are.
+- **`.codex/` gitignored** — agent local state no longer shows up in `git status`.
+
+### Fixed
+- **Title format (#226)** — `<title>` is now `Name - description - mode(section) - [phpMan]`; the mode/section segment is dropped when there is no mode.
+- **perldoc title description** — resolves again; a perldoc page's `name` lives in the `3perl`/`3pm` sections of `search_fts`, which the lookup did not cover.
+- **GA4 beacon CSP** — `doubleclick` and `ga-audiences` added to `connect-src`; GA4 measurement beacons were being blocked.
+- **config-check sed escaping** — the deploy-time config check mangled values containing sed metacharacters.
+
+## [4.11.1] — 2026-09-26
+
+### Removed
+- **Orphaned LLM scaffolding** — leftover LLM hooks in `src/search_index.php`, the dead `PHPMAN_ENHANCE_*` constants, and a no-op write to a by-value parameter. No behavior change.
+
+### Changed
+- **`pageCachePath()` is the single source of the cache-shard naming rule** — `cli/build-sitemap.php` now reads `PHPMAN_CONTENT_MODES` instead of duplicating the mode list.
+
+### Fixed
+- **Docs no longer claim the LLM layer "moved to the doc-enhance project"** — no such repository exists; it was deleted in v4.10.0. The batch-enhance CLI reference and the LLM config keys are gone.
+
+## [4.11.0] — 2026-09-24
+
+### Added
+- **Unified cache TTL** — `PageCache` found-entries and the TLDR cache expire on the same schedule (default 7 months) instead of drifting apart.
+- **JSON/MCP payload limits** — the envelope exposes them; `formatMcpStructured()` picks fields from a whitelist, so it had to be told about the new limits explicitly. Derived fields are computed in a single pass when wrapping lines.
+- **Cache-busting for CSS/JS** — asset URLs carry a version query string.
+- **Tailscale mesh tooling** — migrated into the chedong.com repo; skips cross-tailnet shared nodes during discovery, reports each node's exit-node usage, includes the executing node in the measurements, supports local status / config-collected nodes / no-arg help, and uses Mb/s consistently.
+
+### Changed
+- **Page cache sharded per mode** — eliminates SQLite write-lock contention between search and page rendering.
+- **Markdown formatter fast path** — `baseUrl` and the closures hoisted out of the loop, regex passes guarded with `strpos()`.
+- **MCP search description** improved.
+
+### Fixed
+- **Large pages no longer route through an IR string for MCP/JSON** — `info` pages were exceeding the memory limit.
+- **FTS5 `and`/`not` in names** — a page named `and` or `not` was parsed as an operator (`no such column`); such terms are now escaped.
+- **`?debug=1` no longer re-serializes the whole response** just to append the `_profiling` key.
+- **Indexed `url` field points at a usable address** — `/man/json` is a page query, not an endpoint.
+- **Stale `info` dir-menu entries** filtered by real `.info` files.
+- **`showForm()` with markdown/json URLs** — the not-found fallback link was broken.
+
+## [4.10.0] — 2026-08-08
+
+### Removed
+- **LLM enhancement** — `batch-enhance`, `callLLM()`, and `enhanceManPage()` are gone, along with the enhancement cache. phpMan no longer makes outbound LLM API calls.
+
+### Added
+- **`tailscale-mesh-bench.sh`** — iperf3 bandwidth benchmark for the Tailscale mesh, with `--help` / `-h`.
+
+### Fixed
+- **Emoji cache entries never expired** — the 7-day TTL caused mass data loss.
+- **`PageCache::set()` no longer overwrites valid content** with an empty `not_found` entry.
+
+## [4.9.26] — 2026-07-24
+
+### Added
+- **Google AdSense support** — `PHPMAN_ADSENSE_ID` emits the `adsbygoogle.js` loader from `showFooter()` and widens the CSP automatically. Loader only: ads appear only when Auto Ads is enabled for the site.
+- **`log-analyze.sh`** — web access log analysis tool.
+- **Runtime process status** in `--status` output.
+- **Compressed sitemap** generated during reindex.
+
+### Changed
+- **`--rate-limit` is configurable**, default lowered 120→60s (v4.9.21).
+- **Tool detection at deploy**, plus a `--cache-only` mode (v4.9.20).
+- **Form layout** — single-row desktop layout (search + modes inline), compact mobile form, dark-mode field contrast (v4.9.15–19).
+- **Code review cleanup** — dead code removal, abort fix, WAL safety, ETag logging, `X-Forwarded-Proto` (v4.9.17, v4.9.22).
+- **`--status` man count** — WAL checkpoint before reading, so it no longer reports 0 (v4.9.13).
+
+### Fixed
+- **`GIT_DESCRIBE` guard in `showFooter()`**.
+- **URL attack guard** — malformed paths with protocol-prefix traps are rejected.
+- **403 guard** — valid Perl modules containing multiple `::` are no longer rejected.
+- **PHP `default_socket_timeout`** no longer preempts `CURLOPT_TIMEOUT`.
+- **Deploy ordering** — `src/` is deployed before `phpMan.php` to avoid transient 500s mid-release.
+- **Man batch abort rate** — `maxConsecutiveFailures` raised 3→10.
+- **FTS5 duplicate entries** — `DELETE FROM search_fts` instead of `DROP` + `CREATE`/`RENAME` (v4.9.25).
+- **`rebuildSearchIndex` cache cleanup** — deletes `WHERE mode='search'` rather than `format='search'`, and no longer wipes all HTML page caches (v4.9.23–24).
+- **Undefined `GIT_DESCRIBE` in `tldr.php:85`** — crashed the CLI batch.
+
+## [4.9.0] — 2026-06-27
+
+### Changed
+- **`PHPMAN_VERSION` / `GIT_DESCRIBE` use a `__PLACEHOLDER__` pattern** — a deploy never dirties the local file, and the version comes from the global latest tag rather than the branch-local one.
+- **`RE_ASCII`, `RE_ASCII_SAFE`, `GIT_DESCRIBE` defined in the CLI bootstrap** so CLI scripts can use them.
+- **Schema migration simplified** — `_old` table logic removed, format tabs moved.
+- **Design pass** — +2px font scale, format tabs, mobile search polish.
+- **`v4.8.2`** — theme toggle moved to bottom-right, "back to top" shortened.
+- **`v4.8.1`** — search heading is dynamic: `man` (FTS5) or `apropos` (fallback).
+- **Dead code deduped**, key masking and a shell function simplified.
+
+### Fixed
+- **FTS5 search** — useless `LEFT JOIN` removed, `DISTINCT` added, `LIMIT` 300→500.
+
+## [4.8] — 2026-06-26
+
+### Changed
+- **Calibrated Terminal CSS** — Geist-inspired token system; version bumped 5.0 → 4.8.
+
+### Fixed
+- **`PHPMAN_HOME` placeholder** now resolves to `~/.phpman` for local dev.
+
+## [4.7] — 2026-06-26
+
+### Changed
+- **Deploys use `rsync` instead of `scp`**.
+- **All deploy-time constants use placeholders** — a deploy never dirties the local file.
+- **`--status` man page total** now read from `search_index_meta`.
+- **Docs updated for v4.7** — placeholder constants, rsync, theme toggle, mobile screenshot, v4.5+ config architecture.
+
+### Removed
+- **Stale `tools/` cleanup** from the deploy targets.
+
 ## [4.6.0] — 2026-06-26
 
 ### Added
