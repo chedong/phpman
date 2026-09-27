@@ -1069,9 +1069,9 @@ Three config layers, loaded in order — earlier layers define constants first,
 later layers respect `defined()` guards:
 
 ```
-┌── phpman.config.php      ← user-edited, lives in webroot
-│   define('PHPMAN_HOME', '/home/user/.phpman');
-│   define('LLM_API_KEY', 'sk-...');
+┌── ~/.phpman/phpman.config.php  ← user-edited, OUTSIDE webroot (secrets live here)
+│   define('PHPMAN_BASE_URL', 'https://www.example.com/phpMan.php');
+│   define('MCP_API_KEY', '...');
 │
 ├── src/config.php         ← defaults (not user-edited), in PHPMAN_HOME/src/
 │   if (!defined('PHPMAN_WIDTH'))  define('PHPMAN_WIDTH', 100);
@@ -1089,7 +1089,7 @@ later layers respect `defined()` guards:
 ```
 phpMan.php (webroot, ~50 lines)
 │
-├─1. require phpman.config.php     ← user overrides (PHPMAN_HOME, LLM keys)
+├─1. require phpman.config.php     ← user overrides (PHPMAN_BASE_URL, MCP_API_KEY, ...)
 │
 ├─2. require bootstrap.php
 │   └── require src/config.php     ← fills in remaining defaults (defined() guards)
@@ -1241,13 +1241,6 @@ define('PHPMAN_HOME', '/home/user/.phpman');
 define('PHPMAN_BASE_URL', 'https://www.example.com/phpMan.php');
 ```
 
-**Add emoji enhancement** (+3 defines):
-```php
-define('LLM_API_KEY', 'sk-xxx');
-define('LLM_API_URL', 'https://api.openai.com/v1/chat/completions');
-define('LLM_MODEL', 'gpt-4o-mini');
-```
-
 **Add MCP authentication** (+1 define):
 ```php
 define('MCP_API_KEY', 'your-secret-key-here');
@@ -1257,6 +1250,13 @@ define('MCP_API_KEY', 'your-secret-key-here');
 ```php
 define('PHPMAN_GA_ID', 'G-XXXXXXXXXX');
 ```
+
+**Add Google AdSense** (+1 define):
+```php
+define('PHPMAN_ADSENSE_ID', 'ca-pub-XXXXXXXXXXXXXXXX');
+```
+Injects the `adsbygoogle.js` loader only — ads render only if Auto Ads is on for the
+site. Widens the CSP automatically. Leave unset on staging (invalid traffic).
 
 **install.sh config generation**: copies `phpman.config.php.example` → uncomments
 `PHPMAN_HOME` with detected home path. If `--webroot` flag is passed, also generates
@@ -1273,6 +1273,8 @@ as needed. Single source of truth: `.example` file defines the canonical config 
 | `PHPMAN_TOC_THRESHOLD` | 80 | No |
 | `PHPMAN_TLDR_MAX_EXAMPLES` | 16 | No |
 | `PHPMAN_CACHE_TTL_MONTHS` | 7 | No |
+| `PHPMAN_GA_ID` | `''` | For GA4 tracking |
+| `PHPMAN_ADSENSE_ID` | `''` | For AdSense |
 | `MCP_API_KEY` | `''` | For MCP auth |
 | `PHPMAN_DEBUG` | false | No |
 | `PHPMAN_HOME_TITLE` | `'phpman - Linux...'` | No |

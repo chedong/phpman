@@ -40,6 +40,16 @@ phpMan is a single-file PHP web application that presents Unix `man`/`perldoc`/`
 - Leave empty (default) = no GA output, zero overhead
 - Architecture: server-side injection keeps measurement ID configurable per deployment, not hardcoded in static JS
 
+**Google AdSense (v4.9.26+)**: Optional ad serving via `PHPMAN_ADSENSE_ID` config:
+
+- Set `define('PHPMAN_ADSENSE_ID', 'ca-pub-XXXXXXXXXXXXXXXX')` in `phpman.config.php` to enable
+- `showFooter()` conditionally outputs the `adsbygoogle.js` loader, passing that ID as the `client=` param
+- **Loader only** — phpMan ships no `<ins class="adsbygoogle">` ad units, so ads appear only if Auto Ads is enabled for the site in the AdSense console
+- Enabling it also widens the CSP (`script-src` / `connect-src` / `frame-src`) — see §3.2; no manual header edit needed
+- Leave empty (default) = no ad script, zero overhead
+- Use the `ca-pub-...` form here — that is what the loader's `client=` param expects. `ads.txt` uses the bare `pub-...` form, without the `ca-` prefix
+- **Do not set on staging**: serving ads from a test host counts as invalid traffic in AdSense
+
 ### 2.2 Single-File Architecture
 
 phpMan is deployed as a single `phpMan.php` file by design:
@@ -293,9 +303,10 @@ CLI:  _bootstrap.php → resolve PHPMAN_HOME → src/bootstrap.php → src/confi
 `src/config.php` sets defaults via the `defined()` guard pattern (like WordPress `wp-config.php`), then loads `~/.phpman/phpman.config.php` to allow overrides:
 
 ```php
-if (!defined('PHPMAN_GA_ID'))  define('PHPMAN_GA_ID', '');     // default
-if (!defined('MCP_API_KEY'))   define('MCP_API_KEY', '');      // default
-// ... then: require PHPMAN_HOME . '/phpman.config.php';      // overrides
+if (!defined('PHPMAN_GA_ID'))      define('PHPMAN_GA_ID', '');      // default
+if (!defined('PHPMAN_ADSENSE_ID')) define('PHPMAN_ADSENSE_ID', ''); // default
+if (!defined('MCP_API_KEY'))       define('MCP_API_KEY', '');       // default
+// ... then: require PHPMAN_HOME . '/phpman.config.php';            // overrides
 ```
 
 **What goes where**:
@@ -303,7 +314,7 @@ if (!defined('MCP_API_KEY'))   define('MCP_API_KEY', '');      // default
 | File | Location | Contents |
 |------|----------|----------|
 | `phpMan.php` | webroot | `PHPMAN_HOME`, `PHPMAN_VERSION`, `GIT_DESCRIBE` — injected at deploy time |
-| `phpman.config.php` | `~/.phpman/` | All user settings: `PHPMAN_BASE_URL`, `PHPMAN_GA_ID`, `MCP_API_KEY`, `PHPMAN_DEBUG`, `PHPMAN_CACHE_TTL_MONTHS` |
+| `phpman.config.php` | `~/.phpman/` | All user settings: `PHPMAN_BASE_URL`, `PHPMAN_GA_ID`, `PHPMAN_ADSENSE_ID`, `MCP_API_KEY`, `PHPMAN_DEBUG`, `PHPMAN_CACHE_TTL_MONTHS` |
 | `src/config.php` | `~/.phpman/src/` | Defaults for all constants, `define()` guard pattern |
 | `phpman.config.php.example` | `~/.phpman/` (git) | Template, copied by `install.sh generate_config()` |
 
