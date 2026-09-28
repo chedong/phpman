@@ -29,6 +29,7 @@ require __DIR__ . '/_bootstrap.php';
 $outputFile = null;
 $baseUrl    = null;
 $sitemapUrl = null;
+$llmsOutput = null;
 $formats    = ['html'];
 $maxUrls    = 50000;
 $args       = $argv ?? [];
@@ -41,6 +42,9 @@ for ($i = 1; $i < count($args); $i++) {
         $i++;
     } elseif ($args[$i] === '--sitemap-url' && isset($args[$i + 1])) {
         $sitemapUrl = $args[$i + 1];
+        $i++;
+    } elseif ($args[$i] === '--llms-output' && isset($args[$i + 1])) {
+        $llmsOutput = $args[$i + 1];
         $i++;
     } elseif ($args[$i] === '--formats' && isset($args[$i + 1])) {
         $formats = parseFormats($args[$i + 1]);
@@ -185,6 +189,10 @@ if ($outputFile !== null) {
     }
     echo "\n";
     echo "👉 Add generated .xml.gz URL(s) to the site sitemap index.\n";
+    if ($llmsOutput !== null) {
+        writeLlmsTxt($llmsOutput, $baseUrl, $sitemapUrl);
+        echo "llms.txt written: {$llmsOutput}\n";
+    }
 } else {
     echo buildUrlset($entries);
 }
@@ -264,6 +272,26 @@ function writeSitemaps(string $outputFile, string $sitemapUrl, array $entries, i
         $written = [$outputFile => count($chunkUrls)] + $written;
     }
     return $written;
+}
+
+function writeLlmsTxt(string $path, string $baseUrl, string $sitemapUrl): void {
+    $mcpUrl    = $baseUrl . '/.well-known/mcp.json';
+    $searchUrl = $baseUrl . '/search/{query}/json';
+    $txt = "# phpMan — Linux Command Reference\n"
+        . "> Linux man / perldoc / info / pydoc / ri pages with JSON API and MCP Server.\n"
+        . "\n"
+        . "## MCP (recommended for AI agents)\n"
+        . "[MCP Server] {$mcpUrl}\n"
+        . "\n"
+        . "## Full-text search\n"
+        . "[Search] {$searchUrl}\n"
+        . "\n"
+        . "## Markdown / JSON sitemap\n"
+        . "[Sitemap] {$sitemapUrl}\n";
+    if (file_put_contents($path, $txt) === false) {
+        fwrite(STDERR, "Failed to write: {$path}\n");
+        exit(1);
+    }
 }
 
 function writeXmlMaybeGz(string $path, string $xml): void {

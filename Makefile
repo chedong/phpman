@@ -223,9 +223,10 @@ release-reindex: test _release-code
 	@echo "=== Rebuilding production search index ==="
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"cd $(DEMO_HOME)/.phpman && php cli/build-index.php --cron"
-	@echo "=== Generating production sitemap ==="
+	@echo "=== Generating production sitemap (html for Google, markdown/json for AI bots) ==="
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"cd $(DEMO_HOME)/.phpman && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman.xml.gz --formats html,markdown,json --max-urls 50000"
+		"cd $(DEMO_HOME)/.phpman && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman.xml.gz --formats html --max-urls 50000 \
+		 && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman-ai.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman-ai.xml.gz --formats markdown,json --max-urls 50000 --llms-output $(DEMO_PATH)/llms.txt"
 	@echo "=== Production index + sitemap complete ==="
 
 # ─── Standalone search index rebuild (no code push) ───
@@ -234,14 +235,16 @@ reindex:
 	@echo "=== Rebuilding production search index (no code push) ==="
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"cd $(DEMO_HOME)/.phpman && php cli/build-index.php --cron \
-		 && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman.xml.gz --formats html,markdown,json --max-urls 50000"
+		 && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman.xml.gz --formats html --max-urls 50000 \
+		 && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman-ai.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman-ai.xml.gz --formats markdown,json --max-urls 50000 --llms-output $(DEMO_PATH)/llms.txt"
 	@echo "=== Done (index + sitemap) ==="
 
 reindex-staging:
 	@echo "=== Rebuilding staging search index (no code push) ==="
 	ssh -p $(TEST_PORT) $(TEST_HOST) \
 		"cd $(STAGING_HOME)/.phpman_test && php cli/build-index.php --cron \
-		 && php cli/build-sitemap.php --output $(TEST_PATH)/sitemap-phpman.xml.gz --base-url $(TEST_URL) --sitemap-url https://test.chedong.com/sitemap-phpman.xml.gz --formats html,markdown,json --max-urls 50000"
+		 && php cli/build-sitemap.php --output $(TEST_PATH)/sitemap-phpman.xml.gz --base-url $(TEST_URL) --sitemap-url https://test.chedong.com/sitemap-phpman.xml.gz --formats html --max-urls 50000 \
+		 && php cli/build-sitemap.php --output $(TEST_PATH)/sitemap-phpman-ai.xml.gz --base-url $(TEST_URL) --sitemap-url https://test.chedong.com/sitemap-phpman-ai.xml.gz --formats markdown,json --max-urls 50000 --llms-output $(TEST_PATH)/llms.txt"
 	@echo "=== Done (index + sitemap) ==="
 
 # ─── Rollback ───
