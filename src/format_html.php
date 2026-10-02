@@ -71,6 +71,14 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
     $replace[] = '<b>$1</b>';
     $patterns[] = "/".chr(27)."\[4m(.*?)".chr(27)."\[(?:0|24)m/";
     $replace[] = '<u>$1</u>';
+    // SGR color codes (\e[34m … \e[0m) — groff emits these for man pages that use
+    // color escapes (util-linux, systemd). Strip them outright, and before the link
+    // patterns below: the URL linkifier matches `[\w]+://`, so a surviving \e[34m
+    // had its trailing "34m" swallowed into the href, yielding
+    // <a href="34mhttps://…"> — a broken relative link that every crawler then
+    // followed into a 403.
+    $patterns[] = "/".chr(27)."\[[0-9;]*m/";
+    $replace[] = '';
     // Cleanup duplicated / orphan tags from combined overstrike + SGR processing
     $patterns[] = "/<\/b><b>/";
     $replace[] = '';

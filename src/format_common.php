@@ -8,6 +8,12 @@ function cleanTerminalOutput (array $lines): array {
         "/{$ac}".chr(8)."({$ac})/",  // ?^H? => bold
         "/".chr(27)."\[1m(.*?)".chr(27)."\[(?:0|22)m/",  // ANSI bold
         "/".chr(27)."\[4m(.*?)".chr(27)."\[(?:0|24)m/",  // ANSI underline
+        // SGR color codes carry no meaning in text/markdown output, so drop the
+        // whole sequence. groff emits them for man pages that use color escapes
+        // (util-linux, systemd); left in place they leaked through as literal
+        // "[34m" / "[0m" in the body text. Must stay last: the bold/underline
+        // patterns above need to see their own ESC[0m terminator first.
+        "/".chr(27)."\[[0-9;]*m/",  // ANSI color / reset
     );
     $replace = array(
         "\x01$1\x02",
@@ -15,6 +21,7 @@ function cleanTerminalOutput (array $lines): array {
         "\x01$1\x02",
         "\x01$1\x02",
         "\x03$1\x04",
+        "",
     );
     $cleaned = array();
     foreach ($lines as $line) {
