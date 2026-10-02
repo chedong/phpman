@@ -9,7 +9,8 @@
  */
 function buildJsonData (array &$lines, string $parameter, string $section = "", string $mode = "man"): array {
     // #44: use shared cleanTerminalOutput() instead of inline patterns
-    $lines = cleanTerminalOutput($lines);
+    // In place, by reference — $lines is released further down, so no copy.
+    cleanTerminalOutput($lines);
 
     $section_label = "";
     if ($section !== "" && $section !== "-f" && $section !== "-q") {

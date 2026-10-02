@@ -1,5 +1,15 @@
 <?php
-function cleanTerminalOutput (array $lines): array {
+/**
+ * Strip terminal control sequences from raw command output, in place.
+ *
+ * Rewrites $lines by reference instead of returning a second array. On a
+ * 430k-line page (`info py`) the old form kept two full copies of the buffer
+ * alive at once — ~34MB of a 76MB peak. Note a by-value foreach writing
+ * $lines[$i] would NOT help: that write forces PHP to separate (fully copy)
+ * the array. Only a for loop over a packed list rewrites without copying,
+ * hence the normalisation below.
+ */
+function cleanTerminalOutput (array &$lines): void {
     // Uses RE_ASCII (plain printable) — raw terminal output has no \x05\x06\x07 placeholders
     $ac = RE_ASCII;
     // OSC 8 link target — an absolute URL on a known-safe scheme, or a scheme-less
@@ -38,15 +48,19 @@ function cleanTerminalOutput (array $lines): array {
         '[$2]($1)',
         "",
     );
-    $cleaned = array();
-    foreach ($lines as $line) {
-        $line = preg_replace($patterns, $replace, $line);
+    if (!array_is_list($lines)) {
+        // Every caller passes exec() output, which is always a packed list; a
+        // keyed array is normalised here so the loop below can index by
+        // position. This path copies, but it is not the one that runs.
+        $lines = array_values($lines);
+    }
+    $count = count($lines);
+    for ($i = 0; $i < $count; $i ++) {
+        $line = preg_replace($patterns, $replace, $lines[$i]);
         $line = str_replace("\x08", "", $line);  // strip remaining backspaces
         $line = str_replace(array("\x02\x01", "\x04\x03"), "", $line);
-        $line = str_replace(array("\x01", "\x02", "\x03", "\x04"), array("**", "**", "_", "_"), $line);
-        $cleaned[] = $line;
+        $lines[$i] = str_replace(array("\x01", "\x02", "\x03", "\x04"), array("**", "**", "_", "_"), $line);
     }
-    return $cleaned;
 }
 
 /**

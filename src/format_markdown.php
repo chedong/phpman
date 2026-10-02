@@ -1,7 +1,9 @@
 <?php
-function formatManPerlDocToMarkdown (array $lines, string $parameter = "", string $mode = "man", string $section = ""): string {
+function formatManPerlDocToMarkdown (array &$lines, string $parameter = "", string $mode = "man", string $section = ""): string {
     // #44: use shared cleanTerminalOutput() instead of inline patterns
-    $lines = cleanTerminalOutput($lines);
+    // Takes the buffer by reference and rewrites it in place — see the note on
+    // cleanTerminalOutput(). Passing it by value here would defeat that.
+    cleanTerminalOutput($lines);
 
     $output = "";
 
