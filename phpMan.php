@@ -281,6 +281,42 @@ function getTitleDescription (string $mode, string $parameter, string $section):
     return '';
 }
 
+/**
+ * Resolve the section a man page actually lives in, for a request that named a
+ * different one. Returns a section only when it is unambiguous: a command
+ * present in several sections (time(1) vs time(3am) vs time(7)) must not be
+ * guessed at, or we would pick one of them arbitrarily.
+ *
+ * Legacy URLs arrive here too. "mcp" was a public output format until 78d2a11
+ * removed it, so /man/<cmd>/mcp now parses as section "mcp" — not a section at
+ * all, just a leftover format segment. Treating it as an unresolvable section
+ * sends those links to the command's real page rather than 404.
+ *
+ * Uses search_index_meta rather than search_fts: it is indexed on
+ * (name, section, source), so this is a covering-index lookup, whereas the same
+ * filter against the FTS5 table scans it.
+ */
+function resolveManSection (string $name): ?string {
+    if ($name === '') return null;
+    try {
+        $db = cacheDb();
+        if ($db === null) return null;
+        $stmt = $db->prepare(
+            "SELECT DISTINCT section FROM search_index_meta
+             WHERE name = :n AND source = 'man' AND section <> ''"
+        );
+        $stmt->bindValue(':n', $name, SQLITE3_TEXT);
+        $result = $stmt->execute();
+        $sections = [];
+        while ($row = $result->fetchArray(SQLITE3_ASSOC)) $sections[] = $row['section'];
+        $result->finalize();
+        return count($sections) === 1 ? $sections[0] : null;
+    } catch (\Throwable $ignored) {
+        // A failed lookup must not turn a 404 into a 500.
+        return null;
+    }
+}
+
 if ( $parameter != "" ) {
     $desc = getTitleDescription($mode, $parameter, $section);
     $namePart = $parameter . ($desc !== "" ? " - " . $desc : "");
@@ -464,6 +500,25 @@ switch ( $mode ) {
 
             //still not found then redirect to search sections
             if (trim($content) == "") {
+                // Wrong section? Commands move between sections, and links from
+                // before 78d2a11 name "mcp" in the section position — a format
+                // segment that is no longer a format. When the command lives in
+                // exactly one section, converge on its canonical URL instead of
+                // answering 404. /man/<cmd>/<section> is the form the sitemap and
+                // the JSON canonical already use. Ambiguous commands (several
+                // sections) and unknown ones still fall through to the search
+                // fallback and its 404.
+                if ($section !== '') {
+                    $realSection = resolveManSection($parameter);
+                    if ($realSection !== null && $realSection !== $section) {
+                        $target = baseUrl() . '/' . rawurlencode($mode) . '/' . rawurlencode($parameter)
+                                . '/' . rawurlencode($realSection)
+                                . ($format !== 'html' ? '/' . rawurlencode($format) : '');
+                        header('Location: ' . $target, true, 301);
+                        header('Cache-Control: public, max-age=86400');
+                        exit;
+                    }
+                }
                 $content = getSearchPage($parameter, $section, $format);
                 $isSearchFallback = true;
                 http_response_code(404);

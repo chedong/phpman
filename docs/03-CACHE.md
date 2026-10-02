@@ -184,12 +184,17 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 
 -- Current entries:
--- schema_version     = '3'
+-- schema_version     = '6'
 -- search_index_count = '13849'
 -- search_index_updated = '2026-06-08T...'
 ```
 
 Schema version is used to detect upgrades (version mismatch triggers cache cleanup).
+
+The per-mode shards have no `meta` table, so they carry the same number in the SQLite
+header via `PRAGMA user_version`. `pageCacheDb()` reads it on first connection and runs
+its migration there — the `cacheDb()` cascade above only ever sees the legacy central
+table, while since v4.11 the page cache actually lives in the shards.
 
 ---
 

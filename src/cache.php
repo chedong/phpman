@@ -140,7 +140,6 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
             hits        INTEGER NOT NULL DEFAULT 0,
             created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
             updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-            generator_version TEXT,
             UNIQUE(mode, name, section, format)
         )");
 
@@ -248,13 +247,18 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
                 // Clear all html/markdown/mcp/raw entries; keep only json/search/emoji.
                 $db->exec("DELETE FROM cache WHERE format NOT IN ('json', 'search', 'emoji_md', 'emoji_html')");
             }
-            if ($row === '4' || (int)$row < 5) {
-                // v4 → v5: add generator_version column for tracking which phpman
-                // version produced each cached entry.
-                try { $db->exec("ALTER TABLE cache ADD COLUMN generator_version TEXT"); }
-                catch (\Throwable $e) { /* column may already exist */ }
+            if ($row === '5' || (int)$row < 6) {
+                // v5 → v6: drop cache.generator_version. It held the deployed
+                // GIT_DESCRIBE on every set(), but nothing ever read it —
+                // PageCache::get() selects only id/content/status/ttl/updated_at,
+                // and no query in the codebase filtered on it. A column nothing
+                // consults cannot invalidate anything, so it never did the
+                // "which version produced this entry" tracking its comment
+                // claimed; it was dead weight on the hot write path.
+                try { $db->exec("ALTER TABLE cache DROP COLUMN generator_version"); }
+                catch (\Throwable $e) { /* fresh table, or already dropped */ }
             }
-            if ((int)$row >= 5) {
+            if ((int)$row >= 6) {
                 // Unknown future schema — clear all cached content, keep schema_version
                 $db->exec("DELETE FROM cache");
             }
@@ -350,7 +354,6 @@ function pageCacheDb(string $mode, ?bool $reset = null): ?SQLite3 {
             hits        INTEGER NOT NULL DEFAULT 0,
             created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
             updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-            generator_version TEXT,
             UNIQUE(mode, name, section, format)
         )");
         try {
@@ -366,6 +369,17 @@ function pageCacheDb(string $mode, ?bool $reset = null): ?SQLite3 {
         $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_status ON cache(status, updated_at)");
         $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_hits ON cache(hits DESC)");
         $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_expiry ON cache(updated_at) WHERE ttl > 0");
+        // Shards carry no meta table, so the schema generation lives in the
+        // SQLite header instead. Cheap to read (page 1) and set-once.
+        $db->exec('PRAGMA user_version = ' . (int)CACHE_SCHEMA_VERSION);
+    } elseif ((int)$db->querySingle('PRAGMA user_version') < (int)CACHE_SCHEMA_VERSION) {
+        // v5 → v6: drop cache.generator_version. Since v4.11 the page cache is
+        // sharded, so this is where the column actually lives — the migration in
+        // cacheDb() only ever sees the legacy central table. See that block for
+        // why the column was dead.
+        try { $db->exec("ALTER TABLE cache DROP COLUMN generator_version"); }
+        catch (\Throwable $e) { /* fresh shard, or already dropped */ }
+        $db->exec('PRAGMA user_version = ' . (int)CACHE_SCHEMA_VERSION);
     }
 
     $shards[$dbPath] = $db;
@@ -470,16 +484,15 @@ class PageCache {
         // UPSERT: single INSERT ... ON CONFLICT DO UPDATE replaces SELECT-then-UPDATE/INSERT.
         // Eliminates the SELECT round-trip and the SELECT→INSERT race window.
         $stmt = $db->prepare(
-            "INSERT INTO cache (mode, name, section, format, content, content_len, status, ttl, created_at, updated_at, generator_version)
+            "INSERT INTO cache (mode, name, section, format, content, content_len, status, ttl, created_at, updated_at)
              VALUES (:mode, :name, :section, :format, :content, :content_len, :status, :ttl,
-                     strftime('%s','now'), strftime('%s','now'), :genver)
+                     strftime('%s','now'), strftime('%s','now'))
              ON CONFLICT(mode, name, section, format) DO UPDATE SET
                  content = excluded.content,
                  content_len = excluded.content_len,
                  status = excluded.status,
                  ttl = excluded.ttl,
-                 updated_at = strftime('%s','now'),
-                 generator_version = excluded.generator_version"
+                 updated_at = strftime('%s','now')"
         );
         $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
         $stmt->bindValue(':name', $name, SQLITE3_TEXT);
@@ -489,7 +502,6 @@ class PageCache {
         $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
         $stmt->bindValue(':status', $status, SQLITE3_TEXT);
         $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
-        $stmt->bindValue(':genver', defined('GIT_DESCRIBE') ? GIT_DESCRIBE : 'unknown', SQLITE3_TEXT);
 
         // Retry loop for SQLITE_BUSY — UPSERT can still trigger lock contention
         $maxAttempts = 8;

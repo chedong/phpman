@@ -309,6 +309,22 @@ h1 a:hover {
 /* ═══════════════════════════════════════════════════════════════
    9. FORM / TOOLBAR
    ═══════════════════════════════════════════════════════════════ */
+
+/* Label for the command input, present for screen readers and for the
+   for/id association, but not shown — the toolbar is icon-and-placeholder
+   driven and a visible "Command name" would crowd the single row. */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 form fieldset {
     border: 1px solid var(--border-default);
     border-radius: var(--btn-radius);

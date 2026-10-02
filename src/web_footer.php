@@ -29,6 +29,10 @@ function showForm (string $parameter, array $check, string $mode = "", string $s
     echo "<input type=\"radio\" name=\"mode\" value=\"search\" id=\"mode-search\"".$check['search']."/>".
         "<label for=\"mode-search\"><a href=\"".$script_name."/man/apropos\">search</a></label>".
         "</span>\n".
+        // The command input needs a label of its own: the radios above have
+        // theirs, and without this the toolbar's only text field is unlabelled
+        // to assistive tech. Hidden visually — see .sr-only in phpman.css.
+        "<label for=\"cmd-input\" class=\"sr-only\">Command name</label>".
         "<input type=\"text\" id=\"cmd-input\" size=\"20\" name=\"parameter\" value=\"".$parameter_value."\"/>\n".
         "<input type=\"submit\" id=\"cmd-submit\" value=\"Go\"/>\n".
         "</fieldset>\n".

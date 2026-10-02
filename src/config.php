@@ -104,7 +104,10 @@ if (!defined('PHPMAN_BACKUP_DIR')) {
 // Fixed filenames under derived dirs (not configurable)
 define('PHPMAN_CACHE_DB', PHPMAN_CACHE_DIR . '/phpman_cache.db');
 define('PHPMAN_LOG_FILE', PHPMAN_LOG_DIR . '/phpman_error.log');
-define('CACHE_SCHEMA_VERSION', '5');
+// Bumped to 6 when cache.generator_version was dropped (v4.11.3). Read by
+// cacheDb() for the central table and, since shards have no meta table, by
+// pageCacheDb() via PRAGMA user_version.
+define('CACHE_SCHEMA_VERSION', '6');
 
 // PHPMAN_VERSION — numeric version (e.g. "4.9.19").
 // Set by Makefile in phpMan.php at deploy time; provide fallback for CLI scripts.

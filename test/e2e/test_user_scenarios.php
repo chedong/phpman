@@ -10,7 +10,7 @@
  *   U04: Perldoc
  *   U05: Search (apropos)
  *   U06: Section listing
- *   U07: TLDR
+ *   U07: TLDR embedded in a man page (the standalone /tldr route is gone)
  *   U08: Invalid command graceful fallback
  *   U09: Mobile responsive CSS
  *   U10: Form accessibility labels
@@ -74,22 +74,32 @@ echo "\nU06: GET /search/1\n";
 $r = fetch("{$BASE}/search/1");
 assert_equals(200, $r["code"], "HTTP 200");
 
-// U07: TLDR
-echo "\nU07: GET /tldr/ls\n";
+// U07: TLDR — embedded in the man page, no longer a standalone route
+// e70318a removed /tldr in favour of a block rendered inside the page, so this
+// asserts the route stays gone AND that the block actually reaches the user.
+// The block depends on fetchOfficialTldr(), whose result is held in tldr_cache
+// for PHPMAN_CACHE_TTL_FOUND (210 days) — stable once a page has been fetched.
+echo "\nU07: GET /tldr/ls (removed) + embedded TLDR block\n";
 $r = fetch("{$BASE}/tldr/ls");
-assert_equals(200, $r["code"], "HTTP 200");
-assert_contains("# ls", $r["body"], "TLDR title");
+assert_equals(404, $r["code"], "standalone /tldr route stays removed");
+$r = fetch("{$BASE}/man/ls/1");
+assert_contains("tldr-block", $r["body"], "TLDR block embedded in the man page");
 
-// U08: Invalid command graceful
+// U08: Invalid command — 404 with a helpful body
+// The 404 is deliberate (10939fd, v2.3 hardening): a page that does not exist
+// has to say so for crawlers, while still showing the user somewhere to go.
 echo "\nU08: GET /man/xyznotexist123\n";
 $r = fetch("{$BASE}/man/xyznotexist123");
-assert_equals(200, $r["code"], "HTTP 200 (graceful fallback)");
+assert_equals(404, $r["code"], "HTTP 404 for an unknown command");
+assert_contains("Not found locally", $r["body"], "still renders a helpful body");
 
-// U09: Mobile CSS
+// U09: Mobile CSS — served from phpman.css since b908fcb
 echo "\nU09: Mobile responsive CSS\n";
 $r = fetch("{$BASE}/man/ls/1");
-assert_contains("max-width:1024px", $r["body"], "mobile breakpoint 1024px");
-assert_contains("!important", $r["body"], "TOC !important override");
+assert_contains("phpman.css", $r["body"], "page links the stylesheet");
+$css = fetch(str_replace("phpMan.php", "phpman.css", $BASE));
+assert_contains("max-width: 1024px", $css["body"], "mobile breakpoint 1024px");
+assert_contains("!important", $css["body"], "TOC !important override");
 
 // U10: Form has labels
 echo "\nU10: Form accessibility labels\n";
@@ -97,15 +107,16 @@ assert_contains("<label", $r["body"], "has <label> elements");
 assert_contains("for=\"cmd-input\"", $r["body"], "label for text input");
 
 // U11: TOC sidebar threshold [phpMan.php:660,667,680-698]
+// The sidebar is marked by the body class; the JS driving it moved to
+// phpman.js in b908fcb, so an inline "className" no longer appears anywhere.
 // Short commands (≤80 lines raw) should NOT show TOC sidebar
 echo "\nU11: TOC sidebar 80-line threshold\n";
 $short = fetch("{$BASE}/man/true/1");
-assert_not_contains("className", $short["body"], "true (short) has no ext-nav JS");
-assert_not_contains("toc-sidebar\">\n<div", $short["body"], "true has no TOC sidebar div");
+assert_not_contains("class=\"ext-nav\"", $short["body"], "true (short) has no ext-nav sidebar");
 
 // Long commands (>80 lines raw) SHOULD show TOC sidebar
 $long = fetch("{$BASE}/man/ls/1");
-assert_contains("className", $long["body"], "ls (long) has ext-nav JS");
+assert_contains("class=\"ext-nav\"", $long["body"], "ls (long) has ext-nav sidebar");
 
 // U12: Copyright page
 echo "\nU12: GET /copyright\n";
