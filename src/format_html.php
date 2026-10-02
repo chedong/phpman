@@ -31,6 +31,11 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
     // Use global constant RE_ASCII_SAFE for overstrike pattern matching
     $ac = RE_ASCII_SAFE;
     $patterns = array(
+                    // Terminal-only OSC sequences go first, ahead of the &<> → \x05\x06\x07
+                    // placeholders below. This strip accepts BEL as a terminator, and the
+                    // \x07 placeholder standing in for ">" satisfies that test — so a payload
+                    // containing ">" would cut the strip short mid-sequence and leak the rest.
+                    "/".chr(27)."\][^".chr(27).chr(7)."]*(?:".chr(27)."\\\\|".chr(7).")/",
                     "/&/",  //html special char: '&' => chr(5) => '&gt;';
                     "/</",  //html special char: '>' => chr(6) => '&lt;';
                     "/>/",  //html special char: '<' => chr(7) => '&gt;';
@@ -50,6 +55,7 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                 );
 
     $replace = array(
+                   '',
                    chr(5),
                    chr(6),
                    chr(7),
@@ -83,13 +89,17 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
     // (netpbm and friends): ESC ] 8 ; params ; URI ST  TEXT  ESC ] 8 ; ; ST
     // (ST = ESC \). Turn them into real links instead of dropping the URI: the
     // URL linkifier below matches only absolute "scheme://" URLs, so a relative
-    // target such as "index.html#commonoptions" would otherwise be lost. The URI
-    // charset excludes quotes so it cannot escape the href attribute.
+    // target such as "index.html#commonoptions" would otherwise be lost.
+    // The URI charset excludes quotes (no href attribute breakout) and every
+    // whitespace/control byte — browsers strip those before resolving a URL, so
+    // " javascript:…" would otherwise slip past the scheme guard.
+    // $oscUri is an allowlist: an absolute URL on a known-safe scheme, or a
+    // scheme-less relative one. Anything else — javascript:, data:, vbscript: —
+    // stays unmatched, so the sequence is dropped and only its text survives.
+    // mailto: is listed separately because it carries no "//".
+    $oscUri = "(?:(?:https?|ftp)://[^\"'\x00-\x20]+|mailto:[^\"'\x00-\x20]+|(?![\\w+.\\-]*:)[^\"'\x00-\x20]+)";
     // Applied by $oscPattern before the pattern pass — see the loop below.
-    $oscPattern = "/".chr(27)."\]8;[^;]*;([^".chr(27)."\"']*)".chr(27)."\\\\(.*?)".chr(27)."\]8;;".chr(27)."\\\\/";
-    // Any leftover OSC (window titles, an unclosed 8) is terminal-only: drop it.
-    $patterns[] = "/".chr(27)."\][^".chr(27).chr(7)."]*(?:".chr(27)."\\\\|".chr(7).")/";
-    $replace[] = '';
+    $oscPattern = "#".chr(27)."\]8;[^;]*;(".$oscUri.")".chr(27)."\\\\(.*?)".chr(27)."\]8;;".chr(27)."\\\\#i";
     // Cleanup duplicated / orphan tags from combined overstrike + SGR processing
     $patterns[] = "/<\/b><b>/";
     $replace[] = '';

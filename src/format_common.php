@@ -2,6 +2,10 @@
 function cleanTerminalOutput (array $lines): array {
     // Uses RE_ASCII (plain printable) — raw terminal output has no \x05\x06\x07 placeholders
     $ac = RE_ASCII;
+    // OSC 8 link target — an absolute URL on a known-safe scheme, or a scheme-less
+    // relative one. See the note on the OSC pattern below. mailto: is listed
+    // separately because it carries no "//".
+    $oscUri = "(?:(?:https?|ftp)://[^\"'\x00-\x20]+|mailto:[^\"'\x00-\x20]+|(?![\\w+.\\-]*:)[^\"'\x00-\x20]+)";
     $patterns = array(
         "/{$ac}".chr(8)."{$ac}".chr(8)."({$ac})".chr(8)."{$ac}/",  // ?^H?^H?^H? => bold
         "/_".chr(8)."({$ac})/",  // _^H? => underline
@@ -18,7 +22,9 @@ function cleanTerminalOutput (array $lines): array {
         // (netpbm and friends): ESC ] 8 ; params ; URI ST  TEXT  ESC ] 8 ; ; ST
         // (ST = ESC \). Kept as a markdown link so the target survives; the bold
         // and underline patterns above have already marked up the link text.
-        "/".chr(27)."\]8;[^;]*;([^".chr(27)."\"']*)".chr(27)."\\\\(.*?)".chr(27)."\]8;;".chr(27)."\\\\/",
+        // $oscUri allowlists the scheme and excludes quotes and whitespace, so a
+        // javascript:/data: target is left unmatched and the sequence dropped.
+        "#".chr(27)."\]8;[^;]*;(".$oscUri.")".chr(27)."\\\\(.*?)".chr(27)."\]8;;".chr(27)."\\\\#i",
         // Any leftover OSC (window titles, an unclosed 8) is terminal-only.
         "/".chr(27)."\][^".chr(27).chr(7)."]*(?:".chr(27)."\\\\|".chr(7).")/",
     );
