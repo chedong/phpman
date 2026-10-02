@@ -79,6 +79,17 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
     // followed into a 403.
     $patterns[] = "/".chr(27)."\[[0-9;]*m/";
     $replace[] = '';
+    // OSC 8 hyperlinks — groff emits these for man pages that use .UR/.UE
+    // (netpbm and friends): ESC ] 8 ; params ; URI ST  TEXT  ESC ] 8 ; ; ST
+    // (ST = ESC \). Turn them into real links instead of dropping the URI: the
+    // URL linkifier below matches only absolute "scheme://" URLs, so a relative
+    // target such as "index.html#commonoptions" would otherwise be lost. The URI
+    // charset excludes quotes so it cannot escape the href attribute.
+    // Applied by $oscPattern before the pattern pass — see the loop below.
+    $oscPattern = "/".chr(27)."\]8;[^;]*;([^".chr(27)."\"']*)".chr(27)."\\\\(.*?)".chr(27)."\]8;;".chr(27)."\\\\/";
+    // Any leftover OSC (window titles, an unclosed 8) is terminal-only: drop it.
+    $patterns[] = "/".chr(27)."\][^".chr(27).chr(7)."]*(?:".chr(27)."\\\\|".chr(7).")/";
+    $replace[] = '';
     // Cleanup duplicated / orphan tags from combined overstrike + SGR processing
     $patterns[] = "/<\/b><b>/";
     $replace[] = '';
@@ -128,7 +139,23 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
     $output = "";
     $count = count($lines);
     for ( $i = 0; $i < $count; $i ++ ) {
-        $line = preg_replace($patterns, $replace, $lines[$i]);
+        // Pull OSC 8 links out before the pattern pass. The URL linkifier below
+        // scans the whole line — inserted markup included — so an <a href="https://…">
+        // already in the text would have its URI matched and wrapped a second
+        // time, nesting an anchor inside the href. Stash each URI and restore it
+        // once the pass is done, so the anchor is never re-processed.
+        $oscLinks = array();
+        $line = preg_replace_callback($oscPattern, function ($m) use (&$oscLinks) {
+            $oscLinks[] = $m[1];
+            return "\x0e" . (count($oscLinks) - 1) . "\x0e" . $m[2] . "\x0f\x0f";
+        }, $lines[$i]);
+        $line = preg_replace($patterns, $replace, $line);
+        if ($oscLinks) {
+            $line = preg_replace_callback("/\x0e(\d+)\x0e/", function ($m) use ($oscLinks) {
+                return '<a href="' . h($oscLinks[(int)$m[1]]) . '" rel="noopener noreferrer">';
+            }, $line);
+            $line = str_replace("\x0f\x0f", '</a>', $line);
+        }
         $nextLine = ($i + 1 < $count) ? $lines[$i + 1] : null;
         $heading = detectHeadingType($line, $mode, $nextLine);
         if ($heading) {

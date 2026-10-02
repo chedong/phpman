@@ -14,6 +14,13 @@ function cleanTerminalOutput (array $lines): array {
         // "[34m" / "[0m" in the body text. Must stay last: the bold/underline
         // patterns above need to see their own ESC[0m terminator first.
         "/".chr(27)."\[[0-9;]*m/",  // ANSI color / reset
+        // OSC 8 hyperlinks — groff emits these for man pages that use .UR/.UE
+        // (netpbm and friends): ESC ] 8 ; params ; URI ST  TEXT  ESC ] 8 ; ; ST
+        // (ST = ESC \). Kept as a markdown link so the target survives; the bold
+        // and underline patterns above have already marked up the link text.
+        "/".chr(27)."\]8;[^;]*;([^".chr(27)."\"']*)".chr(27)."\\\\(.*?)".chr(27)."\]8;;".chr(27)."\\\\/",
+        // Any leftover OSC (window titles, an unclosed 8) is terminal-only.
+        "/".chr(27)."\][^".chr(27).chr(7)."]*(?:".chr(27)."\\\\|".chr(7).")/",
     );
     $replace = array(
         "\x01$1\x02",
@@ -21,6 +28,8 @@ function cleanTerminalOutput (array $lines): array {
         "\x01$1\x02",
         "\x01$1\x02",
         "\x03$1\x04",
+        "",
+        '[$2]($1)',
         "",
     );
     $cleaned = array();
