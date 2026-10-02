@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS cache (
     mode        TEXT NOT NULL,              -- 'man'|'perldoc'|'info'|'pydoc'|'ri'|'search'
     name        TEXT NOT NULL,              -- command/module name (e.g. 'ls', 'File::Basename')
     section     TEXT NOT NULL DEFAULT '',   -- '1'~'9','3pm','n','pydoc','ri' or ''
+    title       TEXT,                       -- first non-empty line, ≤120 chars (see cache_fts)
     format      TEXT NOT NULL,              -- 'html'|'markdown'|'json'|'mcp'|'emoji_md'|'emoji_html'
     content     BLOB,                       -- gzcompress() compressed rendered output
     content_len INTEGER NOT NULL DEFAULT 0, -- uncompressed byte size
@@ -146,10 +147,10 @@ CREATE VIRTUAL TABLE IF NOT EXISTS cache_fts USING fts5(
 
 ### 5.2 Notes
 
-- **External content FTS5**: Linked to `cache` table via `cache.id`
+- **External content FTS5**: Linked to `cache` table via `cache.id`. An external-content table stores no column values of its own — it reads them back from `cache` by name. Every column named here must therefore exist on `cache`: `title` was named here from the start but was missing from `cache` until schema v7, so any query touching that column (`COUNT(*)`, a plain `SELECT`) failed with `no such column: T.title` and only `MATCH` worked. Adding the column is what makes the table queryable; `cache.title` and the index are written together by `set()`.
 - **Purpose**: Title index of cached pages, usable for autocomplete/command lookup
 - **Sync**: Written by `PageCache::set()` via `syncFts()` method
-- **Note**: Actual search uses `search_fts`, not `cache_fts`
+- **Note**: Actual search uses `search_fts`, not `cache_fts` — nothing in the app queries this table; it is exercised by the unit tests only
 
 ---
 
@@ -184,7 +185,7 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 
 -- Current entries:
--- schema_version     = '6'
+-- schema_version     = '7'
 -- search_index_count = '13849'
 -- search_index_updated = '2026-06-08T...'
 ```

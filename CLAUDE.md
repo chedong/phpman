@@ -96,10 +96,16 @@ Co-Authored-By: Claude code <版本> with <模型名> <noreply@<域名>>
 | 部分 | 来源 |
 |---|---|
 | 版本 | `claude --version` |
-| 模型名 | `ANTHROPIC_MODEL` 环境变量 |
+| 模型名 | **本会话实际跑的模型**，从会话 transcript 读（见下）—— 不是 `ANTHROPIC_MODEL` |
 | 域名 | `ANTHROPIC_BASE_URL` 的 host（如 `https://taotoken.net/api` → `taotoken.net`） |
 
-示例：`Co-Authored-By: Claude code 2.1.274 with glm-5.3-flash <noreply@taotoken.net>`
+**模型名不要取 `ANTHROPIC_MODEL`**：那是*配置*里的模型，未必是会话实际被路由到的那个。2026-10-02 就出现过 `ANTHROPIC_MODEL=glm-5.3-flash` 而会话实际跑 `deepseek-flash`。从 transcript 读实际值：
+
+```bash
+grep -o '"model":"[^"]*"' ~/.claude/projects/<project-slug>/$CLAUDE_CODE_SESSION_ID.jsonl | sort -u
+```
+
+示例：`Co-Authored-By: Claude code 2.1.285 with deepseek-flash <noreply@taotoken.net>`
 
 ### Rule: rebase before commit in any worktree
 

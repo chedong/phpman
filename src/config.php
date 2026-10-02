@@ -104,10 +104,11 @@ if (!defined('PHPMAN_BACKUP_DIR')) {
 // Fixed filenames under derived dirs (not configurable)
 define('PHPMAN_CACHE_DB', PHPMAN_CACHE_DIR . '/phpman_cache.db');
 define('PHPMAN_LOG_FILE', PHPMAN_LOG_DIR . '/phpman_error.log');
-// Bumped to 6 when cache.generator_version was dropped (v4.11.3). Read by
-// cacheDb() for the central table and, since shards have no meta table, by
-// pageCacheDb() via PRAGMA user_version.
-define('CACHE_SCHEMA_VERSION', '6');
+// Bumped to 7 when cache.title was added back (v4.11.4) — cache_fts has named
+// that column since it was created, and, being an external-content table, reads
+// it back from cache. Read by cacheDb() for the central table and, since shards
+// have no meta table, by pageCacheDb() via PRAGMA user_version.
+define('CACHE_SCHEMA_VERSION', '7');
 
 // PHPMAN_VERSION — numeric version (e.g. "4.9.19").
 // Set by Makefile in phpMan.php at deploy time; provide fallback for CLI scripts.

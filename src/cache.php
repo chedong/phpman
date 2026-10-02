@@ -131,6 +131,7 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
             mode        TEXT NOT NULL,
             name        TEXT NOT NULL,
             section     TEXT NOT NULL DEFAULT '',
+            title       TEXT,
             format      TEXT NOT NULL DEFAULT 'raw',
             content     BLOB,
             content_len INTEGER DEFAULT 0,
@@ -258,7 +259,19 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
                 try { $db->exec("ALTER TABLE cache DROP COLUMN generator_version"); }
                 catch (\Throwable $e) { /* fresh table, or already dropped */ }
             }
-            if ((int)$row >= 6) {
+            if ($row === '6' || (int)$row < 7) {
+                // v6 → v7: add cache.title, which cache_fts has always named.
+                // cache_fts is an external-content FTS5 table (content='cache'),
+                // so it stores no column values of its own — it reads them back
+                // from cache by name. syncFts() indexed a title on every write,
+                // but with no cache.title column to read it from, any query that
+                // touched the column failed with "no such column: T.title"
+                // (COUNT(*), a plain SELECT) — only MATCH worked. The column is
+                // what the virtual table was declared against all along.
+                try { $db->exec("ALTER TABLE cache ADD COLUMN title TEXT"); }
+                catch (\Throwable $e) { /* fresh table, or already added */ }
+            }
+            if ((int)$row >= 7) {
                 // Unknown future schema — clear all cached content, keep schema_version
                 $db->exec("DELETE FROM cache");
             }
@@ -345,6 +358,7 @@ function pageCacheDb(string $mode, ?bool $reset = null): ?SQLite3 {
             mode        TEXT NOT NULL,
             name        TEXT NOT NULL,
             section     TEXT NOT NULL DEFAULT '',
+            title       TEXT,
             format      TEXT NOT NULL DEFAULT 'raw',
             content     BLOB,
             content_len INTEGER DEFAULT 0,
@@ -372,14 +386,28 @@ function pageCacheDb(string $mode, ?bool $reset = null): ?SQLite3 {
         // Shards carry no meta table, so the schema generation lives in the
         // SQLite header instead. Cheap to read (page 1) and set-once.
         $db->exec('PRAGMA user_version = ' . (int)CACHE_SCHEMA_VERSION);
-    } elseif ((int)$db->querySingle('PRAGMA user_version') < (int)CACHE_SCHEMA_VERSION) {
-        // v5 → v6: drop cache.generator_version. Since v4.11 the page cache is
-        // sharded, so this is where the column actually lives — the migration in
-        // cacheDb() only ever sees the legacy central table. See that block for
-        // why the column was dead.
-        try { $db->exec("ALTER TABLE cache DROP COLUMN generator_version"); }
-        catch (\Throwable $e) { /* fresh shard, or already dropped */ }
-        $db->exec('PRAGMA user_version = ' . (int)CACHE_SCHEMA_VERSION);
+    } else {
+        // An existing shard: migrate it forward. A ladder rather than a single
+        // step, so a shard left behind by an older deploy still gets every
+        // migration it is missing.
+        $shardVersion = (int)$db->querySingle('PRAGMA user_version');
+        if ($shardVersion < (int)CACHE_SCHEMA_VERSION) {
+            if ($shardVersion < 6) {
+                // v5 → v6: drop cache.generator_version. Since v4.11 the page
+                // cache is sharded, so this is where the column actually lives —
+                // the migration in cacheDb() only ever sees the legacy central
+                // table. See that block for why the column was dead.
+                try { $db->exec("ALTER TABLE cache DROP COLUMN generator_version"); }
+                catch (\Throwable $e) { /* fresh shard, or already dropped */ }
+            }
+            if ($shardVersion < 7) {
+                // v6 → v7: add cache.title, the column cache_fts is declared
+                // against and reads back by name. See the cacheDb() block.
+                try { $db->exec("ALTER TABLE cache ADD COLUMN title TEXT"); }
+                catch (\Throwable $e) { /* fresh shard, or already added */ }
+            }
+            $db->exec('PRAGMA user_version = ' . (int)CACHE_SCHEMA_VERSION);
+        }
     }
 
     $shards[$dbPath] = $db;
@@ -470,6 +498,9 @@ class PageCache {
 
         $compressed = ($content !== null && $content !== '') ? gzcompress($content) : null;
         $contentLen = ($content !== null) ? strlen($content) : 0;
+        // Stored in cache.title, not just handed to the FTS index: cache_fts is
+        // an external-content table, so the index and the column have to agree.
+        $title = self::extractTitle($content);
         $ttl = ($status === 'not_found') ? PHPMAN_CACHE_TTL_NOT_FOUND : PHPMAN_CACHE_TTL_FOUND;
         // Search not-found entries live as long as found entries
         if ($mode === 'search' && $status === 'not_found') {
@@ -484,10 +515,11 @@ class PageCache {
         // UPSERT: single INSERT ... ON CONFLICT DO UPDATE replaces SELECT-then-UPDATE/INSERT.
         // Eliminates the SELECT round-trip and the SELECT→INSERT race window.
         $stmt = $db->prepare(
-            "INSERT INTO cache (mode, name, section, format, content, content_len, status, ttl, created_at, updated_at)
-             VALUES (:mode, :name, :section, :format, :content, :content_len, :status, :ttl,
+            "INSERT INTO cache (mode, name, section, title, format, content, content_len, status, ttl, created_at, updated_at)
+             VALUES (:mode, :name, :section, :title, :format, :content, :content_len, :status, :ttl,
                      strftime('%s','now'), strftime('%s','now'))
              ON CONFLICT(mode, name, section, format) DO UPDATE SET
+                 title = excluded.title,
                  content = excluded.content,
                  content_len = excluded.content_len,
                  status = excluded.status,
@@ -497,6 +529,7 @@ class PageCache {
         $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
         $stmt->bindValue(':name', $name, SQLITE3_TEXT);
         $stmt->bindValue(':section', $section, SQLITE3_TEXT);
+        $stmt->bindValue(':title', $title, SQLITE3_TEXT);
         $stmt->bindValue(':format', $format, SQLITE3_TEXT);
         $stmt->bindValue(':content', $compressed, SQLITE3_BLOB);
         $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
@@ -512,7 +545,7 @@ class PageCache {
 
                 // Sync FTS5 index for found entries (skip search mode — search results aren't indexed)
                 if ($ok && $status === 'found' && $mode !== 'search') {
-                    $this->syncFts($cacheId, $mode, $name, $section, $content);
+                    $this->syncFts($cacheId, $mode, $name, $section, $title);
                 }
 
                 return $ok;
@@ -611,21 +644,26 @@ class PageCache {
         $stmt->execute();
     }
 
-    private function syncFts(int $cacheId, string $mode, string $name, string $section, ?string $content): void {
-        $db = $this->dbFor($mode);
-        if (!$db) return;
-        $title = '';
-        if ($content !== null && $content !== '') {
-            // Extract first meaningful line as title for FTS
-            $lines = explode("\n", $content);
-            foreach ($lines as $line) {
-                $line = trim($line);
-                if ($line !== '' && strlen($line) < 200) {
-                    $title = mb_substr($line, 0, 120);
-                    break;
-                }
+    /**
+     * First non-empty line of the rendered page, capped — the title indexed in
+     * cache_fts and stored in cache.title. Both, because cache_fts is an
+     * external-content table: the value it indexes is read back from the cache
+     * row, so a title that only ever reached the index was unreachable.
+     */
+    private static function extractTitle(?string $content): string {
+        if ($content === null || $content === '') return '';
+        foreach (explode("\n", $content) as $line) {
+            $line = trim($line);
+            if ($line !== '' && strlen($line) < 200) {
+                return mb_substr($line, 0, 120);
             }
         }
+        return '';
+    }
+
+    private function syncFts(int $cacheId, string $mode, string $name, string $section, string $title): void {
+        $db = $this->dbFor($mode);
+        if (!$db) return;
         try {
             // INSERT OR REPLACE is DELETE+INSERT: replaces any existing FTS row for same rowid
             $stmt = $db->prepare(
