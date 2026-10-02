@@ -479,9 +479,7 @@ function rebuildSearchIndex(): string {
         // cached search results stale. Search results are stored with
         // mode='search' (format can be 'html', 'json', 'markdown', etc.).
         // Individual page caches (man/perldoc/info/pydoc/ri) use their own
-        // mode values and are NOT search-dependent — must be preserved.
-        // Preserve emoji_md/emoji_html — LLM-enhanced content is expensive
-        // to regenerate (48+ days) and isn't search-index-dependent.
+        // mode values and are NOT search-index-dependent — must be preserved.
         // v4.11: search page cache is sharded per mode → clear the search shard.
         $searchShard = pageCacheDb('search');
         if ($searchShard) {

@@ -353,7 +353,7 @@ The following are **defense-in-depth measures** that should be handled by the se
 
 ### 3.1 `isLocalRequest` Deprecation
 
-`isLocalRequest` determines request source via `$_SERVER['REMOTE_ADDR']`, which behind a reverse proxy is the proxy IP, not the client IP, making the check unreliable. This function will be removed entirely, with its 3 call sites replaced by correct alternatives:
+`isLocalRequest` determines request source via `$_SERVER['REMOTE_ADDR']`, which behind a reverse proxy is the proxy IP, not the client IP, making the check unreliable. This function will be removed entirely, with its remaining call sites replaced by correct alternatives (the third one, the `/status` endpoint, was deleted outright — see #217):
 
 | Call site | Current behavior | Problem | Replacement | Issue |
 |--------|----------|------|----------|-------|

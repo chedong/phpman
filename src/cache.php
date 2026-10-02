@@ -245,7 +245,12 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
             }
             if ($row === '3' || (int)$row < 4) {
                 // v3 → v4: per-format caching migration.
-                // Clear all html/markdown/mcp/raw entries; keep only json/search/emoji.
+                // Clear all html/markdown/mcp/raw entries; keep only
+                // json/search/emoji. The emoji_* names are left in the
+                // preserve list on purpose: this migration is history, and
+                // rewriting it would change what a v3 database migrating
+                // forward today would delete. Nothing writes emoji_* since
+                // v5.0 removed the LLM subsystem, so the list is inert.
                 $db->exec("DELETE FROM cache WHERE format NOT IN ('json', 'search', 'emoji_md', 'emoji_html')");
             }
             if ($row === '5' || (int)$row < 6) {
@@ -506,12 +511,6 @@ class PageCache {
         if ($mode === 'search' && $status === 'not_found') {
             $ttl = PHPMAN_CACHE_TTL_FOUND;
         }
-        // Emoji-enhanced entries are expensive to regenerate — never auto-expire
-        // them. Short TTLs once caused ~12K entries to vanish weekly.
-        if ($format === CACHE_FORMAT_EMOJI_MD || $format === CACHE_FORMAT_EMOJI_HTML) {
-            $ttl = 0;  // never expire
-        }
-
         // UPSERT: single INSERT ... ON CONFLICT DO UPDATE replaces SELECT-then-UPDATE/INSERT.
         // Eliminates the SELECT round-trip and the SELECT→INSERT race window.
         $stmt = $db->prepare(

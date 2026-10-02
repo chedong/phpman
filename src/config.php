@@ -144,8 +144,6 @@ define('CACHE_SENTINEL_NOT_FOUND', '###NOT_FOUND###');
 define('CACHE_FORMAT_JSON',      'json');
 define('CACHE_FORMAT_SEARCH',    'search');
 define('CACHE_FORMAT_HTML',      'html');
-define('CACHE_FORMAT_EMOJI_MD',  'emoji_md');
-define('CACHE_FORMAT_EMOJI_HTML', 'emoji_html');
 define('CACHE_STATUS_FOUND',     'found');
 define('CACHE_STATUS_NOT_FOUND', 'not_found');
 define('PHPMAN_CONTENT_MODES', ['man', 'perldoc', 'info', 'pydoc', 'ri']);

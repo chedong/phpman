@@ -121,8 +121,7 @@ function handleMcp (): void {
     // API key authentication (#97)
     // Fail-closed: an empty MCP_API_KEY denies every request instead of
     // disabling the check. A mis-generated or emptied phpman.config.php must
-    // not silently publish the endpoint — that is how it behaved before, and
-    // it is the same shape phpMan.php's status endpoint already uses.
+    // not silently publish the endpoint.
     // hash_equals() keeps the comparison constant-time.
     $apiKey = serverValue("HTTP_X_API_KEY", "");
     if (MCP_API_KEY === '' || !hash_equals(MCP_API_KEY, $apiKey)) {

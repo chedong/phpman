@@ -35,6 +35,8 @@ assert_equals("man", normalizeMode("invalid"), "invalid → man (default)");
 assert_equals("man", normalizeMode("../../etc"), "path traversal → man");
 assert_equals("man", normalizeMode("MAN_PAGE"), "MAN_PAGE → man (underscore)");
 assert_equals("man", normalizeMode("  man  "), "whitespace trimmed → man");
+// The /status endpoint was removed — it must not survive as a mode
+assert_equals("man", normalizeMode("status"), "status → man (endpoint removed)");
 
 echo "\n--- normalizeSection() [phpMan.php:324-331] ---\n";
 // Valid sections

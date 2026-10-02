@@ -124,7 +124,7 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
         }
     }
     
-    $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp", ".well-known", "pydoc", "ri", "status");
+    $allowed_modes = array("man", "perldoc", "info", "search", "copyright", "mcp", ".well-known", "pydoc", "ri");
     $seg_count = count($segments);
     
     if ($seg_count >= 1) {
@@ -208,27 +208,18 @@ $section = normalizeSection($section);
 Profiler::mark('parse');
 
 // ETag/304 check before exec-heavy dispatch (#83)
-// Key-based ETag: include cache timestamp so re-indexing invalidates stale ETags.
-// #175: Also include enhanced HTML cache status
-// emoji_html cache without changing search_index_updated, so the ETag must
-// reflect whether enhanced content is available.
+// Key-based ETag: include the cache timestamp so re-indexing invalidates stale ETags.
 if ($format === "html" && $mode !== "mcp" && $mode !== "copyright" && $mode !== "search" && $parameter !== "") {
     $cacheAge = '';
-    $hasEnhanced = false;
     try {
         $db = cacheDb();
         if ($db) {
             $cacheAge = $db->querySingle("SELECT value FROM meta WHERE key = 'search_index_updated'") ?: '';
-            // Check if emoji_html cache exists for this page — single lookup
-            // (page cache is sharded per mode since v4.11; emoji lives in the mode shard)
-            $shard = pageCacheDb($mode);
-            $ec = $shard ? $shard->querySingle("SELECT 1 FROM cache WHERE mode = :m AND name = :n AND section = '' AND format = 'emoji_html' AND status = 'found'") : null;
-            $hasEnhanced = ($ec !== null);
         }
     } catch (\Throwable $ignored) {
         phpManLog("ETag DB query failed: " . $ignored->getMessage());
     }
-    $etag = '"' . md5($mode . '/' . $parameter . '/' . $section . '/' . PHPMAN_VERSION . '/' . $cacheAge . '/' . ($hasEnhanced ? 'enh' : 'raw')) . '"';
+    $etag = '"' . md5($mode . '/' . $parameter . '/' . $section . '/' . PHPMAN_VERSION . '/' . $cacheAge) . '"';
     $ifNoneMatch = serverValue("HTTP_IF_NONE_MATCH", "");
     if ($ifNoneMatch === $etag) {
         http_response_code(304);
@@ -336,126 +327,6 @@ else if ( $mode == "copyright" ) {
 // MCP (Model Context Protocol) mode: JSON-RPC over HTTP POST
 if ( $mode == "mcp" ) {
     handleMcp();
-    exit;
-}
-// Batch enhance status endpoint (JSON only, requires MCP_API_KEY or local request)
-if ( $mode == "status" ) {
-    header("Content-Type: application/json; charset=UTF-8");
-    header("Cache-Control: no-cache");
-
-    // Security: require valid key. Fail-closed when MCP_API_KEY is unset.
-    // hash_equals() keeps the comparison constant-time (both operands are
-    // strings: getQueryParam() is typed, and '' short-circuits before the call).
-    $statusKey = getQueryParam("key");
-    $isLocal   = isLocalRequest();
-    $mcpKey    = defined('MCP_API_KEY') ? MCP_API_KEY : '';
-    if (! $isLocal && ($mcpKey === '' || ! hash_equals($mcpKey, $statusKey))) {
-        http_response_code(403);
-        echo json_encode(["error" => "Forbidden: requires ?key= parameter"]);
-        exit;
-    }
-
-    // PID file paths (legacy batch-enhance convention)
-    $pidPaths = [
-        "man"     => "/tmp/bm.pid",
-        "perldoc" => "/tmp/bp.pid",
-        "info"    => "/tmp/bi.pid",
-        "pydoc"   => "/tmp/bpy.pid",
-        "ri"      => "/tmp/br.pid",
-    ];
-
-    $errorLog = ini_get('error_log');
-    $db       = cacheDb();
-    $result   = [];
-    $now      = time();
-    $running  = 0;
-    $stopped  = 0;
-
-    foreach ($pidPaths as $m => $pidFile) {
-        $entry = [
-            "mode"      => $m,
-            "running"   => false,
-            "pid"       => null,
-            "started"   => null,
-            "uptime"    => null,
-            "errors"    => 0,
-            "stalled"   => false,
-            "last_emoji_min_ago" => null,
-        ];
-
-        // 1. PID file check
-        $pf = __DIR__ . '/' . $pidFile;
-        if (strpos($pidFile, '/tmp/') === 0) $pf = $pidFile;
-
-        if (file_exists($pf)) {
-            $pidRaw = trim(file_get_contents($pf));
-            $parts  = explode(' ', $pidRaw);
-            $pid    = (int)$parts[0];
-            $start  = isset($parts[1]) ? (int)$parts[1] : null;
-
-            if ($pid > 0) {
-                $alive = false;
-                if (function_exists('posix_kill')) {
-                    $alive = posix_kill($pid, 0);
-                } else {
-                    $alive = file_exists("/proc/$pid");
-                }
-                if ($alive) {
-                    $entry["running"] = true;
-                    $entry["pid"]     = $pid;
-                    $entry["started"] = $start;
-                    if ($start) {
-                        $entry["uptime"] = $now - $start;
-                    }
-                    $running++;
-                }
-            }
-        }
-
-        if (! $entry["running"]) {
-            $stopped++;
-        }
-
-        // 2. Error count from error_log
-        if ($errorLog && file_exists($errorLog)) {
-            $escapedMode = escapeshellarg($m);
-            $entry["errors"] = (int)shell_exec(
-                "grep -c 'mode='{$escapedMode} " . escapeshellarg($errorLog) . " 2>/dev/null"
-            ) ?: 0;
-        }
-
-        // 3. Last emoji enhanced (staleness check) — emoji lives in the mode shard
-        try {
-            $shard = pageCacheDb($m);
-            if ($shard) {
-                $stmt = $shard->prepare(
-                    "SELECT MAX(updated_at) FROM cache WHERE mode = :m AND format IN ('emoji_html','emoji_md') AND status='found'"
-                );
-                $stmt->bindValue(':m', $m, SQLITE3_TEXT);
-                $res = $stmt->execute();
-                $row = $res->fetchArray(SQLITE3_NUM);
-                if ($row && $row[0]) {
-                    $lastTs = (int)$row[0];
-                    $minAgo = (int)(($now - $lastTs) / 60);
-                    $entry["last_emoji_min_ago"] = $minAgo;
-                    $entry["stalled"] = ($entry["running"] && $minAgo > 15);
-                }
-                $res->finalize();
-            }
-        } catch (\Throwable $ignored) {}
-
-        $result[] = $entry;
-    }
-
-    $summary = [
-        "running" => $running,
-        "stopped" => $stopped,
-        "total_errors" => array_sum(array_column($result, "errors")),
-        "checked_at" => date('c', $now),
-        "server_time" => $now,
-    ];
-
-    echo json_encode(["summary" => $summary, "processes" => $result], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     exit;
 }
 /**
@@ -709,14 +580,6 @@ if ($format === "markdown") {
         }
         $content .= "\n\n<!-- profile:\n" . implode("\n", $lines) . "\n  total: {$total}ms\n-->\n";
     }
-    // v4.0: enhanced Markdown for /markdown format — prefer emoji_md cache
-    if ($parameter !== "" && isset($mode) && in_array($mode, PHPMAN_CONTENT_MODES)) {
-        $mdcache = new PageCache();
-        $enhancedMd = $mdcache->get($mode, $parameter, '', CACHE_FORMAT_EMOJI_MD);
-        if ($enhancedMd !== null && !PageCache::isNotFound($enhancedMd)) {
-            $content = $enhancedMd;
-        }
-    }
     echo "# " . $PHPMAN_TITLE . "\n\n" . $content;
     exit;
 }
@@ -853,16 +716,6 @@ echo "<div id=\"content-wrap\">\n";
 showForm($parameter, $check, $mode, $section, $markdownUrl, $jsonUrl);
 
 	// v2.2: TLDR block for man section 1 detail pages
-	// Skip TLDR when enhanced HTML is available (already has Quick Reference).
-	// #144: Single cache lookup reused for both TLDR skip and enhanced routing below.
-	$enhancedCacheContent = null;
-	$hasEnhancedCache = false;
-	if (in_array($mode, PHPMAN_CONTENT_MODES)) {
-	    $sharedCache = new PageCache();
-	    $enhancedCacheContent = $sharedCache->get($mode, $parameter, "", CACHE_FORMAT_EMOJI_HTML);
-	    $hasEnhancedCache = ($enhancedCacheContent !== null && !PageCache::isNotFound($enhancedCacheContent));
-	}
-	if (!$hasEnhancedCache) {
 	if ($mode === "man" && $parameter !== "" && trim($content) !== "") {
 	    $tldrData = fetchOfficialTldr($parameter, $mode, $section);
 	    // Filter out empty commands from malformed data before checking
@@ -895,68 +748,26 @@ showForm($parameter, $check, $mode, $section, $markdownUrl, $jsonUrl);
 	        echo "</div></div>\n";
 	    }
 	}
-	}
-
-
-	// v4.0: Serve enhanced HTML from cache when available and format not explicit.
-	$formatExplicit = (requestValue($_GET, "format") !== "") || (serverValue("PATH_INFO") !== "" && preg_match("#/(html|markdown|json|mcp)$#", serverValue("PATH_INFO")));
-	$isEnhanced = false;
-	if (!$formatExplicit && $parameter !== "" && $hasEnhancedCache && $enhancedCacheContent !== null) {
-	    $content = $enhancedCacheContent;
-	    $isEnhanced = true;
-	}
 
 	// For man page content, add section anchors and floating TOC
-	if ($isEnhanced) {
-		    // Build TOC from enhanced HTML: <h2> L1, <h3> L2 children
-            // #144: single-pass preg_replace_callback instead of O(n×m) repeated scans
-            $tocItems = [];
-            $currentH2 = null;
-            $h2Count = 0;
-            $content = preg_replace_callback(
-                '#<(h2|h3)\b[^>]*>(.+?)</\1>#i',
-                function ($m) use (&$tocItems, &$currentH2, &$h2Count) {
-                    $tag = strtolower($m[1]);
-                    $label = html_entity_decode(trim(strip_tags($m[2])), ENT_QUOTES, 'UTF-8');
-                    if ($tag === 'h2') {
-                        $id = "section-" . $h2Count++;
-                        $tocItems[] = ["id" => $id, "label" => $label, "children" => []];
-                        $currentH2 = count($tocItems) - 1;
-                        return '<h2 id="' . $id . '">' . $m[2] . '</h2>';
-                    } elseif ($tag === 'h3' && $currentH2 !== null) {
-                        $subIdx = count($tocItems[$currentH2]["children"]);
-                        $id = "section-" . $currentH2 . "-" . $subIdx;
-                        $tocItems[$currentH2]["children"][] = ["id" => $id, "label" => $label];
-                        return '<h3 id="' . $id . '">' . $m[2] . '</h3>';
-                    }
-                    return $m[0];
-                },
-                $content
-            );
-            $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
-		    $tocSidebar = renderTocSidebar($tocItems, $pageLabel);
-	    echo $content . "\n</div>\n";
-	    echo $tocSidebar;
+	// Sidebars are collected and output AFTER content for better SEO
+	$tocSidebar = '';
+	if ($mode !== "markdown" && $mode !== "search" && !$isSearchFallback && $parameter !== "" && trim($content) !== "") {
+	    list($anchoredContent, $tocItems) = addManPageToc($content);
+
+	    if ($showNav) {
+	        $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
+	        $tocSidebar = renderTocSidebar($tocItems, $pageLabel);
+	    }
+
+	    echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
+	} elseif ($isSearchFallback || $mode === "search" || $isListContent) {
+	    echo "<div id=\"man-content\">" . $content . "</div>\n";
 	} else {
-    // Sidebars are collected and output AFTER content for better SEO
-    $tocSidebar = '';
-    if ($mode !== "markdown" && $mode !== "search" && !$isSearchFallback && $parameter !== "" && trim($content) !== "") {
-        list($anchoredContent, $tocItems) = addManPageToc($content);
-
-        if ($showNav) {
-            $pageLabel = $parameter . ($section !== "" ? "({$section})" : "");
-            $tocSidebar = renderTocSidebar($tocItems, $pageLabel);
-        }
-
-        echo "<div id=\"man-content\"><pre>" . $anchoredContent . "</pre></div>\n";
-    } elseif ($isSearchFallback || $mode === "search" || $isListContent) {
-        echo "<div id=\"man-content\">" . $content . "</div>\n";
-    } else {
-        echo "<pre>" . $content . "</pre>\n";
-    }
-    echo "</div>";
-    echo $tocSidebar;
-    }
+	    echo "<pre>" . $content . "</pre>\n";
+	}
+	echo "</div>";
+	echo $tocSidebar;
 
 showFooter($VALIDATOR, $showNav, $mode, $parameter, $section, $markdownUrl, $jsonUrl);
 
