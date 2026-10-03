@@ -8,6 +8,7 @@ phpMan is an open-source Linux Command MCP Server and Structured JSON API web in
 
 - PHP 8.0 or higher (for SQLite3 with FTS5 support)
 - SQLite3 extension (bundled with PHP)
+- mbstring extension (required — HTML rendering and the search index call `mb_*` unguarded)
 - FTS5 enabled (checked at runtime via PRAGMA compile_options)
 - Web server (Apache/Nginx) or PHP built-in server
 
@@ -28,7 +29,7 @@ Then open **http://localhost:45678/** in your browser.
 >
 > **Debian/Ubuntu users:**
 > ```bash
-> sudo apt-get install -y php-cli php-sqlite3
+> sudo apt-get install -y php-cli php-sqlite3 php-mbstring
 > ```
 >
 > After first launch, build the FTS5 search index for full-text search:

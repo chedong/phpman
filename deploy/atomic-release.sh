@@ -40,6 +40,18 @@
 # Usage: atomic-release.sh <php_home> <docroot> <entry_file> <release_id> [noprune]
 set -e
 
+# Requires GNU coreutils `mv -T` (used below). -T is not what makes the switch
+# atomic — rename(2) is — but it is what makes `mv .current.tmp current` treat
+# `current` as a NAME. Without it, GNU mv follows the symlink and moves
+# .current.tmp *into* releases/<old-id>/, so the switch silently does nothing and
+# leaves a stray symlink inside the old release. BSD/macOS mv has no -T at all.
+# This script only ever runs on the Linux server (Makefile invokes it via
+# `ssh ... sh ...`), so fail clearly here rather than mid-switch.
+if ! mv --version >/dev/null 2>&1; then
+    echo "atomic-release: GNU mv (coreutils) required; BSD/macOS mv is not supported" >&2
+    exit 1
+fi
+
 PHP_HOME="${1:?usage: atomic-release.sh <php_home> <docroot> <entry_file> <release_id> [noprune]}"
 DOCROOT="${2:?docroot required}"
 ENTRY="${3:?entry file required}"

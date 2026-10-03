@@ -10,6 +10,14 @@
 # Usage: rollback.sh <php_home> <docroot> <entry_file> [steps]
 set -e
 
+# Same GNU `mv -T` requirement as atomic-release.sh, which this delegates to.
+# Checked here too so a BSD/macOS mv fails with a clear message instead of an
+# "illegal option" from the inner script. See the note there.
+if ! mv --version >/dev/null 2>&1; then
+    echo "rollback: GNU mv (coreutils) required; BSD/macOS mv is not supported" >&2
+    exit 1
+fi
+
 PHP_HOME="${1:?usage: rollback.sh <php_home> <docroot> <entry_file> [steps]}"
 DOCROOT="${2:?docroot required}"
 ENTRY="${3:?entry file required}"

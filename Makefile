@@ -171,9 +171,14 @@ staging-reindex: test _deploy-code
 	@echo "=== Rebuilding staging search index ==="
 	ssh -p $(TEST_PORT) $(TEST_HOST) \
 		"cd $(STAGING_HOME)/.phpman_test && php cli/build-index.php --cron"
-	@echo "=== Generating staging sitemap ==="
+	@# Split sitemaps, matching reindex-staging below. This target kept the
+	@# pre-split form (uncompressed sitemap.phpman.xml, html only, no --sitemap-url,
+	@# no AI sitemap, no llms.txt) — #225 updated the other three targets and
+	@# missed this one, so staging never exercised what production actually serves. (#231)
+	@echo "=== Generating staging sitemap (html for Google, markdown/json for AI bots) ==="
 	ssh -p $(TEST_PORT) $(TEST_HOST) \
-		"cd $(STAGING_HOME)/.phpman_test && php cli/build-sitemap.php --output $(TEST_PATH)/sitemap.phpman.xml --base-url $(TEST_URL)"
+		"cd $(STAGING_HOME)/.phpman_test && php cli/build-sitemap.php --output $(TEST_PATH)/sitemap-phpman.xml.gz --base-url $(TEST_URL) --sitemap-url https://test.chedong.com/sitemap-phpman.xml.gz --formats html --max-urls 50000 \
+		 && php cli/build-sitemap.php --output $(TEST_PATH)/sitemap-phpman-ai.xml.gz --base-url $(TEST_URL) --sitemap-url https://test.chedong.com/sitemap-phpman-ai.xml.gz --formats markdown,json --max-urls 50000 --llms-output $(TEST_PATH)/llms.txt"
 	@echo "=== Staging index + sitemap complete ==="
 
 # ─── Production ───

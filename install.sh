@@ -40,9 +40,9 @@ check_php() {
         case "$(uname -s)" in
             Darwin) echo "  Install: brew install php" ;;
             Linux)
-                if   command -v apt   &>/dev/null; then echo "  Install: sudo apt update && sudo apt install php-cli php-sqlite3"
-                elif command -v dnf   &>/dev/null; then echo "  Install: sudo dnf install php-cli php-sqlite3"
-                elif command -v yum   &>/dev/null; then echo "  Install: sudo yum install php-cli php-sqlite3"
+                if   command -v apt   &>/dev/null; then echo "  Install: sudo apt update && sudo apt install php-cli php-sqlite3 php-mbstring"
+                elif command -v dnf   &>/dev/null; then echo "  Install: sudo dnf install php-cli php-sqlite3 php-mbstring"
+                elif command -v yum   &>/dev/null; then echo "  Install: sudo yum install php-cli php-sqlite3 php-mbstring"
                 elif command -v pacman &>/dev/null; then echo "  Install: sudo pacman -S php php-sqlite"
                 else echo "  Please install PHP 7.2+ with SQLite3 and FTS5 support"
                 fi ;;
@@ -85,6 +85,29 @@ check_fts5() {
     esac
 }
 
+check_mbstring() {
+    # Hard requirement, not a nicety: mb_convert_encoding() (src/format_html.php)
+    # and mb_strtolower()/mb_substr() (src/search_index.php, src/cache.php,
+    # src/source_search.php) are called unguarded. The install itself dies first —
+    # build-index.php reaches mb_strtolower() — so a host without mbstring fails
+    # partway through with an opaque fatal instead of here.
+    if ! php -r 'exit(extension_loaded("mbstring") ? 0 : 1);' 2>/dev/null; then
+        echo -e "${RED}✗ mbstring extension missing.${NC}"
+        case "$(uname -s)" in
+            Darwin) echo "  Install: brew install php  (mbstring is bundled)" ;;
+            Linux)
+                if   command -v apt    &>/dev/null; then echo "  Install: sudo apt install php-mbstring (or php<version>-mbstring)"
+                elif command -v dnf    &>/dev/null; then echo "  Install: sudo dnf install php-mbstring"
+                elif command -v yum    &>/dev/null; then echo "  Install: sudo yum install php-mbstring"
+                elif command -v pacman &>/dev/null; then echo "  Install: sudo pacman -S php"
+                else echo "  Please install the PHP mbstring extension"
+                fi ;;
+        esac
+        exit 1
+    fi
+    echo -e "${GREEN}✓${NC} mbstring extension"
+}
+
 check_git() {
     if ! command -v git &>/dev/null; then
         echo -e "${RED}✗ git not found — required for install/update.${NC}"
@@ -100,6 +123,7 @@ run_checks() {
     echo -e "${CYAN}── System Check ──${NC}"
     check_php
     check_sqlite3
+    check_mbstring
     check_fts5
     check_git
     echo -e "${GREEN}── All checks passed ──${NC}"
