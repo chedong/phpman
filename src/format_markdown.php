@@ -1,4 +1,23 @@
 <?php
+/**
+ * Append one line to the markdown body while a byte budget lasts.
+ *
+ * Returns false once the budget is spent, so the caller can stop and mark the
+ * result truncated. Bounding the body here is what stops a monster page (info
+ * py, zshall) from doubling an unbounded string until memory_limit is gone: the
+ * page still renders, just shortened. The alternative was a 500. (#227)
+ */
+function mdAppendLine(string &$output, string $line, int &$budget): bool {
+    $chunk = $line . "\n";
+    // Refuse a line that would overrun rather than append it and stop after:
+    // the contract is that the retained body fits the budget, and a line that
+    // does not fit would only be half a line anyway.
+    if (strlen($chunk) > $budget) return false;
+    $output .= $chunk;
+    $budget -= strlen($chunk);
+    return true;
+}
+
 function formatManPerlDocToMarkdown (array &$lines, string $parameter = "", string $mode = "man", string $section = ""): string {
     // #44: use shared cleanTerminalOutput() instead of inline patterns
     // Takes the buffer by reference and rewrites it in place — see the note on
@@ -21,6 +40,11 @@ function formatManPerlDocToMarkdown (array &$lines, string $parameter = "", stri
             $output .= "\n*Source: {$src}*\n\n---\n\n";
         }
     }
+
+    // Budget the body against PHPMAN_MD_MAX_BYTES. Initialised after the TLDR
+    // block so anything it already wrote counts against the cap.
+    $budget = PHPMAN_MD_MAX_BYTES - strlen($output);
+    $truncated = false;
 
     $count = count($lines);
 
@@ -50,7 +74,7 @@ function formatManPerlDocToMarkdown (array &$lines, string $parameter = "", stri
             $line = $prefix . $heading['text'];
             // Skip the underline line in info mode (Setext-style heading)
             if (!empty($heading['skipNext'])) {
-                $output .= $line . "\n";
+                if (!mdAppendLine($output, $line, $budget)) { $truncated = true; break; }
                 $i++;
                 continue;
             }
@@ -86,8 +110,16 @@ function formatManPerlDocToMarkdown (array &$lines, string $parameter = "", stri
             );
         }
 
-        $output .= $line . "\n";
+        if (!mdAppendLine($output, $line, $budget)) { $truncated = true; break; }
     }
+
+    // Nothing after the loop depends on the dropped tail, so stopping here is
+    // safe — but say so, and point at the format that can carry the whole page.
+    if ($truncated) {
+        $output .= "\n\n---\n\n*Output truncated at " . number_format(PHPMAN_MD_MAX_BYTES)
+                 . " bytes. Full page: `/" . $mode . "/" . urlencode($parameter) . "/json`*\n";
+    }
+
     return $output;
 }
 

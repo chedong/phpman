@@ -64,6 +64,20 @@ if (!defined('PHPMAN_JSON_MAX_CONTENT_BYTES')) {
 if (!defined('PHPMAN_JSON_MAX_SECTION_BYTES')) {
     define('PHPMAN_JSON_MAX_SECTION_BYTES', 524288);   // per-section share of that budget (512KB)
 }
+// Whole-page cap for the markdown body. Deliberately separate from (and much
+// larger than) the JSON budget above: that one bounds section *text* for machine
+// consumers, this one only exists so a runaway page cannot exhaust memory_limit
+// while the body is concatenated and then gzcompressed for the cache. (#227)
+//
+// Sized from measurement, not guesswork (web SAPI is 128M):
+//   info py, the largest page served — 17.9MB raw, 18.0MB out, 60MB peak, 8.0s.
+//   A synthetic 52.7MB page — "Allowed memory size of 134217728 bytes exhausted"
+//   in format_markdown.php, which is the 500 this cap exists to prevent.
+// So the cap sits above every real page (nothing truncates today) while still
+// refusing to grow without bound. Lower it and info py starts losing its tail.
+if (!defined('PHPMAN_MD_MAX_BYTES')) {
+    define('PHPMAN_MD_MAX_BYTES', 25165824);   // 24MB retained markdown body
+}
 // Unified data-cache TTL: PageCache found entries + TLDR cache expire on the
 // same schedule so no cache tier silently outlives another. "Month" = 30 days
 // for determinism → 7 months = 210 days = 18,144,000s.
