@@ -25,6 +25,12 @@ function cleanupTmpDir(): void {
     global $tmpDir;
     foreach (glob($tmpDir . '/*') as $f) @unlink($f);
     @rmdir($tmpDir);
+    // Unlinking the files does not close them. Both DB singletons are
+    // process-wide statics, so without this reset the next block keeps writing
+    // through handles to deleted inodes — and a shard whose rows are still live
+    // in this process is invisible to anything that stats the filesystem.
+    cacheDb(true);
+    pageCacheDb('', true);
 }
 
 cleanupTmpDir();

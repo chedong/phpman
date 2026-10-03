@@ -7,11 +7,23 @@
 
 ## 1. Database Overview
 
-Single `phpman_cache.db` file containing page cache + FTS5 full-text search index + TLDR cache.
+Since v4.11 the storage is **sharded by mode**. `phpman_cache.db` is the central
+file, but it holds only the search index and the TLDR cache; the page cache moved
+into one SQLite file per content mode:
+
+| File | Contents |
+|---|---|
+| `phpman_cache.db` | `search_fts` + `search_index_meta` + `tldr_cache` + `meta` (infrastructure) |
+| `phpman_cache_<mode>.db` | `cache` + `cache_fts` for that mode |
+
+`pageCacheModes()` = `PHPMAN_CONTENT_MODES` (`man`, `perldoc`, `info`, `pydoc`, `ri`)
+plus `search` — six shards. `pageCachePath($mode)` builds the filename. The split
+exists so a `man` write never takes a lock that a search query needs; see
+CHANGELOG v4.11 (`3d02aee`). Manage both layers with `cli/cache.php` (§10.3).
 
 | Table | Type | Rows (production) | Purpose |
 |---|------|:---:|------|
-| `cache` | Regular | ~38K | Page content cache (man/perldoc/pydoc/ri rendered output + emoji_md/emoji_html) |
+| `cache` | Regular | ~38K | Page content cache (man/perldoc/pydoc/ri rendered output + emoji_md/emoji_html). **Legacy in the central file** — since v4.11 the live page cache is in the per-mode shards, which carry this same table. |
 | `cache_fts` | FTS5 virtual (content) | — | Cached page title index (linked to cache.id) |
 | `search_fts` | FTS5 virtual (standalone) | 13,835 | Offline full-text search index (man+pydoc+ri) |
 | `search_index_meta` | Regular | 13,835 | Index entry metadata (dedup, sort, stats) |
@@ -245,26 +257,59 @@ php cli/build-index.php
 
 ### 10.3 Cache Cleanup
 
+Use `cli/cache.php`. Do not hand-write the paths: since v4.11 the page cache is
+sharded, and `rm -f ~/.phpman/db/phpman_cache.db*` matches the central file and its
+`-wal`/`-shm` but **no shard at all** (the names diverge at `_` vs `.`). That
+command was the old `make cache-flush`, so it reported success while leaving every
+shard in place — the reason the CLI exists.
+
 ```bash
-# Full reset (delete DB file; next request auto-creates)
-rm -f ~/.phpman/db/phpman_cache.db*
+php cli/cache.php stats    # rows + bytes per shard, plus the central file
+php cli/cache.php flush    # delete every shard file; clear the central page table
+```
 
-# Clear only search cache (forces fresh FTS5 results on next query)
-sqlite3 ~/.phpman/db/phpman_cache.db "DELETE FROM cache WHERE mode='search'"
+`flush` deletes the shard files (`pageCachePath($mode)*`) and then runs
+`DELETE FROM cache` on the **central** file only — it deliberately does not delete
+that file, because the FTS search index and the TLDR cache live in it and would go
+with it. Everything rebuilds on the next request.
 
-# Remove expired entries (auto-triggered, manual also works)
-sqlite3 ~/.phpman/db/phpman_cache.db "DELETE FROM cache WHERE ttl > 0 AND (strftime('%s','now') - updated_at) > ttl"
+Both commands are also on the Makefile, which runs them over SSH:
+
+```bash
+make cache-stats
+make cache-flush           # production
+make cache-flush-staging   # staging
+```
+
+For narrower surgery, target one shard directly — e.g. drop only the cached
+searches (they rebuild on the next query):
+
+```bash
+sqlite3 ~/.phpman/db/phpman_cache_search.db "DELETE FROM cache"
+```
+
+Expired entries are removed automatically on access (see §5); a manual sweep is
+rarely needed, but per-shard it is:
+
+```bash
+for db in ~/.phpman/db/phpman_cache_*.db; do
+  sqlite3 "$db" "DELETE FROM cache WHERE ttl > 0 AND (strftime('%s','now') - updated_at) > ttl"
+done
 ```
 
 ### 10.4 Defragmentation
 
-After extended operation, many INSERT/DELETEs may cause fragmentation. VACUUM rewrites the entire database file:
+After extended operation, many INSERT/DELETEs may cause fragmentation. VACUUM rewrites the entire database file. Run it per file — a shard does not shrink when you vacuum the central DB, and vice versa:
 
 ```bash
-sqlite3 ~/.phpman/db/phpman_cache.db "PRAGMA journal_mode=DELETE; VACUUM;"
+for db in ~/.phpman/db/phpman_cache*.db; do
+  sqlite3 "$db" "PRAGMA journal_mode=DELETE; VACUUM;"
+done
 ```
 
-Best results when run after rebuilding the FTS5 index (DROP+CREATE clears old index, then VACUUM reclaims space).
+`man` is the shard worth doing (it is the largest by far — hundreds of MB); the
+central file holds the FTS index, where `INSERT INTO search_fts(search_fts)
+VALUES('rebuild')` reclaims more than VACUUM does.
 
 ### 10.5 Related Docs
 

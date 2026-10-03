@@ -325,12 +325,18 @@ function pageCachePath(string $mode): string {
  * central DB (cacheDb()) keeps only the search/tldr infrastructure tables,
  * which are written mostly during batch reindex (single writer).
  */
-function pageCacheDb(string $mode, ?bool $reset = null): ?SQLite3 {
+function pageCacheDb(string $mode, ?bool $reset = null, bool $create = true): ?SQLite3 {
     static $shards = [];
     if ($reset === true) { $shards = []; return null; }
 
     $dbPath = pageCachePath($mode);
     if (isset($shards[$dbPath])) return $shards[$dbPath];
+
+    // Read-only callers (stats, clear) must not materialise a shard that has
+    // never been written: `new SQLite3($path)` creates the file, and the $isNew
+    // branch then creates its tables — so merely counting rows would leave six
+    // empty databases behind. (#228)
+    if (!$create && !file_exists($dbPath)) return null;
 
     $dir = PHPMAN_CACHE_DIR;
     if (!is_dir($dir)) {
@@ -602,8 +608,12 @@ class PageCache {
     public function clear(): bool {
         $ok = true;
         foreach (pageCacheModes() as $mode) {
-            $shard = pageCacheDb($mode);
-            if ($shard === null) { $ok = false; continue; }
+            // A shard that was never written is already clear, and pageCacheDb()
+            // returns null for one without creating it — so this neither
+            // materialises six empty databases nor misses a shard this process
+            // still holds open. (#228)
+            $shard = pageCacheDb($mode, null, false);
+            if ($shard === null) continue;
             try { $shard->exec("DELETE FROM cache"); }
             catch (\Throwable $e) { $ok = false; }
         }
@@ -618,7 +628,12 @@ class PageCache {
     public function stats(): array {
         $total = 0; $found = 0; $notFound = 0; $totalHits = 0; $dbSize = 0;
         foreach (pageCacheModes() as $mode) {
-            $shard = pageCacheDb($mode);
+            // Ask pageCacheDb() rather than testing the path: it returns null for
+            // a shard that has never been written (so reporting cannot create
+            // one), but returns the live connection when this process already
+            // holds one. The filesystem alone is not the answer — a handle can
+            // outlive its file. (#228)
+            $shard = pageCacheDb($mode, null, false);
             if ($shard === null) continue;
             try {
                 $total += (int)$shard->querySingle("SELECT COUNT(*) FROM cache");

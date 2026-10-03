@@ -337,20 +337,15 @@ tag-minor:
 
 cache-flush:
 	@echo "=== Flushing production cache ==="
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"rm -f \"\$$HOME/.phpman/db/phpman_cache.db\"*"
-	@echo "Done. Cache will rebuild on next request."
+	ssh -p $(DEMO_PORT) $(DEMO_HOST) "cd $(DEMO_HOME)/.phpman && php cli/cache.php flush"
 
 cache-flush-staging:
 	@echo "=== Flushing staging cache ==="
-	ssh -p $(TEST_PORT) $(TEST_HOST) \
-		"rm -f \"\$$HOME/.phpman_test/db/phpman_cache.db\"*"
-	@echo "Done. Cache will rebuild on next request."
+	ssh -p $(TEST_PORT) $(TEST_HOST) "cd $(STAGING_HOME)/.phpman_test && php cli/cache.php flush"
 
 cache-stats:
 	@echo "=== Production cache stats ==="
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"ls -lh \"\$$HOME/.phpman/db/phpman_cache.db\" 2>/dev/null || echo '(cache DB not yet created)'"
+	ssh -p $(DEMO_PORT) $(DEMO_HOST) "cd $(DEMO_HOME)/.phpman && php cli/cache.php stats"
 
 package: test
 	gzip -k -f $(FILE)
