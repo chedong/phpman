@@ -127,6 +127,13 @@ curl_close($ch);
 assert_equals(true, isset($data["error"]), "returns JSON-RPC error");
 
 // P11: Host header injection
+//
+// The body assertion alone is not enough to prove anything: a vhost that rejects
+// the mismatched Host (test.chedong.com answers 421 before PHP runs, since the
+// Host no longer matches the TLS SNI) returns a body with nothing in it, so
+// "evil.com is absent" holds trivially and the test passes without phpMan ever
+// executing. When PHP does run, the canonical host must be the configured one —
+// asserting that is what makes this a test rather than a tautology.
 echo "\nP11: Host header injection\n";
 $ch = curl_init("{$BASE}/man/ls/1");
 curl_setopt_array($ch, [
@@ -135,7 +142,19 @@ curl_setopt_array($ch, [
     CURLOPT_TIMEOUT => 15,
 ]);
 $body = curl_exec($ch);
+$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 curl_close($ch);
-assert_not_contains("evil.com", $body ?: "", "Host injection not reflected");
+$body = $body ?: "";
+if ($code === 200) {
+    assert_not_contains("evil.com", $body, "Host injection not reflected");
+    $origin = parse_url($BASE, PHP_URL_SCHEME) . "://" . parse_url($BASE, PHP_URL_HOST);
+    $port = parse_url($BASE, PHP_URL_PORT);
+    if (is_int($port)) $origin .= ":" . $port;
+    assert_contains('href="' . $origin . '/', $body, "canonical points at the configured host");
+} elseif ($code === 400 || $code === 421) {
+    echo "  ✓ the web server rejected the foreign Host ({$code}) before PHP ran\n";
+} else {
+    assert_equals(200, $code, "unexpected status for a foreign Host");
+}
 
 exit(test_summary());

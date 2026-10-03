@@ -31,28 +31,41 @@ function serverValue (string $key, string $default = ""): string {
     return isset($_SERVER[$key]) ? (string)$_SERVER[$key] : $default;
 }
 
+/**
+ * The configured public URL of this install: the PHPMAN_BASE_URL constant
+ * (set in phpman.config.php), else the env var, else "" for "not configured".
+ */
+function configuredBaseUrl (): string {
+    if (defined('PHPMAN_BASE_URL') && PHPMAN_BASE_URL !== '') return PHPMAN_BASE_URL;
+    $env = getenv('PHPMAN_BASE_URL');
+    return ($env !== false && $env !== '') ? $env : '';
+}
+
 function scriptName (): string {
-    // Prefer PHPMAN_BASE_URL constant (set in phpman.config.php) over
-    // $_SERVER['SCRIPT_NAME'] which returns local filesystem paths in CLI.
-    // Falls back to env var, then $_SERVER, then default "phpMan.php".
-    if (defined('PHPMAN_BASE_URL') && PHPMAN_BASE_URL !== '') {
-        $path = parse_url(PHPMAN_BASE_URL, PHP_URL_PATH);
-        if ($path !== null && $path !== false && $path !== '') return $path;
-    }
-    $envUrl = getenv('PHPMAN_BASE_URL');
-    if ($envUrl !== false && $envUrl !== '') {
-        $path = parse_url($envUrl, PHP_URL_PATH);
-        if ($path !== null && $path !== false && $path !== '') return $path;
-    }
+    // Prefer PHPMAN_BASE_URL over $_SERVER['SCRIPT_NAME'], which returns local
+    // filesystem paths in CLI. Falls back to $_SERVER, then default "phpMan.php".
+    $path = parse_url(configuredBaseUrl(), PHP_URL_PATH);
+    if (is_string($path) && $path !== '') return $path;
     return serverValue("SCRIPT_NAME", "phpMan.php");
 }
 
 /**
- * Get a safe host value, validating HTTP_HOST against RFC 3986 format.
- * Falls back to SERVER_NAME if HTTP_HOST is malformed or missing.
- * Prevents Host header injection attacks on canonical URLs and Schema.org output.
+ * Get a safe host value for canonical URLs and Schema.org output.
+ *
+ * The install's configured public URL decides the host; the request supplies one
+ * only when there is nothing configured to compare against. This is a match, not
+ * a format check, and that is the point: "evil.com" is a perfectly well-formed
+ * host, so validating HTTP_HOST never kept it out of <link rel=canonical> or
+ * JSON-LD — only ignoring it does.
  */
 function getSafeHost (): string {
+    $base = configuredBaseUrl();
+    $configured = parse_url($base, PHP_URL_HOST);
+    if (is_string($configured) && $configured !== "") {
+        $port = parse_url($base, PHP_URL_PORT);
+        return is_int($port) ? $configured . ":" . $port : $configured;
+    }
+
     $host = serverValue("HTTP_HOST", "");
     // Valid host: alphanumeric, hyphens, dots, optional port (e.g., "example.com:8080")
     if ($host !== "" && preg_match('/^[a-zA-Z0-9]([a-zA-Z0-9\-\.]*[a-zA-Z0-9])?(\:\d+)?$/', $host) === 1) {
