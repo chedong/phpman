@@ -209,9 +209,9 @@ What was deleted from phpMan:
 - The `Markdown → HTML` conversion path that existed only for `emoji_md` rendering is removed; users wanting HTML read the HTML endpoint
 - **0 LLM calls** in phpMan's request path
 
-**Legacy emoji cache (read-only)**:
-- No new enhanced content can be produced. Pages enhanced before v4.10 still serve from the retained `emoji_html` / `emoji_md` cache rows: `emoji_html` is the default view when present (`?format=html` bypasses it), `emoji_md` is preferred for `/markdown`
-- Those rows never expire and nothing regenerates them — read-only legacy, not a live feature
+**Legacy emoji cache (inert)**:
+- No new enhanced content can be produced, and none is read. v4.10 removed the writer; v5.0 (`5bf0025`) removed the reader — the `emoji_html` default-view fallback, the `emoji_md` preference for `/markdown`, the `CACHE_FORMAT_EMOJI_*` constants and the never-expire TTL rule are all gone
+- `emoji_html` / `emoji_md` rows still exist in old databases and never expire, but nothing serves them. They are named in exactly one place: the v3→v4 migration's preserve list in `src/cache.php`, which is kept because rewriting a shipped migration would change what an old database migrating forward today would delete
 - Historical design (phpMan v4.0–v4.9) is preserved in git history for reference
 
 #### 2.12.1 batch-enhance.php — deleted in v4.10

@@ -119,7 +119,7 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `cli/batch-enhance.php`: single-page CLI tool for shared hosts where man(1) can't fork
 - `cli/batch-enhance.php`: offline batch enhancement — auto-discovers ~35K entries from search_index_meta + cache, 2-min rate limiting, resilient resume, `--cached-first` sort, idempotent per-entry cache writes (2026-06-17)
 - `DELETE FROM cache` now preserves emoji_md/emoji_html during reindex (2026-06-17)
-- **Removed in v4.10.0** (commit `7740029`) — every symbol listed above is gone; only the `emoji_md`/`emoji_html` cache rows survive, served read-only and never expiring
+- **Removed in v4.10.0** (commit `7740029`) — every symbol listed above is gone; only the `emoji_md`/`emoji_html` cache rows survive, and since v5.0 (`5bf0025`) nothing reads those either. The single remaining reference is the v3→v4 migration's preserve list, kept so a shipped migration keeps deleting what it always deleted.
 - Historical design preserved in git history (v4.0..v4.9) for reference
 - See `docs/01-PRODUCT.md` §2.12 for what was removed and why
 
@@ -144,7 +144,7 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - **Remove**: `cli/batch-enhance.php`, `src/enhance.php`, `start-enhance-all.sh`, `test/unit/test_enhance.php`
 - **Remove**: `LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`, `LLM_MAX_TOKENS` from `src/config.php`
 - **Remove**: `$enhancedBy` footer credit, `cleanEmojiHtml()` render path, LLM enhancement docs
-- **Keep**: `CACHE_FORMAT_EMOJI_MD`/`CACHE_FORMAT_EMOJI_HTML` cache serving — existing ~69% enhanced pages continue to render
+- **Keep**: `CACHE_FORMAT_EMOJI_MD`/`CACHE_FORMAT_EMOJI_HTML` cache serving — superseded: v5.0 (`5bf0025`) removed the read side, so the rows are now inert (only the v3→v4 migration's preserve list names them)
 - **Rationale**: STRATEGY.md analysis — AI bots prefer raw markdown/json/mcp, emoji adds no value for agents. Meta (9,217/day) and ClaudeBot (905/day) confirm this.
 
 ### v4.9 — CSP nonce + strict-dynamic (proposed, not shipped)
@@ -440,10 +440,19 @@ calls functions loaded by bootstrap but is not itself required by anything.
   file. This keeps the code grep-friendly and avoids OOP tax in a procedural
   codebase that has function-scoped caching and shared state via constants.
 - **`PageCache` stays a class** — already well-encapsulated, no change needed.
-- **Tests unchanged** — `define('PHPMAN_TEST_MODE', true)` before requiring
-  bootstrap.php loads all functions without running the web dispatch. Every
-  test file replaces `require 'phpMan.php'` with `require PHPMAN_HOME .
-  '/src/bootstrap.php'`.
+- **Tests keep `require 'phpMan.php'`** — this part of the v4.4 plan was
+  **not** carried out, and should not be. Every test file still does
+  `define('PHPMAN_TEST_MODE', true)` followed by `require 'phpMan.php'`, which
+  loads all functions and skips the web dispatch (18 files under `test/`; 17
+  of them are registered in `run_all.php` — `test/structure_regression.php` is
+  run separately). Rewriting them to `require PHPMAN_HOME .
+  '/src/bootstrap.php'` **fatals under PHP 8**: `PHPMAN_HOME` is defined only
+  by `phpMan.php:29`, while `src/config.php:152` uses the raw constant
+  unguarded (`$toolsConfig = PHPMAN_HOME . '/tools_config.php'`), and an
+  undefined constant is an `Error`, not a warning. Defining it as the repo root
+  instead would point `PHPMAN_CACHE_DIR` at `<repo>/db`. CLI scripts that must
+  avoid the dispatcher require `cli/_bootstrap.php`, which defines
+  `PHPMAN_HOME` itself (see below).
 - **Config overridables unchanged** — `defined()` guard pattern in `config.php`.
 - **Deploy unchanged** — Makefile `sed` for PHPMAN_VERSION + `scp` phpMan.php
   + phpman.css to webroot, `scp -r cli tools src` to PHPMAN_HOME.

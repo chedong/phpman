@@ -23,7 +23,7 @@ CHANGELOG v4.11 (`3d02aee`). Manage both layers with `cli/cache.php` (§10.3).
 
 | Table | Type | Rows (production) | Purpose |
 |---|------|:---:|------|
-| `cache` | Regular | ~38K | Page content cache (man/perldoc/pydoc/ri rendered output + emoji_md/emoji_html). **Legacy in the central file** — since v4.11 the live page cache is in the per-mode shards, which carry this same table. |
+| `cache` | Regular | ~38K | Page content cache (man/perldoc/pydoc/ri rendered output). **Legacy in the central file** — since v4.11 the live page cache is in the per-mode shards, which carry this same table. |
 | `cache_fts` | FTS5 virtual (content) | — | Cached page title index (linked to cache.id) |
 | `search_fts` | FTS5 virtual (standalone) | 13,835 | Offline full-text search index (man+pydoc+ri) |
 | `search_index_meta` | Regular | 13,835 | Index entry metadata (dedup, sort, stats) |
@@ -43,12 +43,12 @@ CREATE TABLE IF NOT EXISTS cache (
     name        TEXT NOT NULL,              -- command/module name (e.g. 'ls', 'File::Basename')
     section     TEXT NOT NULL DEFAULT '',   -- '1'~'9','3pm','n','pydoc','ri' or ''
     title       TEXT,                       -- first non-empty line, ≤120 chars (see cache_fts)
-    format      TEXT NOT NULL,              -- 'html'|'markdown'|'json'|'mcp'|'emoji_md'|'emoji_html'
+    format      TEXT NOT NULL,              -- 'html'|'markdown'|'json'|'search' (see note below)
     content     BLOB,                       -- gzcompress() compressed rendered output
     content_len INTEGER NOT NULL DEFAULT 0, -- uncompressed byte size
     status      TEXT NOT NULL DEFAULT 'found'
                     CHECK(status IN ('found','not_found')),
-    ttl         INTEGER NOT NULL DEFAULT 0, -- seconds; 0 = never expires (emoji formats)
+    ttl         INTEGER NOT NULL DEFAULT 0, -- seconds; 0 = never expires
     hits        INTEGER NOT NULL DEFAULT 0, -- cache hit count
     created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
     updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
@@ -64,9 +64,10 @@ CREATE INDEX idx_cache_expiry  ON cache(updated_at) WHERE ttl > 0;
 ### 2.2 Notes
 
 - **Cache key**: (mode, name, section, format) uniquely identifies a cached entry
+- **`format` values**: `html`, `markdown`, `json` (the public output formats, `PHPMAN_OUTPUT_FORMATS`) and `search` (search results). `mcp` is deliberately absent — it is an internal rendering core `handleMcp()` calls, not a URL-selectable format.
 - **Compression**: PHP `gzcompress()`, SQLite BLOB storage, ~70% average compression ratio
 - **TTL**: found entries `PHPMAN_CACHE_TTL_FOUND` (default 7 months = 18144000s, override via `PHPMAN_CACHE_TTL_MONTHS`), not_found entries 86400s (1 day) — except `mode='search'`, whose not_found entries also use `PHPMAN_CACHE_TTL_FOUND`. Expired entries auto-deleted on `get()`
-- **Legacy emoji formats** (`emoji_md`, `emoji_html`): Written with TTL=0 (permanent, no auto-expiry). **Nothing generates them since v4.10** — the LLM enhancement layer (`enhanceManPage()`, `cli/batch-enhance.php`) was deleted in v4.10.0 (commit `7740029`). Existing rows are still served read-only and preserved across `--build-index-cron` runs (reindex skips emoji formats).
+- **Emoji rows are inert**: `emoji_md` / `emoji_html` rows were written with TTL=0 by the LLM enhancement layer, deleted in v4.10.0 (`7740029`). v5.0 (`5bf0025`) removed the **read** side as well, so nothing writes or reads them now. They survive only because the v3→v4 migration's preserve list still names them (see §10.2).
 - **Auto-cleanup**: `cacheOrExecute()` has 1% probability of triggering `DELETE FROM cache WHERE expired`
 - **search mode**: Not written to `cache_fts` index, no hits counting, emits `<meta name="robots" content="noindex">`
 
@@ -253,7 +254,7 @@ php cli/build-index.php
 
 ### 10.2 Emoji Enhancement (Removed in v4.10)
 
-`cli/batch-enhance.php` was deleted in v4.10.0 (commit `7740029`); nothing generates `emoji_md` / `emoji_html` rows any more. Existing rows are still served and never expire. See `docs/01-PRODUCT.md` §2.12.
+`cli/batch-enhance.php` was deleted in v4.10.0 (commit `7740029`); v5.0 (`5bf0025`) removed the read side too, so `emoji_md` / `emoji_html` rows are now both written and read by nothing. The one remaining reference is the v3→v4 migration's `format NOT IN ('json','search','emoji_md','emoji_html')` preserve list in `src/cache.php` — kept on purpose, because rewriting a shipped migration would change what an old database migrating forward today would delete. See `docs/01-PRODUCT.md` §2.12.
 
 ### 10.3 Cache Cleanup
 

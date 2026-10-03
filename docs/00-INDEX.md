@@ -31,7 +31,7 @@
 | `formatMarkdownToHTML()` | Removed (only existed for the LLM `emoji_md` path) |
 | Site analytics (GA4 MCP tool) | `site-stats` project (external) |
 
-`emoji_md` / `emoji_html` cache rows written before v4.10 are still served and never expire — read-only legacy, see `01-PRODUCT.md` §2.12.
+`emoji_md` / `emoji_html` cache rows are inert: nothing writes them since v4.10, and v5.0 (`5bf0025`) removed the read side too. They survive only in the v3→v4 migration's preserve list — see `01-PRODUCT.md` §2.12.
 
 `05-PLAN.md` §`## External Projects` covers `site-stats`.
 
