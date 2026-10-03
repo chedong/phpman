@@ -176,8 +176,10 @@ function formatMcpMarkdown (array $data): string {
         }
     }
 
-    // TLDR (only for man section 1)
-    $tldr = fetchOfficialTldr($param, $mode, $section);
+    // TLDR (only for man section 1) — already fetched by buildJsonData(), which
+    // also decides whether a fetch is warranted at all (it skips empty pages).
+    // Fetching again here duplicated the network work and bypassed that guard. (#235)
+    $tldr = $data["tldr"] ?? [];
     if (!empty($tldr)) {
         $out .= "## TLDR\n\n";
         if (!empty($tldr["description"])) {
@@ -257,11 +259,10 @@ function formatMcpStructured (array $data): array {
         $allFlags = extractFlagsFromSections($data);
     }
 
-    // v2.2: Fetch TLDR for agent consumption (only for man section 1)
-    $param = $data["parameter"] ?? "";
-    $tldrMode = $data["mode"] ?? "man";
-    $tldrSection = $data["section"] ?? "";
-    $tldrData = $param !== "" ? fetchOfficialTldr($param, $tldrMode, $tldrSection) : [];
+    // v2.2: TLDR for agent consumption (only for man section 1). Taken from the
+    // IR rather than re-fetched: buildJsonData() already did it, and it is the
+    // layer that knows whether the page is empty. (#235)
+    $tldrData = $data["tldr"] ?? [];
     $tldrSummary = !empty($tldrData) ? ($tldrData["description"] ?? null) : null;
     $tldrExamples = !empty($tldrData) ? array_slice($tldrData["examples"] ?? [], 0, 12) : [];
     $tldrSource = !empty($tldrData) ? ($tldrData["source"] ?? null) : null;

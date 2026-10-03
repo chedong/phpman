@@ -8,8 +8,14 @@
  * $lines[$i] would NOT help: that write forces PHP to separate (fully copy)
  * the array. Only a for loop over a packed list rewrites without copying,
  * hence the normalisation below.
+ *
+ * $linkStyle decides what an OSC 8 hyperlink becomes: 'markdown' (the default)
+ * keeps the target as `[text](uri)`, 'plain' keeps only the text. JSON and MCP
+ * are not markdown documents — buildJsonData() already strips the `**`/`_`
+ * emphasis from section text, so an OSC 8 link was the one markdown construct
+ * still reaching a JSON `content` string. (#236)
  */
-function cleanTerminalOutput (array &$lines): void {
+function cleanTerminalOutput (array &$lines, string $linkStyle = 'markdown'): void {
     // Uses RE_ASCII (plain printable) — raw terminal output has no \x05\x06\x07 placeholders
     $ac = RE_ASCII;
     // OSC 8 link target — an absolute URL on a known-safe scheme, or a scheme-less
@@ -45,7 +51,7 @@ function cleanTerminalOutput (array &$lines): void {
         "\x01$1\x02",
         "\x03$1\x04",
         "",
-        '[$2]($1)',
+        ($linkStyle === 'markdown') ? '[$2]($1)' : '$2',
         "",
     );
     if (!array_is_list($lines)) {

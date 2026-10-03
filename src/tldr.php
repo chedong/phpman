@@ -18,14 +18,23 @@ function fetchOfficialTldr(string $command, string $mode = "man", string $sectio
     // Skip commands with non-simple names (dots, special chars beyond [-_.])
     if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]*$/', $command)) return [];
 
-    // SQLite persistent cache — same TTL as PageCache found entries
-    // (PHPMAN_CACHE_TTL_FOUND, was 7 days / #80)
+    // SQLite persistent cache. TTL is per row: a hit lives as long as a
+    // PageCache found entry (PHPMAN_CACHE_TTL_FOUND), but a `not_found` row is a
+    // negative cache and expires on the shorter NOT_FOUND schedule — the same
+    // split PageCache makes. Applying the found TTL to both meant a command that
+    // does not exist stayed "known missing" for months, so every *distinct*
+    // unknown name paid a slow 4-request fetch once and left a row behind: a
+    // caller holding the MCP key could enumerate unknown commands to drive
+    // outbound traffic and grow tldr_cache indefinitely. (#235)
     try {
         $db = cacheDb();
         $stmt = $db->prepare(
             "SELECT content FROM tldr_cache
              WHERE command = :cmd
-               AND (strftime('%s','now') - fetched_at) < " . (int)PHPMAN_CACHE_TTL_FOUND
+               AND (strftime('%s','now') - fetched_at) <
+                   (CASE WHEN source = 'not_found'
+                         THEN " . (int)PHPMAN_CACHE_TTL_NOT_FOUND . "
+                         ELSE " . (int)PHPMAN_CACHE_TTL_FOUND . " END)"
         );
         $stmt->bindValue(':cmd', $command, SQLITE3_TEXT);
         $cached = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
@@ -49,8 +58,9 @@ function fetchOfficialTldr(string $command, string $mode = "man", string $sectio
     if (empty($result)) $result = fetchCheatShTldr($command);
     $cache[$cacheKey] = $result;
 
-    // Persist to SQLite cache — same TTL as PageCache (read-side check above)
-    // Cache both successful and empty/missing results (negative cache, #80)
+    // Persist to SQLite cache — TTL is applied on the read side above, per row
+    // (found vs not_found). Cache both successful and empty/missing results
+    // (negative cache, #80)
     try {
         $db = cacheDb();
         if (empty($result)) {

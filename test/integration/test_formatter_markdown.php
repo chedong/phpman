@@ -62,4 +62,24 @@ $lines = ["a{$bs}ab{$bs}b"];
 $result = formatManPerlDocToMarkdown($lines);
 assert_not_contains(chr(8), $result, "no residual backspaces");
 
+// T9: OSC 8 hyperlinks keep their target as a markdown link (#236)
+// groff emits these for man pages using .UR/.UE (netpbm and friends).
+echo "\nT9: OSC 8 hyperlink → markdown link\n";
+$osc = "{$esc}]8;;https://example.com/x{$esc}\\text{$esc}]8;;{$esc}\\";
+$lines = [$osc];
+$result = formatManPerlDocToMarkdown($lines);
+// The markdown pipeline wraps the target in angle brackets, so assert the
+// construct and the target rather than one exact spelling.
+assert_contains("[text](", $result, "markdown renders the OSC 8 link");
+assert_contains("https://example.com/x", $result, "markdown keeps the OSC 8 target");
+assert_not_contains(chr(27), $result, "no residual ESC");
+
+// T10: a dangerous OSC 8 scheme is dropped in both styles (#236)
+echo "\nT10: javascript: OSC 8 target is dropped\n";
+$evil = "{$esc}]8;;javascript:alert(1){$esc}\\click{$esc}]8;;{$esc}\\";
+$lines = [$evil];
+$result = formatManPerlDocToMarkdown($lines);
+assert_not_contains("javascript:", $result, "markdown drops a javascript: target");
+assert_not_contains("](http", $result, "markdown emits no link for it");
+
 exit(test_summary());

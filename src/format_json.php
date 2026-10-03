@@ -10,7 +10,10 @@
 function buildJsonData (array &$lines, string $parameter, string $section = "", string $mode = "man"): array {
     // #44: use shared cleanTerminalOutput() instead of inline patterns
     // In place, by reference — $lines is released further down, so no copy.
-    cleanTerminalOutput($lines);
+    // 'plain': this builds the JSON IR, not a markdown document. Section text
+    // already has its **/_ emphasis stripped below, so an OSC 8 link rendered
+    // as `[text](uri)` was the only markdown syntax reaching a JSON string. (#236)
+    cleanTerminalOutput($lines, 'plain');
 
     $section_label = "";
     if ($section !== "" && $section !== "-f" && $section !== "-q") {
@@ -313,10 +316,16 @@ function buildJsonData (array &$lines, string $parameter, string $section = "", 
     // representations at once.
     unset($sections);
 
-    // v2.2: Inject TLDR from official sources (only for man section 1)
-    $tldr = fetchOfficialTldr($parameter, $mode, $section);
-    if (!empty($tldr)) {
-        $jsonData["tldr"] = $tldr;
+    // v2.2: Inject TLDR from official sources (only for man section 1).
+    // Skipped for an empty page: there is no body to annotate, and on a TLDR
+    // cache miss fetchOfficialTldr() makes up to four external requests with a
+    // 5s timeout each. MCP reaches this via an unknown cli_help command, which
+    // would otherwise pay ~20s to decorate a page that does not exist. (#235)
+    if (!empty($jsonData["sections"])) {
+        $tldr = fetchOfficialTldr($parameter, $mode, $section);
+        if (!empty($tldr)) {
+            $jsonData["tldr"] = $tldr;
+        }
     }
 
     return $jsonData;

@@ -100,4 +100,26 @@ assert_equals("/phpMan.php",
     runUtil('scriptName()', [], $PROD),
     "scriptName() still takes the path from the configured URL");
 
+// #233: the scheme follows the configured URL, same rule as the host. Inferring
+// it from the request alone emitted http:// behind a TLS-terminating proxy that
+// omits X-Forwarded-Proto, which reached <link rel=canonical> and Schema.org.
+echo "\n--- baseUrl() scheme follows the configured URL (#233) ---\n";
+assert_equals("https://www.chedong.com/phpMan.php",
+    runUtil('baseUrl()', ["HTTP_HOST" => "www.chedong.com"], $PROD),
+    "configured https wins even when the request looks like plain http");
+assert_equals("http://www.chedong.com/phpMan.php",
+    runUtil('baseUrl()', ["HTTPS" => "on", "HTTP_HOST" => "www.chedong.com"],
+        "http://www.chedong.com/phpMan.php"),
+    "a configured http is honoured over an https-looking request");
+assert_equals("https://www.chedong.com/phpMan.php",
+    runUtil('baseUrl()', ["HTTP_HOST" => "www.chedong.com"], null, $PROD),
+    "the PHPMAN_BASE_URL env var supplies the scheme too");
+// Nothing configured: the request is still the only source, as before.
+assert_equals("https://localhost/phpMan.php",
+    runUtil('baseUrl()', ["HTTPS" => "on", "SCRIPT_NAME" => "/phpMan.php"], null),
+    "unconfigured: HTTPS=on still infers https");
+assert_equals("http://localhost/phpMan.php",
+    runUtil('baseUrl()', ["SCRIPT_NAME" => "/phpMan.php"], null),
+    "unconfigured: no HTTPS still infers http");
+
 exit(test_summary());

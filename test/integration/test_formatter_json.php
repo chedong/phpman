@@ -72,4 +72,30 @@ echo "\nT7: No deprecated fields\n";
 assert_equals(false, isset($data["name"]), "no deprecated 'name' field");
 assert_equals(false, isset($data["command"]), "no deprecated 'command' field");
 
+// T8: OSC 8 hyperlinks do not leak markdown syntax into JSON (#236)
+// buildJsonData() strips **/_ emphasis, so an OSC 8 link rendered as
+// `[text](uri)` was the only markdown construct reaching a JSON content string.
+// The link needs a section to live in — a bare line produces no sections.
+echo "\nT8: OSC 8 hyperlink stays out of JSON content\n";
+$esc = chr(27);
+$osc = "{$esc}]8;;https://example.com/x{$esc}\\text{$esc}]8;;{$esc}\\";
+$lines = ["N{$bs}NA{$bs}AM{$bs}ME{$bs}E", "       see {$osc} for details"];
+$data = buildJsonData($lines, "ls", "", "man");
+$body = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+assert_contains("text", $body, "the link text survives");
+assert_not_contains("](", $body, "no markdown link syntax in JSON");
+assert_not_contains(chr(27), $body, "no residual ESC in JSON");
+
+// T9: an empty page does not trigger a TLDR fetch (#235)
+// MCP reaches this through an unknown cli_help command. Fetching there meant up
+// to 4 external requests at 5s each to decorate a page that does not exist.
+echo "\nT9: empty page skips the TLDR fetch\n";
+$db = cacheDb();
+$before = $db ? (int)$db->querySingle("SELECT COUNT(*) FROM tldr_cache") : 0;
+$empty = [];
+$data = buildJsonData($empty, "phpman-no-such-command-xyz", "", "man");
+$after = $db ? (int)$db->querySingle("SELECT COUNT(*) FROM tldr_cache") : 0;
+assert_equals(false, isset($data["tldr"]), "no tldr key on an empty page");
+assert_equals($before, $after, "no tldr_cache row written for an empty page");
+
 exit(test_summary());

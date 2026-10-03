@@ -76,12 +76,23 @@ function getSafeHost (): string {
 
 /**
  * Get the complete base URL of the current script (e.g. https://www.example.com/phpMan.php).
+ *
+ * The scheme follows the same rule as the host in getSafeHost(): the configured
+ * public URL wins, and the request is consulted only when nothing is configured.
+ * Inferring it from the request alone broke behind a TLS-terminating proxy that
+ * omits X-Forwarded-Proto — PHPMAN_BASE_URL said https, the request looked like
+ * plain http, and <link rel=canonical> plus the Schema.org url went out as
+ * http://. (The scheme cannot live in getSafeHost(): that returns host[:port]
+ * and its callers pair it with a scheme they compute themselves.)
  */
 function baseUrl(): string {
-    $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "http";
-    // Check X-Forwarded-Proto for TLS-terminating reverse proxies (Nginx, Cloudflare, AWS ELB)
-    if ($proto === "http" && !empty($_SERVER['HTTP_X_FORWARDED_PROTO'])) {
-        $proto = $_SERVER['HTTP_X_FORWARDED_PROTO'] === "https" ? "https" : "http";
+    $proto = parse_url(configuredBaseUrl(), PHP_URL_SCHEME);
+    if (!is_string($proto) || $proto === "") {
+        $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "http";
+        // Check X-Forwarded-Proto for TLS-terminating reverse proxies (Nginx, Cloudflare, AWS ELB)
+        if ($proto === "http" && !empty($_SERVER['HTTP_X_FORWARDED_PROTO'])) {
+            $proto = $_SERVER['HTTP_X_FORWARDED_PROTO'] === "https" ? "https" : "http";
+        }
     }
     return $proto . "://" . getSafeHost() . scriptName();
 }
