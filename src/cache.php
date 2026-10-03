@@ -535,15 +535,39 @@ class PageCache {
         $stmt->bindValue(':status', $status, SQLITE3_TEXT);
         $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
 
+        // The row's id has to be looked up rather than read from
+        // last_insert_rowid(): the UPSERT's DO UPDATE branch does not update it,
+        // so on an overwrite it yields 0 (fresh connection) or the id left over
+        // from an earlier INSERT (long-lived connection). syncFts() writes that
+        // value as the cache_fts rowid, and cache_fts is an external-content
+        // table (content_rowid='id'), so a wrong value silently misaligns the
+        // index — or, at 0, makes every MATCH throw "missing row 0". (#229)
+        // Not RETURNING: install.sh accepts PHP 7.2+, whose bundled SQLite may
+        // predate 3.35.
+        $idStmt = $db->prepare(
+            "SELECT id FROM cache
+             WHERE mode = :mode AND name = :name AND section = :section AND format = :format"
+        );
+        $idStmt->bindValue(':mode', $mode, SQLITE3_TEXT);
+        $idStmt->bindValue(':name', $name, SQLITE3_TEXT);
+        $idStmt->bindValue(':section', $section, SQLITE3_TEXT);
+        $idStmt->bindValue(':format', $format, SQLITE3_TEXT);
+
         // Retry loop for SQLITE_BUSY — UPSERT can still trigger lock contention
         $maxAttempts = 8;
         for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
             try {
                 $ok = $stmt->execute() !== false;
-                $cacheId = $ok ? $db->lastInsertRowID() : 0;
+                $cacheId = 0;
+                if ($ok) {
+                    $idRes = $idStmt->execute();
+                    $idRow = $idRes ? $idRes->fetchArray(SQLITE3_ASSOC) : null;
+                    if ($idRes) $idRes->finalize();
+                    $cacheId = (int)($idRow['id'] ?? 0);
+                }
 
                 // Sync FTS5 index for found entries (skip search mode — search results aren't indexed)
-                if ($ok && $status === 'found' && $mode !== 'search') {
+                if ($ok && $cacheId > 0 && $status === 'found' && $mode !== 'search') {
                     $this->syncFts($cacheId, $mode, $name, $section, $title);
                 }
 

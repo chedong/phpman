@@ -189,6 +189,25 @@ assert_equals(1, (int)$ftsCountAfter, "only one FTS row after overwrite (no orph
 $ftsRowid = $overwriteDb->querySingle("SELECT rowid FROM cache_fts WHERE cache_fts MATCH 'overwrite'", false);
 assert_equals((int)$afterId, (int)$ftsRowid, "FTS rowid matches cache rowid");
 
+// The case above passes even when the rowid is wrong, because the INSERT it
+// follows is the same row: last_insert_rowid() happens to hold the right value.
+// A DIFFERENT man row inserted in between exposes it — the UPSERT's DO UPDATE
+// branch does not reset last_insert_rowid(), so the overwrite hands syncFts()
+// the decoy's id and the FTS index is written under the wrong rowid. (#229)
+echo "\n--- FTS: overwrite uses the updated row's id, not a stale one (#229) ---\n";
+cleanupTmpDir();
+$cache = new PageCache();
+$cache->set('man', 'ftsrowida', '1', 'html', 'alpha row content');
+$cache->set('man', 'ftsrowidb', '1', 'html', 'bravo row content');
+$cache->set('man', 'ftsrowida', '1', 'html', 'alpha refreshed content');
+
+$db = pageCacheDb('man');
+$realId = (int)$db->querySingle(
+    "SELECT id FROM cache WHERE mode='man' AND name='ftsrowida' AND section='1' AND format='html'", false);
+$ftsId = (int)$db->querySingle("SELECT rowid FROM cache_fts WHERE cache_fts MATCH 'refreshed'", false);
+assert_equals(true, $realId > 0, "the updated row has a real id");
+assert_equals($realId, $ftsId, "cache_fts rowid is the updated row's id, not a stale one (#229)");
+
 // ─── Compression round-trip ───
 echo "\n--- Content compression round-trip ---\n";
 $longContent = str_repeat("This is a test string for compression. ", 100);
