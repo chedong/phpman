@@ -20,6 +20,7 @@ $suites = [
         "{$testDir}/unit/test_profiling_append.php",
         "{$testDir}/unit/test_config_resolution.php",
         "{$testDir}/unit/test_safe_host.php",
+        "{$testDir}/unit/test_info_valid_files.php",
     ],
     "Integration" => [
         "{$testDir}/integration/test_formatter_html.php",
