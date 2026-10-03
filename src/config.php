@@ -13,8 +13,24 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 // Load user overrides FIRST (so defaults don't overwrite them)
-// Search order: 1) ../phpman.config.php (webroot-relative), 2) $HOME/.phpman/
+// Search order: 1) ../phpman.config.php (dev checkout: src/ next to the config)
+//               2) PHPMAN_HOME/phpman.config.php  (deployed install)
+//               3) $HOME/.phpman/phpman.config.php
+//
+// (2) is not redundant with (1): a deployed install does not have to keep src/
+// as a direct child of PHPMAN_HOME. The atomic-release layout puts it at
+// PHPMAN_HOME/releases/<id>/src/, so (1) misses there. Without (2) the search
+// would jump straight to (3) — a hardcoded $HOME/.phpman — and a *staging*
+// install would silently load production's config, MCP_API_KEY included. That
+// is exactly what happened on 2026-10-02; it showed up as staging MCP requests
+// failing closed with -32001 Unauthorized.
 $_config_file = dirname(__DIR__) . '/phpman.config.php';
+if (!file_exists($_config_file)
+    && defined('PHPMAN_HOME')
+    && PHPMAN_HOME !== ''
+    && !str_starts_with(PHPMAN_HOME, '__')) {   // unpatched __PHPMAN_HOME__ placeholder
+    $_config_file = PHPMAN_HOME . '/phpman.config.php';
+}
 if (!file_exists($_config_file)) {
     $home = getenv('HOME') ?: ($_SERVER['HOME'] ?? '');
     $_config_file = $home . '/.phpman/phpman.config.php';

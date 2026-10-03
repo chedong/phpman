@@ -56,6 +56,17 @@ JS_FILE  ?= phpman.js
 GIT_TAG     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "local")
 GIT_VERSION := $(shell (git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0") | sed 's/^v//')
 
+# Release directory name for the atomic symlink release (see deploy/atomic-release.sh).
+# Derived from GIT_TAG so a rollback target is human-readable, sanitized because
+# the tag can carry a "-dirty" suffix and must stay a safe path component.
+#
+# The timestamp is not decoration: the id must be unique per deploy. Keyed on the
+# tag alone, a second deploy of the same commit would resolve to the release that
+# is currently live and rsync into it, updating the running code in place — which
+# is the mixed-version window this whole mechanism exists to remove. It also makes
+# `ls -1dt` ordering (what rollback walks) match deploy order.
+RELEASE_ID  := $(shell printf '%s' '$(GIT_TAG)' | sed 's/[^A-Za-z0-9._-]/_/g')-$(shell date +%Y%m%d-%H%M%S)
+
 # Resolve remote $HOME so config gets the literal path (mod_fcgid may not set HOME)
 STAGING_HOME := $(shell ssh -p $(TEST_PORT) $(TEST_HOST) 'echo $$HOME' 2>/dev/null || echo "")
 DEMO_HOME    := $(shell ssh -p $(DEMO_PORT) $(DEMO_HOST) 'echo $$HOME' 2>/dev/null || echo "")
@@ -73,6 +84,7 @@ test:
 	php -l phpman.config.php.example
 	@for f in src/*.php; do php -l "$$f" >/dev/null || exit 1; done
 	@for f in cli/*.php; do php -l "$$f" >/dev/null || exit 1; done
+	@for f in deploy/*.sh; do sh -n "$$f" || exit 1; done
 	@echo "All PHP files pass syntax check"
 
 # ─── Staging ───
@@ -98,14 +110,18 @@ _deploy-code:
 	@sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|" \
 	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
 	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) > $(FILE).deploy
-	@# CRITICAL: Upload src/ BEFORE phpMan.php. If a new src/ function is added
-	# (e.g. validatePathInfo in v4.9.26) and phpMan.php calls it, deploying
-	# phpMan.php first creates a 30s window where requests 500 with
-	# "Call to undefined function". On 2026-07-13 this caused 2 transient
-	# 500 errors on production. Upload src/ first, then phpMan.php.
-	@rsync -avz -e "ssh -p $(TEST_PORT)" src/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/src/
-	@scp -P $(TEST_PORT) $(FILE).deploy $(TEST_HOST):$(TEST_PATH)/$(FILE)
+	@# Atomic release: both artifacts land in releases/$(RELEASE_ID)/ and are
+	@# then activated by a single rename, so phpMan.php and src/ can never be
+	@# observed out of step. This replaces the old "src/ first, then phpMan.php"
+	@# order, which was correct only for additive changes — a change that REMOVES
+	@# a symbol needs the opposite order, so no fixed order is safe in general.
+	@# See deploy/atomic-release.sh and CHANGELOG 2026-10-02.
+	@ssh -p $(TEST_PORT) $(TEST_HOST) "mkdir -p $(STAGING_HOME)/.phpman_test/releases/$(RELEASE_ID)/src"
+	@rsync -avz -e "ssh -p $(TEST_PORT)" src/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/releases/$(RELEASE_ID)/src/
+	@scp -P $(TEST_PORT) $(FILE).deploy $(TEST_HOST):$(STAGING_HOME)/.phpman_test/releases/$(RELEASE_ID)/$(FILE)
 	@rm -f $(FILE).deploy
+	@rsync -avz -e "ssh -p $(TEST_PORT)" deploy/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/deploy/
+	@ssh -p $(TEST_PORT) $(TEST_HOST) "sh $(STAGING_HOME)/.phpman_test/deploy/atomic-release.sh '$(STAGING_HOME)/.phpman_test' '$(TEST_PATH)' '$(FILE)' '$(RELEASE_ID)'"
 	@rsync -avz -e "ssh -p $(TEST_PORT)" $(CSS_FILE) $(JS_FILE) $(TEST_HOST):$(TEST_PATH)/
 	@rsync -avz -e "ssh -p $(TEST_PORT)" cli/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/cli/
 	@rsync -avz -e "ssh -p $(TEST_PORT)" phpman.config.php.example $(TEST_HOST):$(STAGING_HOME)/.phpman_test/
@@ -162,25 +178,25 @@ staging-reindex: test _deploy-code
 
 # ─── Production ───
 
-# Internal: push code + CSS to production, with backup
+# Internal: push code + CSS to production as an atomic release
 _release-code:
 	@echo "=== Deploying $(GIT_TAG) ==="
-	@echo "=== Preparing production server ==="
-	@TIMESTAMP=$$(date +%Y%m%d-%H%M%S); \
-		ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-			"mkdir -p \"\$$HOME/.phpman/backups\" && cp $(DEMO_PATH)/$(FILE) \"\$$HOME/.phpman/backups/$(FILE).$${TIMESTAMP}.bak\" 2>/dev/null || true"
-	@echo "=== Pruning old backups (keeping last 5) ==="
-	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-			"ls -1t \"\$$HOME/.phpman/backups/$(FILE).\"*.bak 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true"
-	@# Patch placeholders in phpMan.php and upload (never touches local FILE)
+	@# Patch placeholders in phpMan.php (never touches local FILE)
 	@sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(DEMO_HOME)/.phpman');|" \
 	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
 	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) > $(FILE).deploy
-	@# CRITICAL: Upload src/ BEFORE phpMan.php. See _deploy-code for the
-	# 2026-07-13 production incident that produced 2 transient 500s.
-	@rsync -avz -e "ssh -p $(DEMO_PORT)" src/ $(DEMO_HOST):$(DEMO_HOME)/.phpman/src/
-	@scp -P $(DEMO_PORT) $(FILE).deploy $(DEMO_HOST):$(DEMO_PATH)/$(FILE)
+	@# Atomic release: upload both artifacts into releases/$(RELEASE_ID)/, then
+	@# activate them with a single rename, so no request can observe phpMan.php
+	@# and src/ from different versions. See deploy/atomic-release.sh for the two
+	@# production incidents (2026-07-13 additive, 2026-10-02 removal) that no
+	@# fixed upload order could fix. Kept releases (5) ARE the rollback targets,
+	@# which is why the old .bak backup/prune steps are gone.
+	@ssh -p $(DEMO_PORT) $(DEMO_HOST) "mkdir -p $(DEMO_HOME)/.phpman/releases/$(RELEASE_ID)/src"
+	@rsync -avz -e "ssh -p $(DEMO_PORT)" src/ $(DEMO_HOST):$(DEMO_HOME)/.phpman/releases/$(RELEASE_ID)/src/
+	@scp -P $(DEMO_PORT) $(FILE).deploy $(DEMO_HOST):$(DEMO_HOME)/.phpman/releases/$(RELEASE_ID)/$(FILE)
 	@rm -f $(FILE).deploy
+	@rsync -avz -e "ssh -p $(DEMO_PORT)" deploy/ $(DEMO_HOST):$(DEMO_HOME)/.phpman/deploy/
+	@ssh -p $(DEMO_PORT) $(DEMO_HOST) "sh $(DEMO_HOME)/.phpman/deploy/atomic-release.sh '$(DEMO_HOME)/.phpman' '$(DEMO_PATH)' '$(FILE)' '$(RELEASE_ID)'"
 	@rsync -avz -e "ssh -p $(DEMO_PORT)" $(CSS_FILE) $(JS_FILE) $(DEMO_HOST):$(DEMO_PATH)/
 	@rsync -avz -e "ssh -p $(DEMO_PORT)" cli/ $(DEMO_HOST):$(DEMO_HOME)/.phpman/cli/
 	@rsync -avz -e "ssh -p $(DEMO_PORT)" phpman.config.php.example $(DEMO_HOST):$(DEMO_HOME)/.phpman/
@@ -249,18 +265,18 @@ reindex-staging:
 
 # ─── Rollback ───
 
+# Flip production back to the previous release. Releases are the rollback
+# targets now (see deploy/atomic-release.sh): the entry script and src/ are
+# symlinks into releases/<id>/, so this is the same atomic rename a deploy uses.
+# Copying a file over the entry script — what this target used to do — would
+# write *through* the symlink and corrupt the current release instead of
+# switching it. STEP=n rolls back n releases; default 1.
+STEP ?= 1
+
 rollback:
-	@LATEST_BACKUP=$$(ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"ls -1t \"\$$HOME/.phpman/backups/$(FILE).\"*.bak 2>/dev/null | head -1"); \
-	if [ -z "$$LATEST_BACKUP" ]; then \
-		echo "ERROR: No backup found in ~/.phpman/backups"; \
-		exit 1; \
-	fi; \
-	echo "=== Restoring: $$LATEST_BACKUP ==="; \
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"cp $$LATEST_BACKUP $(DEMO_PATH)/$(FILE)"; \
-	echo "=== Rolled back to: $$(basename $$LATEST_BACKUP) ==="; \
-	echo "Verify: $(DEMO_URL)"
+	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
+		"sh $(DEMO_HOME)/.phpman/deploy/rollback.sh '$(DEMO_HOME)/.phpman' '$(DEMO_PATH)' '$(FILE)' '$(STEP)'"
+	@echo "Verify: $(DEMO_URL)"
 
 verify:
 	@echo "=== Staging ==="
