@@ -24,6 +24,7 @@
 #   $PHP_HOME/releases/<id>/src/
 #   $PHP_HOME/current -> releases/<id>     swapped by this script
 #   $PHP_HOME/src     -> current/src       so the CLI follows the same release
+#   $PHP_HOME/phpMan.php -> current/phpMan.php   so the test suite runs from here
 #   $DOCROOT/phpMan.php -> $PHP_HOME/current/phpMan.php
 #
 # The web entry script resolves its own directory (PHP resolves __DIR__ through
@@ -58,16 +59,23 @@ chmod 644 "$REL/$ENTRY"
 ln -sfn "releases/$ID" "$PHP_HOME/.current.tmp"
 mv -T "$PHP_HOME/.current.tmp" "$PHP_HOME/current"
 
-# 2. Put $PHP_HOME/src on the same release. The web path does not need this —
-#    it resolves src/ next to the entry script — but the CLI loads
-#    $PHP_HOME/src, so without this the CLI would keep running the old code and
-#    silently drift from the web. Runs once; afterwards it is already a symlink.
-if [ ! -L "$PHP_HOME/src" ]; then
-    if [ -e "$PHP_HOME/src" ]; then
-        mv "$PHP_HOME/src" "$PHP_HOME/src.pre-symlink.$(date +%Y%m%d-%H%M%S)"
+# 2. Point the install home's own copies at the current release. The web path
+#    needs neither — the entry script resolves src/ next to itself — but two
+#    other things load them from $PHP_HOME: the CLI loads $PHP_HOME/src, and the
+#    test suite requires $PHP_HOME/phpMan.php (test/unit/*.php do
+#    `require __DIR__ . '/../../phpMan.php'`, which under the release layout
+#    resolves into releases/<id>/ and fails). Without them the CLI keeps running
+#    the old code, silently drifting from the web, and the suite cannot run from
+#    the install home at all. Both are relative links through `current`, so they
+#    follow every release and this has to run only once.
+for f in src "$ENTRY"; do
+    if [ ! -L "$PHP_HOME/$f" ]; then
+        if [ -e "$PHP_HOME/$f" ]; then
+            mv "$PHP_HOME/$f" "$PHP_HOME/$f.pre-symlink.$(date +%Y%m%d-%H%M%S)"
+        fi
+        ln -s "current/$f" "$PHP_HOME/$f"
     fi
-    ln -s current/src "$PHP_HOME/src"
-fi
+done
 
 # 3. Point the web entry script at the current release, same atomic swap. The
 #    temp name ends in .tmp so the web server will not execute it as PHP if a
