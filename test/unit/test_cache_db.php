@@ -277,6 +277,48 @@ echo "\n--- PRAGMA synchronous is NORMAL ---\n";
 $synchronous = $db->querySingle("PRAGMA synchronous", false);
 assert_equals(1, (int)$synchronous, "PRAGMA synchronous = NORMAL (1)");
 
+// ─── Migration from the immediately-previous schema ───
+// A migration must run *without* destroying the rows it is migrating. The
+// "unknown future schema" guard is what makes that easy to get wrong: it used
+// to read `>= 7`, which was only ever reachable above 7 because the surrounding
+// guard excludes equality — so bumping CACHE_SCHEMA_VERSION to 8 silently made
+// it reachable for a database at exactly 7, which then had the v7→v8 migration
+// applied and every row deleted in the same pass. Pin the whole ladder.
+echo "\n--- v(N-1) -> v(N) migration preserves rows ---\n";
+cacheDb(true);     // drop the singleton so the next call re-reads from disk
+cleanupTmpDir();   // which also removes the directory itself
+if (!is_dir($tmpDir)) mkdir($tmpDir, 0755, true);
+
+$prevVersion = (int)CACHE_SCHEMA_VERSION - 1;
+$raw = new SQLite3(PHPMAN_CACHE_DB);
+$raw->exec("CREATE TABLE cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, mode TEXT NOT NULL, name TEXT NOT NULL,
+    section TEXT NOT NULL DEFAULT '', title TEXT, format TEXT NOT NULL DEFAULT 'raw',
+    content BLOB, content_len INTEGER DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'found' CHECK(status IN ('found','not_found')),
+    ttl INTEGER NOT NULL DEFAULT 0, hits INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    UNIQUE(mode, name, section, format))");
+$raw->exec("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)");
+$raw->exec("INSERT INTO meta (key, value) VALUES ('schema_version', '$prevVersion')");
+for ($i = 0; $i < 50; $i++) {
+    $raw->exec("INSERT INTO cache (mode, name, section, format, content, content_len, status, ttl)
+                VALUES ('man', 'page$i', '1', 'html', 'x', 1, 'found', 86400)");
+}
+$raw->close();
+
+$migrated = cacheDb();
+$afterRows = (int)$migrated->querySingle("SELECT COUNT(*) FROM cache");
+$afterVer = $migrated->querySingle("SELECT value FROM meta WHERE key='schema_version'");
+assert_equals(50, $afterRows, "migration from v$prevVersion preserved all 50 rows (not deleted)");
+assert_equals(CACHE_SCHEMA_VERSION, $afterVer, "meta.schema_version advanced to " . CACHE_SCHEMA_VERSION);
+$hasRv = (int)$migrated->querySingle(
+    "SELECT COUNT(*) FROM pragma_table_info('cache') WHERE name='renderer_version'");
+assert_equals(1, $hasRv, "renderer_version column exists after migration");
+$atZero = (int)$migrated->querySingle("SELECT COUNT(*) FROM cache WHERE renderer_version = 0");
+assert_equals(50, $atZero, "migrated rows default to renderer_version 0, so they read as stale");
+
 // Clean up
 cleanupTmpDir();
 

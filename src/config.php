@@ -134,11 +134,35 @@ if (!defined('PHPMAN_BACKUP_DIR')) {
 // Fixed filenames under derived dirs (not configurable)
 define('PHPMAN_CACHE_DB', PHPMAN_CACHE_DIR . '/phpman_cache.db');
 define('PHPMAN_LOG_FILE', PHPMAN_LOG_DIR . '/phpman_error.log');
-// Bumped to 7 when cache.title was added back (v4.11.4) — cache_fts has named
+// Bumped to 7 when cache.title was added back — cache_fts has named
 // that column since it was created, and, being an external-content table, reads
 // it back from cache. Read by cacheDb() for the central table and, since shards
 // have no meta table, by pageCacheDb() via PRAGMA user_version.
-define('CACHE_SCHEMA_VERSION', '7');
+// Bumped to 8 when cache.renderer_version was added (see RENDERER_VERSION).
+define('CACHE_SCHEMA_VERSION', '8');
+
+// RENDERER_VERSION — bump this by hand whenever a change alters the *rendered
+// output* of a page (formatForOutput(), the HTML/markdown/JSON renderers, the
+// OSC-8 link handling). PageCache::get() treats any row written by a different
+// version as a miss, so a bump invalidates stale renders lazily: each page is
+// re-rendered on its next request and the row overwritten in place. Nothing has
+// to be purged by hand, and there is no re-render herd, because the whole cache
+// is never dropped at once.
+//
+// This exists because the page cache stores finished output under a 210-day TTL
+// (PHPMAN_CACHE_TTL_FOUND), so a renderer fix otherwise never reaches a page
+// that was already cached — which is exactly what happened to the OSC-8 and
+// JSON-markdown fixes before v4.11.3, and needed a 1,703-row manual purge.
+//
+// Do NOT confuse this with CACHE_SCHEMA_VERSION, which describes the *shape* of
+// the cache tables: a schema bump DELETEs every row. Do not auto-derive this
+// from a deploy stamp or a source hash either — that would invalidate on every
+// deploy, including ones that cannot change a single byte of output.
+//
+// History to avoid repeating: schema v5→v6 dropped cache.generator_version,
+// which held GIT_DESCRIBE on every set(). Nothing ever read it back, so it
+// invalidated nothing. A version is only worth storing if get() filters on it.
+define('RENDERER_VERSION', 1);
 
 // PHPMAN_VERSION — numeric version (e.g. "4.9.19").
 // Set by Makefile in phpMan.php at deploy time; provide fallback for CLI scripts.

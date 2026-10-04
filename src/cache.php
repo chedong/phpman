@@ -139,6 +139,7 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
                         CHECK(status IN ('found','not_found')),
             ttl         INTEGER NOT NULL DEFAULT 0,
             hits        INTEGER NOT NULL DEFAULT 0,
+            renderer_version INTEGER NOT NULL DEFAULT 0,
             created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
             updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
             UNIQUE(mode, name, section, format)
@@ -276,8 +277,28 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
                 try { $db->exec("ALTER TABLE cache ADD COLUMN title TEXT"); }
                 catch (\Throwable $e) { /* fresh table, or already added */ }
             }
-            if ((int)$row >= 7) {
-                // Unknown future schema — clear all cached content, keep schema_version
+            if ($row === '7' || (int)$row < 8) {
+                // v7 → v8: add cache.renderer_version. Existing rows default to
+                // 0, which no current RENDERER_VERSION equals, so every row
+                // written before this migration reads as a miss and is
+                // re-rendered on its next request — the invalidation the manual
+                // purge had to do by hand. Rows are overwritten in place by the
+                // UPSERT, so nothing accumulates. Note this deliberately does
+                // NOT delete: unlike the schema migrations above, the point here
+                // is to spread the re-render out over real traffic instead of
+                // dropping 100k+ rows and re-rendering them all at once.
+                try {
+                    $db->exec("ALTER TABLE cache ADD COLUMN renderer_version INTEGER NOT NULL DEFAULT 0");
+                } catch (\Throwable $e) { /* fresh table, or already added */ }
+            }
+            if ((int)$row > (int)CACHE_SCHEMA_VERSION) {
+                // Unknown future schema — clear all cached content, keep schema_version.
+                // Compared against the constant, not a literal: this read `>= 7`
+                // when the version was 7, which was only ever reachable for
+                // versions above 7 because the guard above excludes equality. A
+                // bare bump to 8 would have made it reachable for a database at
+                // exactly 7 — running the v7→v8 migration and then deleting
+                // every row it had just preserved.
                 $db->exec("DELETE FROM cache");
             }
             $db->exec("UPDATE meta SET value = '" . CACHE_SCHEMA_VERSION . "' WHERE key = 'schema_version'");
@@ -377,6 +398,7 @@ function pageCacheDb(string $mode, ?bool $reset = null, bool $create = true): ?S
                         CHECK(status IN ('found','not_found')),
             ttl         INTEGER NOT NULL DEFAULT 0,
             hits        INTEGER NOT NULL DEFAULT 0,
+            renderer_version INTEGER NOT NULL DEFAULT 0,
             created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
             updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
             UNIQUE(mode, name, section, format)
@@ -417,6 +439,16 @@ function pageCacheDb(string $mode, ?bool $reset = null, bool $create = true): ?S
                 try { $db->exec("ALTER TABLE cache ADD COLUMN title TEXT"); }
                 catch (\Throwable $e) { /* fresh shard, or already added */ }
             }
+            if ($shardVersion < 8) {
+                // v7 → v8: add cache.renderer_version. Since v4.11 the page
+                // cache is sharded, so this is where the column actually lives
+                // — the migration in cacheDb() only ever sees the legacy
+                // central table. See that block for why existing rows default
+                // to 0 on purpose and are not deleted.
+                try {
+                    $db->exec("ALTER TABLE cache ADD COLUMN renderer_version INTEGER NOT NULL DEFAULT 0");
+                } catch (\Throwable $e) { /* fresh shard, or already added */ }
+            }
             $db->exec('PRAGMA user_version = ' . (int)CACHE_SCHEMA_VERSION);
         }
     }
@@ -455,14 +487,22 @@ class PageCache {
     public function get(string $mode, string $name, string $section, string $format): ?string {
         $db = $this->dbFor($mode);
         if (!$db) return null;
+        // renderer_version is part of the lookup, not just a column we write:
+        // a row produced by a different renderer reads as a miss, so the caller
+        // regenerates and set() overwrites it in place. Without this filter the
+        // column would be exactly the dead weight cache.generator_version was
+        // (schema v5→v6) — written on every set(), consulted by nobody, and
+        // therefore unable to invalidate anything.
         $stmt = $db->prepare(
             "SELECT id, content, status, ttl, updated_at FROM cache
-             WHERE mode = :mode AND name = :name AND section = :section AND format = :format"
+             WHERE mode = :mode AND name = :name AND section = :section AND format = :format
+               AND renderer_version = :rv"
         );
         $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
         $stmt->bindValue(':name', $name, SQLITE3_TEXT);
         $stmt->bindValue(':section', $section, SQLITE3_TEXT);
         $stmt->bindValue(':format', $format, SQLITE3_TEXT);
+        $stmt->bindValue(':rv', RENDERER_VERSION, SQLITE3_INTEGER);
         $result = $stmt->execute();
         $row = $result->fetchArray(SQLITE3_ASSOC);
         $result->finalize();
@@ -520,8 +560,8 @@ class PageCache {
         // UPSERT: single INSERT ... ON CONFLICT DO UPDATE replaces SELECT-then-UPDATE/INSERT.
         // Eliminates the SELECT round-trip and the SELECT→INSERT race window.
         $stmt = $db->prepare(
-            "INSERT INTO cache (mode, name, section, title, format, content, content_len, status, ttl, created_at, updated_at)
-             VALUES (:mode, :name, :section, :title, :format, :content, :content_len, :status, :ttl,
+            "INSERT INTO cache (mode, name, section, title, format, content, content_len, status, ttl, renderer_version, created_at, updated_at)
+             VALUES (:mode, :name, :section, :title, :format, :content, :content_len, :status, :ttl, :rv,
                      strftime('%s','now'), strftime('%s','now'))
              ON CONFLICT(mode, name, section, format) DO UPDATE SET
                  title = excluded.title,
@@ -529,6 +569,7 @@ class PageCache {
                  content_len = excluded.content_len,
                  status = excluded.status,
                  ttl = excluded.ttl,
+                 renderer_version = excluded.renderer_version,
                  updated_at = strftime('%s','now')"
         );
         $stmt->bindValue(':mode', $mode, SQLITE3_TEXT);
@@ -540,6 +581,7 @@ class PageCache {
         $stmt->bindValue(':content_len', $contentLen, SQLITE3_INTEGER);
         $stmt->bindValue(':status', $status, SQLITE3_TEXT);
         $stmt->bindValue(':ttl', $ttl, SQLITE3_INTEGER);
+        $stmt->bindValue(':rv', RENDERER_VERSION, SQLITE3_INTEGER);
 
         // The row's id has to be looked up rather than read from
         // last_insert_rowid(): the UPSERT's DO UPDATE branch does not update it,
@@ -626,7 +668,12 @@ class PageCache {
     }
 
     public function stats(): array {
-        $total = 0; $found = 0; $notFound = 0; $totalHits = 0; $dbSize = 0;
+        $total = 0; $found = 0; $notFound = 0; $totalHits = 0; $dbSize = 0; $stale = 0;
+        // Rows left behind by an earlier renderer. They are invisible to get()
+        // and get overwritten in place as their pages are next requested, so
+        // this drains to 0 on its own — but seeing it drain is the only way to
+        // tell a RENDERER_VERSION bump actually took effect.
+        $staleWhere = "SELECT COUNT(*) FROM cache WHERE renderer_version != " . (int)RENDERER_VERSION;
         foreach (pageCacheModes() as $mode) {
             // Ask pageCacheDb() rather than testing the path: it returns null for
             // a shard that has never been written (so reporting cannot create
@@ -640,6 +687,7 @@ class PageCache {
                 $found += (int)$shard->querySingle("SELECT COUNT(*) FROM cache WHERE status='found'");
                 $notFound += (int)$shard->querySingle("SELECT COUNT(*) FROM cache WHERE status='not_found'");
                 $totalHits += (int)($shard->querySingle("SELECT SUM(hits) FROM cache") ?: 0);
+                $stale += (int)$shard->querySingle($staleWhere);
                 $path = pageCachePath($mode);
                 if (file_exists($path)) $dbSize += filesize($path);
             } catch (\Throwable $e) {}
@@ -650,6 +698,7 @@ class PageCache {
                 $found += (int)$this->db->querySingle("SELECT COUNT(*) FROM cache WHERE status='found'");
                 $notFound += (int)$this->db->querySingle("SELECT COUNT(*) FROM cache WHERE status='not_found'");
                 $totalHits += (int)($this->db->querySingle("SELECT SUM(hits) FROM cache") ?: 0);
+                $stale += (int)$this->db->querySingle($staleWhere);
             } catch (\Throwable $e) {}
             if (file_exists(PHPMAN_CACHE_DB)) $dbSize += filesize(PHPMAN_CACHE_DB);
         }
@@ -660,6 +709,7 @@ class PageCache {
             'not_found' => (int)$notFound,
             'total_hits' => (int)$totalHits,
             'db_size' => $dbSize,
+            'stale' => (int)$stale,
         ];
     }
 

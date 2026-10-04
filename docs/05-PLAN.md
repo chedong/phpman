@@ -33,7 +33,8 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 > **v4.9.0** (2026-06-27), **v4.9.26** (2026-07-24 — AdSense), **v4.10.0**
 > (2026-08-08 — LLM enhancement removed), **v4.11.0** (2026-09-24 — per-mode
 > cache sharding, JSON/MCP payload limits), **v4.11.1** (2026-09-26 — LLM-era
-> cleanup). **Current release: v4.11.1.**
+> cleanup). **v4.11.3** is in progress (2026-10-04 — October issue sweep,
+> renderer-versioned cache invalidation); **current release: v4.11.2.**
 
 ---
 
@@ -126,6 +127,47 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 **Phase 4: Code split** (planned)
 - `src/Source/` + `src/Formatter/` + `src/Cache/` + `src/Config/`
 - Single-file entry point preserved
+
+### v4.11.3 — October 2026 issue sweep (in progress, 2026-10-04)
+
+Every open issue was verified against the code before being fixed, and several
+turned out differently from their own descriptions — the notes below record what
+was actually true, which is why this section is longer than the diff.
+
+**P0 — live damage**
+
+- **`cache_fts` was indexed under the wrong rowid (#229)** — `syncFts()` took the rowid from `lastInsertRowID()`, but an UPSERT's `ON CONFLICT DO UPDATE` branch does not update it: a fresh connection returns `0`, a long-lived one returns some earlier INSERT's id. `cache_fts` is an external-content table (`content_rowid='id'`), so rowid `0` makes any `MATCH` raise `fts5: missing row 0 from content table`. The web SAPI is CGI, so every request was a fresh connection and every one hit the `0` case. Fixed with an explicit `SELECT id` (not `RETURNING`, which needs SQLite 3.35 while `install.sh` supports PHP 7.2+). The existing overwrite test could not catch it — the INSERT immediately before it was the same row, so the stale id happened to be correct.
+  **The repair is not covered by `make reindex`:** `cli/build-index.php` rebuilds `search_fts` only, and nothing else in the codebase touches `cache_fts`. Production's shards needed `INSERT INTO cache_fts(cache_fts) VALUES('rebuild')` per shard, run *after* the stale-row purge below (deleting rows orphans index rowids).
+- **markdown had no output cap (#227)** — json and mcp had payload limits; markdown did not, and the body was concatenated in full before `gzcompress`. A synthetic 52.7MB page died with `Allowed memory size exhausted`. An OOM kill writes no PHP fatal, so the request left no trace — which is why the 5xx investigation had no log evidence. Cap is 24MB, above every page that exists today. HTML is deliberately untouched: it wraps lines in `<pre>`, where cutting mid-line leaves unclosed `<b>`/`<u>`/`<a>` and breaks the XHTML purity `AGENTS.md` requires.
+
+**Cache invalidation — the gap that hid the fixes above**
+
+- **`cache.renderer_version`** — the page cache stores *finished* output under a 210-day TTL, so a renderer fix never reached an already-cached page. Deploying the OSC-8 and JSON-markdown fixes changed nothing on production until **1,703 rows were located and deleted by hand** (1,285 carrying a terminal escape, 418 json rows still holding markdown link syntax). `RENDERER_VERSION` is now written on every `set()` and is part of `get()`'s `WHERE` clause, so a row from a different renderer reads as a miss and re-renders on its next request, overwriting itself in place. Nothing needs purging and there is no re-render herd, unlike a `CACHE_SCHEMA_VERSION` bump, which deletes everything at once. Schema 7 → 8; existing rows default to `0` and drain gradually through real traffic. `make cache-stats` reports a `stale` count per shard.
+  **Why this is not a repeat of `cache.generator_version`** (dropped in schema v5→v6): that column stored `GIT_DESCRIBE` on every `set()` and nothing ever read it, so it invalidated nothing. A version is only worth storing if `get()` filters on it.
+  **Surveying the cache needs care:** in `json` rows a terminal escape is stored as the six-character sequence `\u001b`, not the raw byte, so a raw-byte search reports zero. Rows must be `json_decode`d before searching.
+
+**P1 — operational correctness**
+
+- **Cache sharding tooling (#228)** — `rm -f phpman_cache.db*` matches the central file and its `-wal`/`-shm` but **no shard at all** (the names diverge at `_` vs `.`), so `make cache-flush` had been reporting success while leaving all six shards in place. Added `cli/cache.php` (`stats` | `flush`) and a `$create = false` mode on `pageCacheDb()`, so counting no longer materialises the six empty databases it was reporting on.
+- **`getValidInfoFiles()` hardcoded `/usr/share/info` (#234)** — on any non-standard prefix the info index linked to pages that do not exist; with `$validFiles` empty the json/mcp paths dropped every entry, leaving the whole index blank. Now a discovery union (`INFOPATH`, `/usr/local/share/info`, `/usr/share/info`, `dirname(info --where dir)`) with a `$filtering` guard that preserves the old behaviour when nothing is discovered.
+- **`site_stats` (#223)** — closed `NOT_PLANNED`, same as its sibling #222. The design lives in `06-ANALYTICS.md`; phpMan carries no code for it.
+
+**P2 — correctness and hygiene**
+
+- **canonical scheme under a reverse proxy (#233)** — `baseUrl()` honoured the configured *host* but always re-derived the *scheme* from the request, so an `https://` install behind a TLS-terminating proxy emitted `http://` canonicals and JSON-LD. The issue pointed at `getSafeHost()`, which is the wrong function — it returns `host[:port]` only and its callers pair it with their own scheme. Not a live bug on this deployment (DreamHost terminates TLS directly), so this is a portability fix.
+- **MCP `cli_help` paid for a TLDR fetch it could not use (#235)** — `buildJsonData()` injected the TLDR before checking whether the page had sections, and a cache miss costs up to four external requests at 5s each. Also fixed the TLDR read filter, which applied the 7-month `PHPMAN_CACHE_TTL_FOUND` to `not_found` rows, so a nonexistent command stayed "not found" for months.
+- **JSON `sections[].content` carried markdown link syntax (#236)** — `cleanTerminalOutput()` emits `[text](uri)` for groff OSC 8 hyperlinks and the JSON path reused it. The function now takes a `$linkStyle`; plain keeps the link text and drops the target.
+- **`install.sh` never checked mbstring (#230)** — a hard dependency (HTML rendering and the search index call `mb_*` unguarded), so a host without it fatals during installation, earlier than the issue claimed.
+- **`deploy/*.sh` assumed GNU `mv` (#232)** — `mv -T` is GNU-only. Every call site runs on the Linux server, so this never fired; the scripts now fail with a clear message instead of a confusing one if they ever run on BSD/macOS.
+- **`make staging-reindex` kept the pre-split sitemap form (#231)** — #225 split the sitemap and updated three of the four targets; this was the one it missed.
+- **Docs drift (#237)** — `mcp` was listed as a URL-selectable format; it is an internal rendering core `handleMcp()` calls. `PHPMAN_OUTPUT_FORMATS` has only `html`/`markdown`/`json`. Emoji cache rows are inert.
+- **17 test bootstraps (#221)** — **deliberately not changed.** The issue proposed `require PHPMAN_HOME . '/src/bootstrap.php'`, which fatals: `PHPMAN_HOME` is defined only by `phpMan.php:29`, while `src/config.php` uses the raw constant unguarded. The §v4.4 text was corrected to match reality instead.
+
+**Also in this release**
+
+- **Deploys are atomic** — `deploy/atomic-release.sh` uploads into `~/.phpman/releases/<tag>/` and flips one `current` symlink. The rule it replaces ("upload `src/` before `phpMan.php`") was only correct in one direction and is exactly wrong for a removal — it put production into ~20s of `Undefined constant "CACHE_FORMAT_EMOJI_HTML"` fatals on 2026-10-02. `make rollback` flips `current` back a release.
+- **Foreign `Host` header reached the canonical URL and JSON-LD** — `getSafeHost()` accepted any *well-formed* `HTTP_HOST`, and `evil.com` is well-formed. The configured `PHPMAN_BASE_URL` now decides the host.
+- **`cleanTerminalOutput()` rewrites in place** — a by-value `array $lines` left two copies of the buffer alive at once. Peak on `info py` markdown: 76.0MB → 60.0MB, output byte-identical.
 
 ### v4.11 — Cache Sharding & Payload Limits (✅ released 2026-09-24; v4.11.1 on 2026-09-26)
 

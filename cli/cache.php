@@ -20,9 +20,11 @@ function shardFiles(string $mode): array {
 }
 
 if ($cmd === 'stats') {
-    printf("%-10s %10s %14s\n", 'shard', 'rows', 'bytes');
-    printf("%-10s %10s %14s\n", str_repeat('-', 10), str_repeat('-', 10), str_repeat('-', 14));
+    printf("renderer_version = %d\n\n", (int)RENDERER_VERSION);
+    printf("%-10s %10s %10s %14s\n", 'shard', 'rows', 'stale', 'bytes');
+    printf("%-10s %10s %10s %14s\n", str_repeat('-', 10), str_repeat('-', 10), str_repeat('-', 10), str_repeat('-', 14));
     $totalRows = 0;
+    $totalStale = 0;
     $totalBytes = 0;
     foreach (pageCacheModes() as $mode) {
         $path = pageCachePath($mode);
@@ -30,17 +32,27 @@ if ($cmd === 'stats') {
         // been written, so stats never creates the thing it is counting. (#228)
         $db = pageCacheDb($mode, null, false);
         if ($db === null) {
-            printf("%-10s %10s %14s\n", $mode, '(absent)', '-');
+            printf("%-10s %10s %10s %14s\n", $mode, '(absent)', '-', '-');
             continue;
         }
         $rows = (int)$db->querySingle("SELECT COUNT(*) FROM cache");
+        // Rows written by an older renderer. Invisible to PageCache::get(), and
+        // overwritten in place as each page is next requested, so this drains on
+        // its own — but it is the only visible sign a RENDERER_VERSION bump took.
+        $stale = (int)$db->querySingle(
+            "SELECT COUNT(*) FROM cache WHERE renderer_version != " . (int)RENDERER_VERSION);
         $bytes = 0;
         foreach (shardFiles($mode) as $f) $bytes += filesize($f);
         $totalRows += $rows;
+        $totalStale += $stale;
         $totalBytes += $bytes;
-        printf("%-10s %10d %14d\n", $mode, $rows, $bytes);
+        printf("%-10s %10d %10d %14d\n", $mode, $rows, $stale, $bytes);
     }
-    printf("%-10s %10d %14d\n", 'TOTAL', $totalRows, $totalBytes);
+    printf("%-10s %10d %10d %14d\n", 'TOTAL', $totalRows, $totalStale, $totalBytes);
+    if ($totalStale > 0) {
+        printf("\n%d row(s) predate renderer %d; each is re-rendered on its next request.\n",
+            $totalStale, (int)RENDERER_VERSION);
+    }
 
     // The central DB is infrastructure, not a page shard: it holds the FTS
     // search index and the TLDR cache. Reported separately so it is never

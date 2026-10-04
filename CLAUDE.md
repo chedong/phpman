@@ -71,6 +71,16 @@ All CLI scripts resolve `PHPMAN_HOME`, then require `src/bootstrap.php` directly
 
 **TLDR** — TLDR cheatsheets are embedded inline in man page detail pages. `fetchOfficialTldr()` fetches from tldr-pages GitHub raw (primary) or cheat.sh (fallback), caches in SQLite `tldr_cache` table under the unified cache TTL (`PHPMAN_CACHE_TTL_FOUND`, default 7 months; set via `PHPMAN_CACHE_TTL_MONTHS`). No LLM/API key needed. The old `/tldr` route is removed.
 
+**Cache invalidation — `RENDERER_VERSION`** — The page cache stores *finished* output under a 210-day TTL (`PHPMAN_CACHE_TTL_FOUND`), so **a renderer fix does not reach a page that is already cached**. That is not hypothetical: the OSC-8 and JSON-markdown fixes were invisible on production until 1,703 rows were found and deleted by hand. `RENDERER_VERSION` (`src/config.php`) is written on every `PageCache::set()` and is part of `PageCache::get()`'s `WHERE` clause, so a row from a different renderer reads as a miss and re-renders on its next request, overwriting itself in place.
+
+**Bump `RENDERER_VERSION` whenever a change alters rendered output** — the HTML/markdown/JSON renderers, `formatForOutput()`, `cleanTerminalOutput()`, OSC-8 link handling. Nothing needs purging and there is no re-render herd; existing rows default to the old version and drain gradually through real traffic. `make cache-stats` shows a `stale` count per shard.
+
+Do **not** confuse this with `CACHE_SCHEMA_VERSION`, which describes the *shape* of the cache tables — a schema bump **deletes every row**. Do not auto-derive `RENDERER_VERSION` from a deploy stamp or source hash either; that would invalidate on every deploy, including ones that cannot change a byte of output.
+
+History not to repeat: schema v5→v6 dropped `cache.generator_version`, which stored `GIT_DESCRIBE` on every `set()` — nothing ever read it, so it invalidated nothing. **A version is only worth storing if `get()` filters on it.**
+
+Surveying the cache needs care too: in `json` rows a terminal escape is stored as the six-character sequence `\u001b`, not the raw byte, so a raw-byte search reports zero — decode before searching.
+
 **Emoji cache rows (inert)** — `emoji_html` / `emoji_md` cache rows predate v4.10, which removed the LLM enhancement layer (`enhanceManPage()`, `callLLM()`, `cleanEmojiHtml()`, `cli/batch-enhance.php`). v5.0 (`5bf0025`) then removed the **read** side too — the default-view fallback, the `/markdown` preference, the `CACHE_FORMAT_EMOJI_*` constants and the never-expire TTL rule — so these rows are now written by nothing and read by nothing. The one surviving reference is the v3→v4 migration's `format NOT IN ('json','search','emoji_md','emoji_html')` preserve list (`src/cache.php`), kept deliberately: rewriting a shipped migration would change what an old database migrating forward today would delete. Historical design lives in git history v4.0–v4.9 and `docs/01-PRODUCT.md` §2.12.
 
 **UX: code blocks + copy button** — External JS `phpman.js` (loaded in `showFooter()`) wraps all `#content-wrap pre` blocks in `<div class="code-block">` with a `📋 Copy` button positioned top-right. Clicking copies the `<code>` (or `<pre>`) textContent to clipboard with `✓ Copied!` feedback. CSS: Tokyo Night `#1f2335` background, `italic` font, rounded border, button hidden until hover (.code-block:hover .copy-btn).

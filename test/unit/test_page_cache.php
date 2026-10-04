@@ -228,6 +228,47 @@ $cache->set('man', 'special', '1', 'html', $specialContent);
 $specialResult = $cache->get('man', 'special', '1', 'html');
 assert_equals($specialContent, $specialResult, "special characters preserved in cache");
 
+// ─── renderer_version invalidation ───
+// The page cache stores finished output under a 210-day TTL, so without a
+// version in the lookup a renderer fix never reaches an already-cached page.
+// get() must therefore treat a row written by a different renderer as a miss.
+echo "\n--- renderer_version invalidation ---\n";
+
+$cache->set('man', 'rv', '1', 'html', 'rendered by the current renderer');
+$db = pageCacheDb('man');
+
+$storedRv = (int)$db->querySingle(
+    "SELECT renderer_version FROM cache WHERE mode='man' AND name='rv' AND section='1' AND format='html'", false);
+assert_equals((int)RENDERER_VERSION, $storedRv, "set() stamps the row with RENDERER_VERSION");
+
+// Age the row the way a deploy with a bumped RENDERER_VERSION would.
+$db->exec("UPDATE cache SET renderer_version = " . ((int)RENDERER_VERSION - 1) .
+          " WHERE mode='man' AND name='rv' AND section='1' AND format='html'");
+$stale = $cache->get('man', 'rv', '1', 'html');
+assert_equals(null, $stale, "get() misses a row written by an older renderer");
+
+// The stale row must still be there — invalidation is a lazy re-render, not a
+// delete, so the whole cache is never dropped at once (no re-render herd).
+$stillThere = (int)$db->querySingle(
+    "SELECT COUNT(*) FROM cache WHERE mode='man' AND name='rv' AND section='1' AND format='html'", false);
+assert_equals(1, $stillThere, "the stale row is left in place to be overwritten, not deleted");
+
+// Re-rendering overwrites it in place on the same key.
+$cache->set('man', 'rv', '1', 'html', 'rendered by the current renderer');
+$refreshed = $cache->get('man', 'rv', '1', 'html');
+assert_equals('rendered by the current renderer', $refreshed, "re-rendering restores the entry");
+$rowsAfter = (int)$db->querySingle(
+    "SELECT COUNT(*) FROM cache WHERE mode='man' AND name='rv' AND section='1' AND format='html'", false);
+assert_equals(1, $rowsAfter, "the overwrite reuses the row — no duplicate accumulates");
+
+// stats() exposes the stale count, the only visible sign a bump took effect.
+$statsRv = $cache->stats();
+assert_equals(true, array_key_exists('stale', $statsRv), "stats() reports a stale count");
+$db->exec("UPDATE cache SET renderer_version = " . ((int)RENDERER_VERSION - 1) .
+          " WHERE mode='man' AND name='rv' AND section='1' AND format='html'");
+$statsStale = $cache->stats();
+assert_equals(1, $statsStale['stale'], "stats() counts rows from an older renderer");
+
 // Clean up
 cleanupTmpDir();
 
