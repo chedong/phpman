@@ -55,15 +55,14 @@ if ($cmd === 'stats') {
     }
 
     // The central DB is infrastructure, not a page shard: it holds the FTS
-    // search index and the TLDR cache. Reported separately so it is never
-    // mistaken for something `flush` may delete.
+    // search index and the TLDR cache, and since v4.11 it has no page-cache
+    // table at all. Reported separately so it is never mistaken for something
+    // `flush` may delete.
     $centralPath = PHPMAN_CACHE_DB;
     if (file_exists($centralPath)) {
         $centralBytes = 0;
         foreach (glob($centralPath . '*') ?: [] as $f) $centralBytes += filesize($f);
-        $central = cacheDb();
-        $rows = $central ? (int)$central->querySingle("SELECT COUNT(*) FROM cache") : 0;
-        printf("\ncentral (search index + tldr, not flushed): %d rows, %d bytes\n", $rows, $centralBytes);
+        printf("\ncentral (search index + tldr, no page cache, not flushed): %d bytes\n", $centralBytes);
     }
     exit(0);
 }
@@ -75,14 +74,11 @@ if ($cmd === 'flush') {
             if (@unlink($f)) $removed++;
         }
     }
-    // Central: drop the legacy page-cache table only. The FTS search index and
-    // the TLDR cache live in the same file and must survive — deleting the file
-    // (what the old target did) threw the search index away with it.
-    $central = cacheDb();
-    if ($central) {
-        try { $central->exec("DELETE FROM cache"); }
-        catch (\Throwable $e) { fwrite(STDERR, "central cache clear failed: {$e->getMessage()}\n"); }
-    }
+    // The central DB is deliberately untouched: it holds the FTS search index
+    // and the TLDR cache, neither of which is page cache, and since v4.11 it has
+    // no `cache` table to clear — the page cache lives entirely in the shards
+    // removed above. (The old target deleted the whole file, which threw the
+    // search index away with it.)
     printf("Flushed %d file(s) across %d shards. Cache rebuilds on next request.\n",
         $removed, count(pageCacheModes()));
     exit(0);

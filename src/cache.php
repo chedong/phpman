@@ -126,41 +126,18 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
     $db->exec('PRAGMA synchronous=NORMAL');
 
     if ($isNew) {
-        $db->exec("CREATE TABLE IF NOT EXISTS cache (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            mode        TEXT NOT NULL,
-            name        TEXT NOT NULL,
-            section     TEXT NOT NULL DEFAULT '',
-            title       TEXT,
-            format      TEXT NOT NULL DEFAULT 'raw',
-            content     BLOB,
-            content_len INTEGER DEFAULT 0,
-            status      TEXT NOT NULL DEFAULT 'found'
-                        CHECK(status IN ('found','not_found')),
-            ttl         INTEGER NOT NULL DEFAULT 0,
-            hits        INTEGER NOT NULL DEFAULT 0,
-            renderer_version INTEGER NOT NULL DEFAULT 0,
-            created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-            updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-            UNIQUE(mode, name, section, format)
-        )");
-
+        // NO page-cache table here. Since v4.11 the page cache is sharded
+        // (phpman_cache_<mode>.db — see pageCacheDb()) and this file holds only
+        // the search/TLDR infrastructure. Creating `cache` here would make a
+        // fresh install diverge from every deployed one: production's central
+        // DB has no such table, so the two paths would disagree about whether
+        // `SELECT ... FROM cache` against the central connection is valid.
         $db->exec("CREATE TABLE IF NOT EXISTS meta (
             key   TEXT PRIMARY KEY,
             value TEXT
         )");
         $db->exec("INSERT OR IGNORE INTO meta (key, value)
                    VALUES ('schema_version', '" . CACHE_SCHEMA_VERSION . "')");
-
-        try {
-            $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS cache_fts
-                       USING fts5(mode, name, section, title,
-                                  tokenize='unicode61',
-                                  content='cache',
-                                  content_rowid='id')");
-        } catch (\Throwable $e) {
-            phpManLog("FTS5 content table: " . $e->getMessage());
-        }
 
         // FTS5 search engine: independent full-text search table (v2)
         try {
@@ -196,25 +173,23 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
         )");
         $db->exec("CREATE INDEX IF NOT EXISTS idx_tldr_cache_fetched
                    ON tldr_cache(fetched_at)");
-
-        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_lookup
-                   ON cache(mode, name, section, format)");
-        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_status
-                   ON cache(status, updated_at)");
-        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_hits
-                   ON cache(hits DESC)");
-        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_expiry
-                   ON cache(updated_at) WHERE ttl > 0");
     } else {
-        // Check schema version — clear cache if mismatch
+        // Migrate the central DB's own tables. Only search_fts and
+        // search_index_meta appear below: every step that touched `cache` has
+        // been removed, because the central DB has no page-cache table to
+        // migrate (see the fresh-DB branch above). Those steps were also the
+        // ones that could throw — an unguarded `DELETE FROM cache` against a
+        // database without that table is a fatal error on the request path,
+        // while the ALTER TABLEs beside them were wrapped. The page cache's
+        // schema now lives in the shards, which carry it in PRAGMA user_version
+        // and migrate it in pageCacheDb().
         $row = $db->querySingle("SELECT value FROM meta WHERE key='schema_version'", false);
         if ($row !== CACHE_SCHEMA_VERSION) {
             // Cascading if blocks (not if/elseif) — each migration runs independently
-            // so a DB at schema v1 upgraded to v5 runs ALL of v1→v2, v2→v3, v3→v4, v4→v5.
+            // so a DB at schema v1 upgraded forward runs ALL the steps it is missing.
 
             if ($row === '1' || (int)$row < 2) {
-                // v1 → v2: add search_fts and search_index_meta, clear search cache
-                $db->exec("DELETE FROM cache WHERE mode='search'");
+                // v1 → v2: add search_fts and search_index_meta
                 try {
                     $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS search_fts
                                USING fts5(
@@ -244,63 +219,17 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
                 }
                 $db->exec("DELETE FROM search_index_meta");
             }
-            if ($row === '3' || (int)$row < 4) {
-                // v3 → v4: per-format caching migration.
-                // Clear all html/markdown/mcp/raw entries; keep only
-                // json/search/emoji. The emoji_* names are left in the
-                // preserve list on purpose: this migration is history, and
-                // rewriting it would change what a v3 database migrating
-                // forward today would delete. Nothing writes emoji_* since
-                // v5.0 removed the LLM subsystem, so the list is inert.
-                $db->exec("DELETE FROM cache WHERE format NOT IN ('json', 'search', 'emoji_md', 'emoji_html')");
-            }
-            if ($row === '5' || (int)$row < 6) {
-                // v5 → v6: drop cache.generator_version. It held the deployed
-                // GIT_DESCRIBE on every set(), but nothing ever read it —
-                // PageCache::get() selects only id/content/status/ttl/updated_at,
-                // and no query in the codebase filtered on it. A column nothing
-                // consults cannot invalidate anything, so it never did the
-                // "which version produced this entry" tracking its comment
-                // claimed; it was dead weight on the hot write path.
-                try { $db->exec("ALTER TABLE cache DROP COLUMN generator_version"); }
-                catch (\Throwable $e) { /* fresh table, or already dropped */ }
-            }
-            if ($row === '6' || (int)$row < 7) {
-                // v6 → v7: add cache.title, which cache_fts has always named.
-                // cache_fts is an external-content FTS5 table (content='cache'),
-                // so it stores no column values of its own — it reads them back
-                // from cache by name. syncFts() indexed a title on every write,
-                // but with no cache.title column to read it from, any query that
-                // touched the column failed with "no such column: T.title"
-                // (COUNT(*), a plain SELECT) — only MATCH worked. The column is
-                // what the virtual table was declared against all along.
-                try { $db->exec("ALTER TABLE cache ADD COLUMN title TEXT"); }
-                catch (\Throwable $e) { /* fresh table, or already added */ }
-            }
-            if ($row === '7' || (int)$row < 8) {
-                // v7 → v8: add cache.renderer_version. Existing rows default to
-                // 0, which no current RENDERER_VERSION equals, so every row
-                // written before this migration reads as a miss and is
-                // re-rendered on its next request — the invalidation the manual
-                // purge had to do by hand. Rows are overwritten in place by the
-                // UPSERT, so nothing accumulates. Note this deliberately does
-                // NOT delete: unlike the schema migrations above, the point here
-                // is to spread the re-render out over real traffic instead of
-                // dropping 100k+ rows and re-rendering them all at once.
-                try {
-                    $db->exec("ALTER TABLE cache ADD COLUMN renderer_version INTEGER NOT NULL DEFAULT 0");
-                } catch (\Throwable $e) { /* fresh table, or already added */ }
-            }
-            if ((int)$row > (int)CACHE_SCHEMA_VERSION) {
-                // Unknown future schema — clear all cached content, keep schema_version.
-                // Compared against the constant, not a literal: this read `>= 7`
-                // when the version was 7, which was only ever reachable for
-                // versions above 7 because the guard above excludes equality. A
-                // bare bump to 8 would have made it reachable for a database at
-                // exactly 7 — running the v7→v8 migration and then deleting
-                // every row it had just preserved.
-                $db->exec("DELETE FROM cache");
-            }
+            // No v3→v8 step. Every one of them only rewrote the central `cache`
+            // table (v3→v4 cleared rows by format; v5→v6, v6→v7 and v7→v8 added
+            // columns), and that table has not existed here since v4.11. A shard
+            // carries the same three columns and migrates them in pageCacheDb().
+            //
+            // The future-schema guard that stood here is gone with them: it was
+            // `DELETE FROM cache` on a database without that table, so a rollback
+            // to older code against a newer central DB raised "no such table"
+            // inside cacheDb() — on the request path, once per request. The
+            // version stamp below still runs, so an older deploy re-stamps the
+            // row and re-migrates on the next forward deploy.
             $db->exec("UPDATE meta SET value = '" . CACHE_SCHEMA_VERSION . "' WHERE key = 'schema_version'");
         }
     }
@@ -384,7 +313,8 @@ function pageCacheDb(string $mode, ?bool $reset = null, bool $create = true): ?S
     $db->exec('PRAGMA synchronous=NORMAL');
 
     if ($isNew) {
-        // Same cache schema as the (legacy) central table, but per-mode.
+        // The page-cache schema. Since v4.11 this lives only here, per mode —
+        // the central DB has no `cache` table at all (see cacheDb()).
         $db->exec("CREATE TABLE IF NOT EXISTS cache (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             mode        TEXT NOT NULL,
@@ -426,25 +356,37 @@ function pageCacheDb(string $mode, ?bool $reset = null, bool $create = true): ?S
         $shardVersion = (int)$db->querySingle('PRAGMA user_version');
         if ($shardVersion < (int)CACHE_SCHEMA_VERSION) {
             if ($shardVersion < 6) {
-                // v5 → v6: drop cache.generator_version. Since v4.11 the page
-                // cache is sharded, so this is where the column actually lives —
-                // the migration in cacheDb() only ever sees the legacy central
-                // table. See that block for why the column was dead.
+                // v5 → v6: drop cache.generator_version. It held the deployed
+                // GIT_DESCRIBE on every set(), but nothing ever read it —
+                // PageCache::get() selects only id/content/status/ttl/updated_at,
+                // and no query filtered on it. A column nothing consults cannot
+                // invalidate anything, so it never did the "which version
+                // produced this entry" tracking its comment claimed; it was dead
+                // weight on the hot write path.
                 try { $db->exec("ALTER TABLE cache DROP COLUMN generator_version"); }
                 catch (\Throwable $e) { /* fresh shard, or already dropped */ }
             }
             if ($shardVersion < 7) {
                 // v6 → v7: add cache.title, the column cache_fts is declared
-                // against and reads back by name. See the cacheDb() block.
+                // against. cache_fts is an external-content FTS5 table
+                // (content='cache'), so it stores no column values of its own —
+                // it reads them back from cache by name. syncFts() indexed a
+                // title on every write, but with no cache.title column to read it
+                // from, any query that touched the column failed with "no such
+                // column: T.title" (COUNT(*), a plain SELECT) — only MATCH
+                // worked.
                 try { $db->exec("ALTER TABLE cache ADD COLUMN title TEXT"); }
                 catch (\Throwable $e) { /* fresh shard, or already added */ }
             }
             if ($shardVersion < 8) {
-                // v7 → v8: add cache.renderer_version. Since v4.11 the page
-                // cache is sharded, so this is where the column actually lives
-                // — the migration in cacheDb() only ever sees the legacy
-                // central table. See that block for why existing rows default
-                // to 0 on purpose and are not deleted.
+                // v7 → v8: add cache.renderer_version. Existing rows default to
+                // 0, which no current RENDERER_VERSION equals, so every row
+                // written before this migration reads as a miss and is
+                // re-rendered on its next request — the invalidation the manual
+                // purge had to do by hand. Rows are overwritten in place by the
+                // UPSERT, so nothing accumulates. Deliberately does NOT delete:
+                // the point is to spread the re-render over real traffic instead
+                // of dropping 100k+ rows and re-rendering them all at once.
                 try {
                     $db->exec("ALTER TABLE cache ADD COLUMN renderer_version INTEGER NOT NULL DEFAULT 0");
                 } catch (\Throwable $e) { /* fresh shard, or already added */ }
@@ -462,18 +404,19 @@ function pageCacheDb(string $mode, ?bool $reset = null, bool $create = true): ?S
  * Since v4.11 the page cache is sharded per mode (see pageCacheDb above).
  */
 class PageCache {
-    private ?SQLite3 $db;
-
-    public function __construct() {
-        // Pre-warm the central connection; per-call page ops use the mode shard
-        // resolved lazily in each method via pageCacheDb($mode).
-        $this->db = cacheDb();
-    }
-
-    /** Resolve the DB shard for a given mode (falls back to central on failure). */
+    /**
+     * Resolve the DB shard for a given mode.
+     *
+     * No central fallback. One used to stand here, handing back cacheDb()'s
+     * connection when a shard could not be opened — but the central DB has had
+     * no page-cache table since v4.11, so that path ran `SELECT ... FROM cache`
+     * against a database without one and raised "no such table" (exceptions are
+     * enabled) instead of degrading. Returning null makes an unopenable shard a
+     * cache miss: get() returns null and set() returns false, so the page is
+     * regenerated rather than the request failing.
+     */
     private function dbFor(string $mode): ?SQLite3 {
-        $shard = pageCacheDb($mode);
-        return $shard !== null ? $shard : $this->db;
+        return pageCacheDb($mode);
     }
 
     /**
@@ -659,11 +602,6 @@ class PageCache {
             try { $shard->exec("DELETE FROM cache"); }
             catch (\Throwable $e) { $ok = false; }
         }
-        // Also clear the legacy central cache table (may hold pre-shard entries)
-        if ($this->db) {
-            try { $this->db->exec("DELETE FROM cache"); }
-            catch (\Throwable $e) { $ok = false; }
-        }
         return $ok;
     }
 
@@ -691,16 +629,6 @@ class PageCache {
                 $path = pageCachePath($mode);
                 if (file_exists($path)) $dbSize += filesize($path);
             } catch (\Throwable $e) {}
-        }
-        if ($this->db) {
-            try {
-                $total += (int)$this->db->querySingle("SELECT COUNT(*) FROM cache");
-                $found += (int)$this->db->querySingle("SELECT COUNT(*) FROM cache WHERE status='found'");
-                $notFound += (int)$this->db->querySingle("SELECT COUNT(*) FROM cache WHERE status='not_found'");
-                $totalHits += (int)($this->db->querySingle("SELECT SUM(hits) FROM cache") ?: 0);
-                $stale += (int)$this->db->querySingle($staleWhere);
-            } catch (\Throwable $e) {}
-            if (file_exists(PHPMAN_CACHE_DB)) $dbSize += filesize(PHPMAN_CACHE_DB);
         }
 
         return [

@@ -23,7 +23,7 @@ CHANGELOG v4.11 (`3d02aee`). Manage both layers with `cli/cache.php` (§10.3).
 
 | Table | Type | Rows (production) | Purpose |
 |---|------|:---:|------|
-| `cache` | Regular | ~38K | Page content cache (man/perldoc/pydoc/ri rendered output). **Legacy in the central file** — since v4.11 the live page cache is in the per-mode shards, which carry this same table. |
+| `cache` | Regular | ~38K | Page content cache (man/perldoc/pydoc/ri rendered output). **Shard-only since v4.11** — the central file has no such table at all; the per-mode shards carry it. |
 | `cache_fts` | FTS5 virtual (content) | — | Cached page title index (linked to cache.id) |
 | `search_fts` | FTS5 virtual (standalone) | 13,835 | Offline full-text search index (man+pydoc+ri) |
 | `search_index_meta` | Regular | 13,835 | Index entry metadata (dedup, sort, stats) |
@@ -33,6 +33,10 @@ CHANGELOG v4.11 (`3d02aee`). Manage both layers with `cli/cache.php` (§10.3).
 ---
 
 ## 2. cache — Page Content Cache
+
+This table exists **only in the per-mode shards** (`phpman_cache_<mode>.db`). The
+central file has no `cache` table: `cacheDb()` does not create one, and its
+migration cascade has no step that touches one.
 
 ### 2.1 Schema
 
@@ -50,6 +54,7 @@ CREATE TABLE IF NOT EXISTS cache (
                     CHECK(status IN ('found','not_found')),
     ttl         INTEGER NOT NULL DEFAULT 0, -- seconds; 0 = never expires
     hits        INTEGER NOT NULL DEFAULT 0, -- cache hit count
+    renderer_version INTEGER NOT NULL DEFAULT 0, -- RENDERER_VERSION that wrote it
     created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
     updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
     UNIQUE(mode, name, section, format)
@@ -67,7 +72,7 @@ CREATE INDEX idx_cache_expiry  ON cache(updated_at) WHERE ttl > 0;
 - **`format` values**: `html`, `markdown`, `json` (the public output formats, `PHPMAN_OUTPUT_FORMATS`) and `search` (search results). `mcp` is deliberately absent — it is an internal rendering core `handleMcp()` calls, not a URL-selectable format.
 - **Compression**: PHP `gzcompress()`, SQLite BLOB storage, ~70% average compression ratio
 - **TTL**: found entries `PHPMAN_CACHE_TTL_FOUND` (default 7 months = 18144000s, override via `PHPMAN_CACHE_TTL_MONTHS`), not_found entries 86400s (1 day) — except `mode='search'`, whose not_found entries also use `PHPMAN_CACHE_TTL_FOUND`. Expired entries auto-deleted on `get()`
-- **Emoji rows are inert**: `emoji_md` / `emoji_html` rows were written with TTL=0 by the LLM enhancement layer, deleted in v4.10.0 (`7740029`). v5.0 (`5bf0025`) removed the **read** side as well, so nothing writes or reads them now. They survive only because the v3→v4 migration's preserve list still names them (see §10.2).
+- **Emoji rows are inert**: `emoji_md` / `emoji_html` rows were written with TTL=0 by the LLM enhancement layer, deleted in v4.10.0 (`7740029`). v5.0 (`5bf0025`) removed the **read** side as well, so nothing writes or reads them now. Their last mention was the v3→v4 migration's preserve list, which has since been removed (see §10.2).
 - **Auto-cleanup**: `cacheOrExecute()` has 1% probability of triggering `DELETE FROM cache WHERE expired`
 - **search mode**: Not written to `cache_fts` index, no hits counting, emits `<meta name="robots" content="noindex">`
 
@@ -207,8 +212,10 @@ Schema version is used to detect upgrades (version mismatch triggers cache clean
 
 The per-mode shards have no `meta` table, so they carry the same number in the SQLite
 header via `PRAGMA user_version`. `pageCacheDb()` reads it on first connection and runs
-its migration there — the `cacheDb()` cascade above only ever sees the legacy central
-table, while since v4.11 the page cache actually lives in the shards.
+its migration there — that ladder is now the **only** place the page-cache columns are
+migrated, because since v4.11 the page cache lives in the shards and the central file
+has no `cache` table. `cacheDb()`'s cascade therefore carries no `cache` step at all;
+it migrates only `search_fts` and `search_index_meta`.
 
 ---
 
@@ -254,7 +261,7 @@ php cli/build-index.php
 
 ### 10.2 Emoji Enhancement (Removed in v4.10)
 
-`cli/batch-enhance.php` was deleted in v4.10.0 (commit `7740029`); v5.0 (`5bf0025`) removed the read side too, so `emoji_md` / `emoji_html` rows are now both written and read by nothing. The one remaining reference is the v3→v4 migration's `format NOT IN ('json','search','emoji_md','emoji_html')` preserve list in `src/cache.php` — kept on purpose, because rewriting a shipped migration would change what an old database migrating forward today would delete. See `docs/01-PRODUCT.md` §2.12.
+`cli/batch-enhance.php` was deleted in v4.10.0 (commit `7740029`); v5.0 (`5bf0025`) removed the read side too, so `emoji_md` / `emoji_html` rows are now both written and read by nothing. Their last reference was the v3→v4 migration's `format NOT IN ('json','search','emoji_md','emoji_html')` preserve list in `src/cache.php`; that migration was removed with the rest of the central DB's `cache` steps (see §2 and §7), so nothing names those formats any more. See `docs/01-PRODUCT.md` §2.12.
 
 ### 10.3 Cache Cleanup
 
@@ -265,14 +272,14 @@ command was the old `make cache-flush`, so it reported success while leaving eve
 shard in place — the reason the CLI exists.
 
 ```bash
-php cli/cache.php stats    # rows + bytes per shard, plus the central file
-php cli/cache.php flush    # delete every shard file; clear the central page table
+php cli/cache.php stats    # rows + bytes per shard, plus the central file's size
+php cli/cache.php flush    # delete every shard file
 ```
 
-`flush` deletes the shard files (`pageCachePath($mode)*`) and then runs
-`DELETE FROM cache` on the **central** file only — it deliberately does not delete
-that file, because the FTS search index and the TLDR cache live in it and would go
-with it. Everything rebuilds on the next request.
+`flush` deletes the shard files (`pageCachePath($mode)*`) and stops there. The
+central file is deliberately left alone: it holds the FTS search index and the TLDR
+cache, and since v4.11 it has no page-cache table to clear. Everything rebuilds on
+the next request.
 
 Both commands are also on the Makefile, which runs them over SSH:
 

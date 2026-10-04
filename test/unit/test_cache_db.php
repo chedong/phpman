@@ -36,10 +36,14 @@ $result = $db->query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     $tables[] = $row['name'];
 }
-assert_equals(true, in_array('cache', $tables), "cache table created");
 assert_equals(true, in_array('meta', $tables), "meta table created");
 assert_equals(true, in_array('search_index_meta', $tables), "search_index_meta table created");
 assert_equals(true, in_array('tldr_cache', $tables), "tldr_cache table created");
+// The central DB is infrastructure only. The page cache is sharded, so a `cache`
+// table here would be a second, divergent home for it — and, because
+// PageCache::dbFor() no longer falls back to the central connection, a table
+// nothing reads.
+assert_equals(false, in_array('cache', $tables), "no cache table in the central DB");
 
 // Verify FTS5 virtual tables
 $ftsTables = [];
@@ -47,8 +51,8 @@ $result = $db->query("SELECT name FROM sqlite_master WHERE type='table' AND name
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     $ftsTables[] = $row['name'];
 }
-assert_equals(true, in_array('cache_fts', $ftsTables), "cache_fts virtual table created");
 assert_equals(true, in_array('search_fts', $ftsTables), "search_fts virtual table created");
+assert_equals(false, in_array('cache_fts', $ftsTables), "no cache_fts virtual table in the central DB");
 
 echo "\n--- Schema version stored correctly ---\n";
 $version = $db->querySingle("SELECT value FROM meta WHERE key='schema_version'", false);
@@ -60,11 +64,8 @@ $result = $db->query("SELECT name FROM sqlite_master WHERE type='index' AND name
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     $indexes[] = $row['name'];
 }
-assert_equals(true, in_array('idx_cache_lookup', $indexes), "idx_cache_lookup created");
-assert_equals(true, in_array('idx_cache_status', $indexes), "idx_cache_status created");
-assert_equals(true, in_array('idx_cache_hits', $indexes), "idx_cache_hits created");
-assert_equals(true, in_array('idx_cache_expiry', $indexes), "idx_cache_expiry created");
 assert_equals(true, in_array('idx_tldr_cache_fetched', $indexes), "idx_tldr_cache_fetched created");
+assert_equals(false, in_array('idx_cache_lookup', $indexes), "no idx_cache_* indexes in the central DB");
 
 // ─── WAL mode ───
 echo "\n--- WAL journal mode enabled ---\n";
@@ -91,32 +92,19 @@ cacheDb(true);
 // Recreate the tmpDir since cacheDb() needs it
 if (!is_dir($tmpDir)) mkdir($tmpDir, 0755, true);
 
-// Create a v1 database manually (without search_fts/search_index_meta)
+// Create a v1 database manually (without search_fts/search_index_meta). No
+// `cache` table: the central DB has none since v4.11, and the v1→v2 step no
+// longer touches one.
 $migDb = new SQLite3(PHPMAN_CACHE_DB);
 $migDb->enableExceptions(true);
-$migDb->exec("CREATE TABLE cache (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    mode TEXT NOT NULL, name TEXT NOT NULL, section TEXT NOT NULL DEFAULT '',
-    format TEXT NOT NULL DEFAULT 'raw', content BLOB, content_len INTEGER DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'found', ttl INTEGER NOT NULL DEFAULT 0,
-    hits INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-    updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-    UNIQUE(mode, name, section, format))");
 $migDb->exec("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)");
 $migDb->exec("INSERT INTO meta VALUES ('schema_version', '1')");
-$migDb->exec("INSERT INTO cache (mode, name, section, format, content, status)
-              VALUES ('search', 'test', '', 'html', 'old search', 'found')");
 $migDb->close();
 
 // Now call cacheDb() — should detect v1 and migrate
 $db = cacheDb();
 $version = $db->querySingle("SELECT value FROM meta WHERE key='schema_version'", false);
 assert_equals(CACHE_SCHEMA_VERSION, $version, "v1 migrated to current schema version");
-
-// Search cache should be cleared during v1→v2 migration
-$searchCount = $db->querySingle("SELECT COUNT(*) FROM cache WHERE mode='search'", false);
-assert_equals(0, (int)$searchCount, "v1→v2: search cache cleared");
 
 // search_fts and search_index_meta should now exist
 $checkFts = $db->querySingle("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='search_fts'", false);
@@ -133,15 +121,6 @@ if (!is_dir($tmpDir)) mkdir($tmpDir, 0755, true);
 // Create a v2 database with existing search data
 $migDb = new SQLite3(PHPMAN_CACHE_DB);
 $migDb->enableExceptions(true);
-$migDb->exec("CREATE TABLE cache (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    mode TEXT NOT NULL, name TEXT NOT NULL, section TEXT NOT NULL DEFAULT '',
-    format TEXT NOT NULL DEFAULT 'raw', content BLOB, content_len INTEGER DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'found', ttl INTEGER NOT NULL DEFAULT 0,
-    hits INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-    updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-    UNIQUE(mode, name, section, format))");
 $migDb->exec("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)");
 $migDb->exec("INSERT INTO meta VALUES ('schema_version', '2')");
 $migDb->exec("CREATE VIRTUAL TABLE search_fts USING fts5(name, section, description, body,
@@ -166,33 +145,27 @@ assert_equals(0, (int)$ftsCount, "v2→v3: search_fts data cleared");
 $metaCount = $db->querySingle("SELECT COUNT(*) FROM search_index_meta", false);
 assert_equals(0, (int)$metaCount, "v2→v3: search_index_meta data cleared");
 
-echo "\n--- Schema migration unknown version: clears all cache ---\n";
+echo "\n--- Unknown future schema: opens without error, re-stamps ---\n";
 cleanupTmpDir();
 cacheDb(true);
 if (!is_dir($tmpDir)) mkdir($tmpDir, 0755, true);
 
+// A central DB written by a *newer* deploy: schema_version ahead of this code,
+// and — because the central DB has no page-cache table since v4.11 — no `cache`
+// table either. The future-schema guard used to run `DELETE FROM cache` here, so
+// rolling back to older code raised "no such table: cache" from inside cacheDb(),
+// once per request. Opening such a DB must now be a no-op apart from re-stamping.
 $migDb = new SQLite3(PHPMAN_CACHE_DB);
 $migDb->enableExceptions(true);
-$migDb->exec("CREATE TABLE cache (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    mode TEXT NOT NULL, name TEXT NOT NULL, section TEXT NOT NULL DEFAULT '',
-    format TEXT NOT NULL DEFAULT 'raw', content BLOB, content_len INTEGER DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'found', ttl INTEGER NOT NULL DEFAULT 0,
-    hits INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-    updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-    UNIQUE(mode, name, section, format))");
 $migDb->exec("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)");
 $migDb->exec("INSERT INTO meta VALUES ('schema_version', '99')");
-$migDb->exec("INSERT INTO cache (mode, name, section, format, status)
-              VALUES ('man', 'test', '1', 'html', 'found')");
 $migDb->close();
 
-$db = cacheDb();
-$cacheCount = $db->querySingle("SELECT COUNT(*) FROM cache", false);
-assert_equals(0, (int)$cacheCount, "unknown schema version → all cache cleared");
+$threw = false;
+try { $db = cacheDb(); } catch (\Throwable $e) { $threw = true; }
+assert_equals(false, $threw, "future-schema central DB opens without throwing");
 $version = $db->querySingle("SELECT value FROM meta WHERE key='schema_version'", false);
-assert_equals(CACHE_SCHEMA_VERSION, $version, "unknown version migrated to current");
+assert_equals(CACHE_SCHEMA_VERSION, $version, "unknown version re-stamped to current");
 
 // ─── PHPMAN_CACHE_DIR not writable ───
 echo "\n--- PHPMAN_CACHE_DIR not writable returns null ---\n";
@@ -255,17 +228,18 @@ try {
 }
 assert_equals(true, $tldrDup, "duplicate tldr_cache command rejected by UNIQUE");
 
-// ─── cache table UNIQUE constraint ───
+// ─── cache table UNIQUE constraint (per-mode shard) ───
+// The central DB has no `cache` table since v4.11, so the constraint is asserted
+// where the table actually lives.
 echo "\n--- cache table UNIQUE constraint on (mode, name, section, format) ---\n";
+$shard = pageCacheDb('man');
+assert_equals(true, $shard instanceof SQLite3, "pageCacheDb('man') returns a shard");
 $cacheDup = true;
 try {
-    $db->exec("INSERT INTO cache (mode, name, section, format, content, status)
-               VALUES ('man', 'ls', '1', 'html', 'dup', 'found')");
-    // This should succeed because it's an INSERT, but the first entry already exists
-    // from PageCache tests above... Actually cacheDb() created a fresh DB, so no
-    // prior entries. Let's try a second insert:
-    $db->exec("INSERT INTO cache (mode, name, section, format, content, status)
-               VALUES ('man', 'ls', '1', 'html', 'dup2', 'found')");
+    $shard->exec("INSERT INTO cache (mode, name, section, format, content, status)
+                  VALUES ('man', 'ls', '1', 'html', 'dup', 'found')");
+    $shard->exec("INSERT INTO cache (mode, name, section, format, content, status)
+                  VALUES ('man', 'ls', '1', 'html', 'dup2', 'found')");
     $cacheDup = false;
 } catch (\Exception $e) {
     $cacheDup = true;
@@ -277,20 +251,20 @@ echo "\n--- PRAGMA synchronous is NORMAL ---\n";
 $synchronous = $db->querySingle("PRAGMA synchronous", false);
 assert_equals(1, (int)$synchronous, "PRAGMA synchronous = NORMAL (1)");
 
-// ─── Migration from the immediately-previous schema ───
-// A migration must run *without* destroying the rows it is migrating. The
-// "unknown future schema" guard is what makes that easy to get wrong: it used
-// to read `>= 7`, which was only ever reachable above 7 because the surrounding
-// guard excludes equality — so bumping CACHE_SCHEMA_VERSION to 8 silently made
-// it reachable for a database at exactly 7, which then had the v7→v8 migration
-// applied and every row deleted in the same pass. Pin the whole ladder.
-echo "\n--- v(N-1) -> v(N) migration preserves rows ---\n";
-cacheDb(true);     // drop the singleton so the next call re-reads from disk
-cleanupTmpDir();   // which also removes the directory itself
+// ─── Migration from the immediately-previous schema (shard ladder) ───
+// A migration must run *without* destroying the rows it is migrating. Since
+// v4.11 the page-cache columns live in the per-mode shards and are migrated by
+// pageCacheDb()'s ladder (keyed on PRAGMA user_version); cacheDb()'s cascade has
+// no `cache` step at all, so this is the ladder that has to hold.
+echo "\n--- Shard v(N-1) -> v(N) migration preserves rows ---\n";
+cacheDb(true);
+pageCacheDb('man', true);  // drop the shard singleton too
+cleanupTmpDir();           // which also removes the directory itself
 if (!is_dir($tmpDir)) mkdir($tmpDir, 0755, true);
 
 $prevVersion = (int)CACHE_SCHEMA_VERSION - 1;
-$raw = new SQLite3(PHPMAN_CACHE_DB);
+$raw = new SQLite3(pageCachePath('man'));
+$raw->enableExceptions(true);
 $raw->exec("CREATE TABLE cache (
     id INTEGER PRIMARY KEY AUTOINCREMENT, mode TEXT NOT NULL, name TEXT NOT NULL,
     section TEXT NOT NULL DEFAULT '', title TEXT, format TEXT NOT NULL DEFAULT 'raw',
@@ -300,22 +274,21 @@ $raw->exec("CREATE TABLE cache (
     created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
     updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
     UNIQUE(mode, name, section, format))");
-$raw->exec("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)");
-$raw->exec("INSERT INTO meta (key, value) VALUES ('schema_version', '$prevVersion')");
+$raw->exec('PRAGMA user_version = ' . $prevVersion);
 for ($i = 0; $i < 50; $i++) {
     $raw->exec("INSERT INTO cache (mode, name, section, format, content, content_len, status, ttl)
                 VALUES ('man', 'page$i', '1', 'html', 'x', 1, 'found', 86400)");
 }
 $raw->close();
 
-$migrated = cacheDb();
+$migrated = pageCacheDb('man');
 $afterRows = (int)$migrated->querySingle("SELECT COUNT(*) FROM cache");
-$afterVer = $migrated->querySingle("SELECT value FROM meta WHERE key='schema_version'");
-assert_equals(50, $afterRows, "migration from v$prevVersion preserved all 50 rows (not deleted)");
-assert_equals(CACHE_SCHEMA_VERSION, $afterVer, "meta.schema_version advanced to " . CACHE_SCHEMA_VERSION);
+$afterVer = (int)$migrated->querySingle('PRAGMA user_version');
+assert_equals(50, $afterRows, "shard migration from v$prevVersion preserved all 50 rows (not deleted)");
+assert_equals((int)CACHE_SCHEMA_VERSION, $afterVer, "shard user_version advanced to " . CACHE_SCHEMA_VERSION);
 $hasRv = (int)$migrated->querySingle(
     "SELECT COUNT(*) FROM pragma_table_info('cache') WHERE name='renderer_version'");
-assert_equals(1, $hasRv, "renderer_version column exists after migration");
+assert_equals(1, $hasRv, "renderer_version column exists after shard migration");
 $atZero = (int)$migrated->querySingle("SELECT COUNT(*) FROM cache WHERE renderer_version = 0");
 assert_equals(50, $atZero, "migrated rows default to renderer_version 0, so they read as stale");
 
