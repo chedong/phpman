@@ -134,12 +134,14 @@ if (!defined('PHPMAN_BACKUP_DIR')) {
 // Fixed filenames under derived dirs (not configurable)
 define('PHPMAN_CACHE_DB', PHPMAN_CACHE_DIR . '/phpman_cache.db');
 define('PHPMAN_LOG_FILE', PHPMAN_LOG_DIR . '/phpman_error.log');
-// Bumped to 7 when cache.title was added back — cache_fts has named
-// that column since it was created, and, being an external-content table, reads
-// it back from cache. Read by cacheDb() for the central table and, since shards
-// have no meta table, by pageCacheDb() via PRAGMA user_version.
-// Bumped to 8 when cache.renderer_version was added (see RENDERER_VERSION).
-define('CACHE_SCHEMA_VERSION', '8');
+// There is no CACHE_SCHEMA_VERSION. Both cache DBs create their schema with
+// CREATE ... IF NOT EXISTS on every open, so an additive change needs no
+// migration; and since the pre-sharding DB is gone and rollback to older code is
+// not supported, there is no older shape to migrate from. The version stamps
+// that used to record it (meta.schema_version, PRAGMA user_version) existed so a
+// rolled-back deploy could re-stamp and re-migrate — that is the rollback
+// provision, and it is gone. For invalidating cached *output*, see
+// RENDERER_VERSION below; that one is read back, which is the whole difference.
 
 // RENDERER_VERSION — bump this by hand whenever a change alters the *rendered
 // output* of a page (formatForOutput(), the HTML/markdown/JSON renderers, the
@@ -154,10 +156,9 @@ define('CACHE_SCHEMA_VERSION', '8');
 // that was already cached — which is exactly what happened to the OSC-8 and
 // JSON-markdown fixes before v4.11.3, and needed a 1,703-row manual purge.
 //
-// Do NOT confuse this with CACHE_SCHEMA_VERSION, which describes the *shape* of
-// the cache tables: a schema bump DELETEs every row. Do not auto-derive this
-// from a deploy stamp or a source hash either — that would invalidate on every
-// deploy, including ones that cannot change a single byte of output.
+// Do NOT auto-derive this from a deploy stamp or a source hash: that would
+// invalidate on every deploy, including ones that cannot change a single byte of
+// output.
 //
 // History to avoid repeating: schema v5→v6 dropped cache.generator_version,
 // which held GIT_DESCRIBE on every set(). Nothing ever read it back, so it

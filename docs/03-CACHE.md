@@ -28,15 +28,15 @@ CHANGELOG v4.11 (`3d02aee`). Manage both layers with `cli/cache.php` (§10.3).
 | `search_fts` | FTS5 virtual (standalone) | 13,835 | Offline full-text search index (man+pydoc+ri) |
 | `search_index_meta` | Regular | 13,835 | Index entry metadata (dedup, sort, stats) |
 | `tldr_cache` | Regular | On demand | TLDR cheatsheet cache (unified TTL, default 7 months) |
-| `meta` | Regular | 3 | Schema version, index count, update time |
+| `meta` | Regular | 3 | Index count, update time |
 
 ---
 
 ## 2. cache — Page Content Cache
 
 This table exists **only in the per-mode shards** (`phpman_cache_<mode>.db`). The
-central file has no `cache` table: `cacheDb()` does not create one, and its
-migration cascade has no step that touches one.
+central file has no `cache` table: `cacheDb()` does not create one, and it has no
+migration step that touches one.
 
 ### 2.1 Schema
 
@@ -203,19 +203,22 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 
 -- Current entries:
--- schema_version     = '7'
--- search_index_count = '13849'
+-- search_index_count   = '13849'
 -- search_index_updated = '2026-06-08T...'
 ```
 
-Schema version is used to detect upgrades (version mismatch triggers cache cleanup).
+There is no `schema_version` entry and no `CACHE_SCHEMA_VERSION` constant. Both cache
+DBs create their schema with `CREATE ... IF NOT EXISTS` on every open, so an additive
+change needs no migration; and since the pre-sharding central DB is gone and rollback to
+older code is not supported, there is no older shape to migrate *from*. The version
+stamps that recorded it — `meta.schema_version` here, `PRAGMA user_version` in the shards
+— existed so a rolled-back deploy could re-stamp and re-migrate, which is exactly the
+rollback provision that was dropped. A stamp nothing reads back is dead weight; see the
+note on the retired `cache.generator_version` under `RENDERER_VERSION` in
+`src/config.php`.
 
-The per-mode shards have no `meta` table, so they carry the same number in the SQLite
-header via `PRAGMA user_version`. `pageCacheDb()` reads it on first connection and runs
-its migration there — that ladder is now the **only** place the page-cache columns are
-migrated, because since v4.11 the page cache lives in the shards and the central file
-has no `cache` table. `cacheDb()`'s cascade therefore carries no `cache` step at all;
-it migrates only `search_fts` and `search_index_meta`.
+To invalidate cached *output* rather than the schema, use `RENDERER_VERSION` — that one
+`PageCache::get()` filters on, which is the whole difference.
 
 ---
 

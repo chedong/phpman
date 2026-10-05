@@ -125,114 +125,60 @@ function cacheDb(?bool $reset = null): ?SQLite3 {
     // synchronous=NORMAL is connection-level — set every connection
     $db->exec('PRAGMA synchronous=NORMAL');
 
-    if ($isNew) {
-        // NO page-cache table here. Since v4.11 the page cache is sharded
-        // (phpman_cache_<mode>.db — see pageCacheDb()) and this file holds only
-        // the search/TLDR infrastructure. Creating `cache` here would make a
-        // fresh install diverge from every deployed one: production's central
-        // DB has no such table, so the two paths would disagree about whether
-        // `SELECT ... FROM cache` against the central connection is valid.
-        $db->exec("CREATE TABLE IF NOT EXISTS meta (
-            key   TEXT PRIMARY KEY,
-            value TEXT
-        )");
-        $db->exec("INSERT OR IGNORE INTO meta (key, value)
-                   VALUES ('schema_version', '" . CACHE_SCHEMA_VERSION . "')");
+    // Schema, created idempotently on every open — there is no migration ladder
+    // and no version stamp. The pre-sharding central DB no longer exists and
+    // rollback to older code is not supported, so there is no older shape to
+    // migrate *from*; CREATE ... IF NOT EXISTS covers the additive change a
+    // future bump would need anyway. (The ladder that stood here also held the
+    // request path's two unguarded statements — an unconditional `DELETE FROM
+    // cache` in the future-schema guard and the `cache` migration steps beside
+    // it — which raised "no such table: cache" on a DB that has none.)
+    //
+    // NO page-cache table here. Since v4.11 the page cache is sharded
+    // (phpman_cache_<mode>.db — see pageCacheDb()) and this file holds only the
+    // search/TLDR infrastructure. Creating `cache` here would make a fresh
+    // install diverge from every deployed one, so the two paths would disagree
+    // about whether `SELECT ... FROM cache` against the central connection is
+    // valid.
+    $db->exec("CREATE TABLE IF NOT EXISTS meta (
+        key   TEXT PRIMARY KEY,
+        value TEXT
+    )");
 
-        // FTS5 search engine: independent full-text search table (v2)
-        try {
-            $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS search_fts
-                       USING fts5(
-                           name,         -- expanded name for dual matching
-                           section,      -- section number
-                           description,  -- apropos one-line summary
-                           body,         -- full page text (cleaned)
-                           tokenize='unicode61 tokenchars ''-:''',
-                           prefix='1,2,3'
-                       )");
-        } catch (\Throwable $e) {
-            phpManLog("FTS5 prefix index: " . $e->getMessage());
-        }
-
-        $db->exec("CREATE TABLE IF NOT EXISTS search_index_meta (
-            name        TEXT NOT NULL,
-            section     TEXT NOT NULL DEFAULT '',
-            source      TEXT NOT NULL DEFAULT 'man',
-            body_len    INTEGER NOT NULL DEFAULT 0,
-            hits        INTEGER NOT NULL DEFAULT 0,
-            last_indexed INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-            UNIQUE(name, section, source)
-        )");
-
-        // TLDR persistent cache — avoids repeated GitHub/cheat.sh HTTP fetches
-        $db->exec("CREATE TABLE IF NOT EXISTS tldr_cache (
-            command     TEXT UNIQUE NOT NULL,
-            source      TEXT NOT NULL,
-            content     TEXT NOT NULL,
-            fetched_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-        )");
-        $db->exec("CREATE INDEX IF NOT EXISTS idx_tldr_cache_fetched
-                   ON tldr_cache(fetched_at)");
-    } else {
-        // Migrate the central DB's own tables. Only search_fts and
-        // search_index_meta appear below: every step that touched `cache` has
-        // been removed, because the central DB has no page-cache table to
-        // migrate (see the fresh-DB branch above). Those steps were also the
-        // ones that could throw — an unguarded `DELETE FROM cache` against a
-        // database without that table is a fatal error on the request path,
-        // while the ALTER TABLEs beside them were wrapped. The page cache's
-        // schema now lives in the shards, which carry it in PRAGMA user_version
-        // and migrate it in pageCacheDb().
-        $row = $db->querySingle("SELECT value FROM meta WHERE key='schema_version'", false);
-        if ($row !== CACHE_SCHEMA_VERSION) {
-            // Cascading if blocks (not if/elseif) — each migration runs independently
-            // so a DB at schema v1 upgraded forward runs ALL the steps it is missing.
-
-            if ($row === '1' || (int)$row < 2) {
-                // v1 → v2: add search_fts and search_index_meta
-                try {
-                    $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS search_fts
-                               USING fts5(
-                                   name, section, description, body,
-                                   tokenize='unicode61 tokenchars ''-:''',
-                                   prefix='1,2,3'
-                               )");
-                } catch (\Throwable $e) {
-                    phpManLog("FTS5 meta prefix: " . $e->getMessage());
-                }
-                $db->exec("CREATE TABLE IF NOT EXISTS search_index_meta (
-                    name TEXT NOT NULL,
-                    section TEXT NOT NULL DEFAULT '',
-                    source TEXT NOT NULL DEFAULT 'man',
-                    body_len INTEGER NOT NULL DEFAULT 0,
-                    hits INTEGER NOT NULL DEFAULT 0,
-                    last_indexed INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-                    UNIQUE(name, section, source)
-                )");
-            }
-            if ($row === '2' || (int)$row < 3) {
-                // v2 → v3: search_fts.name now stores expanded name; rebuild needed
-                try {
-                    $db->exec("DELETE FROM search_fts");
-                } catch (\Throwable $e) {
-                    phpManLog("FTS5 delete: " . $e->getMessage());
-                }
-                $db->exec("DELETE FROM search_index_meta");
-            }
-            // No v3→v8 step. Every one of them only rewrote the central `cache`
-            // table (v3→v4 cleared rows by format; v5→v6, v6→v7 and v7→v8 added
-            // columns), and that table has not existed here since v4.11. A shard
-            // carries the same three columns and migrates them in pageCacheDb().
-            //
-            // The future-schema guard that stood here is gone with them: it was
-            // `DELETE FROM cache` on a database without that table, so a rollback
-            // to older code against a newer central DB raised "no such table"
-            // inside cacheDb() — on the request path, once per request. The
-            // version stamp below still runs, so an older deploy re-stamps the
-            // row and re-migrates on the next forward deploy.
-            $db->exec("UPDATE meta SET value = '" . CACHE_SCHEMA_VERSION . "' WHERE key = 'schema_version'");
-        }
+    // FTS5 search engine: independent full-text search table (v2)
+    try {
+        $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS search_fts
+                   USING fts5(
+                       name,         -- expanded name for dual matching
+                       section,      -- section number
+                       description,  -- apropos one-line summary
+                       body,         -- full page text (cleaned)
+                       tokenize='unicode61 tokenchars ''-:''',
+                       prefix='1,2,3'
+                   )");
+    } catch (\Throwable $e) {
+        phpManLog("FTS5 prefix index: " . $e->getMessage());
     }
+
+    $db->exec("CREATE TABLE IF NOT EXISTS search_index_meta (
+        name        TEXT NOT NULL,
+        section     TEXT NOT NULL DEFAULT '',
+        source      TEXT NOT NULL DEFAULT 'man',
+        body_len    INTEGER NOT NULL DEFAULT 0,
+        hits        INTEGER NOT NULL DEFAULT 0,
+        last_indexed INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+        UNIQUE(name, section, source)
+    )");
+
+    // TLDR persistent cache — avoids repeated GitHub/cheat.sh HTTP fetches
+    $db->exec("CREATE TABLE IF NOT EXISTS tldr_cache (
+        command     TEXT UNIQUE NOT NULL,
+        source      TEXT NOT NULL,
+        content     TEXT NOT NULL,
+        fetched_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    )");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_tldr_cache_fetched
+               ON tldr_cache(fetched_at)");
 
     return $db;
 }
@@ -283,8 +229,8 @@ function pageCacheDb(string $mode, ?bool $reset = null, bool $create = true): ?S
     if (isset($shards[$dbPath])) return $shards[$dbPath];
 
     // Read-only callers (stats, clear) must not materialise a shard that has
-    // never been written: `new SQLite3($path)` creates the file, and the $isNew
-    // branch then creates its tables — so merely counting rows would leave six
+    // never been written: `new SQLite3($path)` creates the file, and the schema
+    // below is then created in it — so merely counting rows would leave six
     // empty databases behind. (#228)
     if (!$create && !file_exists($dbPath)) return null;
 
@@ -312,88 +258,46 @@ function pageCacheDb(string $mode, ?bool $reset = null, bool $create = true): ?S
     }
     $db->exec('PRAGMA synchronous=NORMAL');
 
-    if ($isNew) {
-        // The page-cache schema. Since v4.11 this lives only here, per mode —
-        // the central DB has no `cache` table at all (see cacheDb()).
-        $db->exec("CREATE TABLE IF NOT EXISTS cache (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            mode        TEXT NOT NULL,
-            name        TEXT NOT NULL,
-            section     TEXT NOT NULL DEFAULT '',
-            title       TEXT,
-            format      TEXT NOT NULL DEFAULT 'raw',
-            content     BLOB,
-            content_len INTEGER DEFAULT 0,
-            status      TEXT NOT NULL DEFAULT 'found'
-                        CHECK(status IN ('found','not_found')),
-            ttl         INTEGER NOT NULL DEFAULT 0,
-            hits        INTEGER NOT NULL DEFAULT 0,
-            renderer_version INTEGER NOT NULL DEFAULT 0,
-            created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-            updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-            UNIQUE(mode, name, section, format)
-        )");
-        try {
-            $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS cache_fts
-                       USING fts5(mode, name, section, title,
-                                  tokenize='unicode61',
-                                  content='cache',
-                                  content_rowid='id')");
-        } catch (\Throwable $e) {
-            phpManLog("pageCache FTS5 content table: " . $e->getMessage());
-        }
-        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_lookup ON cache(mode, name, section, format)");
-        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_status ON cache(status, updated_at)");
-        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_hits ON cache(hits DESC)");
-        $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_expiry ON cache(updated_at) WHERE ttl > 0");
-        // Shards carry no meta table, so the schema generation lives in the
-        // SQLite header instead. Cheap to read (page 1) and set-once.
-        $db->exec('PRAGMA user_version = ' . (int)CACHE_SCHEMA_VERSION);
-    } else {
-        // An existing shard: migrate it forward. A ladder rather than a single
-        // step, so a shard left behind by an older deploy still gets every
-        // migration it is missing.
-        $shardVersion = (int)$db->querySingle('PRAGMA user_version');
-        if ($shardVersion < (int)CACHE_SCHEMA_VERSION) {
-            if ($shardVersion < 6) {
-                // v5 → v6: drop cache.generator_version. It held the deployed
-                // GIT_DESCRIBE on every set(), but nothing ever read it —
-                // PageCache::get() selects only id/content/status/ttl/updated_at,
-                // and no query filtered on it. A column nothing consults cannot
-                // invalidate anything, so it never did the "which version
-                // produced this entry" tracking its comment claimed; it was dead
-                // weight on the hot write path.
-                try { $db->exec("ALTER TABLE cache DROP COLUMN generator_version"); }
-                catch (\Throwable $e) { /* fresh shard, or already dropped */ }
-            }
-            if ($shardVersion < 7) {
-                // v6 → v7: add cache.title, the column cache_fts is declared
-                // against. cache_fts is an external-content FTS5 table
-                // (content='cache'), so it stores no column values of its own —
-                // it reads them back from cache by name. syncFts() indexed a
-                // title on every write, but with no cache.title column to read it
-                // from, any query that touched the column failed with "no such
-                // column: T.title" (COUNT(*), a plain SELECT) — only MATCH
-                // worked.
-                try { $db->exec("ALTER TABLE cache ADD COLUMN title TEXT"); }
-                catch (\Throwable $e) { /* fresh shard, or already added */ }
-            }
-            if ($shardVersion < 8) {
-                // v7 → v8: add cache.renderer_version. Existing rows default to
-                // 0, which no current RENDERER_VERSION equals, so every row
-                // written before this migration reads as a miss and is
-                // re-rendered on its next request — the invalidation the manual
-                // purge had to do by hand. Rows are overwritten in place by the
-                // UPSERT, so nothing accumulates. Deliberately does NOT delete:
-                // the point is to spread the re-render over real traffic instead
-                // of dropping 100k+ rows and re-rendering them all at once.
-                try {
-                    $db->exec("ALTER TABLE cache ADD COLUMN renderer_version INTEGER NOT NULL DEFAULT 0");
-                } catch (\Throwable $e) { /* fresh shard, or already added */ }
-            }
-            $db->exec('PRAGMA user_version = ' . (int)CACHE_SCHEMA_VERSION);
-        }
+    // The page-cache schema, created idempotently on every open — no migration
+    // ladder, no version stamp. Shards left behind by an older deploy no longer
+    // exist and rollback to older code is not supported, so there is no older
+    // shape to migrate from; the three columns the ladder used to add are all in
+    // the CREATE below. (Verified before the ladder was removed: every
+    // production shard was already at v8.)
+    //
+    // Since v4.11 this schema lives only here, per mode — the central DB has no
+    // `cache` table at all (see cacheDb()).
+    $db->exec("CREATE TABLE IF NOT EXISTS cache (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        mode        TEXT NOT NULL,
+        name        TEXT NOT NULL,
+        section     TEXT NOT NULL DEFAULT '',
+        title       TEXT,
+        format      TEXT NOT NULL DEFAULT 'raw',
+        content     BLOB,
+        content_len INTEGER DEFAULT 0,
+        status      TEXT NOT NULL DEFAULT 'found'
+                    CHECK(status IN ('found','not_found')),
+        ttl         INTEGER NOT NULL DEFAULT 0,
+        hits        INTEGER NOT NULL DEFAULT 0,
+        renderer_version INTEGER NOT NULL DEFAULT 0,
+        created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+        updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+        UNIQUE(mode, name, section, format)
+    )");
+    try {
+        $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS cache_fts
+                   USING fts5(mode, name, section, title,
+                              tokenize='unicode61',
+                              content='cache',
+                              content_rowid='id')");
+    } catch (\Throwable $e) {
+        phpManLog("pageCache FTS5 content table: " . $e->getMessage());
     }
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_lookup ON cache(mode, name, section, format)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_status ON cache(status, updated_at)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_hits ON cache(hits DESC)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_cache_expiry ON cache(updated_at) WHERE ttl > 0");
 
     $shards[$dbPath] = $db;
     return $db;

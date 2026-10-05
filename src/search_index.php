@@ -452,9 +452,6 @@ function rebuildSearchIndex(): string {
         // 1. Clear all existing FTS content (DELETE works on FTS5 virtual tables)
         try { $db->exec("DELETE FROM search_fts"); }
         catch (\Throwable $ignored) {}
-        // Also clean up leftover from a previous interrupted run (if any)
-        try { $db->exec("DROP TABLE IF EXISTS search_fts_old"); }
-        catch (\Throwable $ignored) {}
 
         // 3. Create fresh table
         try {
@@ -700,10 +697,6 @@ function rebuildSearchIndex(): string {
         // COMMIT the transaction
         $db->exec("COMMIT");
 
-        // Drop the old table — rebuild succeeded, old data is no longer needed
-        try { $db->exec("DROP TABLE IF EXISTS search_fts_old"); }
-        catch (\Throwable $ignored) {}
-
         // Update meta
         $stmtMeta = $db->prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (:key, :value)");
         $stmtMeta->bindValue(':key', 'search_index_count', SQLITE3_TEXT);
@@ -717,14 +710,11 @@ function rebuildSearchIndex(): string {
     } catch (\Throwable $e) {
         phpManLog("rebuildSearchIndex: " . $e->getMessage());
         try { $db->exec("ROLLBACK"); } catch (\Throwable $ignored) {}
-        // #180: Restore old table if rebuild failed — searches keep working
-        try {
-            $hasOld = $db->querySingle("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='search_fts_old'");
-            if ($hasOld) {
-                $db->exec("DROP TABLE IF EXISTS search_fts");
-                $db->exec("ALTER TABLE search_fts_old RENAME TO search_fts");
-            }
-        } catch (\Throwable $ignored) {}
+        // The rebuild clears search_fts with DELETE inside the transaction above,
+        // so the ROLLBACK is what restores it. The search_fts_old swap that used
+        // to stand here belonged to the pre-v4.9.25 DROP+RENAME rebuild, which no
+        // longer exists — nothing creates that table, so nothing could restore
+        // from it.
         return "ERROR: " . $e->getMessage() . "\n";
     }
 }
