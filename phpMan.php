@@ -173,6 +173,22 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
                 }
             }
         }
+
+        // #45: a format-eligible segment that is neither a known format nor a
+        // valid section name used to be erased by normalizeSection() and then
+        // served as the default section in HTML — a silent 200 for what is
+        // really a bad URL. Converge on the canonical URL instead, before any
+        // content lookup, so the client gets what it asked for and no page is
+        // rendered. malformedSegmentRedirect() builds the target.
+        $canonical = malformedSegmentRedirect(
+            $segments,
+            in_array(strtolower($segments[0]), $allowed_modes) ? 2 : 1
+        );
+        if ($canonical !== null) {
+            header('Location: ' . baseUrl() . $canonical, true, 301);
+            header('Cache-Control: public, max-age=86400');
+            exit;
+        }
     }
 }
 else {

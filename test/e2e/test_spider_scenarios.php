@@ -113,4 +113,61 @@ assert_contains("text/markdown", $rMd["contentType"], "Markdown → text/markdow
 echo "\nS09: MCP server discovery Link header\n";
 assert_contains("mcp-server", strtolower($rHtml["headers"]), "Link header has mcp-server");
 
+// S10: malformed format-tail URLs converge on the canonical URL (#45)
+// phpMan's own markdown output links are "[ls](.../man/ls/1/markdown)"; a client
+// extracting URLs with a naive /https?:\S+/ regex keeps the closing ")". Those
+// requests were erased to section="" and answered 200 with the full HTML page
+// instead of the markdown that was asked for.
+echo "\nS10: malformed format-tail URLs → 301 canonical\n";
+
+function fetch_nofollow(string $url): array {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_HEADER => true,
+        CURLOPT_USERAGENT => "Googlebot/2.1 (+http://www.google.com/bot.html)",
+    ]);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+    curl_close($ch);
+    return [
+        "code" => $httpCode,
+        "headers" => substr($response, 0, $headerSize),
+        "body" => substr($response, $headerSize),
+    ];
+}
+
+// Assert on the path only — the host differs between staging and production,
+// and on production the .htaccess fast path answers first with the same target.
+$junkTails = [
+    "/man/ls/1/markdown)"  => "/man/ls/1/markdown",
+    "/man/ls/1/markdown)." => "/man/ls/1/markdown",
+    "/man/ls/markdown)"    => "/man/ls/markdown",
+    "/man/ls/1/!!"         => "/man/ls/1",
+];
+foreach ($junkTails as $path => $expected) {
+    $r = fetch_nofollow("{$BASE}{$path}");
+    assert_equals(301, $r["code"], "{$path} → 301");
+    if (preg_match('/^Location:\s*(\S+)/mi', $r["headers"], $m)) {
+        assert_match('#' . preg_quote($expected, '#') . '$#', rtrim($m[1], "\r"),
+            "{$path} → {$expected}");
+    } else {
+        assert_equals("Location header present", "missing", "{$path} has Location");
+    }
+}
+
+// The client must actually receive the markdown it asked for, not HTML.
+$r = fetch("{$BASE}/man/ls/1/markdown)");
+assert_equals(200, $r["code"], "following the redirect → 200");
+assert_contains("text/markdown", $r["contentType"], "→ markdown, not HTML");
+
+// No false positives: real pages whose names merely start with a format token.
+foreach (["/man/html2text/1", "/man/json_pp/1", "/man/htmlclean/1p"] as $path) {
+    $r = fetch_nofollow("{$BASE}{$path}");
+    assert_equals(200, $r["code"], "{$path} must NOT redirect");
+}
+
 exit(test_summary());

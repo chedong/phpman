@@ -212,5 +212,73 @@ function validatePathInfo (string $pathInfo): string {
     return "";
 }
 
+/**
+ * #45: detect a malformed segment in a format-eligible position and return the
+ * canonical path to redirect to, or null when the URL needs no redirect.
+ *
+ * A format-eligible segment is malformed when it is neither a known output
+ * format nor a valid section name. normalizeSection() erases such a segment to
+ * "", which makes the request indistinguishable from "no section given" — so
+ * phpMan served the default section as a full HTML page (200) instead of
+ * reporting the bad URL. The trigger in the wild is phpMan's own markdown
+ * output: clients extracting URLs with a naive /https?:\S+/ regex keep the
+ * closing ")" of "[ls](.../man/ls/1/markdown)".
+ *
+ * The canonical path drops every malformed segment; when the last segment was
+ * one of them and begins with a currently-valid format token, that token is
+ * kept as the format. Retired format tokens (e.g. "mcp") are deliberately NOT
+ * recovered — their canonical URL no longer resolves, so recovering one would
+ * only add a redirect hop.
+ *
+ * @param array $segments non-empty PATH_INFO segments, in URL order
+ * @param int   $start    first format-eligible index: 2 when $segments[0] is a
+ *                        mode, 1 when the mode was omitted
+ */
+function malformedSegmentRedirect (array $segments, int $start): ?string {
+    $count = count($segments);
+    $malformed = [];
+    for ($i = $start; $i < $count; $i++) {
+        if (in_array(strtolower($segments[$i]), PHPMAN_OUTPUT_FORMATS)) {
+            continue;
+        }
+        if (normalizeSection($segments[$i]) === "") {
+            $malformed[] = $i;
+        }
+    }
+    if ($malformed === []) {
+        return null;
+    }
+
+    $kept = [];
+    foreach ($segments as $i => $seg) {
+        if (!in_array($i, $malformed, true)) {
+            $kept[] = $seg;
+        }
+    }
+
+    // Recover the format token only when the malformed segment came last: a
+    // later segment may already have supplied the format, and appending here
+    // would put two format tokens in the path.
+    $last = $malformed[count($malformed) - 1];
+    if ($last === $count - 1) {
+        $lower = strtolower($segments[$last]);
+        $best = null;
+        foreach (PHPMAN_OUTPUT_FORMATS as $fmt) {
+            // Longest match wins, so a future short token ("md") cannot shadow
+            // a longer one that shares its prefix ("markdown").
+            if (strpos($lower, $fmt) === 0 && ($best === null || strlen($fmt) > strlen($best))) {
+                $best = $fmt;
+            }
+        }
+        if ($best !== null) {
+            $kept[] = $best;
+        }
+    }
+
+    // Segments are passed through as they arrived (already URL-encoded); only
+    // the format token appended above is ours, and it is a fixed safe token.
+    return "/" . implode("/", $kept);
+}
+
 
 // normalizeMode: validate and normalize the display mode parameter
