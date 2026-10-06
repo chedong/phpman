@@ -113,7 +113,7 @@ assert_contains("text/markdown", $rMd["contentType"], "Markdown → text/markdow
 echo "\nS09: MCP server discovery Link header\n";
 assert_contains("mcp-server", strtolower($rHtml["headers"]), "Link header has mcp-server");
 
-// S10: malformed format-tail URLs converge on the canonical URL (#45)
+// S10: malformed format-tail URLs converge on the canonical URL
 // phpMan's own markdown output links are "[ls](.../man/ls/1/markdown)"; a client
 // extracting URLs with a naive /https?:\S+/ regex keeps the closing ")". Those
 // requests were erased to section="" and answered 200 with the full HTML page
