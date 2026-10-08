@@ -73,27 +73,42 @@ assert_equals(false, in_array('phpman', $names, true), "a nonexistent dir contri
 
 // ─── `info --where dir` discovery ───
 // This is the branch that covers relocated installs whose prefix is in neither
-// compiled-in default. Compute the expectation from this machine rather than
-// naming a path, and skip where `info` is absent.
+// compiled-in default.
+//
+// Both sides must run in the same environment. The expectation used to be
+// computed with the ambient INFOPATH while the implementation ran under
+// `env -u INFOPATH`, so on a host whose INFOPATH points somewhere other than the
+// build prefix the two answered about different installs and the test failed for
+// a reason that had nothing to do with the code (macOS: INFOPATH=/opt/homebrew/
+// share/info, build prefix /usr/local/share/info). Pin the environment on both
+// sides and assert exact equality, so the test is host-independent: on a host
+// where the reported directory holds no .info files there is nothing to compare
+// and it says so instead of failing.
 echo "\n--- info --where dir is consulted ---\n";
-$dirFile = trim((string)shell_exec('info --where dir 2>/dev/null'));
-if ($dirFile === '' || !is_file($dirFile)) {
-    echo "  ⏭  skipped — `info --where dir` reports nothing on this host\n";
-} else {
-    $expected = [];
-    foreach (glob(dirname($dirFile) . '/*.info*') ?: [] as $f) {
+$dirFile = trim((string)shell_exec('env -u INFOPATH info --where dir 2>/dev/null'));
+// The same directories getValidInfoFiles() consults when INFOPATH is unset:
+// the compiled-in defaults, plus wherever this host's `info` keeps its dir.
+$dirs = ['/usr/local/share/info', '/usr/share/info'];
+if ($dirFile !== '' && is_file($dirFile)) {
+    $dirs[] = dirname($dirFile);
+}
+$expected = [];
+foreach (array_unique($dirs) as $dir) {
+    foreach (glob($dir . '/*.info*') ?: [] as $f) {
         $n = preg_replace('/\.info.*$/', '', basename($f));
-        if ($n !== '' && $n !== null) $expected[] = $n;
+        if ($n !== '' && $n !== null) $expected[$n] = true;
     }
-    // INFOPATH unset: whatever turns up came from the defaults or from `info`.
+}
+$expected = array_keys($expected);
+sort($expected);
+
+if ($expected === []) {
+    echo "  ⏭  skipped — no .info files in the directories this host reports"
+       . " (" . implode(', ', array_unique($dirs)) . ")\n";
+} else {
     $names = runValidInfoFiles(null);
-    $missing = array_diff($expected, $names);
-    assert_equals(
-        true,
-        empty($missing),
-        "every file in " . dirname($dirFile) . " is discovered (missing: " . implode(',', array_slice($missing, 0, 5)) . ")"
-    );
-    assert_equals(true, count($names) > 0, "discovery is non-empty where info files exist");
+    assert_equals($expected, $names,
+        "discovery matches the directories the implementation consults (" . count($expected) . " names)");
 }
 
 // ─── cleanup ───
