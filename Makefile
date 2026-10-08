@@ -291,22 +291,13 @@ verify:
 	@curl -sk -o /dev/null -w "HTTP: %{http_code}  %{url_effective}\n" $(DEMO_URL)
 
 # Check server logs for errors after a production release.
-# Requires DEMO_ERROR_LOG and DEMO_ACCESS_LOG to be set in .deploy.mk.
+# The check itself lives in cli/logcheck.sh and is piped to the server over
+# stdin, so the script in this checkout is always the one that runs — nothing
+# needs deploying first. Requires DEMO_ERROR_LOG and DEMO_ACCESS_LOG in
+# .deploy.mk; LOGCHECK_DAYS / LOGCHECK_RECENT_LINES tune the window.
 logcheck:
-	@echo "=== Post-deploy log check ==="
-	@echo "--- phpMan error log ---"
 	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"test -f \"\$$HOME/.phpman/logs/phpman_error.log\" && tail -10 \"\$$HOME/.phpman/logs/phpman_error.log\" || echo '(no phpman_error.log yet)'"
-	@echo ""
-	@echo "--- Server error log (last 10 lines) ---"
-	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"test -f '$(DEMO_ERROR_LOG)' && echo '$(DEMO_ERROR_LOG):' && tail -10 '$(DEMO_ERROR_LOG)' || echo '(error log not configured or not found)'"
-	@echo ""
-	@echo "--- Access log (recent 5xx errors) ---"
-	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"test -f '$(DEMO_ACCESS_LOG)' && echo '$(DEMO_ACCESS_LOG):' && (tail -100 '$(DEMO_ACCESS_LOG)' | grep -E '\" (5[0-9][0-9]) ' || echo '(no 5xx in recent requests)') || echo '(access log not configured or not found)'"
-	@echo ""
-	@echo "=== Log check complete ==="
+		"DEMO_ERROR_LOG='$(DEMO_ERROR_LOG)' DEMO_ACCESS_LOG='$(DEMO_ACCESS_LOG)' bash -s" < cli/logcheck.sh
 
 # ─── Version tagging ───
 
