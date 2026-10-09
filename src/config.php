@@ -163,7 +163,13 @@ define('PHPMAN_LOG_FILE', PHPMAN_LOG_DIR . '/phpman_error.log');
 // History to avoid repeating: schema v5→v6 dropped cache.generator_version,
 // which held GIT_DESCRIBE on every set(). Nothing ever read it back, so it
 // invalidated nothing. A version is only worth storing if get() filters on it.
-define('RENDERER_VERSION', 1);
+//
+// 2 — the footer stopped emitting the dead /{mode}/{param}/mcp link (#238).
+//     Cached HTML still held it, so the deploy alone did not reach a single
+//     already-cached page: the footer link stayed live on production until this
+//     bump. Any change to what showFooter()/showHeader() emit needs a bump for
+//     the same reason as a formatter change.
+define('RENDERER_VERSION', 2);
 
 // PHPMAN_VERSION — numeric version (e.g. "4.9.19").
 // Set by Makefile in phpMan.php at deploy time; provide fallback for CLI scripts.
