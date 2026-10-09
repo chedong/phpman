@@ -19,6 +19,7 @@ $suites = [
         "{$testDir}/unit/test_path_guard.php",
         "{$testDir}/unit/test_malformed_segment.php",
         "{$testDir}/unit/test_profiling_append.php",
+        "{$testDir}/unit/test_footer_format_links.php",
         "{$testDir}/unit/test_config_resolution.php",
         "{$testDir}/unit/test_safe_host.php",
         "{$testDir}/unit/test_info_valid_files.php",
@@ -30,6 +31,7 @@ $suites = [
         "{$testDir}/integration/test_formatter_mcp.php",
         "{$testDir}/integration/test_formatter_tldr.php",
         "{$testDir}/integration/test_json_content_cap.php",
+        "{$testDir}/integration/test_search_rebuild_atomicity.php",
         "{$testDir}/integration/test_markdown_content_cap.php",
     ],
 ];

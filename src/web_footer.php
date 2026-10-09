@@ -82,7 +82,14 @@ function showFooter (string $validator = "", bool $showNav = false, string $mode
         $server_info = " On " . h(serverValue("SERVER_SOFTWARE", "unknown server"));
     }
 
-    // Format links (Markdown | JSON | MCP) — only on detail pages with content
+    // Format links (Markdown | JSON) — only on detail pages with content.
+    // MCP is deliberately absent: it is a machine endpoint, not a per-page
+    // format (see PHPMAN_OUTPUT_FORMATS), and it is already advertised to
+    // clients by the `Link: </mcp>; rel="mcp-server"` header in web_header.php
+    // plus the /.well-known/mcp.json discovery document. The footer link that
+    // used to sit here pointed at /{mode}/{param}/mcp, a format that no longer
+    // parses (man pages 301 back to HTML; perldoc/info render the segment as a
+    // bogus section name).
     $fmtLinks = [];
     $isDetail = $parameter !== "" && in_array($mode, PHPMAN_CONTENT_MODES);
     $hasContent = ($markdownUrl !== "" || $jsonUrl !== "");
@@ -93,8 +100,6 @@ function showFooter (string $validator = "", bool $showNav = false, string $mode
         if ($jsonUrl !== "") {
             $fmtLinks[] = '<a href="' . h($jsonUrl) . '" class="fmt-link" title="' . h($parameter) . ' structured JSON API">JSON</a>';
         }
-        $mcp_href = scriptName() . "/" . urlencode($mode) . "/" . urlencode($parameter) . "/mcp";
-        $fmtLinks[] = '<a href="' . h($mcp_href) . '" class="fmt-link" title="MCP Server integration">MCP</a>';
     }
     $fmtStr = !empty($fmtLinks) ? " &middot; " . implode(" &middot; ", $fmtLinks) : "";
 
