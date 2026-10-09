@@ -444,16 +444,9 @@ function rebuildSearchIndex(): string {
             return "ERROR: FTS5 not available (search_fts table does not exist).\n";
         }
 
-        // v4.9.25: DELETE FROM search_fts instead of DROP+CREATE or RENAME — FTS5
-        // shadow tables survive DROP TABLE in some SQLite versions (ghost rows persist
-        // across DROP/CREATE cycles). DELETE FROM properly clears all indexed content
-        // while keeping the virtual table and its shadow tables intact.
-
-        // 1. Clear all existing FTS content (DELETE works on FTS5 virtual tables)
-        try { $db->exec("DELETE FROM search_fts"); }
-        catch (\Throwable $ignored) {}
-
-        // 3. Create fresh table
+        // 1. Make sure the virtual table exists. This runs before the transaction
+        //    and before any DELETE: it can fail (disk full, read-only database)
+        //    and returns early, so nothing may have been cleared yet.
         try {
             $db->exec("CREATE VIRTUAL TABLE IF NOT EXISTS search_fts
                        USING fts5(
@@ -462,30 +455,47 @@ function rebuildSearchIndex(): string {
                            prefix='1,2,3'
                        )");
         } catch (\Throwable $e) {
-            // FTS5 not available — nothing to restore since we DROP+CREATE
             phpManLog("rebuildSearchIndex: FTS5 creation failed: " . $e->getMessage());
             return "ERROR: FTS5 not available, cannot create search_fts.\n";
         }
 
-        // 4. Clear meta + page cache (these changes stay even on rollback;
-        //    the INSERT transaction below only covers FTS data)
-        $db->exec("DELETE FROM search_index_meta");
-        $output[] = "Cleared existing search index.\n";
-
-        // Invalidate search result caches only — FTS5 index rebuild makes
-        // cached search results stale. Search results are stored with
-        // mode='search' (format can be 'html', 'json', 'markdown', etc.).
-        // Individual page caches (man/perldoc/info/pydoc/ri) use their own
-        // mode values and are NOT search-index-dependent — must be preserved.
-        // v4.11: search page cache is sharded per mode → clear the search shard.
+        // 2. Invalidate search result caches only — FTS5 index rebuild makes
+        //    cached search results stale. Search results are stored with
+        //    mode='search' (format can be 'html', 'json', 'markdown', etc.).
+        //    Individual page caches (man/perldoc/info/pydoc/ri) use their own
+        //    mode values and are NOT search-index-dependent — must be preserved.
+        //    v4.11: search page cache is sharded per mode → clear the search shard.
+        //    This is a *different database file*, so it cannot join the
+        //    transaction below. Clearing it early is still safe: search results
+        //    are derived data that regenerates on demand, and the rollback
+        //    leaves the index they would be rebuilt from untouched.
         $searchShard = pageCacheDb('search');
         if ($searchShard) {
             $searchShard->exec("DELETE FROM cache");
         }
         $output[] = "Cleared search result cache (page caches preserved).\n";
 
-        // 5. Wrap INSERTs in a transaction to prevent WAL bloat
+        // 3. Clear and refill in one transaction.
+        //
+        //    The two DELETEs used to run *before* BEGIN, deliberately, to keep
+        //    the WAL smaller. The cost was that the clear was outside the
+        //    rollback: a rebuild interrupted between the deletes and the COMMIT
+        //    left search_fts *and* search_index_meta empty, with no
+        //    search_fts_old to swap back (v4.9.25 removed that table), and an
+        //    empty meta table also breaks resolveManSection() — so the damage
+        //    went beyond search. Recovery required re-running the long rebuild
+        //    that had just been interrupted. The extra WAL is bounded by the
+        //    central database, which is ~18MB, so atomic beats incremental here.
         $db->exec("BEGIN IMMEDIATE");
+
+        // FTS5 virtual tables accept DELETE, and deleting rather than DROP+
+        // CREATE or RENAME is what keeps the shadow tables from surviving with
+        // ghost rows (v4.9.25). That property does not depend on being outside
+        // a transaction, so it still holds here.
+        try { $db->exec("DELETE FROM search_fts"); }
+        catch (\Throwable $ignored) {}
+        $db->exec("DELETE FROM search_index_meta");
+        $output[] = "Cleared existing search index.\n";
 
         $logInterval = 500; // Report progress every N entries
         $lastLogTime = microtime(true);
@@ -689,6 +699,20 @@ function rebuildSearchIndex(): string {
                 }
             }
             $output[] = "  ri: {$riCount} classes indexed.\n";
+        }
+
+        // Refuse to commit an empty index. A rebuild that indexes nothing is
+        // almost always a broken input (the usual one: a missing or stale
+        // `whatis` database, which makes every `apropos` call come back empty)
+        // rather than a machine that legitimately has no manual pages. Committing
+        // it would break search *silently* until the next successful rebuild —
+        // source_search.php just falls back to apropos when meta is empty. Roll
+        // back instead, keeping whatever index was already there, and say so.
+        $indexedRows = (int)$db->querySingle("SELECT COUNT(*) FROM search_index_meta");
+        if ($indexedRows === 0) {
+            try { $db->exec("ROLLBACK"); } catch (\Throwable $ignored) {}
+            phpManLog("rebuildSearchIndex: 0 entries indexed — rolled back, existing index preserved");
+            return "ERROR: rebuild produced an empty index (0 entries). Rolled back; the existing index is unchanged.\n";
         }
 
         $elapsed = round(microtime(true) - $startTime, 2);
