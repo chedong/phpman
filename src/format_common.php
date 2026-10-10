@@ -95,7 +95,7 @@ function extractFlagsFromSections (array $data): array {
  * This script makes it easier to read man pages which is lengthy and require you
  * to use 'more' or 'pg' filters. Just try it if you feel hard to remember the command
  * for page back or need to dump man page into text/html format.
- * Compatible with GNU/Linux and FreeBSD under PHP 7.2+.
+ * Compatible with GNU/Linux and FreeBSD under PHP 8.1+.
  *
  * !!! Note: on Apache 2.0.x need configure: AcceptPathInfo On !!!
  *

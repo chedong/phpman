@@ -2,7 +2,7 @@
 
 > **Status:** v4 — FTS5 offline index priority + command-line cascade fallback + single-query 3-source aggregation
 > **Date:** 2026-06-08 (v3.6.3); cache section revised for v4.11 sharding / v5.0
-> **Environment:** PHP 8.0+ / SQLite 3.53.1 · `PRAGMA compile_options` includes `ENABLE_FTS5`
+> **Environment:** PHP 8.1+ / SQLite 3.53.1 · `PRAGMA compile_options` includes `ENABLE_FTS5`
 > **Related:** [03-CACHE.md](03-CACHE.md) — page content cache architecture
 
 ---

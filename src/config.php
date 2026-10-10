@@ -81,7 +81,9 @@ if (!defined('PHPMAN_MD_MAX_BYTES')) {
 // Unified data-cache TTL: PageCache found entries + TLDR cache expire on the
 // same schedule so no cache tier silently outlives another. "Month" = 30 days
 // for determinism → 7 months = 210 days = 18,144,000s.
-// (Emoji-enhanced output is intentionally exempt — never expires, see cache.php.)
+// Nothing writes ttl=0 any more: the never-expire exemption belonged to the
+// emoji layer, removed in v4.10/v5.0. Rows it left behind may still carry it,
+// which is why every expiry check in cache.php guards on `ttl > 0`.
 if (!defined('PHPMAN_CACHE_TTL_MONTHS')) {
     define('PHPMAN_CACHE_TTL_MONTHS', 7);
 }

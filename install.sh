@@ -44,7 +44,7 @@ check_php() {
                 elif command -v dnf   &>/dev/null; then echo "  Install: sudo dnf install php-cli php-sqlite3 php-mbstring"
                 elif command -v yum   &>/dev/null; then echo "  Install: sudo yum install php-cli php-sqlite3 php-mbstring"
                 elif command -v pacman &>/dev/null; then echo "  Install: sudo pacman -S php php-sqlite"
-                else echo "  Please install PHP 7.2+ with SQLite3 and FTS5 support"
+                else echo "  Please install PHP 8.1+ with SQLite3 and FTS5 support"
                 fi ;;
         esac
         echo ""
@@ -54,8 +54,10 @@ check_php() {
     local major; major=$(php -r 'echo PHP_MAJOR_VERSION;')
     local minor; minor=$(php -r 'echo PHP_MINOR_VERSION;')
 
-    if [ "$major" -lt 7 ] || { [ "$major" -eq 7 ] && [ "$minor" -lt 2 ]; }; then
-        echo -e "${RED}✗ PHP $ver — need 7.2+ (for SQLite3 FTS5)${NC}"
+    # 8.1, not 8.0: format_common.php calls array_is_list() (8.1) and config.php
+    # calls str_starts_with() (8.0) — both on the path of every request.
+    if [ "$major" -lt 8 ] || { [ "$major" -eq 8 ] && [ "$minor" -lt 1 ]; }; then
+        echo -e "${RED}✗ PHP $ver — need 8.1+ (array_is_list(), str_starts_with())${NC}"
         exit 1
     fi
     echo -e "${GREEN}✓${NC} PHP ${ver}"
@@ -169,7 +171,8 @@ check_config_updates() {
 }
 
 # Generate ~/.phpman/phpman.config.php — the single source of truth for ALL config.
-# Webroot only gets a minimal phpman.config.php with just PHPMAN_HOME (see do_deploy_webroot).
+# The webroot gets no config file at all: do_deploy_webroot() copies phpMan.php +
+# phpman.css + phpman.js and patches PHPMAN_HOME into phpMan.php itself.
 generate_config() {
     local config_file="$INSTALL_DIR/phpman.config.php"
 

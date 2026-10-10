@@ -437,7 +437,7 @@ class PageCache {
         // value as the cache_fts rowid, and cache_fts is an external-content
         // table (content_rowid='id'), so a wrong value silently misaligns the
         // index — or, at 0, makes every MATCH throw "missing row 0". (#229)
-        // Not RETURNING: install.sh accepts PHP 7.2+, whose bundled SQLite may
+        // Not RETURNING: install.sh accepts PHP 8.1+, whose bundled SQLite may
         // predate 3.35.
         $idStmt = $db->prepare(
             "SELECT id FROM cache
