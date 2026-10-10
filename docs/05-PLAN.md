@@ -33,8 +33,14 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 > **v4.9.0** (2026-06-27), **v4.9.26** (2026-07-24 — AdSense), **v4.10.0**
 > (2026-08-08 — LLM enhancement removed), **v4.11.0** (2026-09-24 — per-mode
 > cache sharding, JSON/MCP payload limits), **v4.11.1** (2026-09-26 — LLM-era
-> cleanup). **v4.11.3** is in progress (2026-10-04 — October issue sweep,
-> renderer-versioned cache invalidation); **current release: v4.11.2.**
+> cleanup). **Current release: v4.11.1** — the last entry in
+> [`CHANGELOG.md`](../CHANGELOG.md).
+>
+> The October issue sweep is written up under "v4.11.3" below and tracked in
+> CHANGELOG `[Unreleased]`. Note the numbering gap: **there is no v4.11.2** —
+> nothing was released under that number, and no git tag exists past `v4.9.31`
+> (later releases are identified by `GIT_DESCRIBE`, e.g. `v4.9.31-64-g4bd770e`).
+> Renumbering the sweep is a maintainer call; the section title is left as written.
 
 ---
 
@@ -120,7 +126,7 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `cli/batch-enhance.php`: single-page CLI tool for shared hosts where man(1) can't fork
 - `cli/batch-enhance.php`: offline batch enhancement — auto-discovers ~35K entries from search_index_meta + cache, 2-min rate limiting, resilient resume, `--cached-first` sort, idempotent per-entry cache writes (2026-06-17)
 - `DELETE FROM cache` now preserves emoji_md/emoji_html during reindex (2026-06-17)
-- **Removed in v4.10.0** (commit `7740029`) — every symbol listed above is gone; only the `emoji_md`/`emoji_html` cache rows survive, and since v5.0 (`5bf0025`) nothing reads those either. The single remaining reference is the v3→v4 migration's preserve list, kept so a shipped migration keeps deleting what it always deleted.
+- **Removed in v4.10.0** (commit `7740029`) — every symbol listed above is gone; only the `emoji_md`/`emoji_html` cache rows survive, and since v5.0 (`5bf0025`) nothing reads those either. Nothing writes or reads those rows now, and no code names the formats at all — the v3→v4 migration that used to preserve them was itself deleted in v5.0.
 - Historical design preserved in git history (v4.0..v4.9) for reference
 - See `docs/01-PRODUCT.md` §2.12 for what was removed and why
 
@@ -142,7 +148,8 @@ was actually true, which is why this section is longer than the diff.
 
 **Cache invalidation — the gap that hid the fixes above**
 
-- **`cache.renderer_version`** — the page cache stores *finished* output under a 210-day TTL, so a renderer fix never reached an already-cached page. Deploying the OSC-8 and JSON-markdown fixes changed nothing on production until **1,703 rows were located and deleted by hand** (1,285 carrying a terminal escape, 418 json rows still holding markdown link syntax). `RENDERER_VERSION` is now written on every `set()` and is part of `get()`'s `WHERE` clause, so a row from a different renderer reads as a miss and re-renders on its next request, overwriting itself in place. Nothing needs purging and there is no re-render herd, unlike a `CACHE_SCHEMA_VERSION` bump, which deletes everything at once. Schema 7 → 8; existing rows default to `0` and drain gradually through real traffic. `make cache-stats` reports a `stale` count per shard.
+- **`cache.renderer_version`** — the page cache stores *finished* output under a 210-day TTL, so a renderer fix never reached an already-cached page. Deploying the OSC-8 and JSON-markdown fixes changed nothing on production until **1,703 rows were located and deleted by hand** (1,285 carrying a terminal escape, 418 json rows still holding markdown link syntax). `RENDERER_VERSION` (`src/config.php`, currently `2` — bumped to `2` by #238 when the footer change landed) is now written on every `set()` and is part of `get()`'s `WHERE` clause, so a row from a different renderer reads as a miss and re-renders on its next request, overwriting itself in place. Nothing needs purging and there is no re-render herd. The column is `renderer_version INTEGER NOT NULL DEFAULT 0` on the per-mode `cache` table, so rows predating it default to `0` and drain gradually through real traffic. `make cache-stats` reports a `stale` count per shard.
+  **There is no schema-version bump to go with it.** A follow-up commit (`91cb020`) removed `CACHE_SCHEMA_VERSION` and both migration ladders outright: each cache DB now creates its schema with `CREATE ... IF NOT EXISTS` on every open, so an additive change needs no migration, and since the pre-sharding DB is gone and rollback to older code is not supported there is no older shape to migrate from. The stamps that used to record it (`meta.schema_version`, `PRAGMA user_version`) existed only so a rolled-back deploy could re-stamp and re-migrate — that was the rollback provision, and it is gone.
   **Why this is not a repeat of `cache.generator_version`** (dropped in schema v5→v6): that column stored `GIT_DESCRIBE` on every `set()` and nothing ever read it, so it invalidated nothing. A version is only worth storing if `get()` filters on it.
   **Surveying the cache needs care:** in `json` rows a terminal escape is stored as the six-character sequence `\u001b`, not the raw byte, so a raw-byte search reports zero. Rows must be `json_decode`d before searching.
 
@@ -186,7 +193,7 @@ was actually true, which is why this section is longer than the diff.
 - **Remove**: `cli/batch-enhance.php`, `src/enhance.php`, `start-enhance-all.sh`, `test/unit/test_enhance.php`
 - **Remove**: `LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`, `LLM_MAX_TOKENS` from `src/config.php`
 - **Remove**: `$enhancedBy` footer credit, `cleanEmojiHtml()` render path, LLM enhancement docs
-- **Keep**: `CACHE_FORMAT_EMOJI_MD`/`CACHE_FORMAT_EMOJI_HTML` cache serving — superseded: v5.0 (`5bf0025`) removed the read side, so the rows are now inert (only the v3→v4 migration's preserve list names them)
+- **Keep**: `CACHE_FORMAT_EMOJI_MD`/`CACHE_FORMAT_EMOJI_HTML` cache serving — **superseded**: v5.0 (`5bf0025`) removed the read side, so the rows are now inert, and the v3→v4 migration that was the last code naming them went with it. Nothing writes, reads or names those formats now.
 - **Rationale**: STRATEGY.md analysis — AI bots prefer raw markdown/json/mcp, emoji adds no value for agents. Meta (9,217/day) and ClaudeBot (905/day) confirm this.
 
 ### v4.9 — CSP nonce + strict-dynamic (proposed, not shipped)
@@ -253,7 +260,7 @@ was actually true, which is why this section is longer than the diff.
 - Removed all `maxLen` input truncation — LLM models handle full pages natively
 - Dead constant `PHPMAN_FLAG_DESC_MAX_LEN` removed
 - `formatMarkdownToHTML()` regex `#{1,4}` → `#{2,5}` (skips h1, matches h2-h6)
-- Makefile auto-creates `~/.phpman/phpman.config.php` → webroot symlink on deploy
+- Makefile auto-creates `~/.phpman/phpman.config.php` on deploy (v4.5 later moved config fully out of the webroot and dropped the symlink — see [Configuration & Deployment Architecture](#configuration--deployment-architecture))
 - All 10 stale worktree branches purged from GitHub
 - 7 open issues closed: #128, #133–#141
 
@@ -310,12 +317,16 @@ was actually true, which is why this section is longer than the diff.
 - v4.3.6: Made `scriptName()` use `PHPMAN_BASE_URL` globally (not `SCRIPT_NAME`), fixing all `baseUrl()` call sites
 - v4.3.7: Fixed table CSS overflow + prompt tuning (`<code>` not `<pre><code>` in Quick Ref)
 
-**Ongoing (working tree, uncommitted)**:
+**Landed in v4.3.x** (these were once listed here as uncommitted; all shipped):
 - Removed inline `?build-index` web handler — index rebuild is now CLI-only via `php cli/build-index.php`
 - Markdown output format purity: `getSearchPage()` returns pure Markdown list items (`- `) instead of `<ul>`/`<li>` HTML wrappers
 - Added `## apropos` subheading in Markdown format search results
-- `--status` sample labeling: now shows `Enhanced samples (N/T pages, emoji_html → default view)`
 - CLAUDE.md: documented "Output format purity" design rule
+
+> The `--status` sample labelling line that used to sit here (`Enhanced samples
+> (N/T pages, emoji_html → default view)`) is gone: it belonged to
+> `cli/batch-enhance.php --status`, which was deleted in v4.10.0 with the rest of
+> the LLM enhancement layer.
 
 ---
 
@@ -340,10 +351,11 @@ while preserving a single-file web entry point. Minimize web output: only
 
 ```
 repo/                               # Git repository root
-├── phpMan.php                      # Thin dispatcher (870 lines) — only PHP file in webroot
+├── phpMan.php                      # Entry script + dispatch (795 lines) — only PHP file in webroot
 ├── phpman.css                      # Stylesheet
+├── phpman.js                       # Code-block copy button
 │
-├── src/                            # 21 source files (5345 lines total, loaded by bootstrap.php)
+├── src/                            # 21 source files (5,671 lines total, loaded by bootstrap.php)
 │   ├── bootstrap.php               # require all src files in dependency order
 │   ├── config.php                  # PHPMAN_* default constants (defined() guard)
 │   ├── util.php                    # h(), serverValue(), baseUrl(), scriptName(),
@@ -373,18 +385,22 @@ repo/                               # Git repository root
 │
 ├── cli/                            # CLI tools (deployed to PHPMAN_HOME alongside src/)
 │   ├── _bootstrap.php              # Shared bootstrap: PHP_SAPI guard + PHPMAN_HOME resolve
-│   │                               #   + phpman.config.php load + require phpMan.php
+│   │                               #   + phpman.config.php load
 │   ├── build-index.php             # php cli/build-index.php [--cron]
 │   ├── build-sitemap.php           # php cli/build-sitemap.php --output sitemap-phpman.xml.gz
-│   └── detect-tools.php            # report which of man/perldoc/info/pydoc3/ri/apropos exist
+│   ├── cache.php                   # php cli/cache.php stats|flush  (sharded page cache)
+│   ├── detect-tools.php            # report which of man/perldoc/info/pydoc3/ri/apropos exist
+│   ├── log-analyze.sh              # server log analysis (incl. a stats section)
+│   └── logcheck.sh                 # post-deploy error summary; piped to the server by `make logcheck`
 │
 ├── test/                           # Test suite (require phpMan.php → all src/ loaded)
-│   ├── run_all.php                 # All 296 tests entry point
+│   ├── run_all.php                 # All 516 tests entry point
 │   ├── test_helper.php             # assert_equals/contains/match/not_*()
-│   ├── unit/                       # 8 unit test files
-│   ├── integration/                # 5 integration test files
+│   ├── unit/                       # 17 unit test files
+│   ├── integration/                # 8 integration test files
 │   └── e2e/                        # 4 E2E test files (require network)
 │
+├── deploy/                         # atomic-release.sh + rollback.sh
 ├── docs/                           # Design documentation
 ├── Makefile                        # CI/CD pipeline
 ├── .deploy.mk.example              # SSH config template (not committed)
@@ -392,26 +408,27 @@ repo/                               # Git repository root
 └── phpman.config.php.example       # User config template
 
 Deployed:
-  webroot:   phpMan.php  phpman.css  phpman.config.php
-  PHPMAN_HOME:  src/  cli/  db/  logs/  (phpman.config.php symlink)
+  webroot:     phpMan.php  phpman.css  phpman.js
+  PHPMAN_HOME: src/  cli/  db/  logs/  releases/  current
+               phpman.config.php        # all settings; never in webroot
 ```
 
-**Entry point (`phpMan.php`, 753 lines)**:
+**Entry point (`phpMan.php`, 795 lines)**:
 
 ```php
 <?php
-// GPL header + RE_ASCII + version constants (lines 1-36)
-// ...
+declare(strict_types=1);
+// GPL header (lines 1-20)
 
-// Load site-specific config before defaults (define() guard pattern)
-$_config_file = __DIR__ . "/phpman.config.php";
-if (file_exists($_config_file)) { require $_config_file; }
-unset($_config_file);
+// #49: Named constants — placeholders replaced by make staging/release
+define('PHPMAN_HOME',    '__PHPMAN_HOME__');
+define('PHPMAN_VERSION', '__PHPMAN_VERSION__');
+define('GIT_DESCRIBE',   '__GIT_DESCRIBE__');
 
 // Load all source files (config defaults + functions + classes)
 // Resolve src/: dev (next to phpMan.php) or deployed (PHPMAN_HOME/src/)
 $srcDir = is_dir(__DIR__ . '/src') ? __DIR__ . '/src' : PHPMAN_HOME . '/src';
-require $srcDir . '/config.php';
+require_once $srcDir . '/config.php';    // defaults, then ~/.phpman/phpman.config.php
 require $srcDir . '/bootstrap.php';
 
 // Test mode: load functions only, skip dispatch
@@ -424,22 +441,25 @@ if (defined("PHPMAN_NO_CLI_DISPATCH")) return;
 // Format negotiation → PATH_INFO routing → switch($mode) → output
 ```
 
-**Dependency order** (`src/bootstrap.php`, 31 lines):
+**Dependency order** (`src/bootstrap.php`, 30 lines):
 
 ```php
 <?php
+// bootstrap.php — load all src/ files in dependency order
+// Loaded by phpMan.php after phpman.config.php
+
 $srcDir = __DIR__;
 
-require $srcDir . '/config.php';         // 0: constants (defined() guards)
+require_once $srcDir . '/config.php';         // 0: constants (defined() guards)
 require $srcDir . '/util.php';           // 1: h(), baseUrl(), scriptName(), etc.
 require $srcDir . '/log.php';            // 1: phpManLog()
-require $srcDir . '/cache.php';          // 1: cacheDb(), PageCache, Profiler
-require $srcDir . '/search_index.php';   // 2: FTS5 indexing, apropos parsing
+require $srcDir . '/cache.php';          // 1: cacheDb(), PageCache, Profiler (init called here)
+require $srcDir . '/search_index.php';   // 2: buildFtsQuery(), rebuildSearchIndex(), etc.
 require $srcDir . '/format_common.php';  // 2: cleanTerminalOutput(), detectHeadingType()
 require $srcDir . '/format_html.php';    // 3: formatManPerlDoc(), renderTocSidebar()
 require $srcDir . '/format_markdown.php';// 3: formatManPerlDocToMarkdown(), showCopyright()
 require $srcDir . '/format_json.php';    // 3: formatToJSON(), parseFlagJSON()
-require $srcDir . '/format_mcp.php';     // 3: formatForOutput(), formatMcp*()
+require $srcDir . '/format_mcp.php';     // 3: formatForOutput(), formatMcpMarkdown()
 require $srcDir . '/source_man.php';     // 4: getManPage(), getManIndex()
 require $srcDir . '/source_perldoc.php'; // 4: getPerldocPage()
 require $srcDir . '/source_info.php';    // 4: getInfoPage()
@@ -451,21 +471,28 @@ require $srcDir . '/mcp_server.php';     // 6: handleMcp(), handleWellKnown()
 require $srcDir . '/web_header.php';     // 7: showHeader()
 require $srcDir . '/web_footer.php';     // 7: showFooter(), showForm()
 
+// Global: default page title (overridden by web router for specific pages)
 $PHPMAN_TITLE = PHPMAN_HOME_TITLE;
 $TOC_ITEMS = array();
 ```
 
-**Shared CLI bootstrap** (`cli/_bootstrap.php`, 46 lines):
+**Shared CLI bootstrap** (`cli/_bootstrap.php`, 57 lines):
 
 ```php
 <?php
+// cli/_bootstrap.php — resolve PHPMAN_HOME + load phpMan core.
 if (PHP_SAPI !== 'cli') { http_response_code(400); die("CLI only\n"); }
 
-// Load site config: project root first, then $HOME/.phpman/ (matches src/config.php)
-// Resolve PHPMAN_HOME if the config did not define it.
-
-// Load phpMan core directly from src/ — no web dispatcher needed.
-// Prefer the checked-out project source; fall back to PHPMAN_HOME/src.
+// 1. Load site config: project-root first, then $HOME/.phpman/phpman.config.php
+//    (realpath() the project-root hit so the literal '..' doesn't leak into
+//    PHPMAN_HOME as ".../cli/..").
+// 2. Resolve PHPMAN_HOME from that config's own directory when it isn't already
+//    defined — a phpman home is a directory holding phpman.config.php, and every
+//    deployment runs `cd <home> && php cli/...`. Falling back to $HOME/.phpman
+//    unconditionally made a CLI run from ~/.phpman_test resolve to ~/.phpman,
+//    so `make reindex-staging` rebuilt *production's* index.
+// 3. Load phpMan core directly from src/ — no web dispatcher needed.
+//    Prefer the checked-out project source; fall back to PHPMAN_HOME/src.
 define('PHPMAN_NO_CLI_DISPATCH', true);
 require_once <project>/src/bootstrap.php;   // else PHPMAN_HOME/src/bootstrap.php
 ```
@@ -489,15 +516,18 @@ calls functions loaded by bootstrap but is not itself required by anything.
   of them are registered in `run_all.php` — `test/structure_regression.php` is
   run separately). Rewriting them to `require PHPMAN_HOME .
   '/src/bootstrap.php'` **fatals under PHP 8**: `PHPMAN_HOME` is defined only
-  by `phpMan.php:29`, while `src/config.php:152` uses the raw constant
+  by `phpMan.php:29`, while `src/config.php:193` uses the raw constant
   unguarded (`$toolsConfig = PHPMAN_HOME . '/tools_config.php'`), and an
   undefined constant is an `Error`, not a warning. Defining it as the repo root
   instead would point `PHPMAN_CACHE_DIR` at `<repo>/db`. CLI scripts that must
   avoid the dispatcher require `cli/_bootstrap.php`, which defines
   `PHPMAN_HOME` itself (see below).
 - **Config overridables unchanged** — `defined()` guard pattern in `config.php`.
-- **Deploy unchanged** — Makefile `sed` for PHPMAN_VERSION + `scp` phpMan.php
-  + phpman.css to webroot, `scp -r cli tools src` to PHPMAN_HOME.
+- **Deploy is atomic as of v5.0** — `deploy/atomic-release.sh` stages a new
+  `~/.phpman/releases/<tag>/` and swaps the `current` symlink; the earlier
+  `scp phpMan.php` + `scp -r cli tools src` sequence (and the "upload `src/`
+  before `phpMan.php`" rule) is gone. See
+  [Configuration & Deployment Architecture](#configuration--deployment-architecture).
 - **Single-file constraint met** — webroot has 1 PHP file (phpMan.php).
   All logic is outside webroot, unreachable via HTTP.
 
@@ -1138,66 +1168,82 @@ Total: ~5 weeks from today to a clean v5.0.0 of phpMan + 2 new working repos.
 
 ### Configuration & Deployment Architecture
 
-Three config layers, loaded in order — earlier layers define constants first,
-later layers respect `defined()` guards:
+Two config layers plus two maintainer-only files. Earlier layers define constants
+first; later layers respect `defined()` guards:
 
 ```
-┌── ~/.phpman/phpman.config.php  ← user-edited, OUTSIDE webroot (secrets live here)
+┌── ~/.phpman/phpman.config.php  ← THE config file. User-edited, OUTSIDE webroot.
 │   define('PHPMAN_BASE_URL', 'https://www.example.com/phpMan.php');
 │   define('MCP_API_KEY', '...');
 │
-├── src/config.php         ← defaults (not user-edited), in PHPMAN_HOME/src/
+├── src/config.php         ← defaults (not user-edited), in PHPMAN_HOME/releases/<id>/src/
 │   if (!defined('PHPMAN_WIDTH'))  define('PHPMAN_WIDTH', 100);
-│   if (!defined('PHPMAN_HOME'))   define('PHPMAN_HOME', '~/.phpman');
+│   $srcDir-relative PHPMAN_HOME fallback, then the derived paths
+│   (PHPMAN_CACHE_DIR, PHPMAN_LOG_DIR, PHPMAN_BACKUP_DIR, RENDERER_VERSION)
 │
-├── .deploy.mk             ← maintainer SSH config (never deployed)
+├── .deploy.mk             ← maintainer SSH config (never committed, never deployed)
 │   TEST_HOST = chedong@staging.example.com
 │   DEMO_HOST = chedong@chedong.com
 │
 └── Makefile tag           ← tags only (PHPMAN_VERSION is placeholder, no source edit)
 ```
 
-**Loading order on every request**:
+**There is no config file in the webroot.** v4.5 moved it out and it has stayed
+out: `~/.phpman/phpman.config.php` is the single source of truth for every
+setting, including in the `install.sh --webroot` layout. `src/config.php` finds
+it through `PHPMAN_HOME`, *not* by walking up from `src/` — that lookup rule is
+what makes the release layout below work, and it is covered by
+`test/unit/test_config_resolution.php`.
+
+**Loading order on every request** (dev: `src/` sits next to `phpMan.php`;
+deployed: it lives under `PHPMAN_HOME`):
 
 ```
-phpMan.php (webroot, ~50 lines)
+phpMan.php (webroot, 795 lines — dispatcher + the render/search code that stayed)
 │
-├─1. require phpman.config.php     ← user overrides (PHPMAN_BASE_URL, MCP_API_KEY, ...)
+├─0. define('PHPMAN_HOME'|'PHPMAN_VERSION'|'GIT_DESCRIBE', '__PLACEHOLDER__')
+│      ← replaced by `sed` in the Makefile at deploy time (#49)
 │
-├─2. require bootstrap.php
-│   └── require src/config.php     ← fills in remaining defaults (defined() guards)
-│   └── require src/util.php       ← h(), baseUrl(), scriptName()
-│   └── require src/log.php
-│   └── require src/cache.php      ← cacheDb(): auto-creates DB + tables if missing
-│   └── ... all other src/ files ...
+├─1. $srcDir = is_dir(__DIR__.'/src') ? __DIR__.'/src' : PHPMAN_HOME.'/src'
+├─2. require $srcDir/config.php    ← fills in remaining defaults (defined() guards),
+│                                    then requires ~/.phpman/phpman.config.php
+│   require $srcDir/bootstrap.php  ← requires all other src/ files
 │
-├─3. if (PHPMAN_NO_CLI_DISPATCH) return;   ← CLI tools exit here
-├─4. if (PHPMAN_TEST_MODE) return;         ← tests exit here
+├─3. if (PHPMAN_TEST_MODE) return;          ← tests exit here
+├─4. if (PHPMAN_NO_CLI_DISPATCH) return;    ← CLI tools exit here
 │
-└─5. require web_router.php        ← dispatch switch($mode)
+└─5. dispatch switch($mode)        ← routing is in phpMan.php; there is no
+                                     separate web_router.php
 ```
+
+> **Historical note:** earlier revisions of this document described a ~50-line
+> `phpMan.php` plus a `src/web_router.php`. That file does not exist and never
+> shipped — the dispatch `switch ($mode)` is in `phpMan.php` itself, and the
+> entry script is 795 lines. The "thin dispatcher" goal of v4.4 was only partly
+> realized: the logic moved to `src/`, the router did not.
 
 **Why two config files?** `phpman.config.php` is user-facing — one file to edit for
-LLM keys, debug mode, custom paths. `src/config.php` is internal — provides defaults
+API keys, debug mode, custom paths. `src/config.php` is internal — provides defaults
 for everything the user didn't override. They never conflict because of the
 `defined()` guard pattern.
 
 #### Installation Flow
 
 ```
-User runs:  curl ... | bash                        (install.sh)
+User runs:  curl ... | bash -s -- --webroot /var/www/html   (install.sh)
 
 1. git clone → ~/.phpman/                          ← full repo (includes src/)
 2. php cli/build-index.php                          ← initial FTS5 index build
-3. generate_config ~/.phpman/phpman.config.php      ← config with PHPMAN_HOME
-4. if --webroot /var/www/html:
-     cp ~/.phpman/phpMan.php   → /var/www/html/    ← single-file dispatcher
-     cp ~/.phpman/phpman.css   → /var/www/html/
-     generate_config /var/www/html/phpman.config.php ← webroot config + MCP_API_KEY
+3. generate_config ~/.phpman/phpman.config.php      ← the ONLY config file
+4. do_deploy_webroot (only with --webroot):
+     cp ~/.phpman/phpMan.php → /var/www/html/
+     cp ~/.phpman/phpman.css → /var/www/html/
+     cp ~/.phpman/phpman.js  → /var/www/html/
 
 Result:
-  webroot:  phpMan.php  phpman.css  phpman.config.php
-  ~/.phpman: src/ cli/ db/ logs/  phpman.config.php
+  webroot:   phpMan.php  phpman.css  phpman.js        ← 3 files, no config
+  ~/.phpman: src/ cli/ db/ logs/ backups/ deploy/ releases/ current
+             phpman.config.php                        ← all settings live here
 ```
 
 #### Update Flow
@@ -1207,12 +1253,19 @@ Maintainer: make tag VERSION=4.4.0                 (local)
   1. git tag -a v4.4.0 -m "v4.4.0"                  ← annotated tag (no source edit)
   2. git push origin master v4.4.0                    ← push + tag
 
-Maintainer: make release                            (deploy to prod)
+Maintainer: make release                            (deploy to prod — atomic since v5.0)
   1. make test                                       ← syntax check
-  2. sed PHPMAN_HOME + GIT_DESCRIBE + PHPMAN_VERSION ← replace placeholders
-  3. scp phpMan.php + phpman.css → webroot
-  4. scp -r cli/ src/ → PHPMAN_HOME
-  5. make logcheck                                   ← tail error logs
+  2. sed PHPMAN_HOME + GIT_DESCRIBE + PHPMAN_VERSION ← replace placeholders → phpMan.php.deploy
+  3. rsync src/ → $HOME/.phpman/releases/<RELEASE_ID>/src/
+     scp phpMan.php.deploy → .../releases/<RELEASE_ID>/phpMan.php
+  4. ssh ... sh deploy/atomic-release.sh <home> <docroot> phpMan.php <RELEASE_ID>
+       → flips `current` with a single atomic rename (see below)
+  5. rsync phpman.css + phpman.js → docroot;  cli/ → $HOME/.phpman/cli/
+     ssh ... php cli/detect-tools.php > tools_config.php.tmp && mv ... tools_config.php
+       → written to a temp file and renamed: rewriting in place truncates first,
+         and a request served in that window reads an empty file (#240)
+  6. make logcheck                                   ← pipes cli/logcheck.sh over ssh
+                                                       (per-day / per-type error summary)
 
 Maintainer: make release-reindex                    (deploy + rebuild index)
   Same as release, then:
@@ -1223,89 +1276,131 @@ User:      install.sh --update                      (self-update)
   2. php cli/build-index.php                         ← reindex after code update
 ```
 
+**What `atomic-release.sh` maintains** (`$PHP_HOME` is `~/.phpman`, or
+`~/.phpman_test` on staging):
+
+```
+$PHP_HOME/releases/<id>/phpMan.php   one immutable release
+$PHP_HOME/releases/<id>/src/
+$PHP_HOME/current  -> releases/<id>            ← swapped by ONE rename(2)
+$PHP_HOME/src      -> current/src              ← so the CLI follows the same release
+$PHP_HOME/phpMan.php -> current/phpMan.php     ← so the test suite runs from here
+$DOCROOT/phpMan.php  -> $PHP_HOME/current/phpMan.php
+```
+
+`phpMan.php` and `src/` must agree, and they used to be uploaded as two separate
+steps — leaving a window where one had landed and the other had not. A request in
+that window ran the new half against the old half. **Both directions have bitten
+production:** an additive change with `phpMan.php` first gave "Call to undefined
+function" (2026-07-13); a removal with `src/` first gave "Undefined constant"
+(2026-10-02). No fixed upload order fixes both, because the two directions want
+opposite orders. Staging both into `releases/<id>/` and swapping one `current`
+symlink does fix both: `rename(2)` is atomic, so every request sees a matched pair.
+
+`RELEASE_ID` is `<sanitized git describe>-<UTC timestamp>`. The timestamp is not
+decoration — keyed on the tag alone, a second deploy of the same commit would
+resolve to the release that is already live and rsync into it, updating running
+code in place, which is the very window this removes.
+
+`make rollback` walks `ls -1dt releases/*` and flips `current` back (`STEP=n`). It
+is a symlink flip, **not** a file restore — there is no `.bak` and no `backups/`
+content to restore from. `PHPMAN_BACKUP_DIR` is still defined and `install.sh`
+still creates `~/.phpman/backups/`, but nothing writes to it any more.
+
 #### Offline Initialization (first request after fresh install)
 
 ```
 Browser:  GET /phpMan.php/man/ls
 
 phpMan.php:
-  1. require phpman.config.php          → PHPMAN_HOME = '/home/user/.phpman'
-  2. require bootstrap.php              → loads all functions
-  3. require web_router.php             → dispatch
+  1. require $srcDir/config.php       → PHPMAN_HOME resolved, defaults filled in
+  2. require $srcDir/bootstrap.php    → loads all functions
+  3. dispatch switch($mode)
 
-web_router.php:
+dispatch:
   4. normalizeMode('man')               → 'man'
   5. normalizeParameter('ls')          → 'ls'
   6. call getManPage('ls', '', 'html')
 
 getManPage() (src/source_man.php):
   7. PageCache::get('man','ls','','html')  → null (no cache yet)
-  8. cacheDb() auto-creates:
+  8. pageCacheDb('man') auto-creates the shard:
      - PHPMAN_CACHE_DIR directory
-     - phpman_cache.db SQLite file
-     - cache, tldr_cache, search_fts, search_index_meta, meta tables
+     - phpman_cache_man.db SQLite file
+     - the cache table, with renderer_version DEFAULT 0
   9. exec('man ls 2>/dev/null')        ← fork system command
   10. formatManPerlDoc($rawLines)      ← overstrike → HTML
   11. PageCache::set(...)               ← cache for next request
   12. return HTML
 
-No manual init needed. cacheDb() lazily bootstraps everything on first use.
+No manual init needed. pageCacheDb() lazily bootstraps the shard on first use.
 The only offline step: cli/build-index.php (populates FTS5 search index).
 ```
+
+Since v4.11 the page cache is sharded per mode, so step 8 creates
+`phpman_cache_man.db` rather than adding a `man` row to a shared file. The central
+`phpman_cache.db` holds only `meta`, `search_index_meta` and `tldr_cache` — it has
+**no `cache` table**. See [03-CACHE.md](03-CACHE.md).
 
 #### First Deploy Directory Layout
 
 Two deployment paths. Both result in the same runtime structure:
 
 ```
-# Path A: install.sh (user self-install)
+# Path A: install.sh (user self-install, non-atomic)
 git clone → ~/.phpman/                    # repo = PHPMAN_HOME
 ~/.phpman/src/        ← from repo
 ~/.phpman/cli/        ← from repo
 ~/.phpman/db/         ← install.sh: mkdir -p
 ~/.phpman/logs/       ← install.sh: mkdir -p
-~/.phpman/backups/    ← install.sh: mkdir -p
+~/.phpman/backups/    ← install.sh: mkdir -p (currently written by nothing)
 
   --webroot /var/www/html:
-    /var/www/html/phpMan.php          ← cp from ~/.phpman
-    /var/www/html/phpman.css          ← cp from ~/.phpman
-    /var/www/html/phpman.config.php   ← generated from .example
+    /var/www/html/phpMan.php   ← cp from ~/.phpman
+    /var/www/html/phpman.css   ← cp from ~/.phpman
+    /var/www/html/phpman.js    ← cp from ~/.phpman
 
-# Path B: Makefile (maintainer deploy)
-scp phpMan.php + phpman.css → webroot
-scp -r src/ cli/ → PHPMAN_HOME
-db/ logs/ backups/           ← auto-created by cacheDb() on first request
-phpman.config.php            ← created by Makefile from .example on first deploy
+# Path B: Makefile (maintainer deploy, atomic since v5.0)
+rsync src/ → $PHP_HOME/releases/<id>/src/
+scp phpMan.php.deploy → $PHP_HOME/releases/<id>/phpMan.php
+sh deploy/atomic-release.sh  → flips `current`, points $PHP_HOME/src and
+                               $DOCROOT/phpMan.php at it
+rsync phpman.css phpman.js → $DOCROOT
+rsync cli/ → $PHP_HOME/cli/
+db/ logs/                    ← auto-created by the cache code on first request
+phpman.config.php            ← rsync'd from phpman.config.php.example on first deploy
 ```
 
 **Directories and what creates them:**
 
 | Directory | Path A (install.sh) | Path B (Makefile) |
 |---|---|---|
-| `src/` | git clone | `scp -r src/` |
-| `cli/` | git clone | `scp -r cli/` |
-| `db/` | `mkdir -p` | cacheDb() auto-create |
-| `logs/` | `mkdir -p` | cacheDb() auto-create |
-| `backups/` | `mkdir -p` | `make release` (first backup) |
+| `src/` | git clone | `rsync` into `releases/<id>/`; `$PHP_HOME/src` symlink |
+| `cli/` | git clone | `rsync cli/` |
+| `db/` | `mkdir -p` | cache code auto-creates the shard |
+| `logs/` | `mkdir -p` | log code auto-creates |
+| `backups/` | `mkdir -p` | not used — nothing writes here |
+| `releases/`, `current` | not used (non-atomic) | `deploy/atomic-release.sh` |
 
 **webroot contains only 3 files** (minimal attack surface):
 ```
 /var/www/html/
-├── phpMan.php           # Thin dispatcher — only PHP file served by HTTP
+├── phpMan.php           # Entry script — the only PHP file served by HTTP
 ├── phpman.css           # Stylesheet
-└── phpman.config.php    # User config (define() overrides)
+└── phpman.js            # Code-block copy button
 ```
+No config, no `src/`, no database — all of that lives under `PHPMAN_HOME`.
 
 #### Config Minimization
 
-Config is in **one file**: `phpman.config.php` (in webroot, symlinked to PHPMAN_HOME).
-Defaults are in `src/config.php` — user config only needs to override what differs.
+Config is in **one file**: `~/.phpman/phpman.config.php` — outside the webroot,
+never symlinked into it.
 
 **Zero config** — works for local dev:
 ```bash
 php -S localhost:45678 phpMan.php
 # → http://localhost:45678/phpMan.php
-# All defaults: PHPMAN_HOME=~/.phpman, no LLM, no MCP auth
+# All defaults: PHPMAN_HOME=~/.phpman, no MCP auth
 ```
 
 **Minimal production** (2 defines):
@@ -1331,10 +1426,17 @@ define('PHPMAN_ADSENSE_ID', 'ca-pub-XXXXXXXXXXXXXXXX');
 Injects the `adsbygoogle.js` loader only — ads render only if Auto Ads is on for the
 site. Widens the CSP automatically. Leave unset on staging (invalid traffic).
 
-**install.sh config generation**: copies `phpman.config.php.example` → uncomments
-`PHPMAN_HOME` with detected home path. If `--webroot` flag is passed, also generates
-a random 32-char `MCP_API_KEY`. All other settings stay commented — user uncomments
-as needed. Single source of truth: `.example` file defines the canonical config format.
+**install.sh config generation**: copies `phpman.config.php.example` →
+`~/.phpman/phpman.config.php` and uncomments `PHPMAN_HOME` with the detected home
+path. It also generates a random 32-char `MCP_API_KEY` **unconditionally** (not
+only with `--webroot` — the `--webroot` path copies `phpMan.php`, `phpman.css`
+and `phpman.js` and no config at all). All other settings stay commented; the user
+uncomments as needed. Single source of truth: the `.example` file defines the
+canonical config format.
+
+> A comment inside `install.sh:172` still says the webroot "gets a minimal
+> phpman.config.php with just PHPMAN_HOME". That is stale — `do_deploy_webroot()`
+> does not write a config file. The behaviour is correct; only the comment lies.
 
 **Config overridable constants** (all use `defined()` guard in `src/config.php`):
 
@@ -1354,20 +1456,25 @@ as needed. Single source of truth: `.example` file defines the canonical config 
 | `PHPMAN_GA_ID` | `''` | For GA4 tracking |
 | `PHPMAN_ADSENSE_ID` | `''` | For AdSense |
 | `MCP_API_KEY` | `''` | For MCP auth |
-| `PHPMAN_DEBUG` | false | No |
+| `PHPMAN_DEBUG` | `getenv('PHPMAN_DEBUG') === 'true'` (false unless the env var is set) | No |
 | `PHPMAN_HOME_TITLE` | `'phpman - Linux...'` | No |
 | `PHPMAN_PROJECT_NAME` | `'phpman'` | No |
 
 **.deploy.mk role**: maintainer-only SSH config (never committed, never deployed).
-Provides server addresses, paths, log locations to Makefile:
+Provides server addresses, paths and log locations to the Makefile:
 
 ```
-.deploy.mk          →    Makefile           →    Target server
-────────────────────────────────────────────────────────────────
-TEST_HOST           →    scp -P TEST_PORT   →    $TEST_PATH/phpMan.php
-DEMO_HOST           →    scp -P DEMO_PORT   →    $DEMO_PATH/phpMan.php
-DEMO_ERROR_LOG      →    ssh ... tail       →    post-release logcheck
+.deploy.mk          →    Makefile                          →    Target server
+──────────────────────────────────────────────────────────────────────────────
+TEST_HOST/PORT      →    rsync src/ + scp phpMan.php.deploy →  $TEST_PATH
+                         then ssh sh deploy/atomic-release.sh
+DEMO_HOST/PORT      →    (same, DEMO_*)                     →  $DEMO_PATH
+DEMO_ERROR_LOG      →    ssh ... tail                       →  post-release logcheck
 ```
+
+The Makefile resolves remote `$HOME` over SSH at parse time (`STAGING_HOME`,
+`DEMO_HOME`) and **aborts before doing anything** if that fails — so a dead SSH
+connection is an error, not a half-finished deploy.
 
 No `.deploy.mk` = Makefile exits with error. Users who deploy via `install.sh`
 never touch this file.

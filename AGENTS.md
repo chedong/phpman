@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project overview
 
-phpMan is a PHP web app (`phpMan.php` ~870 lines + 21 source files in `src/`) that wraps Unix `man`, `perldoc`, `info`, `pydoc3`, `ri`, and `apropos` commands into HTML, Markdown, JSON, and MCP responses. It also runs as an MCP Server for AI agent integration. CLI tools (search index rebuild, sitemap generation) are in `cli/`.
+phpMan is a PHP web app (`phpMan.php` ~795 lines + 21 source files in `src/`) that wraps Unix `man`, `perldoc`, `info`, `pydoc3`, `ri`, and `apropos` commands into HTML, Markdown, and JSON responses. It also runs as an MCP Server for AI agent integration. CLI tools (search index rebuild, sitemap generation, cache stats/flush) are in `cli/`.
 
 ## Build / test / deploy
 
@@ -25,16 +25,21 @@ php test/e2e/test_security.php
 bash test/phpman-regression.sh                        # against production
 bash test/phpman-regression.sh --local http://localhost:8080/phpMan.php   # pre-deploy
 
-# Deploy
-make staging                         # scp to staging (code + CSS only)
-make release                         # scp to production (backs up first, code only)
-make release-reindex                 # production: code + rebuild search index
-make staging-reindex                 # staging: code + rebuild search index
-make reindex                         # production: rebuild search index only
-make reindex-staging                 # staging: rebuild search index only
-make rollback                        # restore production backup
+# Deploy (atomic since v5.0: releases/<tag>/ + `current` symlink swap)
+make staging                         # staging: syntax check + atomic release
+make release                         # production: syntax check + atomic release + logcheck
+make release-reindex                 # production: code + rebuild search index + sitemaps
+make staging-reindex                 # staging: code + rebuild search index + sitemaps
+make reindex                         # production: rebuild search index + sitemaps only
+make reindex-staging                 # staging: rebuild search index + sitemaps only
+make rollback                        # flip `current` back a release (STEP=n)
 make verify                          # curl health check on both
-make logcheck                        # tail server logs after release
+make logcheck                        # post-deploy error summary (per-day / per-type)
+
+# Cache (sharded per mode since v4.11)
+make cache-stats                     # rows / bytes / stale per shard
+make cache-flush                     # delete production page-cache shards
+make cache-flush-staging             # delete staging page-cache shards
 ```
 
 The test framework is minimal (no PHPUnit): `assert_equals`, `assert_contains`, `assert_match`. Tests load `phpMan.php` with `define('PHPMAN_TEST_MODE', true)` to skip runtime execution and only define functions.
@@ -75,19 +80,47 @@ All CLI scripts resolve `PHPMAN_HOME`, then require `src/bootstrap.php` directly
 
 **Bump `RENDERER_VERSION` whenever a change alters rendered output** — the HTML/markdown/JSON renderers, `formatForOutput()`, `cleanTerminalOutput()`, OSC-8 link handling. Nothing needs purging and there is no re-render herd; existing rows default to the old version and drain gradually through real traffic. `make cache-stats` shows a `stale` count per shard.
 
-Do **not** confuse this with `CACHE_SCHEMA_VERSION`, which describes the *shape* of the cache tables — a schema bump **deletes every row**. Do not auto-derive `RENDERER_VERSION` from a deploy stamp or source hash either; that would invalidate on every deploy, including ones that cannot change a byte of output.
+Do **not** reintroduce a schema-version stamp alongside it. `CACHE_SCHEMA_VERSION` and both migration ladders were removed in v5.0 (`91cb020`): each cache DB now creates its schema with `CREATE ... IF NOT EXISTS` on every open, so an additive change needs no migration, and the stamps that used to record the shape (`meta.schema_version`, `PRAGMA user_version`) existed only so a rolled-back deploy could re-stamp and re-migrate — that rollback provision is gone. Do not auto-derive `RENDERER_VERSION` from a deploy stamp or source hash either; that would invalidate on every deploy, including ones that cannot change a byte of output.
 
 History not to repeat: schema v5→v6 dropped `cache.generator_version`, which stored `GIT_DESCRIBE` on every `set()` — nothing ever read it, so it invalidated nothing. **A version is only worth storing if `get()` filters on it.**
 
 Surveying the cache needs care too: in `json` rows a terminal escape is stored as the six-character sequence `\u001b`, not the raw byte, so a raw-byte search reports zero — decode before searching.
 
-**Emoji cache rows (inert)** — `emoji_html` / `emoji_md` cache rows predate v4.10, which removed the LLM enhancement layer (`enhanceManPage()`, `callLLM()`, `cleanEmojiHtml()`, `cli/batch-enhance.php`). v5.0 (`5bf0025`) then removed the **read** side too — the default-view fallback, the `/markdown` preference, the `CACHE_FORMAT_EMOJI_*` constants and the never-expire TTL rule — so these rows are now written by nothing and read by nothing. Do not add code that reads them. The one surviving reference is the v3→v4 migration's `format NOT IN ('json','search','emoji_md','emoji_html')` preserve list (`src/cache.php`), kept deliberately: rewriting a shipped migration would change what an old database migrating forward today would delete. Historical design lives in git history v4.0–v4.9 and `docs/01-PRODUCT.md` §2.12.
+**Emoji cache rows (inert)** — `emoji_html` / `emoji_md` cache rows predate v4.10, which removed the LLM enhancement layer (`enhanceManPage()`, `callLLM()`, `cleanEmojiHtml()`, `cli/batch-enhance.php`). v5.0 (`5bf0025`) then removed the **read** side too — the default-view fallback, the `/markdown` preference, the `CACHE_FORMAT_EMOJI_*` constants and the never-expire TTL rule — and the v3→v4 migration whose preserve list was the last thing naming those formats was deleted in the same release. So these rows are now written by nothing, read by nothing, and named by nothing. Do not add code that reads them. Historical design lives in git history v4.0–v4.9 and `docs/01-PRODUCT.md` §2.12.
 
 **UX: code blocks + copy button** — External JS `phpman.js` (loaded in `showFooter()`) wraps all `#content-wrap pre` blocks in `<div class="code-block">` with a `📋 Copy` button positioned top-right. Clicking copies the `<code>` (or `<pre>`) textContent to clipboard with `✓ Copied!` feedback. CSS: Tokyo Night `#1f2335` background, `italic` font, rounded border, button hidden until hover (.code-block:hover .copy-btn).
 
 ## Git workflow — CRITICAL: worktree rebase rule
 
+### 分支约定（2026-09）
+
+- **default 是 `master`**：push 一律 `git push origin master`，master 是唯一主干。
+- **不要 push 其他分支名**（如 `git push origin main`）：远程没有该分支时会意外创建一个非主干分支（myblog 的教训：default=main 却 push master，养出了旁支）。若日后决定调整 default 分支，再更新本节。
+- 无 feature branch、无 PR，提交直接进 master。
+
 **phpMan uses `master` as the single source of truth. No feature branches, no PRs. Every commit goes directly to master.**
+
+### Commit 署名格式
+
+`Co-Authored-By` 行用固定格式，三个值**动态读取**（不要写死 `Claude <noreply@anthropic.com>`）：
+
+```
+Co-Authored-By: Claude code <版本> with <模型名> <noreply@<域名>>
+```
+
+| 部分 | 来源 |
+|---|---|
+| 版本 | `claude --version` |
+| 模型名 | **本会话实际跑的模型**，从会话 transcript 读（见下）—— 不是 `ANTHROPIC_MODEL` |
+| 域名 | `ANTHROPIC_BASE_URL` 的 host（如 `https://taotoken.net/api` → `taotoken.net`） |
+
+**模型名不要取 `ANTHROPIC_MODEL`**：那是*配置*里的模型，未必是会话实际被路由到的那个。2026-10-02 就出现过 `ANTHROPIC_MODEL=glm-5.3-flash` 而会话实际跑 `deepseek-flash`。从 transcript 读实际值：
+
+```bash
+grep -o '"model":"[^"]*"' ~/.claude/projects/<project-slug>/$CLAUDE_CODE_SESSION_ID.jsonl | sort -u
+```
+
+示例：`Co-Authored-By: Claude code 2.1.285 with deepseek-flash <noreply@taotoken.net>`
 
 ### Rule: rebase before commit in any worktree
 

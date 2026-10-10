@@ -1,9 +1,9 @@
 # phpMan FTS5 Full-Text Search Design
 
 > **Status:** v4 — FTS5 offline index priority + command-line cascade fallback + single-query 3-source aggregation
-> **Date:** 2026-06-08 (v3.6.3)
-> **Environment:** PHP 7.2+ / SQLite 3.53.1 · `PRAGMA compile_options` includes `ENABLE_FTS5`
-> **Related:** [CACHE_DESIGN.md](CACHE_DESIGN.md) — page content cache architecture
+> **Date:** 2026-06-08 (v3.6.3); cache section revised for v4.11 sharding / v5.0
+> **Environment:** PHP 8.0+ / SQLite 3.53.1 · `PRAGMA compile_options` includes `ENABLE_FTS5`
+> **Related:** [03-CACHE.md](03-CACHE.md) — page content cache architecture
 
 ---
 
@@ -53,16 +53,20 @@ getSearchPage($parameter)
 
 ### 1.3 Search Result Caching
 
-The entire search process is wrapped in `cacheOrExecute('search', ...)`. Results are written to the `cache` table:
+The entire search process is wrapped in `cacheOrExecute('search', ...)`. Results are written to the
+**search shard** — since v4.11 the page cache is sharded per mode into `phpman_cache_<mode>.db`, and
+the central `phpman_cache.db` has no `cache` table at all (see [03-CACHE.md](03-CACHE.md)):
 
 | Field | Value |
 |------|-----|
 | `mode` | `'search'` |
 | `format` | Requested output format |
 | `content` | gzip(aggregated complete result) |
-| `ttl` | `3600` (1 hour) |
+| `ttl` | `PHPMAN_CACHE_TTL_FOUND` (default 210 days / 7 months) |
 
 Repeated searches for the same keyword hit the cache directly — no FTS5 or command-line call.
+A `search` **not-found** result is the one exception: it uses `PHPMAN_CACHE_TTL_FOUND` too, so a
+keyword that gains results later is not pinned to a stale empty answer for only a day.
 
 ---
 
@@ -70,7 +74,8 @@ Repeated searches for the same keyword hit the cache directly — no FTS5 or com
 
 ### 2.1 Index Sources
 
-FTS5 index is built offline via `--build-index` from three system commands:
+FTS5 index is built offline via `php cli/build-index.php` (the old `phpMan.php
+--build-index` web flag was removed) from three system commands:
 
 | Source | Command | Data | section value | source value |
 |------|------|------|-----------|-----------|
@@ -220,6 +225,7 @@ getSearchPage($parameter, $section, $format)
     ↓
 4. Output formatting:
     json/mcp → $lines→results, $pydocFtsLines→pydoc_results, $riFtsLines→ri_results
+              (mcp is an internal rendering core, not a URL-selectable format)
     html     → <h2>apropos</h2> + $lines
               + <h2>Python 3</h2> + $pydocFtsLines (or getPydocSearchPage)
               + <h2>Ruby (ri)</h2> + $riFtsLines (or getRiSearchPage)
@@ -340,11 +346,16 @@ if ($totalIndexed > 0) { /* use FTS5 */ }
 
 | Scenario | Strategy |
 |------|------|
-| Normal search | `cacheOrExecute('search', ...)` cached 1h |
+| Normal search | `cacheOrExecute('search', ...)` — written to the **search shard**, TTL `PHPMAN_CACHE_TTL_FOUND` (210 days) |
 | FTS5 hit | Cache aggregated result (with pydoc_results / ri_results) |
 | FTS5 miss → apropos | Cache apropos result; apropos results backfill FTS5 |
-| Index rebuild | `DELETE FROM cache WHERE mode='search'` |
-| Schema upgrade | Full clear |
+| Search miss (not_found) | Also `PHPMAN_CACHE_TTL_FOUND`, not the 1-day not-found TTL — a keyword that gains results later must not stay pinned to a stale empty answer |
+| Index rebuild | `DELETE FROM cache` on the **search shard only** (`src/search_index.php:474`) — other shards are untouched. Both index clears now run **inside** the rebuild transaction (#239), and a rebuild that indexes nothing is rolled back rather than committed, so an interrupted run can't leave search serving an empty index |
+
+Since v4.11 the page cache is sharded per mode (`phpman_cache_<mode>.db`), so a search-index rebuild
+clears one file instead of issuing a scoped `DELETE` against a shared table. There is no
+schema-upgrade full clear any more: `CACHE_SCHEMA_VERSION` and both migration ladders were removed in
+v5.0. See [03-CACHE.md](03-CACHE.md).
 
 ### 7.2 Search Pages Not in FTS5 Index
 
@@ -426,17 +437,18 @@ php cli/build-index.php
 
 # Cron mode (with timestamp)
 php cli/build-index.php --cron
-
-# Show help
-php phpMan.php --help
 ```
+
+`phpMan.php` itself has no CLI dispatch — every command-line entry point is a standalone script
+under `cli/` (see the "CLI tools" section of [CLAUDE.md](../CLAUDE.md)).
 
 Cron example (daily at 3 AM):
 ```
 0 3 * * * /usr/bin/php /path/to/phpman/cli/build-index.php --cron
 ```
 
-The rebuild uses `CACHE_DIR` configuration to locate the database file; no extra arguments needed.
+The rebuild resolves the database location from `PHPMAN_CACHE_DIR` (default
+`$PHPMAN_HOME/db`, where `PHPMAN_HOME` is `~/.phpman`); no extra arguments needed.
 
 ---
 
@@ -444,18 +456,27 @@ The rebuild uses `CACHE_DIR` configuration to locate the database file; no extra
 
 ### 11.1 Deploy Steps
 
+Deploys are atomic since v5.0: `deploy/atomic-release.sh` stages a new
+`~/.phpman/releases/<tag>/` and swaps the `current` symlink. The rebuild is a separate step.
+
 ```
-1. Update phpMan.php
-2. scp to server
-3. Run php cli/build-index.php (rebuild FTS5 index with pydoc/ri)
-4. Verify: curl /phpMan.php/search/json/json | python3 -m json.tool
-5. Check ri_results / pydoc_results
+1. make staging            # syntax check + atomic release to staging
+2. make staging-reindex    # rebuild FTS5 index + sitemaps on staging
+3. bash test/phpman-regression.sh --local http://localhost:8080/phpMan.php
+4. make release            # atomic release to production + logcheck
+   make release-reindex    # ...or code + reindex in one step
+5. Verify: curl /phpMan.php/search/json/json | python3 -m json.tool
+6. Check ri_results / pydoc_results
 ```
+
+`make rollback` flips the `current` symlink back one release (`STEP=n`) — it is not a file restore.
 
 ### 11.2 Related Files
 
 | File | Changes |
 |------|------|
-| `phpMan.php` | `getSearchPage()` single FTS5 query covering 3 sources; `rebuildSearchIndex()` with man+pydoc+ri + meta-guard dedup; `expandNameForFts()` case+dot+colon expansion; `getRiSearchPage()` `.xxx not found` filtering; `--help` CLI |
-| `docs/SEARCH_FTS5_DESIGN.md` | This document |
+| `phpMan.php` | `getSearchPage()` single FTS5 query covering 3 sources; `getRiSearchPage()` `.xxx not found` filtering |
+| `src/search_index.php` | `rebuildSearchIndex()` with man+pydoc+ri + meta-guard dedup; `expandNameForFts()` case+dot+colon expansion |
+| `cli/build-index.php` | CLI entry point for the rebuild |
+| `docs/04-SEARCH.md` | This document |
 | `test/unit/test_search_fts.php` | Updated expandNameForFts expectations |

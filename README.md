@@ -83,7 +83,7 @@ define('MCP_API_KEY', 'your-secret-key-here');
 
 > **Development has moved to GitHub.** The SourceForge repository is frozen at v2.1 and will not receive further updates.
 
-## Screenshot
+## Screenshot (perldoc)
 
 ![phpMan: perldoc page with TOC sidebar](https://sourceforge.net/p/phpunixman/screenshot/phpman-c72f9a50.png)
 
@@ -522,18 +522,56 @@ curl "https://www.chedong.com/phpMan.php/man/tar/1/markdown"
 
 ## What's New
 
+See [CHANGELOG.md](CHANGELOG.md) for the complete history.
+
+### Unreleased
+
+> Version numbering here is genuinely muddled and worth flagging: `CHANGELOG.md`'s
+> last released entry is **4.11.1**, git tags stop at **v4.9.31**, and several
+> commits and docs refer to a **v5.0** that has no CHANGELOG entry (the CSS commit
+> that claimed v5.0 was renumbered to 4.8). The items below are what is in
+> `CHANGELOG.md` `[Unreleased]` today; treat the number as undecided.
+
+- **`mcp` is no longer a URL format** — `/{mode}/{param}/mcp`, `/search/{query}/mcp` and `?format=mcp` now fall back to HTML. Use `POST /mcp` for the MCP envelope. Retired-suffix requests 301 to the command's real section.
+- **MCP authentication is fail-closed** — an unset `MCP_API_KEY` now rejects every request with `401` instead of serving `POST /mcp` to the world. Set the key in `~/.phpman/phpman.config.php`.
+- **`GET /status` is gone** — it was an undocumented dashboard for the batch job removed in v4.10. `status` is no longer an allowed mode.
+- **Deploys are atomic** — `phpMan.php` and `src/` upload into `~/.phpman/releases/<tag>/` and are activated by swapping one `current` symlink, so no request can observe a half-old/half-new version. `make rollback` flips that symlink back a release.
+- **Wrong or retired section numbers 301 instead of 404ing** — `/man/mount/1` redirects to `/man/mount/8`, `/man/ls/9/markdown` to `/man/ls/1/markdown`, carrying the format suffix through. Junk in the format slot 301s to the canonical URL instead of silently degrading to a 200 HTML page.
+- **`RENDERER_VERSION`** — the cache stores *finished output* under a long TTL, so a renderer fix used to stay invisible until the row expired (it took a 1,703-row manual purge to land the OSC-8 fix, and the footer fix below needed a bump to `2` for the same reason). A hand-bumped `RENDERER_VERSION` is now part of the cache read, so a row written by an older renderer reads as a miss and re-renders on its next request. Nothing needs purging and there is no re-render herd.
+- **The footer's dead MCP chip is gone** — it pointed at `/{mode}/{param}/mcp`, a format that no longer parses. MCP is advertised by the `Link: </mcp>; rel="mcp-server"` header and `/.well-known/mcp.json` instead.
+- **`cli/cache.php`** — `stats` and `flush` for the sharded cache, wrapped by `make cache-stats` / `cache-flush`. It replaces `rm -f phpman_cache.db*`, which matched no shard at all.
+- **Cache schema rollback provision removed** — `CACHE_SCHEMA_VERSION`, both migration ladders and the version stamps are gone; both openers run `CREATE ... IF NOT EXISTS` unconditionally, so an additive schema change needs no migration.
+- **Split sitemaps** — an HTML sitemap for search engines plus a markdown/JSON sitemap for AI bots, with `llms.txt`.
+- **A section segment on a mode that has no sections now 301s** — `/perldoc/File::Find/notaformat` used to render a 200 for `perldoc(notaformat)`, minting an unbounded URL space of duplicates. Only `man` and `search` treat a section as a lookup parameter.
+- **Search rebuild is atomic** — the index clear is inside the rebuild transaction, and an empty rebuild is refused rather than committed, so a failed run can't leave search serving nothing.
+- **`tools_config.php` is deployed atomically** — written to a temp file and renamed. The old in-place `>` truncated first, and a request in that window died with `Undefined constant PHPMAN_HAS_PERLDOC`; the fallback now covers a partially-written file too, not just a missing one.
+- **`make logcheck`** — now pipes `cli/logcheck.sh` over SSH for a per-day / per-type error summary instead of tailing.
+- **Rendering fixes** — ANSI color escapes (util-linux, systemd) and groff OSC 8 hyperlinks no longer leak into HTML/JSON/Markdown as literal garbage; JSON `sections[].content` is plain text, not markdown link syntax; markdown output is capped at 24MB so an oversized page can't OOM the worker.
+
+### v4.11 (2026-09-24; v4.11.1 2026-09-26) — Sharded page cache, payload limits
+
+- **Page cache sharded per mode** — the page cache now lives in `phpman_cache_<mode>.db` (man / perldoc / info / pydoc / ri / search), removing SQLite write-lock contention between search and page rendering. The central `phpman_cache.db` is infrastructure only — `meta`, `search_fts`, `search_index_meta`, `tldr_cache` — and has **no `cache` table**.
+- **Unified cache TTL** — page content and TLDR cheatsheets expire on the same schedule (default 7 months; set `PHPMAN_CACHE_TTL_MONTHS`).
+- **JSON/MCP payload limits** — `PHPMAN_JSON_MAX_CONTENT_BYTES` (1 MB) and `PHPMAN_JSON_MAX_SECTION_BYTES` (512 KB), so a huge `info` page can't blow up the envelope.
+- **Large-page memory fix** — `info` pages no longer route through an IR string for MCP/JSON output.
+- **v4.11.1** — removed the last LLM-era scaffolding (orphaned hooks in `src/search_index.php`, dead `PHPMAN_ENHANCE_*` constants).
+
+### v4.10 (2026-08-08) — LLM enhancement removed
+
+- **phpMan is a pure documentation server.** The LLM emoji-enhancement layer was deleted — `cli/batch-enhance.php`, `callLLM()`, `enhanceManPage()`, `cleanEmojiHtml()`, `formatMarkdownToHTML()` and the enhancement cache are all gone. phpMan makes **zero outbound LLM calls** and needs no API key. Pre-existing `emoji_html` / `emoji_md` cache rows are inert.
+
 ### v4.4 (2026-06-21) — Code Split & CLI Consolidation
 
-- **Code split** — 5660-line monolith → 753-line dispatcher + 22 source files in `src/`. Webroot contains only `phpMan.php` + `phpman.css` + `phpman.js` + `phpman.config.php`.
-- **CLI consolidation** — All CLI tools under `cli/`: `build-index.php`, `batch-enhance.php`. Shared bootstrap (`_bootstrap.php`). `enhance.php` merged into `batch-enhance.php` with shorthand syntax: `php cli/batch-enhance.php man:ls,tar`.
-- **Security hardening** — `isLocalRequest()` restricts to loopback only. `cleanEmojiHtml()` strips all event-handler quote variants. `getSearchPage()` gracefully falls back when cache DB unavailable.
+- **Code split** — 5660-line monolith → dispatcher + source files in `src/`. Webroot contains only `phpMan.php` + `phpman.css` + `phpman.js`.
+- **CLI consolidation** — All CLI tools under `cli/` with a shared bootstrap (`_bootstrap.php`). Today: `build-index.php`, `build-sitemap.php`, `cache.php`, `detect-tools.php`, `logcheck.sh`, `log-analyze.sh`. (The `batch-enhance.php` this entry introduced was deleted in v4.10 — see above.)
+- **Security hardening** — `isLocalRequest()` restricts to loopback only. `getSearchPage()` gracefully falls back when the cache DB is unavailable.
 - **Markdown format purity** — Search results in Markdown use pure `- ` list items, no HTML wrappers.
 - **install.sh improvements** — Config generated from `.example` (single source of truth). `--update` checks for new config options. `PHPMAN_VERSION` written by `make tag`.
-- **MCP search** — `cli_search` returns structured results (mode/search/count/results) via both POST `/mcp` and GET `/search/{query}/mcp`.
+- **MCP search** — `cli_search` returns structured results (mode/search/count/results) via POST `/mcp`.
 
 ### v3.6+ (2026-06-08)
 
-- **TLDR embedded in man pages** — TLDR is now integrated directly into man page rendering (HTML/Markdown/JSON/MCP), fetching from tldr-pages + cheat.sh with SQLite 7-day cache. The old `/tldr` route and `TLDR_CACHE_DIR` env vars are removed.
+- **TLDR embedded in man pages** — TLDR is now integrated directly into man page rendering (HTML/Markdown/JSON/MCP), fetching from tldr-pages + cheat.sh with a SQLite cache (7-month TTL since v4.11). The old `/tldr` route and `TLDR_CACHE_DIR` env vars are removed.
 - **FTS5 single-query search** — one SQL query covers man/pydoc/ri, routing results by section
 - **pydoc3 / ri FTS5 indexing** — Python and Ruby documentation searchable alongside man pages
 - **Case-insensitive matching** — searching `json` matches `JSON::Ext::Parser`, `Psych::JSON`, `json.decoder`
@@ -548,13 +586,13 @@ curl "https://www.chedong.com/phpMan.php/man/tar/1/markdown"
 
 ### Roadmap
 
-See [docs/PLAN.md](docs/PLAN.md) for the full project plan:
+See [docs/05-PLAN.md](docs/05-PLAN.md) for the full project plan:
 
 - **pydoc / ri** — ✅ Shipped in v3.6 — Python and Ruby documentation support with FTS5 search
-- **LLM-powered** — AI translation (identifier-preserving), cheat sheets, example generation
 - **Search** — ✅ Shipped in v3.6 — FTS5 full-text index with three-source aggregation (man + pydoc + ri)
 - **MCP** — Streaming output, error standardization, dynamic tool discovery
-- **I18N** — LANG-based locale support + AI fallback translation
+- **I18N** — LANG-based locale support
+- ~~**LLM-powered** — AI translation (identifier-preserving), cheat sheets, example generation~~ — dropped; the LLM layer was removed in v4.10 (see above)
 
 ---
 
@@ -787,19 +825,38 @@ git push origin master
 ### 3. Update Staging Demo
 
 ```bash
-make deploy
+make staging
 ```
 
-This deploys only `phpMan.php` to the staging path configured by `TEST_PATH`.
+Runs the syntax check, then uploads `phpMan.php`, `src/`, and the CSS/JS into
+`~/.phpman_test/releases/<tag>/` on the staging host and activates them with a
+single `current` symlink swap (`deploy/atomic-release.sh`).
 
 ### 4. Update Production Demo
 
 ```bash
-make release
-make deploy-verify
+make release     # syntax check + atomic release + post-deploy log check
+make verify      # curl health check on staging and production
 ```
 
-> ⚠️ Do **not** overwrite `index.php` — only update `phpMan.php`.
+`make release` is atomic: `phpMan.php` and `src/` land in `~/.phpman/releases/<tag>/`
+and are activated by one symlink swap, so no request can observe one half of an
+install from the new version and the other from the old. `make rollback` flips
+that symlink back a release (`STEP=n` for *n* releases) — it does not restore a
+`.bak` copy, because copying a file over the entry script would write *through*
+the symlink and corrupt the live release.
+
+### Cache management
+
+```bash
+make cache-stats              # rows / bytes / stale per shard (production)
+make cache-flush              # delete the production page-cache shards
+make cache-flush-staging      # same for staging
+```
+
+The page cache is sharded per mode (`phpman_cache_<mode>.db`). `flush` deletes the
+shard files and deliberately leaves the central `phpman_cache.db` alone — it holds
+the FTS search index and the TLDR cache, and has no page-cache table at all.
 
 ### 5. Create GitHub Release
 
@@ -837,6 +894,19 @@ The script clears search_fts + search_index_meta + stale search cache, then
 rebuilds from scratch via `apropos -s N .` for man pages, `pydoc3 modules` for
 Python 3, and `ri -l` for Ruby. Typically completes in ~10 seconds for ~14,000 entries
 (9,600 man + 340 pydoc + 3,900 ri).
+
+### 7. Sitemaps
+
+Since v4.11 the sitemap is split in two: an HTML sitemap for search engines and a
+markdown/JSON one for AI bots, plus `llms.txt`. `make reindex` / `make reindex-staging`
+regenerate both together with the search index; `cli/build-sitemap.php` builds them
+standalone:
+
+```bash
+php cli/build-sitemap.php --output sitemap-phpman.xml.gz --formats html
+php cli/build-sitemap.php --output sitemap-phpman-ai.xml.gz --formats markdown,json \
+  --llms-output llms.txt
+```
 
 ## License
 

@@ -324,6 +324,7 @@ VALUES('rebuild')` reclaims more than VACUUM does.
 
 ### 10.5 Related Docs
 
-- [SEARCH_FTS5_DESIGN.md](SEARCH_FTS5_DESIGN.md) — FTS5 full-text search design (v4/v3.6.2)
-- [PYDOC_RI_DESIGN.md](PYDOC_RI_DESIGN.md) — pydoc3 / ri document format parsing design
-- [DESIGN.md](DESIGN.md) — phpMan product definition and core design decisions
+- [04-SEARCH.md](04-SEARCH.md) — FTS5 full-text search design (formerly `SEARCH_FTS5_DESIGN.md`)
+- [01-PRODUCT.md](01-PRODUCT.md) — product definition, core design decisions, and the pydoc3 / ri
+  parsing design (formerly `DESIGN.md` + `PYDOC_RI_DESIGN.md`, merged into §2)
+- [00-INDEX.md](00-INDEX.md) — documentation index

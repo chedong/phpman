@@ -1,8 +1,15 @@
 # phpMan 战略复盘 PRD：文档搜索引擎在 LLM 时代的价值重估
 
 **日期**: 2026-07-20  
-**状态**: 战略分析  
+**状态**: 战略分析（历史快照）  
 **项目年龄**: 20+ 年 (2005–2026)
+
+> **后续进展（2026-10 补记）**：本文写作时全量 emoji 增强仍在运行。该分析给出的
+> "⚠️ 边际效益" 结论随后被采纳并执行到底 —— **v4.10（commit `7740029`）删除了整个 LLM
+> 增强层**（`enhanceManPage()` / `callLLM()` / `cleanEmojiHtml()` / `cli/batch-enhance.php`），
+> v5.0（commit `5bf0025`）又删掉了读取侧。因此文中所有关于"当前正在增强 N 页""剩余成本"
+> 的表述都是**当时的现场记录，不是现状**；phpMan 现在是 0 LLM 调用的纯文档服务器。
+> 保留本文是为了留下决策依据，不要据其更新代码。
 
 ---
 
@@ -16,6 +23,7 @@ phpMan 最初设计目标是为人类提供 CLI 文档的 Web 界面。2024–20
 3. **Agent 集成**: JSON + MCP 协议为 AI Agent 提供结构化文档接口
 
 当前正对 27,129 个文档页面进行 LLM emoji 增强（41.6% 完成，预估总成本 ~¥2,170）。
+（**已于 v4.10 终止并删除该功能** —— 见文首补记。）
 
 ### 1.2 核心发现
 
@@ -101,7 +109,7 @@ Google 未有效索引 phpMan 页面。传统 SEO 策略失败。
 剩余成本:   15,845 × 2 × ¥0.050 ≈ ¥1,585
 ```
 
-**但**：当前 PHPMAN_ENHANCE_MAX_CHARS=128,000，实际输出远小于上限。大页面（>100KB）消耗更多但仅占 3.2%。实际成本可能在 ¥1,500–¥3,000 区间。
+**但**：当时 `PHPMAN_ENHANCE_MAX_CHARS=128,000`，实际输出远小于上限。大页面（>100KB）消耗更多但仅占 3.2%。实际成本可能在 ¥1,500–¥3,000 区间。（该配置项随增强层一并删除。）
 
 ---
 
@@ -155,7 +163,7 @@ phpMan 在这个环形链路中增加的价值仅在于：
 | 跨 mode 全文搜索 | ❌ 各自独立 | **增量价值**：统一 FTS5 索引 |
 | emoji 增强 | ❌ 无 | **负价值**（浪费 LLM token） |
 
-**结论**：phpMan 的 Web 接口层（HTML 渲染、format negotiation、emoji 增强、XHTML 合规）对 LLM Agent 用例是多余的。MCP server 只需 200 行：直接 `shell_exec("man $cmd")` → raw text → MCP response。所有 22 个 `src/` 源文件中，真正服务于 Agent 用例的只有 `mcp_server.php` + `search_index.php` + `tldr.php`。
+**结论**：phpMan 的 Web 接口层（HTML 渲染、format negotiation、emoji 增强、XHTML 合规）对 LLM Agent 用例是多余的。MCP server 只需 200 行：直接 `shell_exec("man $cmd")` → raw text → MCP response。所有 21 个 `src/` 源文件中，真正服务于 Agent 用例的只有 `mcp_server.php` + `search_index.php` + `tldr.php`。
 
 ### 3.4 LLM 增强 vs 原始格式：哪个对 Agent 更有价值？
 
@@ -208,7 +216,8 @@ phpMan 在这个环形链路中增加的价值仅在于：
 - 将 phpMan 反向：不是 Web 化 CLI，而是 CLI 化 Web
 - `cli/` 目录下新增 AI-agent 可调用的脚本：
   - `man-lookup` — 本地 `man` 增强 + 输出结构化 JSON
-  - `tldr-fetch` — 获取 TLDR cheatsheet（已有）
+  - `tldr-fetch` — 获取 TLDR cheatsheet（**未实现为独立 CLI**：TLDR 是 `src/tldr.php` 的
+    `fetchOfficialTldr()`，内嵌在 man 详情页里，`cli/` 下没有对应脚本）
   - `apropos-ai` — 语义搜索（整合 FTS5 + 向量检索）
 
 ---

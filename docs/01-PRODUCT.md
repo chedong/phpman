@@ -7,7 +7,7 @@
 
 ## 1. Product Positioning
 
-phpMan is a single-file PHP web application that presents Unix `man`/`perldoc`/`info`/`apropos`/`pydoc3`/`ri` command output in HTML, Markdown, JSON, and MCP formats. It also serves as an MCP Server for AI Agent consumption.
+phpMan is a single-file PHP web application that presents Unix `man`/`perldoc`/`info`/`apropos`/`pydoc3`/`ri` command output in HTML, Markdown, and JSON formats. It also serves as an MCP Server (`POST /mcp`) for AI Agent consumption. (`mcp` is an internal rendering core `handleMcp()` calls, not a URL-selectable format — see `PHPMAN_OUTPUT_FORMATS`.)
 
 **Core value**: Make Unix documentation efficiently accessible to both humans and AI.
 
@@ -90,10 +90,11 @@ phpMan maintains XHTML 1.0 Transitional compliance, not upgrading to HTML5:
 
 ### 2.5 TLDR Cache Strategy
 
-TLDR results are persistently cached in the SQLite `tldr_cache` table (unified cache TTL, default 7 months — same as PageCache found entries):
+TLDR results are persistently cached in the SQLite `tldr_cache` table (per-row TTL, matching `PageCache`):
 
 - `fetchOfficialTldr()` fetches from tldr-pages GitHub Raw (cheat.sh fallback)
-- Cached in `phpm_cache.db` `tldr_cache` table
+- Cached in the central `phpman_cache.db` `tldr_cache` table
+- TTL is per row: found entries use `PHPMAN_CACHE_TTL_FOUND` (default 7 months), `not_found` entries use `PHPMAN_CACHE_TTL_NOT_FOUND` (1 day) so a missing page is retried sooner
 - Includes negative caching: 404/not_found commands are cached to avoid repeated HTTP requests
 - Old file-based `tldr_cache/` directory is deprecated and no longer used
 
@@ -143,25 +144,39 @@ Full design system spec: `docs/02-UI-DESIGN.md`.
 
 ### 2.8 Format Links on Detail Pages Only
 
-Markdown · JSON · MCP format links only appear on detail pages (with actual content) in the footer
+Markdown · JSON format links only appear on detail pages (with actual content) in the footer
 row, alongside the git version and author credit. Index pages and no-result pages do not show format
 links.
+
+> A third **MCP** link was retired when `mcp` stopped being a URL-selectable format —
+> `PHPMAN_OUTPUT_FORMATS` is `html`/`markdown`/`json`. The link itself was removed in #238: it had
+> pointed at `/{mode}/{param}/mcp`, a format that no longer parses. MCP is advertised to clients by
+> the `Link: </mcp>; rel="mcp-server"` header and the `/.well-known/mcp.json` document instead.
 
 **Code location**: `showFooter()` in `src/web_footer.php`
 
 ### 2.9 H1 Breadcrumb + Title Format
 
-Detail page H1 and `<title>` use a unified breadcrumb format:
+The detail page H1 breadcrumb is:
 
 ```
-phpMan > man > ls(1)
+man > ls(1)
 ```
 
-- `phpMan` links to homepage, intermediate elements link to mode index pages (`/man`, `/pydoc`, etc.), current page is plain text
+- Intermediate elements link to mode index pages (`/man`, `/pydoc`, etc.), current page is plain text
+- There is no leading `phpMan` element — that appears only in the homepage/fallback H1
 - perldoc has no standalone index; intermediate link points to `/search/perl`
-- Homepage/search mode keeps the original single title style
 
-**Issue**: #65
+`<title>` uses a separate format (issue #226):
+
+```
+Name - description - mode(section) - [phpMan]
+```
+
+e.g. `ls - list directory contents - man(1) - [phpMan]`. The mode/section segment is dropped when
+there is no mode, leaving `mode - [phpMan]`.
+
+**Issue**: #65, #226
 
 ### 2.10 Unified Search Result List Format
 
@@ -196,10 +211,12 @@ Footer displays `phpMan v4.7-3-g1cea00a`. Local dev shows placeholder values: `P
 What was deleted from phpMan:
 - `enhanceManPage()`, `callLLM()`, `cleanEmojiHtml()` — LLM orchestration
 - `formatMarkdownToHTML()`, `formatInlineMarkdown()` — emoji_md → HTML rendering
-- `renderTocSidebar()` — TOC built from the enhanced HTML structure
 - LLM config keys: `LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`, `LLM_MAX_TOKENS`, `PHPMAN_ENHANCE_MAX_CHARS`
 - `cli/batch-enhance.php`, `src/enhance.php`, `start-enhance-all.sh`, `test/unit/test_enhance.php`
 - The `--enhance` flag (formerly `phpMan.php --enhance=...`)
+
+(`renderTocSidebar()` was **not** removed — it survives at `src/format_html.php:2` and still builds the
+man-page TOC sidebar.)
 
 **Why**: `docs/07-STRATEGY.md` measured the enhancement at ⚠️ marginal value — both major AI crawlers (GPTBot, ClaudeBot) already preferred raw markdown/JSON/MCP over enhanced HTML, and the roadmap's Phase 1 was to stop starting new enhancement rounds. LLM work is also dominated by **task management, prompt versioning, and flow orchestration** — concerns that don't belong in a documentation server.
 
@@ -211,7 +228,7 @@ What was deleted from phpMan:
 
 **Legacy emoji cache (inert)**:
 - No new enhanced content can be produced, and none is read. v4.10 removed the writer; v5.0 (`5bf0025`) removed the reader — the `emoji_html` default-view fallback, the `emoji_md` preference for `/markdown`, the `CACHE_FORMAT_EMOJI_*` constants and the never-expire TTL rule are all gone
-- `emoji_html` / `emoji_md` rows still exist in old databases and never expire, but nothing serves them. They are named in exactly one place: the v3→v4 migration's preserve list in `src/cache.php`, which is kept because rewriting a shipped migration would change what an old database migrating forward today would delete
+- `emoji_html` / `emoji_md` rows still exist in old databases, but nothing writes and nothing reads them. They are no longer named anywhere in the code: their last reference was the v3→v4 migration's `format NOT IN ('json','search','emoji_md','emoji_html')` preserve list in `src/cache.php`, and that migration was removed in v5.0 along with the rest of the central DB's `cache` steps. `grep emoji src/cache.php` returns nothing.
 - Historical design (phpMan v4.0–v4.9) is preserved in git history for reference
 
 #### 2.12.1 batch-enhance.php — deleted in v4.10
@@ -280,7 +297,7 @@ phpMan provides two deployment tools for two different audiences:
 
 **为什么两者共存而非统一**：
 
-- `make rollback` — 从远程备份恢复，install.sh 做不到（需要 SSH）
+- `make rollback` — 把 `current` 符号链接切回上一个 release（`STEP=n` 回退 n 个），install.sh 做不到（需要 SSH）
 - `make logcheck` — 读取服务器 nginx/PHP 错误日志，install.sh 做不到
 - `make cache-flush/stats` — 管理远程 SQLite 缓存，install.sh 做不到
 - `make verify` — 同时健康检查 staging + production，install.sh 做不到
@@ -325,10 +342,12 @@ if (!defined('MCP_API_KEY'))       define('MCP_API_KEY', '');       // default
 2. `sed` replaces `__PHPMAN_HOME__` → `$HOME/.phpman` in both `$INSTALL_DIR/phpMan.php` (dev server) and webroot copy (Apache/Nginx)
 3. `do_deploy_webroot()` — copies `phpMan.php` + CSS + JS to webroot + patches `__PHPMAN_HOME__`
 
-**make release flow**:
+**make release flow** (atomic since v5.0):
 1. SSH resolves `$HOME` → `DEMO_HOME`
-2. `sed` replaces `__PHPMAN_HOME__`, `GIT_DESCRIBE`, `PHPMAN_VERSION` in local `phpMan.php`
-3. `scp` uploads patched `phpMan.php` + CSS + JS + `src/` + `cli/` + `.example`
+2. `sed` replaces `__PHPMAN_HOME__`, `GIT_DESCRIBE`, `PHPMAN_VERSION` in local `phpMan.php` → `phpMan.php.deploy`
+3. `rsync` uploads `src/` into `$DEMO_HOME/.phpman/releases/<release-id>/src/`; `phpMan.php.deploy` + CSS/JS are `scp`'d into the same release directory
+4. `deploy/atomic-release.sh` activates the release with a single `current` symlink swap, so no request can observe `phpMan.php` and `src/` from different versions. `~/.phpman/phpMan.php` and `~/.phpman/src` are symlinks into `releases/<id>/`
+5. The previous 5 releases are kept and are the rollback targets — there is no `.bak` step any more
 
 ---
 
@@ -357,8 +376,8 @@ The following are **defense-in-depth measures** that should be handled by the se
 
 | Call site | Current behavior | Problem | Replacement | Issue |
 |--------|----------|------|----------|-------|
-| line 1172: HSTS header | `if (!isLocalRequest)` → send HSTS | Behind proxy, `REMOTE_ADDR` is internal IP → production never sends HSTS | **Nginx config**: production HTTPS vhost `add_header Strict-Transport-Security ... always;`; local dev uses HTTP so no HSTS | #89 |
-| line 1423: server version | `if (isLocalRequest)` → show `SERVER_SOFTWARE` | Behind proxy, all requests come from internal IP → anyone can see version info | **Nginx `server_tokens off`** + **php.ini `expose_php=Off`**; remove version display from PHP code | #89 |
+| `src/web_header.php:43`: HSTS header | `if (!isLocalRequest())` → send HSTS | Behind proxy, `REMOTE_ADDR` is internal IP → production never sends HSTS | **Nginx config**: production HTTPS vhost `add_header Strict-Transport-Security ... always;`; local dev uses HTTP so no HSTS | #89 |
+| `src/web_footer.php:81`: server version | `if (isLocalRequest())` → show `SERVER_SOFTWARE` | Behind proxy, all requests come from internal IP → anyone can see version info | **Nginx `server_tokens off`** + **php.ini `expose_php=Off`**; remove version display from PHP code | #89 |
 | `?debug=1` debug mode | `isLocalRequest` → allow sensitive details | Same as above, behind proxy anyone can trigger debug | **PHP env var** `PHPMAN_DEBUG=true`, explicit config instead of IP inference | #89 |
 
 **Design principle**: Security policies (HSTS, version hiding) belong to the transport/infrastructure layer and should be handled by the web server at TLS termination, not by PHP application logic. Application-level features (debug mode) should use explicit environment variables, not runtime IP inference — `REMOTE_ADDR` is unreliable in proxy architectures.
@@ -493,7 +512,7 @@ ri <Class#method> ─┐
                    └──→ formatForOutput(json, "mcp")         → MCP
 ```
 
-pydoc/ri reuse the existing `formatManPerlDoc()` / `formatToJSON` / `formatManPerlDocToMarkdown` pipeline, differentiated by `$mode` parameter. Code location: phpMan.php (search for relevant function).
+pydoc/ri reuse the existing `formatManPerlDoc()` / `formatToJSON` / `formatManPerlDocToMarkdown` pipeline, differentiated by `$mode` parameter. Code location: `src/source_pydoc.php`, `src/source_ri.php`, `src/format_html.php`, `src/format_json.php`, `src/format_markdown.php`.
 
 ---
 
@@ -800,23 +819,40 @@ pydoc output has no overstrike/ANSI; `cleanTerminalOutput` is a pass-through. Bu
 
 ## 8. Code Location Index
 
+Line numbers rot; the file is the durable part of this table. Since v4.4 the code lives in `src/` —
+`phpMan.php` is a ~795-line dispatcher and holds only `getTitleDescription()` and `resolveManSection()`.
+
 | Feature | File | Line |
 |------|------|------|
-| URL routing dispatch | phpMan.php | 843–866 |
-| MCP auto-detection | phpMan.php | 1520–1559 |
-| `getPydocPage` | phpMan.php | 1717–1727 |
-| `getRiPage` | phpMan.php | 1729–1739 |
-| `getPydocIndex` | phpMan.php | 1741–1808 |
-| `getRiIndex` | phpMan.php | 1810–1860 |
-| `getPydocSearchPage` | phpMan.php | 1862–1922 |
-| `getRiSearchPage` | phpMan.php | 1924–1938 |
-| ri heading detection | phpMan.php | 433–444 |
-| pydoc class/func detection | phpMan.php | 363–373 |
-| mode-specific link patterns | phpMan.php | 2331–2353 |
-| TOC label stripping (=/==) | phpMan.php | 1652, 1663 |
-| Not found external links | phpMan.php | 1272–1288 |
-| `cleanTerminalOutput` | phpMan.php | 146–172 |
-| `detectHeadingType()` | phpMan.php | 429–461 |
-| `formatManPerlDoc()` | phpMan.php | 2285–2393 |
-| `formatToJSON` | phpMan.php | 3100–3338 |
-| `showFooter()` enhanced link | phpMan.php | 3387 |
+| URL routing dispatch (`switch ($mode)`) | phpMan.php | 359 |
+| `getTitleDescription()` | phpMan.php | 254 |
+| `resolveManSection()` | phpMan.php | 306 |
+| `.well-known/mcp.json` discovery | phpMan.php | 95–96, 214–215 |
+| MCP server (`handleMcp()`) | src/mcp_server.php | 105 |
+| `formatForOutput()` | src/format_mcp.php | 67 |
+| `getPydocPage()` | src/source_pydoc.php | 2 |
+| `getPydocIndex()` | src/source_pydoc.php | 15 |
+| `getPydocSearchPage()` | src/source_pydoc.php | 87 |
+| `getRiPage()` | src/source_ri.php | 2 |
+| `getRiIndex()` | src/source_ri.php | 15 |
+| `getRiSearchPage()` | src/source_ri.php | 69 |
+| `renderTocSidebar()` | src/format_html.php | 2 |
+| `formatManPerlDoc()` | src/format_html.php | 28 |
+| `formatToJSON()` | src/format_json.php | 341 |
+| `cleanTerminalOutput()` | src/format_common.php | 18 |
+| `detectL2ItalicSubheading()` | src/format_common.php | 155 |
+| `detectL2BoldSubheading()` | src/format_common.php | 167 |
+| `detectL2IndentedPatterns()` | src/format_common.php | 187 |
+| `detectL1Heading()` | src/format_common.php | 254 |
+| `detectHeadingType()` | src/format_common.php | 301 |
+| `showForm()` | src/web_footer.php | 2 |
+| `showFooter()` | src/web_footer.php | 74 |
+| `showHeader()` | src/web_header.php | 2 |
+| `normalizeMode()` / `normalizeParameter()` | src/util.php | 133, 149 |
+| `validatePathInfo()` | src/util.php | 188 |
+| `malformedSegmentRedirect()` | src/util.php | 237 |
+| `configuredBaseUrl()` / `scriptName()` / `getSafeHost()` / `baseUrl()` | src/util.php | 38, 44, 61, 88 |
+| `fetchOfficialTldr()` | src/tldr.php | 2 |
+| `cacheDb()` / `pageCacheDb()` | src/cache.php | 91, 224 |
+| `expandNameForFts()` | src/search_index.php | 2 |
+| `rebuildSearchIndex()` | src/search_index.php | 431 |
