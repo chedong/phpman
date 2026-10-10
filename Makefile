@@ -127,7 +127,9 @@ _deploy-code:
 	@rsync -avz -e "ssh -p $(TEST_PORT)" phpman.config.php.example $(TEST_HOST):$(STAGING_HOME)/.phpman_test/
 	@ssh -p $(TEST_PORT) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE) $(TEST_PATH)/$(JS_FILE) && chmod +x \$$HOME/.phpman_test/cli/*.php"
 	@echo "--- Detecting available documentation tools ---"
-	@ssh -p $(TEST_PORT) $(TEST_HOST) "php $(STAGING_HOME)/.phpman_test/cli/detect-tools.php > $(STAGING_HOME)/.phpman_test/tools_config.php && cat $(STAGING_HOME)/.phpman_test/tools_config.php"
+	@# Write to a temp file and rename: rewriting in place truncates first, and a
+	# request served in that window would read an empty tools_config.php (#240).
+	@ssh -p $(TEST_PORT) $(TEST_HOST) "php $(STAGING_HOME)/.phpman_test/cli/detect-tools.php > $(STAGING_HOME)/.phpman_test/tools_config.php.tmp && mv $(STAGING_HOME)/.phpman_test/tools_config.php.tmp $(STAGING_HOME)/.phpman_test/tools_config.php && cat $(STAGING_HOME)/.phpman_test/tools_config.php"
 	@echo ""
 	@echo "=== Deployed to staging ($(GIT_TAG)) ==="
 	@echo "$(TEST_URL)"
@@ -207,7 +209,9 @@ _release-code:
 	@rsync -avz -e "ssh -p $(DEMO_PORT)" phpman.config.php.example $(DEMO_HOST):$(DEMO_HOME)/.phpman/
 	@ssh -p $(DEMO_PORT) $(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(CSS_FILE) $(DEMO_PATH)/$(JS_FILE) && chmod +x \$$HOME/.phpman/cli/*.php"
 	@echo "--- Detecting available documentation tools ---"
-	@ssh -p $(DEMO_PORT) $(DEMO_HOST) "php $(DEMO_HOME)/.phpman/cli/detect-tools.php > $(DEMO_HOME)/.phpman/tools_config.php && cat $(DEMO_HOME)/.phpman/tools_config.php"
+	@# Write to a temp file and rename: rewriting in place truncates first, and a
+	# request served in that window would read an empty tools_config.php (#240).
+	@ssh -p $(DEMO_PORT) $(DEMO_HOST) "php $(DEMO_HOME)/.phpman/cli/detect-tools.php > $(DEMO_HOME)/.phpman/tools_config.php.tmp && mv $(DEMO_HOME)/.phpman/tools_config.php.tmp $(DEMO_HOME)/.phpman/tools_config.php && cat $(DEMO_HOME)/.phpman/tools_config.php"
 	@echo ""
 	@echo "=== Deployed to production ==="
 	@echo "$(DEMO_URL)"
