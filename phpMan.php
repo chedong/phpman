@@ -180,10 +180,10 @@ if ( serverValue("PATH_INFO") !== "" && trim(serverValue("PATH_INFO")) != "") {
         // really a bad URL. Converge on the canonical URL instead, before any
         // content lookup, so the client gets what it asked for and no page is
         // rendered. malformedSegmentRedirect() builds the target.
-        $canonical = malformedSegmentRedirect(
-            $segments,
-            in_array(strtolower($segments[0]), $allowed_modes) ? 2 : 1
-        );
+        // Path mode is passed on so the check knows whether a section segment
+        // means anything here (man/search) or is noise to converge away.
+        $pathMode = in_array(strtolower($segments[0]), $allowed_modes) ? strtolower($segments[0]) : "";
+        $canonical = malformedSegmentRedirect($segments, $pathMode !== "" ? 2 : 1, $pathMode);
         if ($canonical !== null) {
             header('Location: ' . baseUrl() . $canonical, true, 301);
             header('Cache-Control: public, max-age=86400');

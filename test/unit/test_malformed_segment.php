@@ -17,6 +17,9 @@
  * - A segment that IS a valid section name is never touched, even when it starts
  *   with a format token ("markdowns", "html5"). That is what keeps the
  *   prefix match from eating real sections.
+ * - #241: on modes where a section does not select content (perldoc/info/pydoc/
+ *   ri) a section-position segment is treated as malformed too, so those URLs
+ *   converge instead of answering 200 with "perldoc(notaformat)" in the title.
  */
 declare(strict_types=1);
 define('PHPMAN_TEST_MODE', true);
@@ -29,9 +32,31 @@ echo "=== Unit: malformedSegmentRedirect() — #45 ===\n\n";
 // Helper keeps the tables below readable.
 function redirect_for(array $segments): ?string {
     $modes = ['man', 'perldoc', 'info', 'search', 'copyright', 'mcp', '.well-known', 'pydoc', 'ri'];
-    $start = in_array(strtolower($segments[0]), $modes) ? 2 : 1;
-    return malformedSegmentRedirect($segments, $start);
+    $mode = in_array(strtolower($segments[0]), $modes) ? strtolower($segments[0]) : "";
+    return malformedSegmentRedirect($segments, $mode !== "" ? 2 : 1, $mode);
 }
+
+echo "--- section on a mode that ignores one → converge it away (#241) ---\n";
+assert_equals("/perldoc/File::Find", redirect_for(["perldoc", "File::Find", "notaformat"]),
+    "perldoc: bogus section dropped");
+assert_equals("/perldoc/File::Find", redirect_for(["perldoc", "File::Find", "mcp"]),
+    "perldoc: retired token in the section position is not recovered either");
+assert_equals("/perldoc/File::Find/json", redirect_for(["perldoc", "File::Find", "notaformat", "json"]),
+    "perldoc: a real format after the bogus section survives");
+assert_equals("/perldoc/File::Find/json", redirect_for(["perldoc", "File::Find", "3pm", "json"]),
+    "perldoc: 3pm is display-only there (getPerldocPage ignores the section)");
+assert_equals("/info/coreutils", redirect_for(["info", "coreutils", "notaformat"]),
+    "info: bogus section dropped");
+assert_equals("/pydoc/os", redirect_for(["pydoc", "os", "notaformat"]), "pydoc: bogus section dropped");
+assert_equals("/ri/Array", redirect_for(["ri", "Array", "notaformat"]), "ri: bogus section dropped");
+
+echo "\n--- modes where a section IS content selection stay untouched ---\n";
+assert_equals(null, redirect_for(["man", "ls", "1"]), "man keeps its section");
+assert_equals(null, redirect_for(["man", "ls", "3p"]), "man keeps an unusual but valid section");
+assert_equals(null, redirect_for(["info", "emacs"]), "no section given → nothing to converge");
+assert_equals(null, redirect_for(["pydoc", "os"]), "no section given → nothing to converge");
+assert_equals(null, redirect_for(["ls", "1", "notaformat"]),
+    "mode omitted: no section semantics assumed, so no redirect");
 
 echo "--- junk tail from phpMan's own markdown links (the reported case) ---\n";
 assert_equals("/man/ls/1/markdown", redirect_for(["man", "ls", "1", "markdown)"]),

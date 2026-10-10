@@ -233,8 +233,21 @@ function validatePathInfo (string $pathInfo): string {
  * @param array $segments non-empty PATH_INFO segments, in URL order
  * @param int   $start    first format-eligible index: 2 when $segments[0] is a
  *                        mode, 1 when the mode was omitted
+ * @param string $mode    the mode as it appears in the path, "" when omitted.
+ *                        Decides whether a section is a real lookup parameter.
  */
-function malformedSegmentRedirect (array $segments, int $start): ?string {
+function malformedSegmentRedirect (array $segments, int $start, string $mode = ""): ?string {
+    // Modes where a section actually selects content. Everywhere else it is
+    // display-only (perldoc/info/pydoc/ri pass it to the renderer and ignore it
+    // for the lookup), and the site never emits such a URL itself: the footer
+    // format links, the sitemap and the JSON canonical only append a section for
+    // man mode. Accepting one minted a 200 for every /{mode}/{name}/{anything} —
+    // /perldoc/File::Find/notaformat rendered "perldoc(notaformat)" for the same
+    // page — so an unbounded URL space of duplicates. A path segment cannot even
+    // express perldoc's real section values (-f / -q contain '-', which
+    // normalizeSection() rejects, and those are already handled below).
+    $sectionIsLookup = $mode === "" || in_array(strtolower($mode), ["man", "search"], true);
+
     $count = count($segments);
     $malformed = [];
     for ($i = $start; $i < $count; $i++) {
@@ -242,6 +255,9 @@ function malformedSegmentRedirect (array $segments, int $start): ?string {
             continue;
         }
         if (normalizeSection($segments[$i]) === "") {
+            $malformed[] = $i;
+        } elseif (!$sectionIsLookup && $i === $start) {
+            // Section position on a mode that has no use for a section.
             $malformed[] = $i;
         }
     }
