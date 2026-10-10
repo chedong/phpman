@@ -492,8 +492,19 @@ function rebuildSearchIndex(): string {
         // CREATE or RENAME is what keeps the shadow tables from surviving with
         // ghost rows (v4.9.25). That property does not depend on being outside
         // a transaction, so it still holds here.
-        try { $db->exec("DELETE FROM search_fts"); }
-        catch (\Throwable $ignored) {}
+        //
+        // Both DELETEs are unguarded on purpose (#242). The catch that used to
+        // wrap the search_fts one swallowed precisely the failure that leaves
+        // duplicates behind: if the FTS clear throws, meta is still cleared, so
+        // every `INSERT OR IGNORE` below finds no conflict, `$isNew` is true for
+        // every entry, and each one is written a second time on top of the FTS
+        // rows that survived — permanently, since search_fts has no UNIQUE
+        // constraint to stop it. A throw here now reaches the catch at the end of
+        // this function, which logs, rolls back, and returns ERROR. The table
+        // necessarily exists by this point (the `CREATE VIRTUAL TABLE IF NOT
+        // EXISTS` above returns early when it fails), so "the table is missing"
+        // was never a reason to tolerate a failure.
+        $db->exec("DELETE FROM search_fts");
         $db->exec("DELETE FROM search_index_meta");
         $output[] = "Cleared existing search index.\n";
 
@@ -713,6 +724,23 @@ function rebuildSearchIndex(): string {
             try { $db->exec("ROLLBACK"); } catch (\Throwable $ignored) {}
             phpManLog("rebuildSearchIndex: 0 entries indexed — rolled back, existing index preserved");
             return "ERROR: rebuild produced an empty index (0 entries). Rolled back; the existing index is unchanged.\n";
+        }
+
+        // The two tables are written as a pair — every entry inserts into
+        // search_index_meta first and into search_fts second, gated on the meta
+        // insert having actually added a row (`$isNew`) — so a healthy rebuild
+        // leaves the counts equal. A mismatch means an entry was half-written.
+        // The dangerous direction is search_fts > search_index_meta: meta holds
+        // the only UNIQUE constraint, so duplicate FTS rows are invisible to both
+        // the dedup gate and the guard above (which counts meta); they would ride
+        // into the committed index and show up as repeated search hits. The other
+        // direction means an FTS insert failed and those entries are unfindable.
+        // Refuse to commit either — the rollback keeps the previous index (#242).
+        $ftsRows = (int)$db->querySingle("SELECT COUNT(*) FROM search_fts");
+        if ($ftsRows !== $indexedRows) {
+            try { $db->exec("ROLLBACK"); } catch (\Throwable $ignored) {}
+            phpManLog("rebuildSearchIndex: index inconsistent — search_fts={$ftsRows} search_index_meta={$indexedRows} — rolled back, existing index preserved");
+            return "ERROR: rebuild produced an inconsistent index (search_fts={$ftsRows}, search_index_meta={$indexedRows}). Rolled back; the existing index is unchanged.\n";
         }
 
         $elapsed = round(microtime(true) - $startTime, 2);
