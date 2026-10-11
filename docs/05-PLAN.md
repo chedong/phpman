@@ -176,6 +176,44 @@ was actually true, which is why this section is longer than the diff.
 - **Foreign `Host` header reached the canonical URL and JSON-LD** — `getSafeHost()` accepted any *well-formed* `HTTP_HOST`, and `evil.com` is well-formed. The configured `PHPMAN_BASE_URL` now decides the host.
 - **`cleanTerminalOutput()` rewrites in place** — a by-value `array $lines` left two copies of the buffer alive at once. Peak on `info py` markdown: 76.0MB → 60.0MB, output byte-identical.
 
+**Branch hygiene — two stale branches, both verified before deletion**
+
+Neither existed on `origin`, so both were local-only. Both were kept as long as
+they were because `git cherry` reported work that had in fact already landed; the
+checks below are recorded so nobody re-runs them.
+
+- **`pr-106`** (external contributor `utkarshtyagi-253`, 2026-06-08/09, PR closed
+  2026-06-09 without merging) — "Sanitize output in markdown generation". `git
+  cherry` marks both commits `+`, i.e. *not* absorbed, and that is a patch-id
+  artifact rather than a fact: the branch's base `3a8ecb9` is **387 commits**
+  behind `master`, and the two functions it patched (`searchFtsBySource()`,
+  `renderGroupedResults()`) no longer exist in `phpMan.php` at all — the code
+  moved into `src/`. All three `h()` escapes it added are present in the
+  refactored locations: `src/search_index.php:196` (`h($e['name'])`), `:198`
+  (`h($e['description'])`), and `src/source_search.php:57` **and** `:83`
+  (`array_map('h', $sources)` — the duplicate renderer exists twice there).
+- **`local-v4.9.2-mobile-form`** — three commits (v4.8.1 dynamic search heading,
+  v4.8.2 theme toggle to bottom-right, v4.9.2 format links to footer). The first
+  two are `-` (absorbed). The third (`efaac44`) is `+`, and there the marker is
+  meaningful for one half only:
+  - *PHP half landed.* `showFooter()` emits the `.fmt-link` Markdown/JSON anchors
+    (`src/web_footer.php:93–102`) and `showForm()` no longer renders them — its
+    `$hasContent` now gates the "Not found" external-search branch instead
+    (`src/web_footer.php:42–44`).
+  - *CSS half did not land as written.* `.search-row` and `.mode-selector` are
+    absent from `phpman.css` (0 occurrences). The same goal — a mobile search
+    form that does not eat the first screen — is met by different markup:
+    `<span class="form-modes">` (`src/web_footer.php:10`) with its own rules
+    (`phpman.css:346`, `:391`) and mobile handling at `@media (max-width: 1024px)`
+    (`phpman.css:962`, `:987`).
+  - So the branch was **superseded, not lost**: deleting it drops an alternative
+    implementation of a goal `master` already reaches another way.
+
+Both deleted 2026-10-11. `origin` still carries four branches from earlier
+worktree sessions — `worktree-simplify-cleanup` (13 commits ahead of `master`,
+real unmerged work), `fix/errorlog-context` (1), and `worktree-json-canonical-cache`
+/ `worktree-ts-bench-help` (0 each, safe to delete).
+
 ### v4.11 — Cache Sharding & Payload Limits (✅ released 2026-09-24; v4.11.1 on 2026-09-26)
 
 - **Per-mode page cache sharding**: `pageCachePath()` is the single source of the shard naming rule — eliminates SQLite write-lock contention between search and page rendering
