@@ -151,10 +151,12 @@ function getSearchPage (string $parameter, string $section = "", string $format 
                 $totalIndexed = $db->querySingle("SELECT COUNT(*) FROM search_index_meta");
                 if ($totalIndexed > 0) {
                     // No JOIN on search_index_meta: nothing from m is selected and a
-                    // LEFT JOIN cannot filter, but it can multiply rows — the table is
-                    // UNIQUE(name, section, source), so one name under two sources
-                    // matches twice and each copy burns a LIMIT slot, starving
-                    // pydoc/ri entries. DISTINCT over the bare table keeps the budget.
+                    // LEFT JOIN cannot filter, but it can multiply rows — the ON
+                    // clause's prefix branch matches every indexed name that is a
+                    // space-delimited prefix of the expanded s.name (search_fts holds
+                    // expandNameForFts() output), so "git" and "git-commit" both match
+                    // one row and each copy burns a LIMIT slot. DISTINCT over the bare
+                    // table keeps the budget.
                     if ($section !== "" && preg_match("/^[0-9n]$/", $section)) {
                         $stmt = $db->prepare(
                             "SELECT DISTINCT s.name, s.section, s.description
