@@ -143,11 +143,12 @@ function searchFtsBySource(string $parameter, string $source, string $format) {
         $ftsQuery = buildFtsQuery($parameter);
         if ($ftsQuery === '') return $format === 'json' ? [] : '';
 
+        // No JOIN on search_index_meta — see the note in source_search.php: the
+        // LEFT JOIN selects nothing and only multiplies rows, and duplicates here
+        // eat the LIMIT budget before pydoc/ri entries get a slot.
         $stmt = $db->prepare(
-            "SELECT s.name, s.section, s.description
+            "SELECT DISTINCT s.name, s.section, s.description
              FROM search_fts s
-             LEFT JOIN search_index_meta m ON m.section = s.section
-                 AND (s.name = m.name OR s.name LIKE m.name || ' %')
              WHERE search_fts MATCH :q AND s.section = :source
              ORDER BY rank LIMIT 100"
         );
