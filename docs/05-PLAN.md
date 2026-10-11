@@ -176,11 +176,13 @@ was actually true, which is why this section is longer than the diff.
 - **Foreign `Host` header reached the canonical URL and JSON-LD** — `getSafeHost()` accepted any *well-formed* `HTTP_HOST`, and `evil.com` is well-formed. The configured `PHPMAN_BASE_URL` now decides the host.
 - **`cleanTerminalOutput()` rewrites in place** — a by-value `array $lines` left two copies of the buffer alive at once. Peak on `info py` markdown: 76.0MB → 60.0MB, output byte-identical.
 
-**Branch hygiene — two stale branches, both verified before deletion**
+**Branch hygiene — six stale branches, all verified before deletion**
 
-Neither existed on `origin`, so both were local-only. Both were kept as long as
-they were because `git cherry` reported work that had in fact already landed; the
-checks below are recorded so nobody re-runs them.
+Each was kept as long as it was because `git cherry` reported work that had in
+fact already landed; the checks below are recorded so nobody re-runs them. Two
+rounds, both on 2026-10-11: two local branches, then four on `origin`.
+
+*Round 1 — two local branches.*
 
 - **`pr-106`** (external contributor `utkarshtyagi-253`, 2026-06-08/09, PR closed
   2026-06-09 without merging) — "Sanitize output in markdown generation". `git
@@ -209,10 +211,42 @@ checks below are recorded so nobody re-runs them.
   - So the branch was **superseded, not lost**: deleting it drops an alternative
     implementation of a goal `master` already reaches another way.
 
-Both deleted 2026-10-11. `origin` still carries four branches from earlier
-worktree sessions — `worktree-simplify-cleanup` (13 commits ahead of `master`,
-real unmerged work), `fix/errorlog-context` (1), and `worktree-json-canonical-cache`
-/ `worktree-ts-bench-help` (0 each, safe to delete).
+*Round 2 — four branches on `origin`.*
+
+- **`worktree-json-canonical-cache`**, **`worktree-ts-bench-help`** — 0 commits
+  ahead of `master` each. Deleted without further checks.
+- **`fix/errorlog-context`** — one commit (`7734e1d`), **absorbed**. It prefixed
+  `phpManLog()` with a WEB/CLI context string; that is what `src/log.php:18`'s
+  `_phpManLogContext()` does on `master`. The rest of the commit touched
+  `src/enhance.php` and `cli/batch-enhance.php`, both deleted in v4.11 with the
+  rest of the LLM code, so there is nothing left to port.
+- **`worktree-simplify-cleanup`** — 13 commits, forked at `ac90602`
+  (2026-06-26), **171 commits** behind `master`. Ten were superseded; two were
+  still live and were **ported to `master` before deleting** (`9d7904f`):
+  - `3e417d3` — dropped the useless `LEFT JOIN search_index_meta` from the FTS5
+    queries and added `DISTINCT`. The branch fixed the two statements in
+    `src/source_search.php`; the third site, `searchFtsBySource()` in
+    `src/search_index.php`, carries the same defect and was missed — and it is
+    the pydoc/ri path the duplicate rows were starving. All three are fixed now.
+    `searchFtsQuery()`'s JOIN is *not* useless — it selects
+    `COALESCE(m.name, s.name)`, `m.hits` and `m.source` — and was left alone.
+  - `4e0f731` — code-block copy button vertically centred (`top: 50%` +
+    `translateY(-50%)`, `min-height: 36px` on `.code-block`), which the old
+    `top: var(--space-1)` clipped on single-line blocks.
+  - Superseded, and by what: `7e28e20` (key-masking) — the file it patched,
+    `cli/batch-enhance.php`, no longer exists; `4d5893b` (CLI bootstrap
+    constants) — `src/config.php:210` now defines `RE_ASCII`/`RE_ASCII_SAFE`
+    once for both SAPIs; `0d09666` (`.fmt-tabs`) — `master` reaches the same
+    goal with `.form-modes`; `f189ff1` (drop the `search_fts_old` swap) —
+    `master` has no `_old` logic at all and rebuilt the invariant more strictly
+    (#242). `c25f29c` and `5bca26a` are `-` (absorbed).
+  - `14f751c` was **rejected rather than ported**: it would take
+    `git tag --sort=-v:refname | head -1` as the version, which resolves to the
+    same `v4.11.2` today, but "highest version tag" is precisely the rule that
+    let the stray `v9.9.10` tag win the version string. Porting it would make
+    that failure mode worse, not better.
+
+All four deleted 2026-10-11; `origin` now carries `master` only.
 
 ### v4.11 — Cache Sharding & Payload Limits (✅ released 2026-09-24; v4.11.1 on 2026-09-26)
 
