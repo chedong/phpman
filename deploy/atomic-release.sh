@@ -37,6 +37,30 @@
 # that; a lookup relative to src/ would land in the release directory and miss
 # the install's real config. See test/unit/test_config_resolution.php.
 #
+# One consequence worth knowing before you verify a deploy
+# --------------------------------------------------------
+# The rename below is atomic, so no request sees a mixed pair — but a request
+# can still see the *previous* release, whole and consistent, for up to
+# realpath_cache_ttl after the switch (`php -i` reports 300s on the production
+# host). PHP resolves the entry script through the symlink once per process and
+# caches that, so a php-cgi worker started before the switch keeps executing
+# releases/<old-id>/phpMan.php until the cache entry expires. opcache is not the
+# cause: validate_timestamps=On with revalidate_freq=2.
+#
+# Benign, but it misleads verification. On 2026-10-10 a deploy looked like it
+# "had not taken effect" for ~25 minutes for exactly this reason: the new
+# behaviour was missing, and a never-requested URL's footer showed the previous
+# release's GIT_DESCRIBE — accurate, not stale, because the page really was
+# rendered by the previous release's code. (The mix is not the risk it sounds
+# like: the entry script resolves its own src via `__DIR__ . '/src'`, so old
+# pairs with old.)
+#
+# So check a deploy like this:
+#   1. readlink "$PHP_HOME/current"                  # did the switch happen?
+#   2. probe a *behaviour difference* or a temporary response header; if it
+#      still shows the old behaviour, wait past realpath_cache_ttl and retry.
+#      Do not conclude the deploy failed, and do not start editing code.
+#
 # Usage: atomic-release.sh <php_home> <docroot> <entry_file> <release_id> [noprune]
 set -e
 
