@@ -6,6 +6,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Machine-format render telemetry (`PHPMAN_MF_LOG_MS`, default 500ms)** — `/markdown`, `/json` and `/mcp` now write one line to `phpman_error.log` when a render takes at least the threshold: `mf mode=man name=zshall sec=1 fmt=markdown elapsed=4164ms peak=94.2MB bytes=1666546`. It exists to tell apart two failures that leave identical traces. A 5xx on a machine format writes nothing today, so "the client abandoned a slow response" and "mod_fcgid killed a slow process" are indistinguishable from the logs — and they want opposite fixes. The line makes them distinguishable **by its presence**: a 5xx *with* a matching line means the render finished and delivery failed; a 5xx *with no* line means the process died before reaching the end. `elapsed` is measured from `REQUEST_TIME_FLOAT`, so it is PHP's own wall time and excludes the mod_fcgid queue wait — comparing it against the client-observed time in the access log is what exposes that wait. The threshold is the whole volume control and sits where the two populations separate cleanly: measured on staging 2026-10-13, a cache hit renders in 30-90ms and a cold render of the same page in 400-4200ms (zshall 4.2s, pydoc/numpy 2.5s, perldiag 1.7s), so 500 keeps the log proportional to pages crawled *for the first time* rather than to all 28k/day machine-format requests. `PHPMAN_MF_LOG_MS=0` disables it. The page name reaches the line straight from the URL, so `phpManLogSafeField()` collapses control characters and truncates — without it a request for a name containing a newline could append a forged `PHP Fatal error` line to the very file this telemetry is read from. Deliberately **not** a `RENDERER_VERSION` bump: nothing about rendered output changes. New `test/unit/test_mf_render_log.php` (24 assertions). (#244)
+
 ## [4.12.2] — 2026-10-13
 
 ### Fixed

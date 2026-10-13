@@ -578,6 +578,14 @@ switch ( $mode ) {
 // Profiler: content generation complete
 Profiler::mark('content');
 
+// #244: telemetry for the machine formats. Before the format branches so one
+// call covers all three, and before the body is echoed — so a 5xx with no line
+// from here means the process died mid-render rather than finishing and failing
+// at delivery. See phpManLogMachineRender().
+if ($format === "markdown" || $format === "json" || $format === "mcp") {
+    phpManLogMachineRender($mode, $parameter, $section, $format, $content);
+}
+
 // Show Markdown or HTML output
 if ($format === "markdown") {
     header("Content-Type: text/markdown; charset=UTF-8");

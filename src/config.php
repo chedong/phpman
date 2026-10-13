@@ -136,6 +136,17 @@ if (!defined('PHPMAN_BACKUP_DIR')) {
 // Fixed filenames under derived dirs (not configurable)
 define('PHPMAN_CACHE_DB', PHPMAN_CACHE_DIR . '/phpman_cache.db');
 define('PHPMAN_LOG_FILE', PHPMAN_LOG_DIR . '/phpman_error.log');
+
+// #244: log a line per machine-format render that took at least this long. The
+// threshold is the volume control, and it sits where the two populations
+// separate cleanly: measured on staging 2026-10-13, a cache hit renders in
+// 30-90ms and a cold render of the same page in 400-4200ms (zshall 4.2s,
+// numpy 2.5s, perldiag 1.7s). 500 therefore keeps the log proportional to
+// pages crawled for the first time, not to all machine-format traffic. 0 = off.
+if (!defined('PHPMAN_MF_LOG_MS')) {
+    $phpman_mf_log_ms = getenv('PHPMAN_MF_LOG_MS');
+    define('PHPMAN_MF_LOG_MS', ($phpman_mf_log_ms === false || $phpman_mf_log_ms === '') ? 500 : (int) $phpman_mf_log_ms);
+}
 // There is no CACHE_SCHEMA_VERSION. Both cache DBs create their schema with
 // CREATE ... IF NOT EXISTS on every open, so an additive change needs no
 // migration; and since the pre-sharding DB is gone and rollback to older code is
