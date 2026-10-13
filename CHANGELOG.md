@@ -6,6 +6,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.12.0] — 2026-10-13
+
 ### Added
 - **`cli/cache.php`** — `stats` and `flush` for the sharded page cache, wrapped by `make cache-stats` / `cache-flush` / `cache-flush-staging`. It exists because the command it replaces was silently wrong: `rm -f ~/.phpman/db/phpman_cache.db*` matches the central file and its `-wal`/`-shm` but **no shard at all** — the names diverge at `_` vs `.` — so since v4.11 sharded the page cache it reported success while leaving every shard in place. `stats` opens each shard through a new `$create = false` mode on `pageCacheDb()`, so counting cannot materialise the six empty databases it was supposed to be reporting on; `flush` deletes the shard files and stops there — the central file is deliberately left alone, because it holds the FTS search index and the TLDR cache, and since v4.11 it has no `cache` table to clear at all (see Fixed). (#228)
 - **`PHPMAN_ADSENSE_ID` in `phpman.config.php.example`** — the constant was real since v4.9.26 but missing from the example config, so there was nothing to uncomment.
