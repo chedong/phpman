@@ -25,7 +25,7 @@ php test/e2e/test_security.php
 bash test/phpman-regression.sh                        # against production
 bash test/phpman-regression.sh --local http://localhost:8080/phpMan.php   # pre-deploy
 
-# Deploy (atomic since v5.0: releases/<tag>/ + `current` symlink swap)
+# Deploy (atomic since v4.12.0: releases/<tag>/ + `current` symlink swap)
 make staging                         # staging: syntax check + atomic release
 make release                         # production: syntax check + atomic release + logcheck
 make release-reindex                 # production: code + rebuild search index + sitemaps
@@ -81,13 +81,13 @@ All CLI scripts resolve `PHPMAN_HOME`, then require `src/bootstrap.php` directly
 
 **Bump `RENDERER_VERSION` whenever a change alters rendered output** — the HTML/markdown/JSON renderers, `formatForOutput()`, `cleanTerminalOutput()`, OSC-8 link handling. Nothing needs purging and there is no re-render herd; existing rows default to the old version and drain gradually through real traffic. `make cache-stats` shows a `stale` count per shard.
 
-Do **not** reintroduce a schema-version stamp alongside it. `CACHE_SCHEMA_VERSION` and both migration ladders were removed in v5.0 (`91cb020`): each cache DB now creates its schema with `CREATE ... IF NOT EXISTS` on every open, so an additive change needs no migration, and the stamps that used to record the shape (`meta.schema_version`, `PRAGMA user_version`) existed only so a rolled-back deploy could re-stamp and re-migrate — that rollback provision is gone. Do not auto-derive `RENDERER_VERSION` from a deploy stamp or source hash either; that would invalidate on every deploy, including ones that cannot change a byte of output.
+Do **not** reintroduce a schema-version stamp alongside it. `CACHE_SCHEMA_VERSION` and both migration ladders were removed in v4.12.0 (`91cb020`): each cache DB now creates its schema with `CREATE ... IF NOT EXISTS` on every open, so an additive change needs no migration, and the stamps that used to record the shape (`meta.schema_version`, `PRAGMA user_version`) existed only so a rolled-back deploy could re-stamp and re-migrate — that rollback provision is gone. Do not auto-derive `RENDERER_VERSION` from a deploy stamp or source hash either; that would invalidate on every deploy, including ones that cannot change a byte of output.
 
 History not to repeat: schema v5→v6 dropped `cache.generator_version`, which stored `GIT_DESCRIBE` on every `set()` — nothing ever read it, so it invalidated nothing. **A version is only worth storing if `get()` filters on it.**
 
 Surveying the cache needs care too: in `json` rows a terminal escape is stored as the six-character sequence `\u001b`, not the raw byte, so a raw-byte search reports zero — decode before searching.
 
-**Emoji cache rows (inert)** — `emoji_html` / `emoji_md` cache rows predate v4.10, which removed the LLM enhancement layer (`enhanceManPage()`, `callLLM()`, `cleanEmojiHtml()`, `cli/batch-enhance.php`). v5.0 (`5bf0025`) then removed the **read** side too — the default-view fallback, the `/markdown` preference, the `CACHE_FORMAT_EMOJI_*` constants and the never-expire TTL rule — and the v3→v4 migration whose preserve list was the last thing naming those formats was deleted in the same release. So these rows are now written by nothing, read by nothing, and named by nothing. Do not add code that reads them. Historical design lives in git history v4.0–v4.9 and `docs/01-PRODUCT.md` §2.12.
+**Emoji cache rows (inert)** — `emoji_html` / `emoji_md` cache rows predate v4.10, which removed the LLM enhancement layer (`enhanceManPage()`, `callLLM()`, `cleanEmojiHtml()`, `cli/batch-enhance.php`). v4.12.0 (`5bf0025`) then removed the **read** side too — the default-view fallback, the `/markdown` preference, the `CACHE_FORMAT_EMOJI_*` constants and the never-expire TTL rule — and the v3→v4 migration whose preserve list was the last thing naming those formats was deleted in the same release. So these rows are now written by nothing, read by nothing, and named by nothing. Do not add code that reads them. Historical design lives in git history v4.0–v4.9 and `docs/01-PRODUCT.md` §2.12.
 
 **UX: code blocks + copy button** — External JS `phpman.js` (loaded in `showFooter()`) wraps all `#content-wrap pre` blocks in `<div class="code-block">` with a `📋 Copy` button positioned top-right. Clicking copies the `<code>` (or `<pre>`) textContent to clipboard with `✓ Copied!` feedback. CSS: Tokyo Night `#1f2335` background, `italic` font, rounded border, button hidden until hover (.code-block:hover .copy-btn).
 

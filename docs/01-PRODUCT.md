@@ -227,8 +227,8 @@ man-page TOC sidebar.)
 - **0 LLM calls** in phpMan's request path
 
 **Legacy emoji cache (inert)**:
-- No new enhanced content can be produced, and none is read. v4.10 removed the writer; v5.0 (`5bf0025`) removed the reader — the `emoji_html` default-view fallback, the `emoji_md` preference for `/markdown`, the `CACHE_FORMAT_EMOJI_*` constants and the never-expire TTL rule are all gone
-- `emoji_html` / `emoji_md` rows still exist in old databases, but nothing writes and nothing reads them. They are no longer named anywhere in the code: their last reference was the v3→v4 migration's `format NOT IN ('json','search','emoji_md','emoji_html')` preserve list in `src/cache.php`, and that migration was removed in v5.0 along with the rest of the central DB's `cache` steps. `grep emoji src/cache.php` returns nothing.
+- No new enhanced content can be produced, and none is read. v4.10 removed the writer; v4.12.0 (`5bf0025`) removed the reader — the `emoji_html` default-view fallback, the `emoji_md` preference for `/markdown`, the `CACHE_FORMAT_EMOJI_*` constants and the never-expire TTL rule are all gone
+- `emoji_html` / `emoji_md` rows still exist in old databases, but nothing writes and nothing reads them. They are no longer named anywhere in the code: their last reference was the v3→v4 migration's `format NOT IN ('json','search','emoji_md','emoji_html')` preserve list in `src/cache.php`, and that migration was removed in v4.12.0 along with the rest of the central DB's `cache` steps. `grep emoji src/cache.php` returns nothing.
 - Historical design (phpMan v4.0–v4.9) is preserved in git history for reference
 
 #### 2.12.1 batch-enhance.php — deleted in v4.10
@@ -342,7 +342,7 @@ if (!defined('MCP_API_KEY'))       define('MCP_API_KEY', '');       // default
 2. `sed` replaces `__PHPMAN_HOME__` → `$HOME/.phpman` in both `$INSTALL_DIR/phpMan.php` (dev server) and webroot copy (Apache/Nginx)
 3. `do_deploy_webroot()` — copies `phpMan.php` + CSS + JS to webroot + patches `__PHPMAN_HOME__`
 
-**make release flow** (atomic since v5.0):
+**make release flow** (atomic since v4.12.0):
 1. SSH resolves `$HOME` → `DEMO_HOME`
 2. `sed` replaces `__PHPMAN_HOME__`, `GIT_DESCRIBE`, `PHPMAN_VERSION` in local `phpMan.php` → `phpMan.php.deploy`
 3. `rsync` uploads `src/` into `$DEMO_HOME/.phpman/releases/<release-id>/src/`; `phpMan.php.deploy` + CSS/JS are `scp`'d into the same release directory

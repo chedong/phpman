@@ -1,7 +1,7 @@
 # phpMan FTS5 Full-Text Search Design
 
 > **Status:** v4 — FTS5 offline index priority + command-line cascade fallback + single-query 3-source aggregation
-> **Date:** 2026-06-08 (v3.6.3); cache section revised for v4.11 sharding / v5.0
+> **Date:** 2026-06-08 (v3.6.3); cache section revised for v4.11 sharding / v4.12.0
 > **Environment:** PHP 8.1+ / SQLite 3.53.1 · `PRAGMA compile_options` includes `ENABLE_FTS5`
 > **Related:** [03-CACHE.md](03-CACHE.md) — page content cache architecture
 
@@ -355,7 +355,7 @@ if ($totalIndexed > 0) { /* use FTS5 */ }
 Since v4.11 the page cache is sharded per mode (`phpman_cache_<mode>.db`), so a search-index rebuild
 clears one file instead of issuing a scoped `DELETE` against a shared table. There is no
 schema-upgrade full clear any more: `CACHE_SCHEMA_VERSION` and both migration ladders were removed in
-v5.0. See [03-CACHE.md](03-CACHE.md).
+v4.12.0. See [03-CACHE.md](03-CACHE.md).
 
 ### 7.2 Search Pages Not in FTS5 Index
 
@@ -456,7 +456,7 @@ The rebuild resolves the database location from `PHPMAN_CACHE_DIR` (default
 
 ### 11.1 Deploy Steps
 
-Deploys are atomic since v5.0: `deploy/atomic-release.sh` stages a new
+Deploys are atomic since v4.12.0: `deploy/atomic-release.sh` stages a new
 `~/.phpman/releases/<tag>/` and swaps the `current` symlink. The rebuild is a separate step.
 
 ```
