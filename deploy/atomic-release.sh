@@ -39,27 +39,38 @@
 #
 # One consequence worth knowing before you verify a deploy
 # --------------------------------------------------------
-# The rename below is atomic, so no request sees a mixed pair — but a request
-# can still see the *previous* release, whole and consistent, for up to
-# realpath_cache_ttl after the switch (`php -i` reports 300s on the production
-# host). PHP resolves the entry script through the symlink once per process and
-# caches that, so a php-cgi worker started before the switch keeps executing
-# releases/<old-id>/phpMan.php until the cache entry expires. opcache is not the
-# cause: validate_timestamps=On with revalidate_freq=2.
+# The rename below is atomic, so no request sees a mixed pair — but the flip is
+# invisible to a PHP worker that is already running, and unlike a cache entry
+# this does NOT age out. Whoever is serving the old release keeps serving it
+# until the opcache is cleared, which is why step 4 restarts the pool.
 #
-# Benign, but it misleads verification. On 2026-10-10 a deploy looked like it
-# "had not taken effect" for ~25 minutes for exactly this reason: the new
-# behaviour was missing, and a never-requested URL's footer showed the previous
-# release's GIT_DESCRIBE — accurate, not stale, because the page really was
-# rendered by the previous release's code. (The mix is not the risk it sounds
-# like: the entry script resolves its own src via `__DIR__ . '/src'`, so old
-# pairs with old.)
+# The mechanism is opcache, and the host's opcache.revalidate_path=0 is what
+# makes it permanent (check `php -i`). opcache compiles the entry script once and
+# keys the compiled copy by the path it was *requested* as — $DOCROOT/phpMan.php
+# — not by what that path resolved to. Retargeting the symlink changes the
+# resolution but not the key, and the file the copy was compiled from
+# (releases/<old-id>/phpMan.php) is still there, byte-identical, with an
+# unchanged mtime, so validate_timestamps=On re-stats it, finds nothing new and
+# keeps the old bytecode. Realpath is not the knob either: with revalidate_path=0
+# opcache never asks for the path to be resolved again, so realpath_cache_ttl
+# (300s on this host) never enters into it. This is not a "wait a few minutes"
+# condition, and waiting does not clear it.
+#
+# Nor does a different worker save you: on 2026-10-13 a deploy flipped `current`
+# correctly and 20+ minutes later the site still served the previous release —
+# the stale opcache entry outlived every worker that was running of the flip.
+# Only clearing the opcache switched it over. On 2026-10-10 the same thing cost
+# ~25 minutes of "the deploy did not take effect", and the footer that looked
+# wrong was accurate: that page really had been rendered by the previous
+# release's code. (The mix is not the risk it sounds like — the entry script
+# resolves its own src via `__DIR__ . '/src'`, so old pairs with old.)
 #
 # So check a deploy like this:
 #   1. readlink "$PHP_HOME/current"                  # did the switch happen?
-#   2. probe a *behaviour difference* or a temporary response header; if it
-#      still shows the old behaviour, wait past realpath_cache_ttl and retry.
-#      Do not conclude the deploy failed, and do not start editing code.
+#   2. probe a *behaviour difference*, or the footer's GIT_DESCRIBE, which is
+#      compiled into the entry script. Still the previous release? The pool did
+#      not restart — run step 4 by hand and probe again. Do not start editing
+#      code: the release is fine, the worker is stale.
 #
 # Usage: atomic-release.sh <php_home> <docroot> <entry_file> <release_id> [noprune]
 set -e
@@ -119,7 +130,42 @@ done
 ln -sfn "$PHP_HOME/current/$ENTRY" "$DOCROOT/.$ENTRY.tmp"
 mv -T "$DOCROOT/.$ENTRY.tmp" "$DOCROOT/$ENTRY"
 
-# 4. Prune old releases, keeping the newest 5 including the current one. Skipped
+# 4. Restart the PHP workers so they re-read the entry script.
+#
+#    Steps 1-3 changed what $DOCROOT/$ENTRY resolves to, and a running worker
+#    will not notice: see the comment at the top. Restarting is the only thing
+#    that works from here — opcache_reset() would have to be called from inside
+#    a request, which needs a web-accessible script this install deliberately
+#    does not have. mod_fcgid respawns the workers on the next request, so the
+#    cost is a request or two of 503 per vhost, paid once per deploy.
+#
+#    One pool serves every vhost of this account, so the restart is not scoped
+#    to $DOCROOT: a staging deploy also cycles production's workers (harmless —
+#    both re-read their own `current`). Set PHPMAN_PHP_RESTART=0 to skip it,
+#    e.g. when the release is known to be dormant. The pattern is written as a
+#    character class so it cannot match this script's own command line.
+PHP_CGI_PATTERN=${PHPMAN_PHP_CGI_PATTERN:-php[0-9]*.cgi}
+case "${PHPMAN_PHP_RESTART:-1}" in
+    0|no|false|off)
+        echo "atomic-release: PHP restart skipped (PHPMAN_PHP_RESTART=${PHPMAN_PHP_RESTART})"
+        ;;
+    *)
+        if command -v pgrep >/dev/null 2>&1 && command -v kill >/dev/null 2>&1; then
+            PIDS=$(pgrep -f "$PHP_CGI_PATTERN" 2>/dev/null | grep -v -x -e "$$" -e "$PPID" || true)
+            if [ -n "$PIDS" ]; then
+                # shellcheck disable=SC2086
+                kill $PIDS 2>/dev/null || true
+                echo "atomic-release: restarted $(echo "$PIDS" | wc -l | tr -d ' ') PHP worker(s) matching $PHP_CGI_PATTERN"
+            else
+                echo "atomic-release: no PHP workers matched $PHP_CGI_PATTERN (nothing to restart)"
+            fi
+        else
+            echo "atomic-release: pgrep not available; restart the PHP pool by hand or the old release keeps serving" >&2
+        fi
+        ;;
+esac
+
+# 5. Prune old releases, keeping the newest 5 including the current one. Skipped
 #    on rollback (noprune), where the release being rolled back FROM is newer
 #    than `current` and pruning could delete it. Guarded so a bad glob can never
 #    turn into `rm -rf` of something unexpected.

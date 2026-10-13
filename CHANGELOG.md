@@ -6,6 +6,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.12.2] — 2026-10-13
+
+### Fixed
+- **A deploy stops being a "wait a few minutes" operation — `atomic-release.sh` now restarts the PHP workers.** The atomic symlink swap is invisible to a worker that is already running: this host sets `opcache.revalidate_path=0`, so the compiled entry script is keyed by the path it was *requested* as (`$DOCROOT/phpMan.php`), not by what that path resolved to. Retargeting `current` therefore leaves the old bytecode serving, and — unlike a cache entry — it does not age out: the file it was compiled from (`releases/<old-id>/phpMan.php`) is still there, byte-identical, with an unchanged mtime, so `validate_timestamps=On` re-stats it, finds nothing new, and keeps it. On 2026-10-13 production served `v4.11.2-50-g2870e58` for 20+ minutes after `current` had correctly flipped to `releases/v4.12.1-…`, from a pool that had workers both older *and* newer than the flip; one `opcache_reset()` switched it over instantly. Step 4 of `deploy/atomic-release.sh` now does the equivalent — the workers exit and mod_fcgid respawns them on the next request, at a cost of a request or two of 503 per vhost — and `make rollback` inherits it, since it delegates to the same script. Set `PHPMAN_PHP_RESTART=0` to skip it. The stale comment in the script blamed `realpath_cache_ttl` and advised waiting 300s; realpath is not the knob, because with `revalidate_path=0` opcache never asks for the path to be resolved again, so the TTL never comes into play. Verified on production: after the restart the worker compiled `v4.12.1` on its first request, and both vhosts were serving correctly within one request.
+
 ## [4.12.0] — 2026-10-13
 
 ### Added
