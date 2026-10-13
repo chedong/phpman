@@ -35,6 +35,7 @@ make reindex-staging                 # staging: rebuild search index + sitemaps 
 make rollback                        # flip `current` back a release (STEP=n)
 make verify                          # curl health check on both
 make logcheck                        # post-deploy error summary (per-day / per-type)
+make log-rotate                      # rotate ~/.phpman/logs/phpman_error.log, keep 5
 
 # Cache (sharded per mode since v4.11)
 make cache-stats                     # rows / bytes / stale per shard
