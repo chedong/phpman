@@ -126,7 +126,7 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 - `cli/batch-enhance.php`: single-page CLI tool for shared hosts where man(1) can't fork
 - `cli/batch-enhance.php`: offline batch enhancement — auto-discovers ~35K entries from search_index_meta + cache, 2-min rate limiting, resilient resume, `--cached-first` sort, idempotent per-entry cache writes (2026-06-17)
 - `DELETE FROM cache` now preserves emoji_md/emoji_html during reindex (2026-06-17)
-- **Removed in v4.10.0** (commit `7740029`) — every symbol listed above is gone; only the `emoji_md`/`emoji_html` cache rows survive, and since v5.0 (`5bf0025`) nothing reads those either. Nothing writes or reads those rows now, and no code names the formats at all — the v3→v4 migration that used to preserve them was itself deleted in v5.0.
+- **Removed in v4.10.0** (commit `7740029`) — every symbol listed above is gone; only the `emoji_md`/`emoji_html` cache rows survive, and since v4.12.0 (`5bf0025`) nothing reads those either. Nothing writes or reads those rows now, and no code names the formats at all — the v3→v4 migration that used to preserve them was itself deleted in v4.12.0.
 - Historical design preserved in git history (v4.0..v4.9) for reference
 - See `docs/01-PRODUCT.md` §2.12 for what was removed and why
 
@@ -265,7 +265,7 @@ All four deleted 2026-10-11; `origin` now carries `master` only.
 - **Remove**: `cli/batch-enhance.php`, `src/enhance.php`, `start-enhance-all.sh`, `test/unit/test_enhance.php`
 - **Remove**: `LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`, `LLM_MAX_TOKENS` from `src/config.php`
 - **Remove**: `$enhancedBy` footer credit, `cleanEmojiHtml()` render path, LLM enhancement docs
-- **Keep**: `CACHE_FORMAT_EMOJI_MD`/`CACHE_FORMAT_EMOJI_HTML` cache serving — **superseded**: v5.0 (`5bf0025`) removed the read side, so the rows are now inert, and the v3→v4 migration that was the last code naming them went with it. Nothing writes, reads or names those formats now.
+- **Keep**: `CACHE_FORMAT_EMOJI_MD`/`CACHE_FORMAT_EMOJI_HTML` cache serving — **superseded**: v4.12.0 (`5bf0025`) removed the read side, so the rows are now inert, and the v3→v4 migration that was the last code naming them went with it. Nothing writes, reads or names those formats now.
 - **Rationale**: STRATEGY.md analysis — AI bots prefer raw markdown/json/mcp, emoji adds no value for agents. Meta (9,217/day) and ClaudeBot (905/day) confirm this.
 
 ### v4.9 — CSP nonce + strict-dynamic (proposed, not shipped)
@@ -595,7 +595,7 @@ calls functions loaded by bootstrap but is not itself required by anything.
   avoid the dispatcher require `cli/_bootstrap.php`, which defines
   `PHPMAN_HOME` itself (see below).
 - **Config overridables unchanged** — `defined()` guard pattern in `config.php`.
-- **Deploy is atomic as of v5.0** — `deploy/atomic-release.sh` stages a new
+- **Deploy is atomic as of v4.12.0** — `deploy/atomic-release.sh` stages a new
   `~/.phpman/releases/<tag>/` and swaps the `current` symlink; the earlier
   `scp phpMan.php` + `scp -r cli tools src` sequence (and the "upload `src/`
   before `phpMan.php`" rule) is gone. See
@@ -1181,7 +1181,7 @@ For each phpMan function, port in this order:
    - Remove `test/unit/test_enhance.php`
    - Update `test/unit/test_path_guard.php` (no impact)
 8. Verify: `php test/run_all.php` passes 323/323 (was 349; -26 = LLM-related tests removed)
-9. Tag release: `git tag v5.0.0` (major bump: removed features)
+9. Tag release: `git tag v4.12.0` (a minor bump — the removals above shipped inside 4.x)
 
 #### Phase G: Decommission & migrate running jobs (week 5)
 
@@ -1209,7 +1209,7 @@ For each phpMan function, port in this order:
 
 If `llm_enhance` proves unworkable in the new shape:
 
-- All original phpMan LLM code is in git history (v4.0..v4.9) — `git revert v5.0.0..HEAD` restores it
+- All original phpMan LLM code is in git history (v4.0..v4.9) — `git revert v4.12.0..HEAD` restores it
 - The `llm_enhance` repo can be deleted; `site_stats` is independent and unaffected
 - phpMan's `cli/batch-enhance.php` and `enhanceManPage()` come back exactly as they were
 
@@ -1233,10 +1233,10 @@ No data loss: the original `cache.emoji_*` columns can be restored from backup i
 | W2-3 (07-21 → 08-03) | Phase C: MysqlExportSource for myblog |
 | W3 (07-28 → 08-03) | Phase D: PhpmanCacheSource |
 | W3-4 (07-28 → 08-10) | Phase E: site_stats MVP |
-| W4 (08-04 → 08-10) | Phase F: phpMan cleanup, tag v5.0.0 |
+| W4 (08-04 → 08-10) | Phase F: phpMan cleanup, tag v4.12.0 |
 | W5 (08-11 → 08-17) | Phase G: decommission + re-enhance optional |
 
-Total: ~5 weeks from today to a clean v5.0.0 of phpMan + 2 new working repos.
+Total: ~5 weeks from today to a clean v4.12.0 of phpMan + 2 new working repos.
 
 ### Configuration & Deployment Architecture
 
@@ -1325,7 +1325,7 @@ Maintainer: make tag VERSION=4.4.0                 (local)
   1. git tag -a v4.4.0 -m "v4.4.0"                  ← annotated tag (no source edit)
   2. git push origin master v4.4.0                    ← push + tag
 
-Maintainer: make release                            (deploy to prod — atomic since v5.0)
+Maintainer: make release                            (deploy to prod — atomic since v4.12.0)
   1. make test                                       ← syntax check
   2. sed PHPMAN_HOME + GIT_DESCRIBE + PHPMAN_VERSION ← replace placeholders → phpMan.php.deploy
   3. rsync src/ → $HOME/.phpman/releases/<RELEASE_ID>/src/
@@ -1432,7 +1432,7 @@ git clone → ~/.phpman/                    # repo = PHPMAN_HOME
     /var/www/html/phpman.css   ← cp from ~/.phpman
     /var/www/html/phpman.js    ← cp from ~/.phpman
 
-# Path B: Makefile (maintainer deploy, atomic since v5.0)
+# Path B: Makefile (maintainer deploy, atomic since v4.12.0)
 rsync src/ → $PHP_HOME/releases/<id>/src/
 scp phpMan.php.deploy → $PHP_HOME/releases/<id>/phpMan.php
 sh deploy/atomic-release.sh  → flips `current`, points $PHP_HOME/src and
