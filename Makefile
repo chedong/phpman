@@ -51,7 +51,7 @@ FILE ?= phpMan.php
 CSS_FILE ?= phpman.css
 JS_FILE  ?= phpman.js
 
-.PHONY: test staging staging-reindex release release-reindex reindex reindex-staging rollback verify logcheck package upload-release clean cache-flush cache-flush-staging cache-stats tag tag-minor _deploy-code _release-code
+.PHONY: test staging staging-reindex release release-reindex reindex reindex-staging rollback verify logcheck log-rotate package upload-release clean cache-flush cache-flush-staging cache-stats tag tag-minor _deploy-code _release-code require-staging require-production
 
 GIT_TAG     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "local")
 GIT_VERSION := $(shell (git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0") | sed 's/^v//')
@@ -71,13 +71,23 @@ RELEASE_ID  := $(shell printf '%s' '$(GIT_TAG)' | sed 's/[^A-Za-z0-9._-]/_/g')-$
 STAGING_HOME := $(shell ssh -p $(TEST_PORT) $(TEST_HOST) 'echo $$HOME' 2>/dev/null || echo "")
 DEMO_HOME    := $(shell ssh -p $(DEMO_PORT) $(DEMO_HOST) 'echo $$HOME' 2>/dev/null || echo "")
 
-# Guard: fail early if remote $HOME couldn't be resolved (SSH down, too many connections, etc.)
-ifeq ($(STAGING_HOME),)
-$(error Failed to resolve STAGING_HOME — SSH to $(TEST_HOST):$(TEST_PORT) failed. Check your connection and try again.)
-endif
-ifeq ($(DEMO_HOME),)
-$(error Failed to resolve DEMO_HOME — SSH to $(DEMO_HOST):$(DEMO_PORT) failed. Check your connection and try again.)
-endif
+# Guards for a remote $HOME that could not be resolved (SSH down, too many
+# connections, DNS). These are prerequisites of the targets that actually use
+# those paths, not parse-time $(error)s: as $(error)s a single blip to *either*
+# host failed every target in this file, including the ones that never touch it
+# — a flaky SSH to staging aborted `make logcheck` and `make log-rotate`, which
+# only talk to production. The values above are still resolved once per run
+# (recursive `=` here would re-run ssh on every reference in a recipe).
+require-staging:
+	@test -n "$(STAGING_HOME)" || { echo "Failed to resolve STAGING_HOME — SSH to $(TEST_HOST):$(TEST_PORT) failed. Check your connection and try again." >&2; exit 1; }
+require-production:
+	@test -n "$(DEMO_HOME)" || { echo "Failed to resolve DEMO_HOME — SSH to $(DEMO_HOST):$(DEMO_PORT) failed. Check your connection and try again." >&2; exit 1; }
+
+# Targets that use the resolved paths carry the matching guard. Targets that only
+# need the host/port (logcheck, log-rotate, verify) deliberately do not — they
+# must keep working while the other host is unreachable.
+staging staging-reindex reindex-staging cache-flush-staging _deploy-code: require-staging
+release release-reindex reindex cache-flush cache-stats rollback package _release-code: require-production
 
 test:
 	php -l $(FILE)
