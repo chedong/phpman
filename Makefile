@@ -51,7 +51,7 @@ FILE ?= phpMan.php
 CSS_FILE ?= phpman.css
 JS_FILE  ?= phpman.js
 
-.PHONY: test staging staging-reindex release release-reindex reindex reindex-staging rollback verify logcheck log-rotate package upload-release clean cache-flush cache-flush-staging cache-stats tag tag-minor _deploy-code _release-code require-staging require-production
+.PHONY: test test-unit staging staging-reindex release release-reindex reindex reindex-staging rollback verify logcheck log-rotate package upload-release clean cache-flush cache-flush-staging cache-stats _deploy-code _release-code _release-tag require-staging require-production release-precheck
 
 GIT_TAG     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "local")
 GIT_VERSION := $(shell (git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0") | sed 's/^v//')
@@ -96,6 +96,15 @@ test:
 	@for f in cli/*.php; do php -l "$$f" >/dev/null || exit 1; done
 	@for f in deploy/*.sh; do sh -n "$$f" || exit 1; done
 	@echo "All PHP files pass syntax check"
+
+# Behavioural tests (test/run_all.php). Deliberately separate from `test`:
+# `test` is the fast syntax gate you run constantly, this one shells out and
+# takes seconds. It is a prerequisite of release/release-reindex — the guards
+# this release pipeline now depends on (deploy/next-version.sh,
+# deploy/release-precheck.sh) are only exercised here, so a regression in them
+# must not be able to ship.
+test-unit:
+	php test/run_all.php
 
 # ─── Staging ───
 

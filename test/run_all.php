@@ -25,6 +25,7 @@ $suites = [
         "{$testDir}/unit/test_safe_host.php",
         "{$testDir}/unit/test_info_valid_files.php",
         "{$testDir}/unit/test_mf_render_log.php",
+        "{$testDir}/unit/test_next_version.php",
     ],
     "Integration" => [
         "{$testDir}/integration/test_formatter_html.php",
