@@ -1321,25 +1321,38 @@ Result:
 #### Update Flow
 
 ```
-Maintainer: make tag VERSION=4.4.0                 (local)
-  1. git tag -a v4.4.0 -m "v4.4.0"                  ← annotated tag (no source edit)
-  2. git push origin master v4.4.0                    ← push + tag
+Maintainer: git commit ...                          (local; do NOT push yet — release pushes master)
 
-Maintainer: make release                            (deploy to prod — atomic since v4.12.0)
-  1. make test                                       ← syntax check
-  2. sed PHPMAN_HOME + GIT_DESCRIBE + PHPMAN_VERSION ← replace placeholders → phpMan.php.deploy
-  3. rsync src/ → $HOME/.phpman/releases/<RELEASE_ID>/src/
+Maintainer: make release                            (guards + deploy + tag — atomic since v4.12.0)
+  0. deploy/release-precheck.sh $(DEPLOY_PATHS)      ← 三条守卫，任何上传之前
+       · origin/master 必须是 HEAD 的祖先（挡住从落后的 checkout 发布）
+       · HEAD 不能被 origin 上的 tag 指着（同一提交不发布两次）
+       · 部署路径上工作树必须干净（否则传上去的字节 != tag 指向的提交）
+     成功时把 origin 的 tag 快照打到 stdout
+  1. deploy/next-version.sh < 该快照                 ← 版本号从 **origin 的 tag** 算
+       · 默认补丁 +1；VERSION=4.13 显式覆盖（归一化成 v4.13.0）
+       · 必须严格大于远端最新，否则拒绝
+       · 不再有 make tag / tag-minor —— 打 tag 已并入发布
+  2. make test                                       ← syntax check
+  3. sed PHPMAN_HOME + GIT_DESCRIBE + PHPMAN_VERSION ← replace placeholders → phpMan.php.deploy
+  4. rsync src/ → $HOME/.phpman/releases/<RELEASE_ID>/src/
      scp phpMan.php.deploy → .../releases/<RELEASE_ID>/phpMan.php
-  4. ssh ... sh deploy/atomic-release.sh <home> <docroot> phpMan.php <RELEASE_ID>
+  5. ssh ... sh deploy/atomic-release.sh <home> <docroot> phpMan.php <RELEASE_ID>
        → flips `current` with a single atomic rename (see below)
-  5. rsync phpman.css + phpman.js → docroot;  cli/ → $HOME/.phpman/cli/
+  6. rsync phpman.css + phpman.js → docroot;  cli/ → $HOME/.phpman/cli/
      ssh ... php cli/detect-tools.php > tools_config.php.tmp && mv ... tools_config.php
        → written to a temp file and renamed: rewriting in place truncates first,
          and a request served in that window reads an empty file (#240)
-  6. make logcheck                                   ← pipes cli/logcheck.sh over ssh
+  7. make logcheck                                   ← pipes cli/logcheck.sh over ssh
                                                        (per-day / per-type error summary)
 
-Maintainer: make release-reindex                    (deploy + rebuild index)
+Maintainer: _release-tag（release 自动调，在所有步骤成功之后）
+  git tag -a v<x.y.z> && git push origin master refs/tags/v<x.y.z>
+  · 放最后是因为 release-reindex 的 index 重建跑在 _release-code 之后；tag 若早推，
+    reindex 失败会留下「代码已上线、索引没重建」的 tag，而重跑会被守卫挡住
+  · push 失败会删掉本地 tag 再退出 —— 重跑时守卫全过，补推同一个版本号
+
+Maintainer: make release-reindex                    (deploy + rebuild index + tag)
   Same as release, then:
   ssh ... "cd ~/.phpman && php cli/build-index.php --cron"
 

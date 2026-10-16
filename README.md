@@ -566,7 +566,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete history.
 - **CLI consolidation** — All CLI tools under `cli/` with a shared bootstrap (`_bootstrap.php`). Today: `build-index.php`, `build-sitemap.php`, `cache.php`, `detect-tools.php`, `logcheck.sh`, `log-analyze.sh`. (The `batch-enhance.php` this entry introduced was deleted in v4.10 — see above.)
 - **Security hardening** — `isLocalRequest()` restricts to loopback only. `getSearchPage()` gracefully falls back when the cache DB is unavailable.
 - **Markdown format purity** — Search results in Markdown use pure `- ` list items, no HTML wrappers.
-- **install.sh improvements** — Config generated from `.example` (single source of truth). `--update` checks for new config options. `PHPMAN_VERSION` written by `make tag`.
+- **install.sh improvements** — Config generated from `.example` (single source of truth). `--update` checks for new config options. `PHPMAN_VERSION` written by `make release`.
 - **MCP search** — `cli_search` returns structured results (mode/search/count/results) via POST `/mcp`.
 
 ### v3.6+ (2026-06-08)
@@ -814,13 +814,17 @@ DEMO_URL  = https://example.com/phpMan.php
 make test
 ```
 
-### 2. Commit and Push to GitHub
+### 2. Commit Locally
 
 ```bash
 git add phpMan.php README.md Makefile .deploy.mk.example .gitignore
 git commit -m "description of changes"
-git push origin master
 ```
+
+Do **not** push yet. `make release` pushes `master` together with the version tag,
+after the code is actually live. Pushing earlier is not *wrong* — the guards only
+require `origin/master` to be an ancestor of HEAD, so intermediate commits may be
+pushed freely — it just publishes a commit that is not deployed anywhere yet.
 
 ### 3. Update Staging Demo
 
@@ -829,22 +833,61 @@ make staging
 ```
 
 Runs the syntax check, then uploads `phpMan.php`, `src/`, and the CSS/JS into
-`~/.phpman_test/releases/<tag>/` on the staging host and activates them with a
+`~/.phpman_test/releases/<id>/` on the staging host and activates them with a
 single `current` symlink swap (`deploy/atomic-release.sh`).
+
+Staging advertises `staging-<sha>` (or `staging-<sha>-dirty` when the working tree
+has changes under the deployed paths) rather than a release version. Tagging
+happens at release time, so the commit staging is running usually has no tag — and
+naming it after the last release would make staging look *newer* than production
+while running older code.
 
 ### 4. Update Production Demo
 
 ```bash
-make release     # syntax check + atomic release + post-deploy log check
+make release     # guards + version + atomic release + tag + post-deploy log check
 make verify      # curl health check on staging and production
 ```
 
-`make release` is atomic: `phpMan.php` and `src/` land in `~/.phpman/releases/<tag>/`
+`make release` is atomic: `phpMan.php` and `src/` land in `~/.phpman/releases/<id>/`
 and are activated by one symlink swap, so no request can observe one half of an
 install from the new version and the other from the old. `make rollback` flips
 that symlink back a release (`STEP=n` for *n* releases) — it does not restore a
 `.bak` copy, because copying a file over the entry script would write *through*
 the symlink and corrupt the live release.
+
+#### What `make release` does, in order
+
+1. **Guards** (`deploy/release-precheck.sh`) — aborts before anything is uploaded if
+   `origin/master` is not an ancestor of HEAD (stale checkout), if HEAD is already
+   tagged (this commit was released before), or if the working tree is dirty under
+   the deployed paths.
+2. **Version** (`deploy/next-version.sh`) — computed from **origin's** tags, not the
+   local ones: patch + 1 of the highest three-component tag. Pass `VERSION=x.y` for a
+   minor or major bump (`make release VERSION=4.13` → tag `v4.13.0`). A version that
+   is not strictly greater than the newest on origin is refused.
+3. **Deploy** — the usual atomic release, with the version baked into `PHPMAN_VERSION`,
+   `GIT_DESCRIBE`, the release directory name, `?v=`, ETag and the MCP `serverInfo.version`.
+4. **Tag and push** (`_release-tag`) — only after every deploy step has succeeded:
+   `git tag -a v<x.y.z>` then `git push origin master refs/tags/v<x.y.z>`.
+
+Steps 1–2 run before any upload, and step 4 runs after everything else, so a failure
+anywhere leaves either nothing done or a deployed-but-untagged release that a re-run
+completes. There is no `make tag` any more — tagging is part of releasing.
+
+### 5. Create GitHub Release
+
+The version tag already exists (step 4). Create the GitHub release from it:
+
+```bash
+gh release create v4.12.3 --title "v4.12.3" --notes "Release notes here"
+```
+
+Or upload a release artifact via the Makefile:
+
+```bash
+make upload-release TAG=v4.12.3
+```
 
 ### Cache management
 
@@ -858,21 +901,6 @@ The page cache is sharded per mode (`phpman_cache_<mode>.db`). `flush` deletes t
 shard files and deliberately leaves the central `phpman_cache.db` alone — it holds
 the FTS search index and the TLDR cache, and has no page-cache table at all.
 
-### 5. Create GitHub Release
-
-Tag and create a release on GitHub:
-
-```bash
-git tag v2.2
-git push origin v2.2
-gh release create v2.2 --title "v2.2" --notes "Release notes here"
-```
-
-Or upload a release artifact via the Makefile:
-
-```bash
-make upload-release
-```
 
 ### 6. Rebuild FTS5 Search Index
 
