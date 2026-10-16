@@ -87,7 +87,17 @@ STAGING_RELEASE_ID := $(STAGING_VERSION)-$(RELEASE_STAMP)
 # origin's tags, and computing it at parse time would put a network call in every
 # `make`). `_release-code` writes it to .release-version first; this expands at
 # recipe time, when that file exists.
-RELEASE_ID = $$(cat .release-version)-$(RELEASE_STAMP)
+#
+# The sed is not decoration. RELEASE_ID is interpolated *unquoted inside
+# double-quoted ssh command strings* (see _release-code), so the remote shell
+# re-parses it — anything but [A-Za-z0-9._-] would be command injection on the
+# production host, and atomic-release.sh's single-quoted argument would break out
+# too. Today .release-version can only contain vN.N.N (next-version.sh validates
+# both of its output paths), but that makes the property depend on a script two
+# files away: loosen that validation — say to accept VERSION=4.13-rc1 — and this
+# becomes live. Sanitizing here keeps the guarantee local. The pre-#250 RELEASE_ID
+# did exactly this, for exactly this reason.
+RELEASE_ID = $$(sed 's/[^A-Za-z0-9._-]/_/g' .release-version)-$(RELEASE_STAMP)
 
 # Resolve remote $HOME so config gets the literal path (mod_fcgid may not set HOME)
 STAGING_HOME := $(shell ssh -p $(TEST_PORT) $(TEST_HOST) 'echo $$HOME' 2>/dev/null || echo "")
