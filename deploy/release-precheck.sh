@@ -21,8 +21,21 @@
 #
 # 用法: release-precheck.sh [PATH...]
 #   PATH 是「脏」的判定范围；不传则用下面这份默认值（与 Makefile 的 DEPLOY_PATHS 一致）
-#   全部通过：退出 0，不输出任何东西
+#   全部通过：退出 0，**把 origin 的 tag 列表原样打到 stdout**（见下）
 #   任一不过：往 stderr 写原因与证据，退出 1
+#
+# 为什么成功时输出 tag 列表
+# -------------------------
+# 版本号要由同一份 tag 快照算出来，而且不能多打一次网络请求（到 github.com:22 的连接
+# 在这台机器上偶发超时）。所以本脚本把已经取到、并且守卫 2 已经据以判断过的这份列表
+# 交给调用方：
+#
+#     deploy/release-precheck.sh $(DEPLOY_PATHS) > .release-remote-tags
+#     deploy/next-version.sh $(VERSION) < .release-remote-tags > .release-version.tmp
+#
+# 这样「守卫看到的状态」与「算版本号用的状态」是同一份。若让下游自己再 ls-remote 一次，
+# 那次失败会得到空输入，而 next-version.sh 会把空输入当成「远端还没有 tag」算出 0.0.1
+# —— 一个静默的版本倒退，正是这套机制要消灭的东西。
 set -e
 
 PATHS="$*"
@@ -30,14 +43,43 @@ if [ -z "$PATHS" ]; then
     PATHS="src phpMan.php cli deploy phpman.config.php.example phpman.css phpman.js"
 fi
 
+# 到 github.com:22 的连接在这台机器的网络上偶发超时（实测 10 次里挂 1-2 次：
+# "ssh: connect to host github.com port 22: Operation timed out"）。守卫的职责是判断
+# **状态**（是否落后 / 是否已发布过），而一次抖动只能说明「暂时问不到」。不重试的话，
+# 一次抖动会被报成「落后」或「取不到 tag」，10-20% 的假阳性会让 make release 没法用。
+#
+# 有限次 + 线性退避（不无限重试）。PRECHECK_ATTEMPTS / PRECHECK_BACKOFF 可覆盖，
+# 测试用它们把重试关掉以免拖慢。
+ATTEMPTS=${PRECHECK_ATTEMPTS:-3}
+BACKOFF=${PRECHECK_BACKOFF:-2}
+
+# 跑一条可能因网络失败的命令；成功则把 stdout 存进 $2 指名的变量。
+# 用法: with_retry "<描述>" <变量名> <命令...>
+with_retry() {
+    _what=$1
+    _var=$2
+    shift 2
+    _n=1
+    while :; do
+        if _out=$("$@" 2>/dev/null); then
+            eval "$_var=\$_out"
+            return 0
+        fi
+        if [ "$_n" -ge "$ATTEMPTS" ]; then
+            echo "错误：$_what 失败（已试 $_n 次）。网络或认证问题，中止。" >&2
+            return 1
+        fi
+        echo "  $_what 失败（第 $_n 次），${BACKOFF}s 后重试…" >&2
+        sleep "$BACKOFF"
+        _n=$((_n + 1))
+    done
+}
+
 # ── 守卫 1 ──
 # 先 fetch：origin/master 是本地跟踪引用，本身可能就是陈旧的，不 fetch 这个检查
-# 形同虚设。fetch 失败（断网、认证失效）必须中止 —— 取不到远端状态时，「没落后」
-# 和「不知道」是两回事，不能当成前者。
-if ! git fetch -q origin master 2>/dev/null; then
-    echo "错误：取不到 origin/master（网络或认证问题），无法判断本地是否落后。中止。" >&2
-    exit 1
-fi
+# 形同虚设。fetch 失败必须中止 —— 取不到远端状态时，「没落后」和「不知道」是两回事，
+# 不能当成前者。
+with_retry "取 origin/master" _FETCHED git fetch -q origin master || exit 1
 
 if ! git merge-base --is-ancestor origin/master HEAD 2>/dev/null; then
     echo "错误：origin/master 不是 HEAD 的祖先 —— 这个 checkout 落后了。" >&2
@@ -51,10 +93,7 @@ fi
 # ── 守卫 2 ──
 HEAD_SHA=$(git rev-parse HEAD)
 
-if ! REMOTE_TAGS=$(git ls-remote --tags origin 2>/dev/null); then
-    echo "错误：取不到 origin 的 tag 列表，无法判断这个提交是否已经发布过。中止。" >&2
-    exit 1
-fi
+with_retry "取 origin 的 tag 列表" REMOTE_TAGS git ls-remote --tags origin || exit 1
 
 # annotated tag 在 ls-remote 里有两行（tag 对象 sha 与 "…^{}" 提交 sha），
 # lightweight tag 只有一行且直接就是提交 sha。先剥掉 ^{} 后缀再按 sha 比对，
@@ -86,4 +125,6 @@ if [ -n "$DIRTY" ]; then
     exit 1
 fi
 
+# 三条守卫都过了。把这份已经验证过的 tag 快照交给调用方算版本号（见文件头）。
+printf '%s\n' "$REMOTE_TAGS"
 exit 0

@@ -39,9 +39,12 @@ function make_repo(): array {
 }
 
 /** 在 $repo 里跑 release-precheck.sh，返回 [退出码, stdout+stderr] */
-function precheck(string $repo, string $paths = ''): array {
+function precheck(string $repo, string $paths = '', string $attempts = '1'): array {
     $script = escapeshellarg(__DIR__ . '/../../deploy/release-precheck.sh');
-    $cmd = 'cd ' . escapeshellarg($repo) . " && $script" . ($paths === '' ? '' : ' ' . $paths);
+    // 默认把重试关掉（ATTEMPTS=1）：真实默认是 3 次 + 2s 退避，那会让「连不上」
+    // 这类负例每次多花 6 秒。重试路径本身由下面单独一条断言覆盖。
+    $env = 'PRECHECK_ATTEMPTS=' . escapeshellarg($attempts) . ' PRECHECK_BACKOFF=0 ';
+    $cmd = 'cd ' . escapeshellarg($repo) . " && $env$script" . ($paths === '' ? '' : ' ' . $paths);
     $out = [];
     $rc = 0;
     exec($cmd . ' 2>&1', $out, $rc);
@@ -134,6 +137,12 @@ exec('cd ' . escapeshellarg($repo) . ' && git remote set-url origin ' . escapesh
 [$rc, $out] = precheck($repo);
 assert_not_equals(0, $rc, "origin 不可达 → 拒绝（绝不能当成「没落后」放过）");
 assert_not_equals("", $out, "origin 不可达时说明原因");
+
+// 重试路径：默认 3 次。这里用 2 次确认它真的重试过（而不是一次就放弃），
+// 且最终仍然中止 —— 重试是为了滤掉网络抖动，不是为了把「真的连不上」放过去。
+[$rc, $out] = precheck($repo, '', '2');
+assert_not_equals(0, $rc, "重试耗尽后仍然拒绝");
+assert_contains("重试", $out, "失败时报告它重试过");
 $cleanup();
 
 exit(test_summary());

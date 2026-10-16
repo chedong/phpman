@@ -38,3 +38,8 @@ __PHPMAN_HOME__/
 
 # Codex agent local state
 .codex/
+
+# release version handoff between _release-code and _release-tag
+.release-version
+.release-remote-tags
+.release-version.tmp

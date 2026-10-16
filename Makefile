@@ -53,9 +53,6 @@ JS_FILE  ?= phpman.js
 
 .PHONY: test test-unit staging staging-reindex release release-reindex reindex reindex-staging rollback verify logcheck log-rotate package upload-release clean cache-flush cache-flush-staging cache-stats _deploy-code _release-code _release-tag require-staging require-production release-precheck
 
-GIT_TAG     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "local")
-GIT_VERSION := $(shell (git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0") | sed 's/^v//')
-
 # 会被实际上传到服务器的路径。既是「工作树是否脏」的判定范围，也是
 # deploy/release-precheck.sh 的入参 —— 只在这一个地方定义。
 DEPLOY_PATHS = src phpMan.php cli deploy phpman.config.php.example phpman.css phpman.js
@@ -71,16 +68,26 @@ STAGING_SHA     := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknow
 STAGING_DIRTY   := $(shell git status --porcelain -uall -- $(DEPLOY_PATHS) 2>/dev/null | head -1)
 STAGING_VERSION := staging-$(STAGING_SHA)$(if $(STAGING_DIRTY),-dirty)
 
+# Deploy timestamp, resolved once at parse time so every line of a recipe sees the
+# same value — recipe lines each get their own shell, so a `date` inside one would
+# hand consecutive lines different stamps and split one deploy across two release
+# directories. Plain local command, no network.
+RELEASE_STAMP := $(shell date +%Y%m%d-%H%M%S)
+
 # Release directory name for the atomic symlink release (see deploy/atomic-release.sh).
-# Derived from GIT_TAG so a rollback target is human-readable, sanitized because
-# the tag can carry a "-dirty" suffix and must stay a safe path component.
 #
 # The timestamp is not decoration: the id must be unique per deploy. Keyed on the
-# tag alone, a second deploy of the same commit would resolve to the release that
-# is currently live and rsync into it, updating the running code in place — which
-# is the mixed-version window this whole mechanism exists to remove. It also makes
-# `ls -1dt` ordering (what rollback walks) match deploy order.
-RELEASE_ID  := $(shell printf '%s' '$(GIT_TAG)' | sed 's/[^A-Za-z0-9._-]/_/g')-$(shell date +%Y%m%d-%H%M%S)
+# version alone, a second deploy of the same commit would resolve to the release
+# that is currently live and rsync into it, updating the running code in place —
+# which is the mixed-version window this whole mechanism exists to remove. It also
+# makes `ls -1dt` ordering (what rollback walks) match deploy order.
+STAGING_RELEASE_ID := $(STAGING_VERSION)-$(RELEASE_STAMP)
+
+# Production's version is not known until the release recipe runs (it comes from
+# origin's tags, and computing it at parse time would put a network call in every
+# `make`). `_release-code` writes it to .release-version first; this expands at
+# recipe time, when that file exists.
+RELEASE_ID = $$(cat .release-version)-$(RELEASE_STAMP)
 
 # Resolve remote $HOME so config gets the literal path (mod_fcgid may not set HOME)
 STAGING_HOME := $(shell ssh -p $(TEST_PORT) $(TEST_HOST) 'echo $$HOME' 2>/dev/null || echo "")
@@ -150,12 +157,12 @@ _deploy-code:
 	@# order, which was correct only for additive changes — a change that REMOVES
 	@# a symbol needs the opposite order, so no fixed order is safe in general.
 	@# See deploy/atomic-release.sh and CHANGELOG 2026-10-02.
-	@ssh -p $(TEST_PORT) $(TEST_HOST) "mkdir -p $(STAGING_HOME)/.phpman_test/releases/$(RELEASE_ID)/src"
-	@rsync -avz -e "ssh -p $(TEST_PORT)" src/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/releases/$(RELEASE_ID)/src/
-	@scp -P $(TEST_PORT) $(FILE).deploy $(TEST_HOST):$(STAGING_HOME)/.phpman_test/releases/$(RELEASE_ID)/$(FILE)
+	@ssh -p $(TEST_PORT) $(TEST_HOST) "mkdir -p $(STAGING_HOME)/.phpman_test/releases/$(STAGING_RELEASE_ID)/src"
+	@rsync -avz -e "ssh -p $(TEST_PORT)" src/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/releases/$(STAGING_RELEASE_ID)/src/
+	@scp -P $(TEST_PORT) $(FILE).deploy $(TEST_HOST):$(STAGING_HOME)/.phpman_test/releases/$(STAGING_RELEASE_ID)/$(FILE)
 	@rm -f $(FILE).deploy
 	@rsync -avz -e "ssh -p $(TEST_PORT)" deploy/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/deploy/
-	@ssh -p $(TEST_PORT) $(TEST_HOST) "sh $(STAGING_HOME)/.phpman_test/deploy/atomic-release.sh '$(STAGING_HOME)/.phpman_test' '$(TEST_PATH)' '$(FILE)' '$(RELEASE_ID)'"
+	@ssh -p $(TEST_PORT) $(TEST_HOST) "sh $(STAGING_HOME)/.phpman_test/deploy/atomic-release.sh '$(STAGING_HOME)/.phpman_test' '$(TEST_PATH)' '$(FILE)' '$(STAGING_RELEASE_ID)'"
 	@rsync -avz -e "ssh -p $(TEST_PORT)" $(CSS_FILE) $(JS_FILE) $(TEST_HOST):$(TEST_PATH)/
 	@rsync -avz -e "ssh -p $(TEST_PORT)" cli/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/cli/
 	@rsync -avz -e "ssh -p $(TEST_PORT)" phpman.config.php.example $(TEST_HOST):$(STAGING_HOME)/.phpman_test/
@@ -221,11 +228,22 @@ staging-reindex: test _deploy-code
 
 # Internal: push code + CSS to production as an atomic release
 _release-code:
-	@echo "=== Deploying $(GIT_TAG) ==="
+	@# 守卫先跑，任何 rsync 之前。三条守卫的用途见 deploy/release-precheck.sh。
+	@# 它在成功时把 origin 的 tag 快照打到 stdout —— 版本号必须由**同一份**快照算出来。
+	@# 若让下面那步自己再 ls-remote 一次，那次失败会得到空输入，被 next-version.sh
+	@# 当成「远端还没有 tag」算出 0.0.1：一个静默的版本倒退。
+	@deploy/release-precheck.sh $(DEPLOY_PATHS) > .release-remote-tags
+	@# 每次发布都重写 .release-version：绝不复用上一次的残留值，否则中断过的发布会把
+	@# tag 打到错误的版本号上。先写 .tmp 再改名，避免中断时留下半截文件。
+	@deploy/next-version.sh $(VERSION) < .release-remote-tags > .release-version.tmp \
+	    && printf 'v%s\n' "$$(cat .release-version.tmp)" > .release-version \
+	    && rm -f .release-version.tmp .release-remote-tags
+	@echo "=== Deploying $$(cat .release-version) ($(RELEASE_ID)) ==="
 	@# Patch placeholders in phpMan.php (never touches local FILE)
-	@sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(DEMO_HOME)/.phpman');|" \
-	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
-	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) > $(FILE).deploy
+	@RELVER=$$(cat .release-version); \
+	  sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(DEMO_HOME)/.phpman');|" \
+	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$$RELVER');/" \
+	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$${RELVER#v}');/" $(FILE) > $(FILE).deploy
 	@# Atomic release: upload both artifacts into releases/$(RELEASE_ID)/, then
 	@# activate them with a single rename, so no request can observe phpMan.php
 	@# and src/ from different versions. See deploy/atomic-release.sh for the two
@@ -276,9 +294,39 @@ _release-code:
 		fi
 	$(MAKE) logcheck
 
-release: test _release-code
+# 部署**全部**成功之后才打 tag 并 push。
+#
+# 刻意不放进 _release-code：它是 release 与 release-reindex 共享的前置，而
+# release-reindex 的 index 重建与 sitemap 生成跑在它之后。tag 若在 _release-code
+# 里推走，reindex 失败时就会留下一个「代码已上线、索引没重建」的 tag，而重跑会被
+# 守卫 2 挡住（HEAD 已被 tag 过），只剩手工 make reindex 一条路。
+#
+# 本地 tag 已存在时跳过创建：那是上一次发布创建了 tag 但 push 失败留下的。push 失败
+# 时**删掉本地 tag** 再退出 —— 守卫 2 只查远端，删掉本地 tag 后重跑时四条守卫全过，
+# 会重新算出同一个版本号并补推，天然自愈。
+_release-tag:
+	@RELVER=$$(cat .release-version); \
+	  if git rev-parse -q --verify "refs/tags/$$RELVER" >/dev/null; then \
+	    echo "本地已有 $$RELVER（上一次 push 失败留下的），确认它指向 HEAD"; \
+	    [ "$$(git rev-parse "$$RELVER^{commit}")" = "$$(git rev-parse HEAD)" ] \
+	      || { echo "错误：本地 tag $$RELVER 不指向 HEAD，手工确认后再发布。" >&2; exit 1; }; \
+	  else \
+	    git tag -a "$$RELVER" -m "$$RELVER"; \
+	  fi; \
+	  if git push origin master "refs/tags/$$RELVER"; then \
+	    echo "=== 已打 tag 并推送：$$RELVER ==="; \
+	    rm -f .release-version; \
+	  else \
+	    git tag -d "$$RELVER" >/dev/null; \
+	    echo "错误：代码已上线，但 $$RELVER 与 master 未推送到 origin。" >&2; \
+	    echo "      已删掉本地 tag；修好之后重跑 make release 即可补上。" >&2; \
+	    exit 1; \
+	  fi
 
-release-reindex: test _release-code
+release: test test-unit _release-code
+	@$(MAKE) _release-tag
+
+release-reindex: test test-unit _release-code
 	@echo "=== Rebuilding production search index ==="
 	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"cd $(DEMO_HOME)/.phpman && php cli/build-index.php --cron"
@@ -287,6 +335,7 @@ release-reindex: test _release-code
 		"cd $(DEMO_HOME)/.phpman && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman.xml.gz --formats html --max-urls 50000 \
 		 && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman-ai.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman-ai.xml.gz --formats markdown,json --max-urls 50000 --llms-output $(DEMO_PATH)/llms.txt"
 	@echo "=== Production index + sitemap complete ==="
+	@$(MAKE) _release-tag
 
 # ─── Standalone search index rebuild (no code push) ───
 
@@ -344,36 +393,6 @@ logcheck:
 log-rotate:
 	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"PHPMAN_LOG='$(PHPMAN_LOG)' LOG_ROTATE_KEEP='$(LOG_ROTATE_KEEP)' LOG_ROTATE_DRY_RUN='$(LOG_ROTATE_DRY_RUN)' bash -s" < cli/log-rotate.sh
-
-# ─── Version tagging ───
-
-tag:
-	@if [ -z "$(VERSION)" ]; then \
-		latest=$$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | sort -V | tail -1 | sed 's/^v//'); \
-		if [ -z "$$latest" ]; then latest="0.0.0"; fi; \
-		major=$$(echo $$latest | cut -d. -f1); \
-		minor=$$(echo $$latest | cut -d. -f2); \
-		patch=$$(echo $$latest | cut -d. -f3); \
-		next="$$major.$$minor.$$((patch + 1))"; \
-		echo "Latest: v$$latest  →  tagging v$$next (patch bump)"; \
-		echo "  minor bump: make tag-minor"; \
-		echo "  explicit:   make tag VERSION=X.Y.Z"; \
-		$(MAKE) tag VERSION=$$next; \
-	else \
-		git tag -a "v$(VERSION)" -m "v$(VERSION)"; \
-		echo "=== v$(VERSION): tagged (placeholders replaced at deploy) ==="; \
-		git push origin master "v$(VERSION)"; \
-		echo "Pushed master + tag v$(VERSION)"; \
-	fi
-
-tag-minor:
-	@latest=$$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | sort -V | tail -1 | sed 's/^v//'); \
-	if [ -z "$$latest" ]; then latest="0.0.0"; fi; \
-	major=$$(echo $$latest | cut -d. -f1); \
-	minor=$$(echo $$latest | cut -d. -f2); \
-	next="$$major.$$((minor + 1)).0"; \
-	echo "Latest: v$$latest  →  tagging v$$next (minor bump)"; \
-	$(MAKE) tag VERSION=$$next
 
 # ─── Cache management ───
 
