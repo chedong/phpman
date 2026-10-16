@@ -126,7 +126,7 @@ test:
 	php -l phpman.config.php.example
 	@for f in src/*.php; do php -l "$$f" >/dev/null || exit 1; done
 	@for f in cli/*.php; do php -l "$$f" >/dev/null || exit 1; done
-	@for f in deploy/*.sh; do sh -n "$$f" || exit 1; done
+	@for f in deploy/*.sh cli/*.sh; do sh -n "$$f" || exit 1; done
 	@echo "All PHP files pass syntax check"
 
 # Behavioural tests (test/run_all.php). Deliberately separate from `test`:
