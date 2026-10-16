@@ -15,6 +15,9 @@
 - **[03-CACHE.md](03-CACHE.md)** — SQLite 缓存 & 数据库 schema
 - **[04-SEARCH.md](04-SEARCH.md)** — FTS5 全文搜索设计
 
+## Operations
+- **[08-RELEASE-VERSION-INTEGRITY.md](08-RELEASE-VERSION-INTEGRITY.md)** — 发布版本号完整性设计（[#250](https://github.com/chedong/phpman/issues/250)）：版本号的权威来源改为 origin 的 tag，`make tag` 并入 `make release`
+
 ## Planning
 - **[05-PLAN.md](05-PLAN.md)** — 项目路线图 & 版本规划
 
