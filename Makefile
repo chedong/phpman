@@ -56,6 +56,21 @@ JS_FILE  ?= phpman.js
 GIT_TAG     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "local")
 GIT_VERSION := $(shell (git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0") | sed 's/^v//')
 
+# 会被实际上传到服务器的路径。既是「工作树是否脏」的判定范围，也是
+# deploy/release-precheck.sh 的入参 —— 只在这一个地方定义。
+DEPLOY_PATHS = src phpMan.php cli deploy phpman.config.php.example phpman.css phpman.js
+
+# staging 部署的通常是**尚未打 tag** 的提交（tag 现在只在 release 那一刻才打），
+# 所以它不能声称自己是某个发布版本 —— 报上一个 release 的版本号会让 staging 显得
+# 比生产还新，方向正好反了。sha 是诚实的；工作树脏时补 -dirty，因为那个 sha
+# 描述不了实际传上去的字节。
+#
+# 两条 $(shell) 都是纯本地命令（git rev-parse / git status，无网络），放 parse-time
+# 可以接受 —— 会拖慢每一次 make 的是网络调用，不是这两条。
+STAGING_SHA     := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+STAGING_DIRTY   := $(shell git status --porcelain -uall -- $(DEPLOY_PATHS) 2>/dev/null | head -1)
+STAGING_VERSION := staging-$(STAGING_SHA)$(if $(STAGING_DIRTY),-dirty)
+
 # Release directory name for the atomic symlink release (see deploy/atomic-release.sh).
 # Derived from GIT_TAG so a rollback target is human-readable, sanitized because
 # the tag can carry a "-dirty" suffix and must stay a safe path component.
@@ -127,8 +142,8 @@ _deploy-code:
 		fi"
 	@# Patch placeholders in phpMan.php and upload (never touches local FILE)
 	@sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|" \
-	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(GIT_TAG)');/" \
-	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(GIT_VERSION)');/" $(FILE) > $(FILE).deploy
+	    -e "s/define('GIT_DESCRIBE', '[^']*');/define('GIT_DESCRIBE', '$(STAGING_VERSION)');/" \
+	    -e "s/define('PHPMAN_VERSION', '[^']*');/define('PHPMAN_VERSION', '$(STAGING_VERSION)');/" $(FILE) > $(FILE).deploy
 	@# Atomic release: both artifacts land in releases/$(RELEASE_ID)/ and are
 	@# then activated by a single rename, so phpMan.php and src/ can never be
 	@# observed out of step. This replaces the old "src/ first, then phpMan.php"
@@ -150,7 +165,7 @@ _deploy-code:
 	# request served in that window would read an empty tools_config.php (#240).
 	@ssh -p $(TEST_PORT) $(TEST_HOST) "php $(STAGING_HOME)/.phpman_test/cli/detect-tools.php > $(STAGING_HOME)/.phpman_test/tools_config.php.tmp && mv $(STAGING_HOME)/.phpman_test/tools_config.php.tmp $(STAGING_HOME)/.phpman_test/tools_config.php && cat $(STAGING_HOME)/.phpman_test/tools_config.php"
 	@echo ""
-	@echo "=== Deployed to staging ($(GIT_TAG)) ==="
+	@echo "=== Deployed to staging ($(STAGING_VERSION)) ==="
 	@echo "$(TEST_URL)"
 	@echo ""
 	@# Check for new config options not in server's phpman.config.php
