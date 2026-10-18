@@ -536,16 +536,11 @@ switch ( $mode ) {
     case "pydoc":
         $check['pydoc'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
-            $content = cacheOrExecute('pydoc', $parameter, '', $format,
-                function() use ($parameter, $format) { return getPydocPage($parameter, $format); });
-            if (trim($content) == "") {
-                $content = getPydocSearchPage($parameter, $format);
-                $isSearchFallback = true;
-                http_response_code(404);
-                // Cache 404
-                $cache = new PageCache();
-                $cache->set('pydoc', $parameter, '', $format, null, 'not_found');
-            }
+            $content = cacheOrSearchFallback('pydoc', $parameter, '', $format,
+                function() use ($parameter, $format) { return getPydocPage($parameter, $format); },
+                function() use ($parameter, $format) { return getPydocSearchPage($parameter, $format); },
+                $isSearchFallback);
+            if ($isSearchFallback) http_response_code(404);
         }
         else {
             $content = cacheOrExecute('pydoc', '__index__', '', $format,
@@ -556,16 +551,11 @@ switch ( $mode ) {
     case "ri":
         $check['ri'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
-            $content = cacheOrExecute('ri', $parameter, '', $format,
-                function() use ($parameter, $format) { return getRiPage($parameter, $format); });
-            if (trim($content) == "") {
-                $content = getRiSearchPage($parameter, $format);
-                $isSearchFallback = true;
-                http_response_code(404);
-                // Cache 404
-                $cache = new PageCache();
-                $cache->set('ri', $parameter, '', $format, null, 'not_found');
-            }
+            $content = cacheOrSearchFallback('ri', $parameter, '', $format,
+                function() use ($parameter, $format) { return getRiPage($parameter, $format); },
+                function() use ($parameter, $format) { return getRiSearchPage($parameter, $format); },
+                $isSearchFallback);
+            if ($isSearchFallback) http_response_code(404);
         }
         else {
             $content = cacheOrExecute('ri', '__index__', '', $format,

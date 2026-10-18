@@ -14,6 +14,7 @@ $suites = [
         "{$testDir}/unit/test_search_fts.php",
         "{$testDir}/unit/test_search_fts_db.php",
         "{$testDir}/unit/test_page_cache.php",
+        "{$testDir}/unit/test_negative_cache_body.php",
         "{$testDir}/unit/test_cache_db.php",
         "{$testDir}/unit/test_tldr_guard.php",
         "{$testDir}/unit/test_path_guard.php",

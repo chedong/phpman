@@ -331,7 +331,13 @@ class PageCache {
         return $result === CACHE_SENTINEL_NOT_FOUND;
     }
 
-    public function get(string $mode, string $name, string $section, string $format): ?string {
+    /**
+     * Fetch and validate the cache row, bumping the hit counter.
+     * Returns null on miss, expiry, or when the stored body cannot be decoded.
+     * Shared by get() and getWithStatus() so the lookup and its invariants
+     * live in one place.
+     */
+    private function fetchRow(string $mode, string $name, string $section, string $format): ?array {
         $db = $this->dbFor($mode);
         if (!$db) return null;
         // renderer_version is part of the lookup, not just a column we write:
@@ -369,15 +375,44 @@ class PageCache {
             $hitStmt->execute();
         } catch (\Throwable $e) {}
 
+        $row['content'] = self::decodeContent($row['content']);
+        return $row;
+    }
+
+    /** gzuncompress with the "undecodable ⇒ null" contract callers already assume. */
+    private static function decodeContent(?string $data): ?string {
+        if ($data === null) return null;
+        $decompressed = @gzuncompress($data);
+        return $decompressed !== false ? $decompressed : null;
+    }
+
+    public function get(string $mode, string $name, string $section, string $format): ?string {
+        $row = $this->fetchRow($mode, $name, $section, $format);
+        if ($row === null) return null;
         if ($row['status'] === 'not_found') {
             return CACHE_SENTINEL_NOT_FOUND;
         }
+        return $row['content'];
+    }
 
-        $data = $row['content'];
-        if ($data === null) return null;
-
-        $decompressed = @gzuncompress($data);
-        return $decompressed !== false ? $decompressed : null;
+    /**
+     * Like get(), but reports the row's status instead of folding it into a
+     * sentinel, and returns whatever body the row carries.
+     *
+     * get() collapses not_found to CACHE_SENTINEL_NOT_FOUND, which discards the
+     * body. A negative row that caches its fallback body (phpman#247) needs both
+     * — the caller must still answer 404 while reusing the stored body instead
+     * of re-running the ~10s fallback scan on every request.
+     *
+     * A not_found row written before #247 has content = NULL; callers must treat
+     * an empty body as "recompute", not as "nothing to show".
+     *
+     * @return array{status: string, content: ?string}|null null = miss
+     */
+    public function getWithStatus(string $mode, string $name, string $section, string $format): ?array {
+        $row = $this->fetchRow($mode, $name, $section, $format);
+        if ($row === null) return null;
+        return ['status' => $row['status'], 'content' => $row['content']];
     }
 
     public function set(string $mode, string $name, string $section, string $format, ?string $content, string $status = 'found'): bool {
@@ -628,6 +663,44 @@ function cacheOrExecute(string $mode, string $name, string $section, string $for
             }
         }
     }
+    return $content;
+}
+
+/**
+ * Resolve a page whose miss path runs an expensive search fallback, reusing a
+ * cached negative row's body when there is one (phpman#247).
+ *
+ * These fallbacks shell out, so re-running one per request *is* the cost of the
+ * miss: `pydoc3 -k` measured 9.99s, `ri` ~3.9s. The negative row used to be
+ * written with content = NULL, and get() folds that to '', which the caller's
+ * `trim($content) == ""` check then reads as "nothing cached" — so every request
+ * paid the scan again. Storing the body on the negative row is the fix.
+ *
+ * Sets $isFallback so the caller can still answer 404: the row remains a miss,
+ * we are only reusing its body.
+ *
+ * A negative row written before #247 carries no body; that falls through and
+ * recomputes once, which then writes the body. So the cost degrades to one
+ * extra scan, not to a wrong answer.
+ */
+function cacheOrSearchFallback(string $mode, string $name, string $section, string $format,
+                               callable $pageGenerator, callable $fallbackGenerator,
+                               ?bool &$isFallback = null): string {
+    $cache = new PageCache();
+    $row = $cache->getWithStatus($mode, $name, $section, $format);
+    if ($row !== null && $row['status'] === 'not_found' && trim((string)$row['content']) !== '') {
+        $isFallback = true;
+        return $row['content'];
+    }
+
+    $content = cacheOrExecute($mode, $name, $section, $format, $pageGenerator);
+    if (trim($content) !== '') {
+        return $content;
+    }
+
+    $content = $fallbackGenerator();
+    $isFallback = true;
+    $cache->set($mode, $name, $section, $format, $content, 'not_found');
     return $content;
 }
 
