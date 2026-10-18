@@ -92,16 +92,15 @@ $stored = $cache->getWithStatus('pydoc', 'scanned', '', 'markdown');
 assert_equals('not_found', $stored['status'], "the reused row is still marked not_found");
 assert_equals('SCAN RESULT', $stored['content'], "the negative row stores the fallback body");
 
-// A legacy row (no body) must recompute rather than answer empty.
+// A row written before #247 carries no body, but it still means "already
+// searched" — so it is reused, and no migration is needed.
 $cache->set('pydoc', 'legacy2', '', 'markdown', null, 'not_found');
 $calls = ['page' => 0, 'fallback' => 0];
 $isFallback = null;
-$recomputed = cacheOrSearchFallback('pydoc', 'legacy2', '', 'markdown', $pageGen, $fbGen, $isFallback);
-assert_equals('SCAN RESULT', $recomputed,
-    "a legacy negative row with no body recomputes instead of rendering empty");
-assert_equals(1, $calls['fallback'], "…and pays the fallback once");
-$healed = $cache->getWithStatus('pydoc', 'legacy2', '', 'markdown');
-assert_equals('SCAN RESULT', $healed['content'], "…then heals the row by storing the body");
+$legacyReuse = cacheOrSearchFallback('pydoc', 'legacy2', '', 'markdown', $pageGen, $fbGen, $isFallback);
+assert_equals('', $legacyReuse, "a legacy negative row is reused as-is");
+assert_equals(true, $isFallback, "…and is still flagged as a fallback (404)");
+assert_equals(0, $calls['fallback'], "…without re-running the scan — pre-#247 rows need no migration");
 
 // A real page short-circuits before the fallback is ever considered.
 $cache->set('pydoc', 'real', '', 'markdown', '# real', 'found');
@@ -112,17 +111,26 @@ assert_equals('# real', $real, "a found row returns its content");
 assert_equals(null, $isFallback, "…without flagging isFallback");
 assert_equals(0, $calls['fallback'], "…and without running the fallback");
 
-// An empty fallback result stores no body — the next request must still be able
-// to recompute rather than serve a permanently blank 404.
+// The production case, and the one that failed the first time round: the name
+// matches nothing, so the fallback renders ZERO bytes. The empty body is the
+// answer, not a missing value — the negative row must still short-circuit the
+// next request. Measured in production before this was fixed: three consecutive
+// requests for one nonexistent name took 12.8s / 9.6s / 8.8s, with the row
+// sitting at content_len = 0 throughout.
 $emptyFb = function() use (&$calls) { $calls['fallback']++; return ''; };
 $calls = ['page' => 0, 'fallback' => 0];
 $isFallback = null;
 $blank = cacheOrSearchFallback('pydoc', 'blank_fb', '', 'markdown', $pageGen, $emptyFb, $isFallback);
 assert_equals('', $blank, "an empty fallback result is returned as-is");
 assert_equals(true, $isFallback, "…and is still flagged as a fallback");
-$blankRow = $cache->getWithStatus('pydoc', 'blank_fb', '', 'markdown');
-assert_equals(null, $blankRow['content'],
-    "an empty fallback stores no body, so a later request recomputes instead of serving a blank 404");
+assert_equals(1, $calls['fallback'], "…having run the scan once");
+
+$isFallback = null;
+$blank2 = cacheOrSearchFallback('pydoc', 'blank_fb', '', 'markdown', $pageGen, $emptyFb, $isFallback);
+assert_equals('', $blank2, "a second request for a name with no matches returns the same empty body");
+assert_equals(true, $isFallback, "…still flagged as a fallback, so the caller answers 404");
+assert_equals(1, $calls['fallback'],
+    "…and does NOT re-run the scan — an empty body is the answer, not a missing value");
 
 cleanupTmpDir();
 

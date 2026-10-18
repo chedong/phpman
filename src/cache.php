@@ -667,30 +667,38 @@ function cacheOrExecute(string $mode, string $name, string $section, string $for
 }
 
 /**
- * Resolve a page whose miss path runs an expensive search fallback, reusing a
- * cached negative row's body when there is one (phpman#247).
+ * Resolve a page whose miss path runs an expensive search fallback, reusing the
+ * cached negative row instead of re-running that fallback (phpman#247).
  *
  * These fallbacks shell out, so re-running one per request *is* the cost of the
  * miss: `pydoc3 -k` measured 9.99s, `ri` ~3.9s. The negative row used to be
- * written with content = NULL, and get() folds that to '', which the caller's
- * `trim($content) == ""` check then reads as "nothing cached" — so every request
- * paid the scan again. Storing the body on the negative row is the fix.
+ * written with content = NULL, and get() folds not_found to '', which the
+ * caller's `trim($content) == ""` check then read as "nothing cached" — so every
+ * request paid the scan again.
  *
- * Sets $isFallback so the caller can still answer 404: the row remains a miss,
- * we are only reusing its body.
+ * A negative row is reused whatever body it carries, including none. The row
+ * means "already resolved"; an empty body is a real answer ("nothing matched"),
+ * not a missing value. Rows written before #247 are in the same position and are
+ * reused the same way, so no migration is needed.
  *
- * A negative row written before #247 carries no body; that falls through and
- * recomputes once, which then writes the body. So the cost degrades to one
- * extra scan, not to a wrong answer.
+ * Sets $isFallback so the caller can still answer 404 — the row remains a miss,
+ * we are only reusing its result.
  */
 function cacheOrSearchFallback(string $mode, string $name, string $section, string $format,
                                callable $pageGenerator, callable $fallbackGenerator,
                                ?bool &$isFallback = null): string {
     $cache = new PageCache();
     $row = $cache->getWithStatus($mode, $name, $section, $format);
-    if ($row !== null && $row['status'] === 'not_found' && trim((string)$row['content']) !== '') {
+    if ($row !== null && $row['status'] === 'not_found') {
+        // The row means "resolved: the page is missing and the search has run".
+        // Its body is that search's output, and it is EMPTY whenever nothing
+        // matched — the common case for a name that does not exist at all, and
+        // the very case this fix exists for. Requiring a non-empty body here
+        // leaves exactly those requests re-running the scan: measured 12.8s /
+        // 9.6s / 8.8s on three consecutive requests for one nonexistent name,
+        // with the row sitting at content_len = 0 the whole time.
         $isFallback = true;
-        return $row['content'];
+        return (string)$row['content'];
     }
 
     $content = cacheOrExecute($mode, $name, $section, $format, $pageGenerator);
