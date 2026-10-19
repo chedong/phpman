@@ -7,6 +7,7 @@ $srcDir = __DIR__;
 require_once $srcDir . '/config.php';         // 0: constants (defined() guards)
 require $srcDir . '/util.php';           // 1: h(), baseUrl(), scriptName(), etc.
 require $srcDir . '/log.php';            // 1: phpManLog()
+require $srcDir . '/exec.php';           // 1: phpManExec() — 所有渲染子进程的唯一出口
 require $srcDir . '/cache.php';          // 1: cacheDb(), PageCache, Profiler (init called here)
 require $srcDir . '/search_index.php';   // 2: buildFtsQuery(), rebuildSearchIndex(), etc.
 require $srcDir . '/format_common.php';  // 2: cleanTerminalOutput(), detectHeadingType()

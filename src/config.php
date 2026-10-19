@@ -147,6 +147,21 @@ if (!defined('PHPMAN_MF_LOG_MS')) {
     $phpman_mf_log_ms = getenv('PHPMAN_MF_LOG_MS');
     define('PHPMAN_MF_LOG_MS', ($phpman_mf_log_ms === false || $phpman_mf_log_ms === '') ? 500 : (int) $phpman_mf_log_ms);
 }
+
+// #248: upper bound, in seconds, on every document-render subprocess (man,
+// perldoc, pydoc3, ri, info — see src/exec.php). Without it a single request can
+// hold a FastCGI slot for the whole time the command runs, and production has
+// measured 36-second renders whose response body was 34 bytes. A few of those
+// concurrently saturate the mod_fcgid pool and everyone else gets 503.
+//
+// 15s, not 10s: `pydoc3 -k` (the pydoc search fallback) measured 9.5s on
+// production by itself, so a 10s bound would cut a working path. The bound exists
+// to cut the pathological tail — mf telemetry puts p50 at 799ms and p99 at 4.1s.
+// 0 = no limit (not recommended; the pre-#248 behaviour).
+if (!defined('PHPMAN_CMD_TIMEOUT')) {
+    $phpman_cmd_timeout = getenv('PHPMAN_CMD_TIMEOUT');
+    define('PHPMAN_CMD_TIMEOUT', ($phpman_cmd_timeout === false || $phpman_cmd_timeout === '') ? 15 : (int) $phpman_cmd_timeout);
+}
 // There is no CACHE_SCHEMA_VERSION. Both cache DBs create their schema with
 // CREATE ... IF NOT EXISTS on every open, so an additive change needs no
 // migration; and since the pre-sharding DB is gone and rollback to older code is

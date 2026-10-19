@@ -45,6 +45,22 @@
 // enhanced output never expires regardless of this setting.
 // define('PHPMAN_CACHE_TTL_MONTHS', 7);  // 7 months = 210 days
 
+// --- Render subprocess timeout (#248) ---
+// Upper bound, in seconds, on every document-render subprocess: man, perldoc,
+// pydoc3, ri, info, apropos (see src/exec.php). Without it a single request can
+// hold a FastCGI slot for as long as the command runs — production has measured
+// 36-second renders whose response body was 34 bytes, and a few of those
+// concurrently saturate the mod_fcgid pool so everyone else gets 503.
+//
+// 15s is chosen to cut the pathological tail without touching working paths:
+// `pydoc3 -k` (the pydoc search fallback) measures 9.5s by itself, and mf
+// telemetry puts the p50 render at 799ms and the p99 at 4.1s.
+//
+// Needs timeout(1) from GNU coreutils; if it is not on the host (macOS does not
+// ship it), the bound is silently skipped and commands run unbounded as before.
+// 0 = no limit.
+// define('PHPMAN_CMD_TIMEOUT', 15);
+
 // --- Google Analytics (v4.4.4+) ---
 // Set your GA4 measurement ID to enable pageview tracking.
 // Leave empty to disable (default).

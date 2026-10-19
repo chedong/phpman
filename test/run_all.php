@@ -28,6 +28,7 @@ $suites = [
         "{$testDir}/unit/test_mf_render_log.php",
         "{$testDir}/unit/test_next_version.php",
         "{$testDir}/unit/test_release_precheck.php",
+        "{$testDir}/unit/test_exec_timeout.php",
     ],
     "Integration" => [
         "{$testDir}/integration/test_formatter_html.php",

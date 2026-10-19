@@ -2,7 +2,7 @@
 function getInfoPage (string $parameter, string $format = "html"): string {
     $lines = array();
     $exitCode = 0;
-    exec("info ".escapeshellarg($parameter), $lines, $exitCode);  // #45: check return code
+    phpManExec("info ".escapeshellarg($parameter), $lines, $exitCode);  // #45: check return code
     if ($exitCode !== 0 || empty($lines)) {
         return "";
     }
@@ -43,7 +43,7 @@ function getValidInfoFiles(): array {
     // installs whose prefix is in neither default above. It reports a *file*
     // (…/dir, or the first .info when there is no dir), hence dirname(); and it
     // is validated with is_file() because some builds decorate the output.
-    $dirFile = trim((string)@shell_exec('info --where dir 2>/dev/null'));
+    $dirFile = trim((string)@phpManExecString('info --where dir 2>/dev/null'));
     if ($dirFile !== '' && is_file($dirFile)) $dirs[] = dirname($dirFile);
 
     $valid = [];
@@ -68,7 +68,7 @@ function getValidInfoFiles(): array {
 function getInfoIndex (string $format = "html"): string {
     $lines = array();
     $exitCode = 0;
-    exec("info", $lines, $exitCode);  // #45: check return code
+    phpManExec("info", $lines, $exitCode);  // #45: check return code
     if ($exitCode !== 0 || empty($lines)) {
         return "";
     }

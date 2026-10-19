@@ -211,7 +211,11 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         } else {
             $cmd = "apropos " . escapeshellarg($parameter);
         }
-        exec($cmd, $lines);
+        // 走 phpManExec 只为拿时间上界（#248）—— apropos 与 pydoc3 -k 是同一族
+        // 「扫全库」的命令。退出码这里仍然不用：原实现就没看它，改成看它会改变
+        // 「apropos 失败时回退到什么」的行为，不属于本次范围。
+        $aproposRc = 0;
+        phpManExec($cmd, $lines, $aproposRc);
         // macOS may return duplicates from multiple man databases (system + Homebrew)
         $lines = array_unique($lines);
 

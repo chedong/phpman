@@ -1,7 +1,7 @@
 <?php
 function getRiPage (string $parameter, string $format = "html"): string {
     $lines = array();
-    exec("ri ".escapeshellarg($parameter), $lines, $return_code);
+    phpManExec("ri ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code !== 0 || count($lines) === 0) {
         return "";
     }
@@ -14,7 +14,7 @@ function getRiPage (string $parameter, string $format = "html"): string {
 
 function getRiIndex (string $format = "html"): string {
     $lines = array();
-    exec("ri -l", $lines, $return_code);
+    phpManExec("ri -l", $lines, $return_code);
     if ($return_code !== 0 || empty($lines)) {
         return "";
     }
@@ -68,7 +68,7 @@ function getRiIndex (string $format = "html"): string {
 
 function getRiSearchPage (string $parameter, string $format = "html"): string {
     $lines = array();
-    exec("ri ".escapeshellarg($parameter), $lines, $return_code);
+    phpManExec("ri ".escapeshellarg($parameter), $lines, $return_code);
     if ($return_code !== 0 || count($lines) === 0) {
         return "";
     }

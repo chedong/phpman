@@ -28,7 +28,13 @@ $SOURCE_INFO = realpath(__DIR__ . '/../../src/source_info.php');
  */
 function runValidInfoFiles(?string $infopath): array {
     global $SOURCE_INFO;
-    $code = 'require ' . var_export($SOURCE_INFO, true) . ';'
+    // source_info.php 现在经 phpManExecString() 调外部命令（#248 给渲染子进程加上界），
+    // 所以要先加载 src/exec.php。source 文件本来就不自足 —— 它们依赖 util.php 的
+    // h()、format_html.php 的 formatManPerlDoc() 等，生产路径由 src/bootstrap.php
+    // 按序加载。这个测试之前只加载一个文件也能过，是因为 getValidInfoFiles() 恰好
+    // 不碰那些函数 —— 那是偶然，不是设计。
+    $code = 'require ' . var_export(__DIR__ . '/../../src/exec.php', true) . ';'
+          . 'require ' . var_export($SOURCE_INFO, true) . ';'
           . ' echo implode("\n", array_keys(getValidInfoFiles()));';
     $cmd = $infopath === null ? 'env -u INFOPATH' : 'env INFOPATH=' . escapeshellarg($infopath);
     $cmd .= ' php -r ' . escapeshellarg($code) . ' 2>/dev/null';

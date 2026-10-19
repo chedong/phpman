@@ -16,7 +16,7 @@ function getManPage (string $parameter, string $section = "", string $format = "
         }
         $command .= escapeshellarg($parameter);
 
-        exec($command, $lines, $return_code);
+        phpManExec($command, $lines, $return_code);
         // #26: BSD fallback detection — three conditions trigger the fallback path:
         //   1. $return_code !== 0         — man exits with error (GNU man: command not found)
         //   2. count($lines) === 0        — man produces no output (edge case on some BSDs)
@@ -37,7 +37,7 @@ function getManPage (string $parameter, string $section = "", string $format = "
                 $fallback .= escapeshellarg($section)." ";
             }
             $fallback .= escapeshellarg($parameter);
-            exec($fallback, $lines, $return_code);
+            phpManExec($fallback, $lines, $return_code);
             if ($return_code !== 0 || count($lines) === 0) {
                 return "";
             }
