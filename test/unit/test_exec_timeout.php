@@ -57,6 +57,33 @@ $r = execInFreshProcess('15', 'exit 3');
 assert_equals(false, $r['ok'], "非 0 退出返回 false");
 assert_equals(3, $r['rc'], "退出码原样传回");
 
+echo "\n--- 调用点不初始化 \$rc（#248 回归） ---\n";
+
+// 真实的 12 个调用点（source_perldoc / source_man / source_pydoc / source_ri）
+// 都不初始化 $return_code。旧代码是裸 exec()，它第三个参数无类型、可选、可空，
+// 所以不初始化一直是合法的。phpManExec() 最初把 $rc 收成必填的 int，于是这 12 处
+// 全部抛 TypeError，生产上表现为「每次页面缓存未命中都 500，命中则正常」。
+// 这个用例就是钉住那次收窄 —— 上面 execInFreshProcess() 自己写了 `$rc=0`，
+// 所以整个套件在 bug 期间是绿的。
+// 注意：下面 $rc 是**故意**不初始化的，不要「顺手」补上。
+$probe = 'define("PHPMAN_CMD_TIMEOUT", 15);'
+       . 'require ' . var_export(__DIR__ . '/../../src/exec.php', true) . ';'
+       . '$l=[];'                                   // $lines 初始化，$rc 不初始化
+       . '$ok=phpManExec("echo hi", $l, $rc);'
+       . 'echo json_encode(["ok"=>$ok,"rc"=>$rc,"lines"=>$l]);';
+$out = [];
+$exit = 0;
+exec('php -r ' . escapeshellarg($probe) . ' 2>&1', $out, $exit);
+$decoded = json_decode(implode("\n", $out), true);
+
+assert_equals(true, is_array($decoded),
+    "未初始化的 \$rc 不再抛 TypeError（抛了的话这里拿到的是 fatal 文本，json_decode 得 null）");
+if (is_array($decoded)) {
+    assert_equals(true, $decoded['ok'], "未初始化 \$rc 时命令照常执行");
+    assert_equals(0, $decoded['rc'], "函数内部把 \$rc 赋成 int，调用点拿到的是 int 而不是 null");
+    assert_equals(['hi'], $decoded['lines'], "输出照常收进 \$lines");
+}
+
 echo "\n--- 切断慢命令 ---\n";
 
 if (!$hasTimeout) {

@@ -65,10 +65,18 @@ function phpManWrapCommand(string $cmd): string {
 /**
  * exec() 的替代品：同样的签名与语义，但命令有 PHPMAN_CMD_TIMEOUT 秒的上界。
  *
+ * `?int &$rc = null` 不是可有可无的修饰。exec() 的第三个参数无类型、可选、可空，
+ * 所以调用点**不初始化** `$return_code` 一直是合法的，12 个调用点就是这么写的。
+ * 这个函数一开始把 `$rc` 收成必填的 `int`，于是那些调用点全部抛
+ * `TypeError: Argument #3 ($rc) must be of type int, null given`（生产表现：
+ * 每次页面缓存未命中都 500，缓存命中则正常，因为命中根本不走渲染）。收窄成
+ * `?int` 是把 exec() 的行为原样接过来 —— 函数内部第 73 行立刻就赋 0，
+ * 所以调用点拿到的永远是 int，`$rc === 0` 之类的比较不受影响。
+ *
  * 返回 true 表示命令成功（退出码 0）。超时会被记一行日志 —— 它是「这条路径
  * 病态」的直接证据，而 mf 遥测只在渲染跑完时才写行，看不到它。
  */
-function phpManExec(string $cmd, array &$lines, int &$rc): bool {
+function phpManExec(string $cmd, array &$lines, ?int &$rc = null): bool {
     $lines = [];
     $rc = 0;
     exec(phpManWrapCommand($cmd), $lines, $rc);
