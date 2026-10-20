@@ -228,29 +228,7 @@ function pydocNoMatchNotice (string $parameter, string $format): string {
     $reason = 'No Python module matches "' . $parameter . '". This search compares the '
             . 'term against module names and their one-line summaries, so class and '
             . 'function names are not found by it.';
-
-    if ($format === "json" || $format === "mcp") {
-        // Keep the shape of a real result — an empty `results` array is the
-        // machine-readable "nothing matched" — and add the explanation beside it
-        // rather than replacing the envelope with prose.
-        $result = json_encode(array(
-            "mode"      => "pydoc",
-            "parameter" => $parameter,
-            "results"   => array(),
-            "note"      => $reason,
-        ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        if ($format === "mcp") {
-            $result = json_encode(array(
-                "content" => array(array("type" => "text", "text" => $result)),
-                "structuredContent" => json_decode($result, true)
-            ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        }
-        return $result;
-    }
-    if ($format === "markdown") {
-        return "> " . $reason . "\n";
-    }
-    return "<p>" . h($reason) . "</p>\n";
+    return noMatchNotice("pydoc", $parameter, $format, $reason);
 }
 
 //get ri search results (ri already does fuzzy matching, try as direct lookup)

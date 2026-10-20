@@ -569,9 +569,23 @@ switch ( $mode ) {
         if ( $parameter != "" ) {
             $content = cacheOrSearchFallback('ri', $parameter, '', $format,
                 function() use ($parameter, $format) { return getRiPage($parameter, $format); },
-                function() use ($parameter, $format) { return getRiSearchPage($parameter, $format); },
+                function() {
+                    // No second subprocess: getRiPage() and getRiSearchPage() run the
+                    // *same* command (`ri <name>`) behind the *same* empty guard, so
+                    // reaching here means it already came back empty — the repeat can
+                    // only come back empty too, at the cost of another ~2s. Returning
+                    // "" keeps the negative-cache row (so the next request is instant)
+                    // without paying for it twice.
+                    return "";
+                },
                 $isSearchFallback);
-            if ($isSearchFallback) http_response_code(404);
+            if ($isSearchFallback) {
+                http_response_code(404);
+                // #252: same as pydoc — an empty fallback used to render as a bare title.
+                if (trim($content) === '') {
+                    $content = riNoMatchNotice($parameter, $format);
+                }
+            }
         }
         else {
             $content = cacheOrExecute('ri', '__index__', '', $format,

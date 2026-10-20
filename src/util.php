@@ -296,5 +296,42 @@ function malformedSegmentRedirect (array $segments, int $start, string $mode = "
     return "/" . implode("/", $kept);
 }
 
+/**
+ * The "nothing matched" body for a 404 fallback page (#252).
+ *
+ * An empty fallback used to render as a bare title (markdown, 45 bytes) or as a
+ * completely empty body (json, 0 bytes) — both read as "this page is broken"
+ * rather than as "nothing matched", and the page is then served from a 24h
+ * negative row, so it stayed that way.
+ *
+ * The json/mcp shape deliberately stays a real envelope with an empty `results`
+ * array — that is the machine-readable "nothing matched" — and carries the
+ * explanation in a sibling `note` rather than replacing the structure with prose.
+ *
+ * $mode is the mode whose fallback ran ("pydoc", "ri"); $reason says why this
+ * mode's search did not match, in the caller's own terms.
+ */
+function noMatchNotice (string $mode, string $parameter, string $format, string $reason): string {
+    if ($format === "json" || $format === "mcp") {
+        $result = json_encode(array(
+            "mode"      => $mode,
+            "parameter" => $parameter,
+            "results"   => array(),
+            "note"      => $reason,
+        ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($format === "mcp") {
+            $result = json_encode(array(
+                "content" => array(array("type" => "text", "text" => $result)),
+                "structuredContent" => json_decode($result, true)
+            ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        }
+        return $result;
+    }
+    if ($format === "markdown") {
+        return "> " . $reason . "\n";
+    }
+    return "<p>" . h($reason) . "</p>\n";
+}
+
 
 // normalizeMode: validate and normalize the display mode parameter

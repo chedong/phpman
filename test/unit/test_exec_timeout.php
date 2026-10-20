@@ -209,4 +209,23 @@ assert_equals([], $mcp['structuredContent']['results'] ?? null, "…structuredCo
 assert_equals(false, strpos($notice['markdown'] ?? '', 'summaries') === false,
     "说明里点出匹配的是模块名与摘要，类名/函数名搜不到");
 
+// ri 的那半：共用 noMatchNotice()，但 mode 字段必须是 ri。
+$probe = 'require ' . var_export(__DIR__ . '/../../src/util.php', true) . ';'
+       . 'require ' . var_export(__DIR__ . '/../../src/source_ri.php', true) . ';'
+       . '$r = [];'
+       . 'foreach (["markdown","html","json"] as $f) { $r[$f] = riNoMatchNotice("NoSuchClass", $f); }'
+       . 'echo json_encode($r);';
+$out = [];
+$exit = 0;
+exec('php -r ' . escapeshellarg($probe) . ' 2>&1', $out, $exit);
+$riNotice = json_decode(implode("\n", $out), true) ?: [];
+
+assert_equals(true, strpos($riNotice['markdown'] ?? '', '> ') === 0, "ri 的 markdown 也是引用块，不是空串");
+assert_equals(true, strpos($riNotice['html'] ?? '', '<p>') === 0, "ri 的 html 也是段落");
+$riJson = json_decode($riNotice['json'] ?? '', true);
+assert_equals('ri', $riJson['mode'] ?? null, "ri 的 json 信封 mode 是 ri，不是 pydoc");
+assert_equals([], $riJson['results'] ?? null, "…results 仍是空数组");
+assert_equals('NoSuchClass', $riJson['parameter'] ?? null, "…parameter 也在");
+assert_equals(false, empty($riJson['note'] ?? ''), "…并附上说明");
+
 exit(test_summary());

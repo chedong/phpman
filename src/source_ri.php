@@ -81,4 +81,16 @@ function getRiSearchPage (string $parameter, string $format = "html"): string {
     return formatManPerlDoc($lines, "ri");
 }
 
+/**
+ * What to show when a ri lookup found nothing (#252, the ri half).
+ *
+ * Same reasoning as pydocNoMatchNotice(): an empty fallback used to render as a
+ * bare title, which reads as "broken" rather than as "not found".
+ */
+function riNoMatchNotice (string $parameter, string $format): string {
+    $reason = 'No local Ruby documentation matches "' . $parameter . '". ri only knows '
+            . 'classes and modules documented in the installed gems.';
+    return noMatchNotice("ri", $parameter, $format, $reason);
+}
+
 //get specified command's info page
