@@ -362,7 +362,10 @@ class PageCache {
 
         if (!$row) return null;
 
-        // Check TTL expiry for not_found entries
+        // TTL expiry. Not just for not_found rows: found rows carry
+        // PHPMAN_CACHE_TTL_FOUND (210 days) and expire the same way — the old
+        // comment here said "for not_found entries" and read as if found rows
+        // never aged out.
         if ($row['ttl'] > 0 && (time() > $row['updated_at'] + $row['ttl'])) {
             $this->deleteEntry($mode, $name, $section, $format);
             return null;
@@ -681,6 +684,10 @@ function cacheOrExecute(string $mode, string $name, string $section, string $for
  * not a missing value. Rows written before #247 are in the same position and are
  * reused the same way, so no migration is needed.
  *
+ * $fallbackGenerator may return null to mean "could not determine" — its
+ * subprocess timed out. The answer is still rendered, but no negative row is
+ * written, so a later request gets to retry instead of inheriting a 24h 404.
+ *
  * Sets $isFallback so the caller can still answer 404 — the row remains a miss,
  * we are only reusing its result.
  */
@@ -708,8 +715,14 @@ function cacheOrSearchFallback(string $mode, string $name, string $section, stri
 
     $content = $fallbackGenerator();
     $isFallback = true;
-    $cache->set($mode, $name, $section, $format, $content, 'not_found');
-    return $content;
+    // A null from the fallback means "could not determine", not "nothing there" —
+    // the subprocess behind it timed out. Answer the request either way, but write
+    // no negative row: caching that would freeze a transient failure into a 24h
+    // 404, and the next request would never get to retry (phpman#247).
+    if ($content !== null) {
+        $cache->set($mode, $name, $section, $format, $content, 'not_found');
+    }
+    return (string)$content;
 }
 
 // +--------------------------------------------------------------------------------+

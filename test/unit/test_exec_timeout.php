@@ -148,4 +148,29 @@ $exit = 0;
 exec('php -r ' . escapeshellarg($probe) . ' 2>&1', $out, $exit);
 assert_equals('[]', implode("\n", $out), "searchFtsBySource 不存在时返回空数组，不崩");
 
+echo "\n--- #247：哪些名字值得付那次 10–14s 的扫描 ---\n";
+
+// 只对「裸关键词」扫描。dotted 是全模块路径，pydoc3 -k 无论匹配与否都要
+// 10–14s，而线上 86.9% 的 pydoc 404 都是这一类，其中 1336 个返回空、72 个有
+// 结果 —— 扫描几乎全是白付。
+$probe = 'require ' . var_export(__DIR__ . '/../../src/source_pydoc.php', true) . ';'
+       . '$cases = ["database", "DataBase", "datab", "sos.report.plugins.kafka",'
+       . ' "django.db.backends.mysql.introspection", "  datab  ", "a.b"];'
+       . '$r = [];'
+       . 'foreach ($cases as $c) { $r[$c] = pydocSearchWorthScanning($c); }'
+       . 'echo json_encode($r);';
+$out = [];
+$exit = 0;
+exec('php -r ' . escapeshellarg($probe) . ' 2>&1', $out, $exit);
+$got = json_decode(implode("\n", $out), true) ?: [];
+
+assert_equals(true,  $got['database'] ?? null,   "裸关键词 database 值得扫描");
+assert_equals(true,  $got['DataBase'] ?? null,   "大小写不影响判断（pydoc3 -k 本身不区分大小写）");
+assert_equals(true,  $got['datab'] ?? null,      "前缀名 datab 值得扫描");
+assert_equals(true,  $got['  datab  '] ?? null,  "首尾空白被忽略");
+assert_equals(false, $got['sos.report.plugins.kafka'] ?? null,
+    "dotted 全路径不扫描（线上 86.9% 的 pydoc 404 是这一类）");
+assert_equals(false, $got['django.db.backends.mysql.introspection'] ?? null, "dotted 全路径不扫描");
+assert_equals(false, $got['a.b'] ?? null, "最短的 dotted 也不扫描");
+
 exit(test_summary());

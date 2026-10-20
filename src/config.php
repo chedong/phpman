@@ -171,6 +171,21 @@ if (!defined('PHPMAN_CMD_TIMEOUT')) {
     $phpman_cmd_timeout = getenv('PHPMAN_CMD_TIMEOUT');
     define('PHPMAN_CMD_TIMEOUT', ($phpman_cmd_timeout === false || $phpman_cmd_timeout === '') ? 15 : (int) $phpman_cmd_timeout);
 }
+
+// #247: a longer bound for `pydoc3 -k` alone, which is the one command that
+// legitimately runs this long. It imports every module on the path to build its
+// summary list, so it costs 10-14s whether or not it matches — measured
+// 2026-10-20: database 14.11s, DataBase 13.79s, json 13.00s, and 12.47s for a
+// term that matches nothing at all. Under the global 15s that sits right on the
+// edge, and the same query answered differently depending on server load:
+// /pydoc/DataBase had been served from cache, while /pydoc/database was killed
+// at 15.27s and fell through to an empty page. Raising the *global* bound would
+// weaken the slot guarantee everywhere for the sake of one command (#248), so
+// this is scoped to the call site instead.
+if (!defined('PHPMAN_PYDOC_K_TIMEOUT')) {
+    $phpman_pydoc_k_timeout = getenv('PHPMAN_PYDOC_K_TIMEOUT');
+    define('PHPMAN_PYDOC_K_TIMEOUT', ($phpman_pydoc_k_timeout === false || $phpman_pydoc_k_timeout === '') ? 20 : (int) $phpman_pydoc_k_timeout);
+}
 // There is no CACHE_SCHEMA_VERSION. Both cache DBs create their schema with
 // CREATE ... IF NOT EXISTS on every open, so an additive change needs no
 // migration; and since the pre-sharding DB is gone and rollback to older code is
@@ -206,7 +221,11 @@ if (!defined('PHPMAN_CMD_TIMEOUT')) {
 //     already-cached page: the footer link stayed live on production until this
 //     bump. Any change to what showFooter()/showHeader() emit needs a bump for
 //     the same reason as a formatter change.
-define('RENDERER_VERSION', 2);
+// 3 — the pydoc miss fallback stopped scanning dotted names (#247). A cached
+//     negative row for e.g. /pydoc/sos.report.plugins.kafka holds the old body,
+//     and a negative row is reused whatever it carries, so without this bump the
+//     old list would keep being served for the whole 24h not_found TTL.
+define('RENDERER_VERSION', 3);
 
 // PHPMAN_VERSION — numeric version (e.g. "4.9.19").
 // Set by Makefile in phpMan.php at deploy time; provide fallback for CLI scripts.

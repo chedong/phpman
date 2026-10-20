@@ -104,9 +104,40 @@ function pydocSearchLinesFromFts (string $parameter): array {
     return $lines;
 }
 
-function getPydocSearchPage (string $parameter, string $format = "html"): string {
+/**
+ * Is a live `pydoc3 -k` scan worth its 10–14 seconds for this term? (#247)
+ *
+ * Bare keywords (datab, DataBase) are what the scan is good at: it maps a keyword
+ * to the modules whose name *or summary* mentions it — `database` finds grp / pwd /
+ * spwd through their summaries — which is the "did you mean" hint a 404 page wants.
+ * Full dotted paths are not; see the note in getPydocSearchPage().
+ */
+function pydocSearchWorthScanning (string $parameter): bool {
+    return strpos(trim($parameter), '.') === false;
+}
+
+function getPydocSearchPage (string $parameter, string $format = "html", ?bool &$timedOut = null): string {
     $lines = array();
-    $ok = phpManExec("pydoc3 -k ".escapeshellarg($parameter), $lines, $return_code);
+    $timedOut = false;
+
+    // #247: a dotted parameter is a full module path (sos.report.plugins.kafka).
+    // Measured 2026-10-20 over 1,600 production pydoc 404s: 86.9% are dotted, and
+    // `pydoc3 -k` costs 10–14s whether or not it matches — it imports every module
+    // on the path to build its summary list. Where a dotted name *does* resolve it
+    // is served as a page and never reaches this fallback (sos.report.plugins.kafka
+    // answers 200), so the scan here is paid almost entirely for nothing: of those
+    // dotted 404s, 1,336 returned an empty body against 72 that returned a list.
+    // Skip it and answer immediately.
+    if (!pydocSearchWorthScanning($parameter)) {
+        return "";
+    }
+
+    $ok = phpManExec("pydoc3 -k ".escapeshellarg($parameter), $lines, $return_code, PHPMAN_PYDOC_K_TIMEOUT);
+    // rc 124 is timeout(1)'s own exit code: the scan was cut off, so we do not
+    // know whether the name exists. Callers must not cache that as "not found" —
+    // a negative row written from a timeout turns a transient failure into a
+    // 24-hour 404, which is what happened to BaseHTTPRequestHandler on production.
+    $timedOut = ($return_code === 124);
     if (!$ok || empty($lines)) {
         // #247/#248: pydoc3 -k 会 import 整个 stdlib —— 实测生产上 9.5 秒、病态时 30 秒，
         // 而这是每次「未命中的 pydoc 名」的首次访问都要付的。超时（或真的没有结果）时

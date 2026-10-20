@@ -132,6 +132,27 @@ assert_equals(true, $isFallback, "…still flagged as a fallback, so the caller 
 assert_equals(1, $calls['fallback'],
     "…and does NOT re-run the scan — an empty body is the answer, not a missing value");
 
+// A fallback that returns null means "could not determine" — its subprocess timed
+// out. The request is still answered, but nothing may be cached as "not found":
+// that would freeze a transient failure into a 24h 404, which is exactly what
+// happened to /pydoc/BaseHTTPRequestHandler on production (#247 × #248).
+$calls = ['page' => 0, 'fallback' => 0];
+$nullFb = function() use (&$calls) { $calls['fallback']++; return null; };
+$isFallback = null;
+$unknown = cacheOrSearchFallback('pydoc', 'timed_out', '', 'markdown', $pageGen, $nullFb, $isFallback);
+assert_equals('', $unknown, "a null fallback still renders an empty body");
+assert_equals(true, $isFallback, "…and is still flagged as a fallback, so the caller answers 404");
+assert_equals(null, $cache->getWithStatus('pydoc', 'timed_out', '', 'markdown'),
+    "…but writes NO negative row, so a timeout is not frozen into a 24h 404");
+
+// Because nothing was cached, the next request retries instead of inheriting it.
+$calls = ['page' => 0, 'fallback' => 0];
+$isFallback = null;
+cacheOrSearchFallback('pydoc', 'timed_out', '', 'markdown', $pageGen, $fbGen, $isFallback);
+assert_equals(1, $calls['fallback'], "the next request retries the fallback rather than reusing a frozen 404");
+assert_equals('SCAN RESULT', $cache->getWithStatus('pydoc', 'timed_out', '', 'markdown')['content'],
+    "…and a real answer this time is cached normally");
+
 cleanupTmpDir();
 
 exit(test_summary());

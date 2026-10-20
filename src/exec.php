@@ -29,20 +29,25 @@
  *
  * 只看固定路径、不搜 PATH：这个函数在请求路径上被调用，不该为了它再 fork 一次
  * `command -v`。两个路径覆盖了常见发行版布局。
+ *
+ * $seconds 省略时用 PHPMAN_CMD_TIMEOUT。传别的值只为一件事：`pydoc3 -k` 实测
+ * 10–14s，正好压在全局 15s 上，需要一个更宽的上界（PHPMAN_PYDOC_K_TIMEOUT）——
+ * 而放宽全局会削弱所有命令的槽保证，所以做成按调用点覆盖。结果按秒数缓存，
+ * 每条命令仍然只探测一次文件系统。
  */
-function phpManTimeoutPrefix(): string {
-    static $prefix = null;
-    if ($prefix !== null) return $prefix;
+function phpManTimeoutPrefix(?int $seconds = null): string {
+    static $cache = [];
+    $seconds = $seconds ?? (defined('PHPMAN_CMD_TIMEOUT') ? (int)PHPMAN_CMD_TIMEOUT : 0);
+    if ($seconds <= 0) return '';
+    if (array_key_exists($seconds, $cache)) return $cache[$seconds];
     $prefix = '';
-    if (defined('PHPMAN_CMD_TIMEOUT') && PHPMAN_CMD_TIMEOUT > 0) {
-        foreach (['/usr/bin/timeout', '/bin/timeout'] as $p) {
-            if (is_executable($p)) {
-                $prefix = $p . ' ' . (int)PHPMAN_CMD_TIMEOUT . ' ';
-                break;
-            }
+    foreach (['/usr/bin/timeout', '/bin/timeout'] as $p) {
+        if (is_executable($p)) {
+            $prefix = $p . ' ' . $seconds . ' ';
+            break;
         }
     }
-    return $prefix;
+    return $cache[$seconds] = $prefix;
 }
 
 /**
@@ -56,8 +61,8 @@ function phpManTimeoutPrefix(): string {
  * `/bin/sh -c` 也正是 PHP 的 exec() 在 Unix 上用的形式，所以语义与替换前一致。
  * escapeshellarg 负责把命令里的引号（`tr '\n' '\0'`）安全地交给内层 shell。
  */
-function phpManWrapCommand(string $cmd): string {
-    $prefix = phpManTimeoutPrefix();
+function phpManWrapCommand(string $cmd, ?int $seconds = null): string {
+    $prefix = phpManTimeoutPrefix($seconds);
     if ($prefix === '') return $cmd;
     return $prefix . '/bin/sh -c ' . escapeshellarg($cmd);
 }
@@ -76,17 +81,18 @@ function phpManWrapCommand(string $cmd): string {
  * 返回 true 表示命令成功（退出码 0）。超时会被记一行日志 —— 它是「这条路径
  * 病态」的直接证据，而 mf 遥测只在渲染跑完时才写行，看不到它。
  */
-function phpManExec(string $cmd, array &$lines, ?int &$rc = null): bool {
+function phpManExec(string $cmd, array &$lines, ?int &$rc = null, ?int $timeout = null): bool {
     $lines = [];
     $rc = 0;
-    exec(phpManWrapCommand($cmd), $lines, $rc);
+    exec(phpManWrapCommand($cmd, $timeout), $lines, $rc);
     if ($rc === 124 && function_exists('phpManLog')) {
-        phpManLog("exec timed out after " . (int)PHPMAN_CMD_TIMEOUT . "s: " . $cmd);
+        $secs = $timeout ?? (int)PHPMAN_CMD_TIMEOUT;
+        phpManLog("exec timed out after {$secs}s: " . $cmd);
     }
     return $rc === 0;
 }
 
 /** shell_exec() 的替代品，同样加上界。返回 trim 过的输出（失败时为空串）。 */
-function phpManExecString(string $cmd): string {
-    return trim((string)@shell_exec(phpManWrapCommand($cmd)));
+function phpManExecString(string $cmd, ?int $timeout = null): string {
+    return trim((string)@shell_exec(phpManWrapCommand($cmd, $timeout)));
 }

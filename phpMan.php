@@ -538,7 +538,13 @@ switch ( $mode ) {
         if ( $parameter != "" ) {
             $content = cacheOrSearchFallback('pydoc', $parameter, '', $format,
                 function() use ($parameter, $format) { return getPydocPage($parameter, $format); },
-                function() use ($parameter, $format) { return getPydocSearchPage($parameter, $format); },
+                function() use ($parameter, $format) {
+                    // null when the keyword scan timed out: we do not know whether
+                    // this module exists, so nothing gets cached as "not found".
+                    $timedOut = false;
+                    $body = getPydocSearchPage($parameter, $format, $timedOut);
+                    return $timedOut ? null : $body;
+                },
                 $isSearchFallback);
             if ($isSearchFallback) http_response_code(404);
         }
