@@ -19,6 +19,7 @@
 # (default 2000).
 
 PHPMAN_LOG="${PHPMAN_LOG:-$HOME/.phpman/logs/phpman_error.log}"
+PHPMAN_MF_LOG="${PHPMAN_MF_LOG:-$HOME/.phpman/logs/phpman_mf.log}"
 SERVER_ERROR_LOG="${DEMO_ERROR_LOG:-}"
 ACCESS_LOG="${DEMO_ACCESS_LOG:-}"
 DAYS="${LOGCHECK_DAYS:-7}"
@@ -100,6 +101,24 @@ else
 
     echo "last 5 entries:"
     tail -5 "$PHPMAN_LOG" | cut -c1-96 | sed 's/^/  /'
+fi
+
+# ─── phpMan machine-render telemetry (#251) ───
+# Deliberately a separate file from the error log — telemetry is not an error,
+# and while the two shared a file this view reported "fatals 0" through the
+# whole 2026-10-19 outage. Reported here so the volume stays visible: it is the
+# signal for how much first-time machine-format traffic the site is taking.
+if [ -f "$PHPMAN_MF_LOG" ]; then
+    echo ""
+    echo "--- phpMan machine-render telemetry (not errors) ---"
+    echo "path:   $PHPMAN_MF_LOG"
+    echo "total:  $(wc -l < "$PHPMAN_MF_LOG") lines"
+    mf_archives=$(ls -1r "$PHPMAN_MF_LOG".* 2>/dev/null)
+    if [ -n "$mf_archives" ]; then
+        mf_n=$(printf '%s\n' "$mf_archives" | grep -c .)
+        mf_bytes=$(du -ch $mf_archives 2>/dev/null | tail -1 | cut -f1)
+        echo "rotated: $mf_n file(s), ${mf_bytes:-?} beside it"
+    fi
 fi
 
 # ─── Web server error log ───

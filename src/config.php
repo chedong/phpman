@@ -136,6 +136,15 @@ if (!defined('PHPMAN_BACKUP_DIR')) {
 // Fixed filenames under derived dirs (not configurable)
 define('PHPMAN_CACHE_DB', PHPMAN_CACHE_DIR . '/phpman_cache.db');
 define('PHPMAN_LOG_FILE', PHPMAN_LOG_DIR . '/phpman_error.log');
+// #251: machine-render telemetry gets its own file. It is not an error, and
+// sharing phpman_error.log meant the telemetry crowded the error view out of
+// `make logcheck` — during the 2026-10-19 outage that view reported "fatals 0"
+// for the whole nine hours while thousands were being written. Kept separate,
+// "the error log is growing" becomes a usable health signal again.
+// Guarded so a test can point it at a temp file.
+if (!defined('PHPMAN_MF_LOG_FILE')) {
+    define('PHPMAN_MF_LOG_FILE', PHPMAN_LOG_DIR . '/phpman_mf.log');
+}
 
 // #244: log a line per machine-format render that took at least this long. The
 // threshold is the volume control, and it sits where the two populations

@@ -2,9 +2,9 @@
 /**
  * Unit tests: machine-format render telemetry (#244)
  *
- * A 5xx on /markdown, /json or /mcp leaves nothing in phpman_error.log today, so
+ * A 5xx on /markdown, /json or /mcp used to leave nothing in the logs, so
  * "the client abandoned a slow response" and "mod_fcgid killed a slow process"
- * look identical from the logs — and they want opposite fixes. One line per slow
+ * look identical from them — and they want opposite fixes. One line per slow
  * render separates them:
  *
  *   a 5xx with a matching line  -> the render finished; delivery failed
@@ -22,6 +22,12 @@ define('PHPMAN_TEST_MODE', true);
 // Pinned so the wrapper test below exercises a known threshold. config.php
 // guards every define with !defined(), so this wins.
 define('PHPMAN_MF_LOG_MS', 500);
+// #251: telemetry has its own file. Point it at a temp path before phpMan.php
+// loads — the constant is fixed at config load, so ini_set('error_log') no
+// longer reaches it.
+$mfLog = sys_get_temp_dir() . '/phpman_test_mf_' . getmypid() . '.log';
+@unlink($mfLog);
+define('PHPMAN_MF_LOG_FILE', $mfLog);
 require_once __DIR__ . '/../test_helper.php';
 require_once __DIR__ . '/../../phpMan.php';
 
@@ -73,16 +79,15 @@ echo "\n--- an absurd name is truncated, not logged whole ---\n";
 $long = phpManMachineRenderLine('man', str_repeat('A', 5000), '1', 'markdown', 'b', $T, 500, $T + 1.0);
 assert_equals(true, strlen($long) < 500, "a 5000-char name does not produce a 5000-char log line");
 
-echo "\n--- the wrapper writes to error_log, and stays quiet under the threshold ---\n";
-$log = tempnam(sys_get_temp_dir(), 'phpman_mflog_');
-$prev = ini_get('error_log');
-ini_set('error_log', $log);
+echo "\n--- the wrapper writes to the telemetry log, and stays quiet under the threshold ---\n";
+$log = $mfLog;
 
 $_SERVER['REQUEST_TIME_FLOAT'] = microtime(true) - 1.0;
 phpManLogMachineRender('man', 'perldiag', '1', 'markdown', 'body');
 $written = file_get_contents($log);
-assert_contains('mf mode=man name=perldiag sec=1 fmt=markdown', $written, "a slow render reaches the error log");
+assert_contains('mf mode=man name=perldiag sec=1 fmt=markdown', $written, "a slow render reaches the telemetry log");
 assert_contains('peak=', $written, "with the memory figure attached");
+assert_contains('] phpMan: ', $written, "framed the way error_log() frames its own lines");
 
 file_put_contents($log, '');
 $_SERVER['REQUEST_TIME_FLOAT'] = microtime(true);
@@ -94,7 +99,18 @@ file_put_contents($log, '');
 phpManLogMachineRender('man', 'ls', '1', 'markdown', 'body');
 assert_equals('', file_get_contents($log), "no REQUEST_TIME_FLOAT (CLI) writes nothing rather than guessing");
 
+// #251: the whole point of the split — a telemetry line must NOT land in the
+// error log, or `make logcheck` reads it as an error again.
+$errLog = tempnam(sys_get_temp_dir(), 'phpman_errlog_');
+$prev = ini_get('error_log');
+ini_set('error_log', $errLog);
+$_SERVER['REQUEST_TIME_FLOAT'] = microtime(true) - 1.0;
+phpManLogMachineRender('man', 'perldiag', '1', 'markdown', 'body');
+assert_equals('', file_get_contents($errLog), "a telemetry line does not reach error_log() (#251)");
+assert_contains('mf mode=man name=perldiag', file_get_contents($log), "…it went to the telemetry file instead");
 ini_set('error_log', $prev === false ? '' : $prev);
+@unlink($errLog);
+
 @unlink($log);
 
 exit(test_summary());

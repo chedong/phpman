@@ -13,13 +13,35 @@ function phpManLog(string $message): void {
 }
 
 /**
+ * Write one machine-render telemetry line to its own file (#251).
+ *
+ * Telemetry is not an error, so it does not go through error_log(): that wrote
+ * it into phpman_error.log, where it crowded the error view out of
+ * `make logcheck`. Same line format as phpManLog(), different destination —
+ * so anything reading the telemetry needs PHPMAN_MF_LOG_FILE, not PHPMAN_LOG_FILE.
+ */
+function phpManLogMachine(string $message): void {
+    if (!defined('PHPMAN_MF_LOG_FILE')) return;
+    static $context = null;
+    if ($context === null) {
+        $context = _phpManLogContext();
+    }
+    // Mirror error_log()'s own framing so the two logs stay diffable.
+    $line = '[' . date('d-M-Y H:i:s T') . '] phpMan: ' . $context . ' ' . $message . "\n";
+    // LOCK_EX: several PHP workers append concurrently, and without it two
+    // writes can interleave into a torn line. Failures are swallowed on
+    // purpose — telemetry must never be able to break a request.
+    @file_put_contents(PHPMAN_MF_LOG_FILE, $line, FILE_APPEND | LOCK_EX);
+}
+
+/**
  * Flatten a value for a single-line log field (#244).
  *
  * The page name in a machine-format line comes straight from the URL, so a
  * request for a name containing a newline could otherwise append a forged
- * "[date] PHP Fatal error: ..." line to phpman_error.log — the file this
- * telemetry exists to be read from. Control characters collapse to a space and
- * an absurd name is truncated, so the line stays one line of bounded length.
+ * "[date] …" line to the telemetry file — the file these lines exist to be
+ * read from. Control characters collapse to a space and an absurd name is
+ * truncated, so the line stays one line of bounded length.
  */
 function phpManLogSafeField(string $value, int $maxLen = 120): string {
     $clean = preg_replace('/[\x00-\x1f\x7f]+/', ' ', $value);
@@ -86,7 +108,7 @@ function phpManLogMachineRender(
     $line = phpManMachineRenderLine(
         $mode, $parameter, $section, $format, $content, (float) $startedAt, (int) $threshold
     );
-    if ($line !== null) phpManLog($line);
+    if ($line !== null) phpManLogMachine($line);
 }
 
 // Build context string once per process/request.

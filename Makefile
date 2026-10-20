@@ -396,8 +396,9 @@ logcheck:
 	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
 		"DEMO_ERROR_LOG='$(DEMO_ERROR_LOG)' DEMO_ACCESS_LOG='$(DEMO_ACCESS_LOG)' bash -s" < cli/logcheck.sh
 
-# Rotate the production phpMan error log, keeping the newest LOG_ROTATE_KEEP
-# (default 5) rotations. Piped over stdin like logcheck, so nothing has to be
+# Rotate the production phpMan logs — the error log and the machine-render
+# telemetry log (#251) — keeping the newest LOG_ROTATE_KEEP (default 5)
+# rotations of each. Piped over stdin like logcheck, so nothing has to be
 # deployed first. Preview with: make log-rotate LOG_ROTATE_DRY_RUN=1
 # The same script is deployed under cli/, which is what a cron entry would call.
 log-rotate:
