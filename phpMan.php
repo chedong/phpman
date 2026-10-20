@@ -546,7 +546,17 @@ switch ( $mode ) {
                     return $timedOut ? null : $body;
                 },
                 $isSearchFallback);
-            if ($isSearchFallback) http_response_code(404);
+            if ($isSearchFallback) {
+                http_response_code(404);
+                // #252: an empty fallback used to render as a bare title (markdown)
+                // or a completely empty body (json), which reads as broken rather
+                // than as "nothing matched". Say so instead. Applied here and not
+                // inside getPydocSearchPage() because the ?mode=search cascade uses
+                // its empty return as the "no pydoc section" signal.
+                if (trim($content) === '') {
+                    $content = pydocNoMatchNotice($parameter, $format);
+                }
+            }
         }
         else {
             $content = cacheOrExecute('pydoc', '__index__', '', $format,

@@ -173,4 +173,40 @@ assert_equals(false, $got['sos.report.plugins.kafka'] ?? null,
 assert_equals(false, $got['django.db.backends.mysql.introspection'] ?? null, "dotted 全路径不扫描");
 assert_equals(false, $got['a.b'] ?? null, "最短的 dotted 也不扫描");
 
+echo "\n--- #252：兜底无匹配时要说人话，不能只剩标题 ---\n";
+
+// 空兜底以前渲染成一个光秃秃的标题（markdown 45 字节）或**完全空**的响应体
+// （json 0 字节），看起来像坏了而不是「没找到」。
+$probe = 'require ' . var_export(__DIR__ . '/../../src/util.php', true) . ';'   // h()
+       . 'require ' . var_export(__DIR__ . '/../../src/source_pydoc.php', true) . ';'
+       . '$r = [];'
+       . 'foreach (["markdown","html","json","mcp"] as $f) { $r[$f] = pydocNoMatchNotice("JSONDecoder", $f); }'
+       . 'echo json_encode($r);';
+$out = [];
+$exit = 0;
+exec('php -r ' . escapeshellarg($probe) . ' 2>&1', $out, $exit);
+$notice = json_decode(implode("\n", $out), true) ?: [];
+
+assert_equals(true, strpos($notice['markdown'] ?? '', '> ') === 0,
+    "markdown 是一个引用块，不是空串");
+assert_equals(true, strpos($notice['html'] ?? '', '<p>') === 0,
+    "html 是一个段落");
+assert_equals(false, strpos($notice['markdown'] ?? '', 'JSONDecoder') === false,
+    "正文里带上被搜的名字，读的人才知道搜的是什么");
+
+$json = json_decode($notice['json'] ?? '', true);
+assert_equals(true, is_array($json), "json 仍然是合法 JSON，不是散文");
+assert_equals([], $json['results'] ?? null, "…且 results 是空数组（机器可读的「没匹配」）");
+assert_equals('pydoc', $json['mode'] ?? null, "…信封字段没丢");
+assert_equals('JSONDecoder', $json['parameter'] ?? null, "…parameter 也在");
+assert_equals(false, empty($json['note'] ?? ''), "…并附上说明");
+
+$mcp = json_decode($notice['mcp'] ?? '', true);
+assert_equals(true, isset($mcp['content'][0]['text']), "mcp 保持它自己的信封");
+assert_equals([], $mcp['structuredContent']['results'] ?? null, "…structuredContent 里 results 仍是空数组");
+
+// 说明必须点出「为什么类名搜不到」——那正是 #252 里被误判的那件事。
+assert_equals(false, strpos($notice['markdown'] ?? '', 'summaries') === false,
+    "说明里点出匹配的是模块名与摘要，类名/函数名搜不到");
+
 exit(test_summary());

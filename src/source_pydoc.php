@@ -210,4 +210,47 @@ function getPydocSearchPage (string $parameter, string $format = "html", ?bool &
     return $output;
 }
 
+/**
+ * What to show when the pydoc fallback found nothing at all (#252).
+ *
+ * An empty fallback used to render as a bare title (markdown, 45 bytes) or as a
+ * completely empty body (json, 0 bytes) — both read as "this page is broken"
+ * rather than as "nothing matched". Say what happened, and say why a class or
+ * function name can never match: `pydoc3 -k` compares the term against module
+ * names and their one-line summaries, not against full docstrings.
+ * `BaseHTTPRequestHandler` is a class in http.server, whose summary is just
+ * "HTTP server classes." — so it has never been findable this way.
+ *
+ * Only the 404 fallback page calls this. The ?mode=search cascade keeps using the
+ * raw empty string as its "no pydoc section" signal, so it must stay unaffected.
+ */
+function pydocNoMatchNotice (string $parameter, string $format): string {
+    $reason = 'No Python module matches "' . $parameter . '". This search compares the '
+            . 'term against module names and their one-line summaries, so class and '
+            . 'function names are not found by it.';
+
+    if ($format === "json" || $format === "mcp") {
+        // Keep the shape of a real result — an empty `results` array is the
+        // machine-readable "nothing matched" — and add the explanation beside it
+        // rather than replacing the envelope with prose.
+        $result = json_encode(array(
+            "mode"      => "pydoc",
+            "parameter" => $parameter,
+            "results"   => array(),
+            "note"      => $reason,
+        ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($format === "mcp") {
+            $result = json_encode(array(
+                "content" => array(array("type" => "text", "text" => $result)),
+                "structuredContent" => json_decode($result, true)
+            ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        }
+        return $result;
+    }
+    if ($format === "markdown") {
+        return "> " . $reason . "\n";
+    }
+    return "<p>" . h($reason) . "</p>\n";
+}
+
 //get ri search results (ri already does fuzzy matching, try as direct lookup)
