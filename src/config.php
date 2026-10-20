@@ -157,6 +157,28 @@ if (!defined('PHPMAN_MF_LOG_MS')) {
     define('PHPMAN_MF_LOG_MS', ($phpman_mf_log_ms === false || $phpman_mf_log_ms === '') ? 500 : (int) $phpman_mf_log_ms);
 }
 
+// #249: ...or when the response body is at least this many bytes. The two
+// conditions are OR'd: a render is logged if it was slow **or** large.
+//
+// Why the elapsed threshold alone cannot answer #249: the 500s that lose their
+// body are LARGE, not slow — measured production bodies were 77-81 KB truncated
+// against full sizes of 157-646 KB, and every one of the six sampled 500s was a
+// warm cache hit rendering in ~150ms. A 150ms render can never cross a 500ms
+// elapsed threshold, so those requests were structurally invisible: 133 mf lines
+// against 3,102 machine-format requests, 4.3%.
+//
+// With this in place every large response leaves a line carrying `bytes=`, and
+// comparing that against the access log's `%b` says whether the body arrived
+// whole. Caveat: `%b` is what was *sent*, so for gzipped responses (JSON above
+// PHPMAN_GZIP_MIN_BYTES with Accept-Encoding: gzip) it is legitimately smaller —
+// the comparison is only conclusive for responses that were not compressed.
+//
+// 0 disables the size trigger (elapsed only, i.e. the pre-#249 behaviour).
+if (!defined('PHPMAN_MF_LOG_BYTES')) {
+    $phpman_mf_log_bytes = getenv('PHPMAN_MF_LOG_BYTES');
+    define('PHPMAN_MF_LOG_BYTES', ($phpman_mf_log_bytes === false || $phpman_mf_log_bytes === '') ? 65536 : (int) $phpman_mf_log_bytes);
+}
+
 // #248: upper bound, in seconds, on every document-render subprocess (man,
 // perldoc, pydoc3, ri, info — see src/exec.php). Without it a single request can
 // hold a FastCGI slot for the whole time the command runs, and production has

@@ -36,19 +36,42 @@ echo "=== Unit: machine-format render log (#244) ===\n\n";
 $T = 1000.0;   // request start, in seconds since epoch
 
 echo "--- the threshold gates the line ---\n";
-assert_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', 'body', $T, 500, $T + 0.400),
+assert_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', 'body', $T, 500, now: $T + 0.400),
     "400ms under a 500ms threshold stays silent (that is a cache hit)");
-assert_not_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', 'body', $T, 500, $T + 0.600),
+assert_not_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', 'body', $T, 500, now: $T + 0.600),
     "600ms over a 500ms threshold logs (that is a cold render)");
-assert_not_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', 'body', $T, 500, $T + 0.500),
+assert_not_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', 'body', $T, 500, now: $T + 0.500),
     "exactly at the threshold logs (>=, not >)");
-assert_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', 'body', $T, 0, $T + 9.0),
+assert_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', 'body', $T, 0, now: $T + 9.0),
     "threshold 0 disables the line entirely");
-assert_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', 'body', $T, -1, $T + 9.0),
+assert_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', 'body', $T, -1, now: $T + 9.0),
     "a negative threshold is treated as disabled, not as always-on");
 
+echo "\n--- the size trigger (#249) ---\n";
+
+// 这一族才是 #249 要看的：500 丢正文的那批请求是**大**，不是**慢**。
+// 实测生产上被截断的正文 77-81 KB、完整 157-646 KB，而抽样的 6 个 500
+// **全是热缓存命中、渲染 ~150ms** —— 永远跨不过 500ms 的耗时阈值。
+$big = str_repeat('x', 80000);   // 80 KB，正是被截断的那一档
+assert_not_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', $big, $T, 500, 65536, now: $T + 0.150),
+    "150ms 的大响应（80KB）在 64KB 阈值下**要**记一行 —— 这正是耗时阈值漏掉的那批");
+assert_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', 'small body', $T, 500, 65536, now: $T + 0.150),
+    "又小又快的不记（否则等于把 15.7k/天 全量打开）");
+assert_not_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', 'small body', $T, 500, 65536, now: $T + 2.0),
+    "又小又慢的仍按耗时记（两个条件是 OR，不是 AND）");
+assert_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', $big, $T, 0, 0, now: $T + 0.150),
+    "两个阈值都为 0 时什么都不记");
+assert_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', $big, $T, 500, 0, now: $T + 0.150),
+    "size 阈值 0 = 关掉尺寸触发，退回只看耗时（#249 之前的行为）");
+
+$bigLine = phpManMachineRenderLine('man', 'ls', '1', 'markdown', $big, $T, 500, 65536, now: $T + 0.150);
+assert_contains('bytes=80000', $bigLine, "行里的 bytes= 是未压缩的正文长度 —— 拿它和 access log 的 %b 比对");
+assert_contains('elapsed=150ms', $bigLine, "耗时照记，好区分「大而快」与「大而慢」");
+assert_not_equals(null, phpManMachineRenderLine('man', 'ls', '1', 'markdown', str_repeat('x', 65536), $T, 500, 65536, now: $T + 0.1),
+    "正好等于 size 阈值也记（>=，与耗时阈值一致）");
+
 echo "\n--- the line carries the fields the diagnosis needs ---\n";
-$line = phpManMachineRenderLine('man', 'zshall', '1', 'markdown', str_repeat('x', 1666546), $T, 500, $T + 4.164);
+$line = phpManMachineRenderLine('man', 'zshall', '1', 'markdown', str_repeat('x', 1666546), $T, 500, now: $T + 4.164);
 assert_match('/^mf /', $line, "starts with 'mf ' so it is greppable in the log");
 assert_contains('mode=man', $line, "mode");
 assert_contains('name=zshall', $line, "page name");
@@ -62,21 +85,21 @@ echo "\n--- elapsed is measured from the request, not from the call ---\n";
 // REQUEST_TIME_FLOAT is set when PHP starts, so this is PHP's own wall time. It
 // excludes the mod_fcgid queue wait, which PHP cannot see; comparing it against
 // the client-observed time in the access log is what exposes that wait.
-$a = phpManMachineRenderLine('man', 'ls', '1', 'json', 'b', $T, 500, $T + 1.0);
+$a = phpManMachineRenderLine('man', 'ls', '1', 'json', 'b', $T, 500, now: $T + 1.0);
 assert_contains('elapsed=1000ms', $a, "1.0s start-to-now becomes elapsed=1000ms");
 
 echo "\n--- a URL-derived name cannot forge a log line ---\n";
-$nasty = phpManMachineRenderLine('man', "evil\n[13/Oct/2026:00:00:00] PHP Fatal error: fake", '1', 'markdown', 'b', $T, 500, $T + 1.0);
+$nasty = phpManMachineRenderLine('man', "evil\n[13/Oct/2026:00:00:00] PHP Fatal error: fake", '1', 'markdown', 'b', $T, 500, now: $T + 1.0);
 assert_not_contains("\n", $nasty, "a newline in the page name does not survive into the log");
 assert_not_contains("\r", $nasty, "nor a carriage return");
 assert_contains('evil', $nasty, "the name is still identifiable, just flattened");
-assert_not_contains("\t", phpManMachineRenderLine('man', "a\tb", '1', 'markdown', 'b', $T, 500, $T + 1.0),
+assert_not_contains("\t", phpManMachineRenderLine('man', "a\tb", '1', 'markdown', 'b', $T, 500, now: $T + 1.0),
     "tabs are stripped too");
-assert_not_contains("\x1b", phpManMachineRenderLine('man', "a\x1bb", '1', 'markdown', 'b', $T, 500, $T + 1.0),
+assert_not_contains("\x1b", phpManMachineRenderLine('man', "a\x1bb", '1', 'markdown', 'b', $T, 500, now: $T + 1.0),
     "so are terminal escapes");
 
 echo "\n--- an absurd name is truncated, not logged whole ---\n";
-$long = phpManMachineRenderLine('man', str_repeat('A', 5000), '1', 'markdown', 'b', $T, 500, $T + 1.0);
+$long = phpManMachineRenderLine('man', str_repeat('A', 5000), '1', 'markdown', 'b', $T, 500, now: $T + 1.0);
 assert_equals(true, strlen($long) < 500, "a 5000-char name does not produce a 5000-char log line");
 
 echo "\n--- the wrapper writes to the telemetry log, and stays quiet under the threshold ---\n";

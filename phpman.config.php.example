@@ -61,6 +61,33 @@
 // 0 = no limit.
 // define('PHPMAN_CMD_TIMEOUT', 15);
 
+// --- Machine-format render telemetry (#244, #249) ---
+// One line per machine-format render (/markdown, /json, /mcp) that was slow OR
+// large, written to its own file — never to phpman_error.log, so that file stays
+// a place where "it grew" means something (#251).
+//
+//   mf mode=man name=zshall sec=1 fmt=markdown elapsed=4164ms peak=94.2MB bytes=1666546
+//
+// It exists to separate two failures that otherwise leave identical traces: a 5xx
+// *with* a matching line means the render finished and delivery failed; a 5xx
+// *with no* line means the process died before reaching the end.
+//
+// The two thresholds are OR'd. Both are needed:
+//   - elapsed: a cold render is 400-4200ms, a cache hit 30-90ms, so 500ms keeps
+//     the log proportional to pages crawled for the first time.
+//   - bytes: the responses that lose their body are LARGE, not slow. Measured
+//     production bodies were 77-81KB truncated against 157-646KB full, and all
+//     six sampled 500s were warm cache hits rendering in ~150ms — invisible to an
+//     elapsed-only threshold (133 lines against 3,102 requests, 4.3%).
+//     With this set, compare the logged `bytes=` against the access log's `%b`:
+//     they differ when the client left mid-delivery. (Caveat: `%b` is what was
+//     sent, so gzipped responses are legitimately smaller.)
+//
+// 0 on either disables that trigger. Both 0 = no telemetry.
+// define('PHPMAN_MF_LOG_MS', 500);
+// define('PHPMAN_MF_LOG_BYTES', 65536);
+// define('PHPMAN_MF_LOG_FILE', PHPMAN_LOG_DIR . '/phpman_mf.log');
+
 // --- Google Analytics (v4.4.4+) ---
 // Set your GA4 measurement ID to enable pageview tracking.
 // Leave empty to disable (default).

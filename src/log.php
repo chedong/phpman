@@ -62,12 +62,18 @@ function phpManLogSafeField(string $value, int $maxLen = 120): string {
  */
 function phpManMachineRenderLine(
     string $mode, string $parameter, string $section, string $format,
-    string $content, float $startedAt, int $thresholdMs, ?float $now = null
+    string $content, float $startedAt, int $thresholdMs, int $thresholdBytes = 0,
+    ?float $now = null
 ): ?string {
-    if ($thresholdMs <= 0) return null;
+    if ($thresholdMs <= 0 && $thresholdBytes <= 0) return null;
     $now = $now ?? microtime(true);
     $elapsedMs = (int) round(($now - $startedAt) * 1000);
-    if ($elapsedMs < $thresholdMs) return null;
+    $bytes = strlen($content);
+    // OR, not AND (#249): the requests that lose their body are large, not slow —
+    // see the note on PHPMAN_MF_LOG_BYTES in src/config.php.
+    $slow = $thresholdMs > 0 && $elapsedMs >= $thresholdMs;
+    $large = $thresholdBytes > 0 && $bytes >= $thresholdBytes;
+    if (!$slow && !$large) return null;
     return sprintf(
         'mf mode=%s name=%s sec=%s fmt=%s elapsed=%dms peak=%.1fMB bytes=%d',
         phpManLogSafeField($mode),
@@ -76,7 +82,7 @@ function phpManMachineRenderLine(
         phpManLogSafeField($format, 16),
         $elapsedMs,
         memory_get_peak_usage(true) / 1048576,
-        strlen($content)
+        $bytes
     );
 }
 
@@ -100,13 +106,15 @@ function phpManLogMachineRender(
     string $mode, string $parameter, string $section, string $format, string $content
 ): void {
     $threshold = defined('PHPMAN_MF_LOG_MS') ? PHPMAN_MF_LOG_MS : 0;
-    if ($threshold <= 0) return;
+    $thresholdBytes = defined('PHPMAN_MF_LOG_BYTES') ? PHPMAN_MF_LOG_BYTES : 0;
+    if ($threshold <= 0 && $thresholdBytes <= 0) return;
     // CLI has no REQUEST_TIME_FLOAT. Stay silent rather than invent a start
     // time and log a meaningless elapsed.
     $startedAt = $_SERVER['REQUEST_TIME_FLOAT'] ?? null;
     if (!is_numeric($startedAt)) return;
     $line = phpManMachineRenderLine(
-        $mode, $parameter, $section, $format, $content, (float) $startedAt, (int) $threshold
+        $mode, $parameter, $section, $format, $content, (float) $startedAt,
+        (int) $threshold, (int) $thresholdBytes
     );
     if ($line !== null) phpManLogMachine($line);
 }
