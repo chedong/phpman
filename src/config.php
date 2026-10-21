@@ -93,6 +93,22 @@ if (!defined('PHPMAN_CACHE_TTL_FOUND')) {
 if (!defined('PHPMAN_CACHE_TTL_NOT_FOUND')) {
     define('PHPMAN_CACHE_TTL_NOT_FOUND', 86400);  // 1 day — retry missing pages sooner
 }
+// #248: how long the negative row written after a *subprocess timeout* lives.
+//
+// Much shorter than the 24h above, because a timeout says "we could not find
+// out", not "it does not exist" — it has to get a chance to retry soon. But it
+// cannot be left unwritten either, which is what the code did before: production
+// measured the same name being asked again 2 seconds to 42 seconds later
+// (NullProvider timed out at 01:55:50 and again at 01:55:52; `IPv…` ten times in
+// a day), each one paying the full 20s pydoc scan, and a handful of those
+// concurrently saturate the FastCGI pool — that is the 503 burst on 2026-10-20.
+//
+// Written once per window, not refreshed on every hit (see cacheOrSearchFallback):
+// the UPSERT would otherwise renew the TTL for as long as traffic continues,
+// which is "never retry" again by another route.
+if (!defined('PHPMAN_CACHE_TTL_TIMEOUT')) {
+    define('PHPMAN_CACHE_TTL_TIMEOUT', 600);     // 10 minutes
+}
 if (!defined('PHPMAN_GA_ID')) {
     define('PHPMAN_GA_ID', '');                  // Google Analytics GA4 measurement ID (empty = disabled)
 }

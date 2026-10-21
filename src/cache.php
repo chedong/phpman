@@ -418,7 +418,7 @@ class PageCache {
         return ['status' => $row['status'], 'content' => $row['content']];
     }
 
-    public function set(string $mode, string $name, string $section, string $format, ?string $content, string $status = 'found'): bool {
+    public function set(string $mode, string $name, string $section, string $format, ?string $content, string $status = 'found', ?int $ttl = null): bool {
         $db = $this->dbFor($mode);
         if (!$db) return false;
 
@@ -437,10 +437,15 @@ class PageCache {
         // Stored in cache.title, not just handed to the FTS index: cache_fts is
         // an external-content table, so the index and the column have to agree.
         $title = self::extractTitle($content);
-        $ttl = ($status === 'not_found') ? PHPMAN_CACHE_TTL_NOT_FOUND : PHPMAN_CACHE_TTL_FOUND;
-        // Search not-found entries live as long as found entries
-        if ($mode === 'search' && $status === 'not_found') {
-            $ttl = PHPMAN_CACHE_TTL_FOUND;
+        // $ttl === null means "derive it from the status", which is what every
+        // caller but the timeout path wants. An explicit value is for rows whose
+        // lifetime does not follow from found/not_found alone (#248).
+        if ($ttl === null) {
+            $ttl = ($status === 'not_found') ? PHPMAN_CACHE_TTL_NOT_FOUND : PHPMAN_CACHE_TTL_FOUND;
+            // Search not-found entries live as long as found entries
+            if ($mode === 'search' && $status === 'not_found') {
+                $ttl = PHPMAN_CACHE_TTL_FOUND;
+            }
         }
         // UPSERT: single INSERT ... ON CONFLICT DO UPDATE replaces SELECT-then-UPDATE/INSERT.
         // Eliminates the SELECT round-trip and the SELECT→INSERT race window.
@@ -716,11 +721,24 @@ function cacheOrSearchFallback(string $mode, string $name, string $section, stri
     $content = $fallbackGenerator();
     $isFallback = true;
     // A null from the fallback means "could not determine", not "nothing there" —
-    // the subprocess behind it timed out. Answer the request either way, but write
-    // no negative row: caching that would freeze a transient failure into a 24h
-    // 404, and the next request would never get to retry (phpman#247).
+    // the subprocess behind it timed out.
     if ($content !== null) {
         $cache->set($mode, $name, $section, $format, $content, 'not_found');
+    } else {
+        // #248: write a *short-lived* negative row so repeated enumeration of the
+        // same name collapses into one scan. Production measured the same name
+        // asked again 2s to 42s later, each repeat paying the full 20s pydoc scan
+        // — a handful of those concurrently is what saturated the FastCGI pool.
+        //
+        // Written only when no row is there yet. set()'s UPSERT refreshes
+        // updated_at and ttl on conflict, so writing on every timeout would renew
+        // the TTL for as long as traffic continues — i.e. never retry, which is
+        // the "transient failure frozen forever" problem the old code avoided by
+        // writing nothing at all. One write per window makes the TTL mean "10
+        // minutes since the first timeout", not "10 minutes since the last hit".
+        if ($cache->getWithStatus($mode, $name, $section, $format) === null) {
+            $cache->set($mode, $name, $section, $format, '', 'not_found', PHPMAN_CACHE_TTL_TIMEOUT);
+        }
     }
     return (string)$content;
 }

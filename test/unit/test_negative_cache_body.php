@@ -133,23 +133,61 @@ assert_equals(1, $calls['fallback'],
     "…and does NOT re-run the scan — an empty body is the answer, not a missing value");
 
 // A fallback that returns null means "could not determine" — its subprocess timed
-// out. The request is still answered, but nothing may be cached as "not found":
-// that would freeze a transient failure into a 24h 404, which is exactly what
-// happened to /pydoc/BaseHTTPRequestHandler on production (#247 × #248).
+// out. #248: that used to write nothing at all, so every repeat paid the full 20s
+// scan again (production: the same name asked 2s to 42s later, `IPv…` ten times
+// in a day). Now it writes a SHORT-lived negative row — short because a timeout
+// says "we could not find out", not "it does not exist", so it must get to retry.
 $calls = ['page' => 0, 'fallback' => 0];
 $nullFb = function() use (&$calls) { $calls['fallback']++; return null; };
 $isFallback = null;
 $unknown = cacheOrSearchFallback('pydoc', 'timed_out', '', 'markdown', $pageGen, $nullFb, $isFallback);
 assert_equals('', $unknown, "a null fallback still renders an empty body");
 assert_equals(true, $isFallback, "…and is still flagged as a fallback, so the caller answers 404");
-assert_equals(null, $cache->getWithStatus('pydoc', 'timed_out', '', 'markdown'),
-    "…but writes NO negative row, so a timeout is not frozen into a 24h 404");
 
-// Because nothing was cached, the next request retries instead of inheriting it.
+$row = $cache->getWithStatus('pydoc', 'timed_out', '', 'markdown');
+assert_equals('not_found', $row['status'], "…and DOES write a negative row (#248)");
+
+$timedOutRow = function() {
+    return pageCacheDb('pydoc')->querySingle(
+        "SELECT ttl, updated_at FROM cache
+          WHERE mode='pydoc' AND name='timed_out' AND section='' AND format='markdown'", true);
+};
+$r1 = $timedOutRow();
+assert_equals(PHPMAN_CACHE_TTL_TIMEOUT, (int)$r1['ttl'],
+    "…with the SHORT timeout TTL, not the 24h one");
+assert_equals(true, PHPMAN_CACHE_TTL_TIMEOUT < PHPMAN_CACHE_TTL_NOT_FOUND,
+    "…which is strictly shorter than the ordinary not_found TTL");
+
+// Inside the window the next request reuses it — no second scan. This is the fix.
+$calls = ['page' => 0, 'fallback' => 0];
+$isFallback = null;
+$again = cacheOrSearchFallback('pydoc', 'timed_out', '', 'markdown', $pageGen, $fbGen, $isFallback);
+assert_equals(0, $calls['fallback'],
+    "a second request inside the window does NOT re-run the 20s scan — this is the #248 fix");
+assert_equals('', $again, "…and answers from the negative row");
+
+// …and the hit must NOT refresh the row. set()'s UPSERT rewrites updated_at and
+// ttl on conflict, so rewriting on every timeout would renew the TTL for as long
+// as traffic continues — "never retry" again, by another route. Age the row by
+// hand and check the second call left it alone.
+pageCacheDb('pydoc')->exec(
+    "UPDATE cache SET updated_at = updated_at - 100
+      WHERE mode='pydoc' AND name='timed_out' AND section='' AND format='markdown'");
+$aged = $timedOutRow();
+$calls = ['page' => 0, 'fallback' => 0];
+cacheOrSearchFallback('pydoc', 'timed_out', '', 'markdown', $pageGen, $fbGen, $isFallback);
+assert_equals((int)$aged['updated_at'], (int)$timedOutRow()['updated_at'],
+    "a hit does NOT rewrite the row — otherwise sustained crawling renews the TTL forever");
+
+// Once it expires the scan runs again — the whole point of keeping the TTL short.
+pageCacheDb('pydoc')->exec(
+    "UPDATE cache SET updated_at = updated_at - " . (PHPMAN_CACHE_TTL_TIMEOUT + 10) . "
+      WHERE mode='pydoc' AND name='timed_out' AND section='' AND format='markdown'");
 $calls = ['page' => 0, 'fallback' => 0];
 $isFallback = null;
 cacheOrSearchFallback('pydoc', 'timed_out', '', 'markdown', $pageGen, $fbGen, $isFallback);
-assert_equals(1, $calls['fallback'], "the next request retries the fallback rather than reusing a frozen 404");
+assert_equals(1, $calls['fallback'],
+    "after the short TTL expires the scan runs again — a timeout must not be frozen forever");
 assert_equals('SCAN RESULT', $cache->getWithStatus('pydoc', 'timed_out', '', 'markdown')['content'],
     "…and a real answer this time is cached normally");
 
