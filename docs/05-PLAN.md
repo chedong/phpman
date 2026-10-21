@@ -46,7 +46,20 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 
 ## Completed Versions
 
-### v3.7.9–3.7.12 (2026-06-11 → 2026-06-14)
+### v3.7.9–3.7.12 (2026-06-11 → 2026-06-13)
+
+> **v3.7.11 与 v3.7.12 是回填的 tag —— 编号顺序与提交顺序是反的。**
+> v3.7.13–v3.7.19 在 2026-06-11 15:30–17:02 之间一口气打完；v3.7.11 / v3.7.12
+> 直到 06-13（01:56 / 14:06）才补打。拓扑上 **v3.7.13 的提交是 v3.7.12 提交的祖先**，
+> 实际提交顺序是：
+>
+> ```
+> v3.7.13 → 14 → 15 → 16 → 17 → 18 → 19 → 11 → 12
+> ```
+>
+> 中间还有一个 `Merge remote: resolve v3.7.11 version conflict` 的合并提交 ——
+> 当时就撞过版本号。**所以这一段不能按 `git log` 的先后读版本先后，要按 tag 读。**
+> （顺带：本节的 tag 日期到此为止，`v3.7.19` 的 tag 比 `v3.7.12` 早两天。）
 
 - **Config overridable constants**: `PHPMAN_WIDTH`, `PHPMAN_TOC_THRESHOLD`, `PHPMAN_GZIP_MIN_BYTES`, `PHPMAN_TLDR_MAX_EXAMPLES`, `PHPMAN_HOME_TITLE`, `PHPMAN_PROJECT_NAME` — all use `defined()` guard pattern, overridable via `phpman.config.php`
 - **Naming cleanup**: `$GLOBALS['PHPMAN_WIDTH']` → direct constant, `$site_name` → `PHPMAN_PROJECT_NAME`
