@@ -140,20 +140,118 @@ else
 fi
 
 # ─── Access log 5xx ───
+# One 5xx line cannot say *why* it was a 5xx: a client that gave up mid-response
+# (EPIPE) and a process that was killed look identical from the access log alone.
+# The server error log holds the missing half — a "Broken pipe" line carries the
+# client IP and the minute — so this pairs the two on (MMDD HH:MM, IP) and splits
+# the 5xx count into families. The two logs timestamp differently (error log:
+# "Tue Oct 20 15:02:19 2026"; access log: "20/Oct/2026:15:02:19 -0700"), so both
+# are normalised to MMDD HH:MM inside awk. (#249)
+#
+# The window is printed alongside the count on purpose. This section reads only
+# the last $RECENT lines of the live file, and on 2026-10-20 it reported "none"
+# while that same file held 38 503s — every one of them outside the window. A
+# count that can silently misstate its own scope is worse than no count.
 echo ""
 echo "--- Access log: 5xx ---"
 if [ -n "$ACCESS_LOG" ] && [ -f "$ACCESS_LOG" ]; then
     echo "path: $ACCESS_LOG"
-    fivexx=$(tail -n "$RECENT" "$ACCESS_LOG" | grep -cE '" 5[0-9][0-9] ')
-    if [ "$fivexx" -eq 0 ]; then
-        echo "  none in the last $RECENT lines"
-    else
-        echo "  $fivexx in the last $RECENT lines:"
-        tail -n "$RECENT" "$ACCESS_LOG" | grep -E '" 5[0-9][0-9] ' | tail -5 | cut -c1-140 | sed 's/^/  /'
-    fi
+    # awk reads the error log itself (BEGIN + getline) so the access log can
+    # arrive on stdin. Two file arguments would need the NR==FNR idiom to tell
+    # them apart, and that misfires when the first file is empty — the access
+    # log would then be read as if it were the error log.
+    errlog="$SERVER_ERROR_LOG"
+    [ -f "$errlog" ] || errlog=/dev/null
+    tail -n "$RECENT" "$ACCESS_LOG" | awk -v errlog="$errlog" -v errlabel="$SERVER_ERROR_LOG" '
+        BEGIN {
+            split("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec", mn, " ")
+            for (i = 1; i <= 12; i++) mon[mn[i]] = sprintf("%02d", i)
+
+            # Pass 1 — the server error log. Only "Broken pipe" lines are kept:
+            # they are the server side of the EPIPE family. (70007/APR_TIMEUP
+            # lines are a different errno and a different family — deliberately
+            # not collected here.)
+            #
+            # The count of what was collected is reported in END: the two logs
+            # rotate on their own schedules, so "EPIPE: 0" is evidence of nothing
+            # when the error log has already rotated past the access window.
+            while ((getline line < errlog) > 0) {
+                if (index(line, "Broken pipe") == 0) continue
+                if (match(line, /\[[A-Z][a-z][a-z] +[A-Z][a-z][a-z] +[0-9]+ [0-9][0-9]:[0-9][0-9]/)) {
+                    # "[Tue Oct 20 10:01" → p[2]=month, p[3]=day, p[4]=HH:MM.
+                    # p[1] is the weekday — indexing the month map with it yields
+                    # an empty month, so every key silently becomes "00 <day>".
+                    split(substr(line, RSTART + 1, RLENGTH - 1), p, " ")
+                    k = mon[p[2]] sprintf("%02d", p[3]) " " p[4]
+                    ets = p[2] " " p[3] " " p[4]
+                    # The error log writes the client as IP:port; the access log
+                    # carries the bare address. Without dropping the port no key
+                    # ever matches. (Apache appends :port for IPv6 too, so the
+                    # same strip applies there.)
+                    if (match(line, /client [0-9a-fA-F:.]+/)) {
+                        ip = substr(line, RSTART + 7, RLENGTH - 7)
+                        sub(/:[0-9]+$/, "", ip)
+                        epipe[k " " ip] = 1
+                        ebreak++
+                        if (efirst == "") efirst = ets
+                        elast = ets
+                    }
+                }
+            }
+            close(errlog)
+        }
+        {
+            lines++
+            if (match($0, /\[[0-9][0-9]\/[A-Z][a-z][a-z]\/[0-9][0-9][0-9][0-9]:[0-9][0-9]:[0-9][0-9]:[0-9][0-9]/)) {
+                raw = substr($0, RSTART + 1, RLENGTH - 1)
+                if (wfirst == "") wfirst = raw
+                wlast = raw
+                split(raw, q, /[\/:]/)
+                key = mon[q[2]] q[1] " " q[4] ":" q[5]
+            } else { key = "" }
+
+            if ($9 + 0 < 500 || $9 + 0 > 599) next
+            n++
+            recent5[n % 5] = $0
+            if (key != "" && ((key " " $1) in epipe)) { fam_epipe++; next }
+            # "-" is what Apache writes when no body was sent, i.e. zero bytes.
+            b = ($10 == "-" || $10 == "") ? 0 : $10 + 0
+            if (b > 0) fam_body++; else fam_zero++
+        }
+        END {
+            printf "  window: last %d lines", lines
+            if (wfirst != "") printf ", %s → %s", wfirst, wlast
+            printf "\n"
+            if (n > 0) {
+                printf "  5xx in window: %d\n", n
+                printf "    + body, Broken pipe in server log (EPIPE family): %d\n", fam_epipe + 0
+                printf "    + body, no Broken pipe match:                     %d\n", fam_body + 0
+                printf "    zero-byte body:                                   %d\n", fam_zero + 0
+            } else {
+                print "  5xx in window: 0"
+            }
+            # What the pairing source actually holds. The two logs rotate on
+            # their own schedules, so "EPIPE: 0" means "no client gave up" only
+            # while the error log still reaches back over the access window —
+            # otherwise it means the evidence aged out, which is a different
+            # claim. Say which one it is.
+            if (ebreak > 0)
+                printf "    pairing source: %d Broken pipe line(s), %s → %s\n", ebreak, efirst, elast
+            else
+                printf "    pairing source: no Broken pipe lines in %s — EPIPE=0 proves nothing here\n", errlabel
+            if (n == 0) exit
+            print "  last 5:"
+            start = (n > 5) ? n - 4 : 1
+            for (i = start; i <= n; i++) printf "    %s\n", substr(recent5[i % 5], 1, 140)
+        }
+    '
 else
     echo "(not configured or not found: DEMO_ACCESS_LOG='$ACCESS_LOG')"
 fi
 
 echo ""
 echo "=== Log check complete ==="
+
+# Informational only: a release must never be reported as failed by a read-only
+# check. Stated explicitly rather than left to the last command's status.
+exit 0

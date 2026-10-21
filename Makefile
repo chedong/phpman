@@ -394,7 +394,8 @@ verify:
 # .deploy.mk; LOGCHECK_DAYS / LOGCHECK_RECENT_LINES tune the window.
 logcheck:
 	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
-		"DEMO_ERROR_LOG='$(DEMO_ERROR_LOG)' DEMO_ACCESS_LOG='$(DEMO_ACCESS_LOG)' bash -s" < cli/logcheck.sh
+		"DEMO_ERROR_LOG='$(DEMO_ERROR_LOG)' DEMO_ACCESS_LOG='$(DEMO_ACCESS_LOG)' \
+		 LOGCHECK_DAYS='$(LOGCHECK_DAYS)' LOGCHECK_RECENT_LINES='$(LOGCHECK_RECENT_LINES)' bash -s" < cli/logcheck.sh
 
 # Rotate the production phpMan logs — the error log and the machine-render
 # telemetry log (#251) — keeping the newest LOG_ROTATE_KEEP (default 5)
