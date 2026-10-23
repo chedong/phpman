@@ -51,20 +51,35 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 > **v3.7.11 与 v3.7.12 是回填的 tag —— 编号顺序与提交顺序是反的。**
 > v3.7.13–v3.7.19 在 2026-06-11 15:30–17:02 之间一口气打完；v3.7.11 / v3.7.12
 > 直到 06-13（01:56 / 14:06）才补打。拓扑上 **v3.7.13 的提交是 v3.7.12 提交的祖先**，
-> 实际提交顺序是：
+> 实际提交顺序是（只画 tag 对应的提交，未标记的提交见下方括注）：
 >
 > ```
 > v3.7.13 → 14 → 15 → 16 → 17 → 18 → 19 → 11 → 12
 > ```
 >
 > 中间还有一个 `Merge remote: resolve v3.7.11 version conflict` 的合并提交 ——
-> 当时就撞过版本号。**所以这一段不能按 `git log` 的先后读版本先后，要按 tag 读。**
-> （顺带：本节的 tag 日期到此为止，`v3.7.19` 的 tag 比 `v3.7.12` 早两天。）
+> 当时撞过版本号。**所以这一段不能按 `git log` 的先后读版本先后，要按 tag 读。**
+> （顺带：**本节的时间线只覆盖 3.7.9–3.7.12 这五个 tag，不是 3.7.x 全系** ——
+> `v3.7.20` / `v3.7.21` 打于 06-17，比 `v4.0`（06-16）还晚一天，是 4.0 发布后
+> 对 3.7 系列的过渡 tag（内容是 batch_enhance.php，LLM emoji 增强的雏形，
+> v4.10 已整体移除）。）
+>
+> ⚠️ **本节整条 tag 链都不在 master 上。** `git merge-base master v3.7.12` 为空：
+> 这些提交（含 `v3.7.13`–`v3.7.19`）只存在于 tag 与远程，master 后来经历了
+> reset/rebase，这条支线被废弃。读这段历史要 `git log <tag>` 按提交走，不能
+> 在 master 的 `git log` 里找。
+>
+> ⚠️ **本地与远程的 v3.7.11 / v3.7.12 tag 对象不同**（远程是后来回填重打的），
+> `git fetch` 不会覆盖已有 tag。本地旧对象指向 `73cab20`（Fix #129 part 2）/
+> `016b815`（Fix #129 part 3），远程版指向 `df83482`（cross-reference links）/
+> `4ab3aea`（fallback cheat.sh → man7.org）。核对历史时用
+> `git ls-remote origin refs/tags/<tag>^` 看远程 tag 指向，别只看本地。
 
 - **Config overridable constants**: `PHPMAN_WIDTH`, `PHPMAN_TOC_THRESHOLD`, `PHPMAN_GZIP_MIN_BYTES`, `PHPMAN_TLDR_MAX_EXAMPLES`, `PHPMAN_HOME_TITLE`, `PHPMAN_PROJECT_NAME` — all use `defined()` guard pattern, overridable via `phpman.config.php`
 - **Naming cleanup**: `$GLOBALS['PHPMAN_WIDTH']` → direct constant, `$site_name` → `PHPMAN_PROJECT_NAME`
 - **Branding**: `phpMan` → `phpman` in H1, site_name, footer
-- **Fix**: cross-reference links for underscored man page names (e.g., `io_cancel(2)`) — SGR processing moved before linkification
+- **Fix**: macOS apropos series (#129, part 1–6): parsing returned 0 entries, multi-command lines split, dedup for multi-database duplicates, Markdown/HTML rendering via `parseAproposLines()`; **cache cleanup on rebuild**: `--build-index` clears the page cache (`016b815`, part 3) so stale rows don't outlive the index
+- **Fix**: cross-reference links for underscored man page names (e.g., `io_cancel(2)`) — SGR processing moved before linkification (two untagged follow-up commits, `5d3c34b` / `7ebbf16`, also touched SEE ALSO links; plus a README screenshot URL update, `1fec571`)
 - **Fix**: man page "not found" fallback changed from cheat.sh → man7.org
 - **Docs restructured**: numbered index (`00–05`), `PYDOC_RI_DESIGN.md` merged into `01-PRODUCT.md`, design system tokens in `02-UI-DESIGN.md`
 - **Doc fixes**: stale line numbers removed across all docs, SKILL.md broken references fixed
