@@ -167,7 +167,9 @@ if (!defined('PHPMAN_MF_LOG_FILE')) {
 // separate cleanly: measured on staging 2026-10-13, a cache hit renders in
 // 30-90ms and a cold render of the same page in 400-4200ms (zshall 4.2s,
 // numpy 2.5s, perldiag 1.7s). 500 therefore keeps the log proportional to
-// pages crawled for the first time, not to all machine-format traffic. 0 = off.
+// pages crawled for the first time, not to all machine-format traffic. 0 disables
+// *this* trigger only — the bytes trigger below is OR'd with it, so telemetry
+// stops only when both thresholds are 0.
 if (!defined('PHPMAN_MF_LOG_MS')) {
     $phpman_mf_log_ms = getenv('PHPMAN_MF_LOG_MS');
     define('PHPMAN_MF_LOG_MS', ($phpman_mf_log_ms === false || $phpman_mf_log_ms === '') ? 500 : (int) $phpman_mf_log_ms);

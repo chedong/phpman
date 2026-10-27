@@ -30,7 +30,7 @@ User search request
                 ├── man empty ↓
                 │   exec("apropos ...") + indexAproposLines()
                 ├── pydoc empty ↓
-                │   getPydocSearchPage() → pydoc3 -k
+                │   getPydocSearchPage() → FTS pydoc index / pydoc3 -k (bare terms)
                 └── ri empty ↓
                     getRiSearchPage() → ri $parameter
 ```
@@ -47,7 +47,7 @@ getSearchPage($parameter)
     $riFtsLines    ← section = 'ri'
     ↓ Fallback only when source has no FTS5 hits
     man empty   → apropos + indexAproposLines()
-    pydoc empty → getPydocSearchPage() (pydoc3 -k)
+    pydoc empty → getPydocSearchPage() (FTS pydoc index; pydoc3 -k for bare terms)
     ri empty    → getRiSearchPage() (ri command)
 ```
 
@@ -242,7 +242,7 @@ getSearchPage()       → one FTS5 query
     → $lines (man), $pydocFtsLines, $riFtsLines
     ↓
 $pydocFtsLines non-empty? → use FTS5 pydoc results
-    └── empty → getPydocSearchPage() → pydoc3 -k
+    └── empty → getPydocSearchPage() → FTS pydoc index (or pydoc3 -k for bare terms)
     ↓
 $riFtsLines non-empty?    → use FTS5 ri results
     └── empty → getRiSearchPage() → ri command
@@ -283,6 +283,16 @@ When the search parameter is section-only format (e.g., `(1)`, `(3pm)`, `(n)`), 
 3. **FTS5 is designed for full-text search**: enumerating by section is not FTS5's design goal; FTS5 rank ordering is meaningless for full listings
 
 **Performance**: apropos depends on the whatis/mandb database. First request may take 15-30s. Results are cached via `cacheOrExecute` to SQLite (~500KB); subsequent requests ~4s. The bottleneck is apropos database quality, not the phpMan cache layer.
+
+### 4.6 pydoc Fallback — Dotted Names Skip `pydoc3 -k` (#247)
+
+`getPydocSearchPage()` does **not** always run `pydoc3 -k`:
+
+- **Bare terms** (`datab`, `DataBase`) still scan. That is the case the scan is good at — it matches module *summaries* as well as names, so `database` finds `grp` / `pwd` / `spwd`.
+- **Dotted terms** (`sos.report.plugins.kafka`) skip the scan and answer from the FTS pydoc index. `pydoc3 -k` costs 10–14s whether or not it matches (it imports every module on the path to build its summary list); across production dotted 404s, 1,336 returned an empty body against 72 that returned a list.
+- **On timeout** (`timeout(1)` exit 124), it also falls back to the FTS pydoc index rather than returning empty, and sets `$timedOut` so the caller does not treat the result as "does not exist".
+
+The check is `pydocSearchWorthScanning()` and it lives **inside** the shared `getPydocSearchPage()`, so it also applies when the `?mode=search` cascade calls that function — a dotted *search keyword* will not trigger a `-k` scan either.
 
 ---
 
@@ -391,7 +401,8 @@ FTS5 single query search_fts (man + pydoc + ri)
     → $lines (man), $pydocFtsLines, $riFtsLines
     ↓
 $lines empty? → exec("apropos ...") + indexAproposLines()
-$pydocFtsLines empty? → getPydocSearchPage() (pydoc3 -k)
+$pydocFtsLines empty? → getPydocSearchPage() (FTS pydoc index;
+                        pydoc3 -k only for bare terms — see §4.6)
 $riFtsLines empty?    → getRiSearchPage() (ri command)
     ↓
 Aggregate 3-source results → cache → return
@@ -416,7 +427,7 @@ search_fts index:
 |--------|--------|---------|
 | 1 | FTS5 offline index (3-source single query) | Index has data |
 | 2 | apropos command | FTS5 has no man data or no hits |
-| 3 | pydoc3 -k command | FTS5 has no pydoc data |
+| 3 | pydoc fallback: FTS pydoc index, or `pydoc3 -k` for bare terms | FTS5 has no pydoc data |
 | 4 | ri command | FTS5 has no ri data |
 
 ### 9.3 Why Single FTS5 Query Beats Per-Source Query

@@ -41,9 +41,18 @@
 
 // --- Cache TTL (v4.11) ---
 // Unified expiry for PageCache found entries and the TLDR cache, in months
-// (1 month = 30 days). not_found entries always expire after 1 day; emoji-
-// enhanced output never expires regardless of this setting.
+// (1 month = 30 days). not_found entries normally expire after 1 day, with two
+// exceptions: mode='search' negatives use the found TTL, and timeout-derived
+// negatives use PHPMAN_CACHE_TTL_TIMEOUT (below). The old "emoji output never
+// expires" rule went away with the emoji layer (v4.10/v4.12).
 // define('PHPMAN_CACHE_TTL_MONTHS', 7);  // 7 months = 210 days
+//
+// Timeout-derived negative rows (#248): when a render subprocess is killed by
+// timeout(1) (exit 124) the result means "could not determine", not "does not
+// exist". The row is written once per window with this TTL, so repeated
+// enumeration of the same name collapses into one scan without freezing a
+// transient failure for a day.
+// define('PHPMAN_CACHE_TTL_TIMEOUT', 600);  // 10 minutes
 
 // --- Render subprocess timeout (#248) ---
 // Upper bound, in seconds, on every document-render subprocess: man, perldoc,
@@ -60,6 +69,12 @@
 // ship it), the bound is silently skipped and commands run unbounded as before.
 // 0 = no limit.
 // define('PHPMAN_CMD_TIMEOUT', 15);
+//
+// Per-call override for `pydoc3 -k` (#248). The keyword scan measures 10–14s, so
+// the global 15s bound sat right on its edge and the same query answered
+// differently under load. Raising the *global* bound would weaken the slot
+// guarantee for every command, so the scan gets its own:
+// define('PHPMAN_PYDOC_K_TIMEOUT', 20);
 
 // --- Machine-format render telemetry (#244, #249) ---
 // One line per machine-format render (/markdown, /json, /mcp) that was slow OR
@@ -86,7 +101,12 @@
 // 0 on either disables that trigger. Both 0 = no telemetry.
 // define('PHPMAN_MF_LOG_MS', 500);
 // define('PHPMAN_MF_LOG_BYTES', 65536);
-// define('PHPMAN_MF_LOG_FILE', PHPMAN_LOG_DIR . '/phpman_mf.log');
+// PHPMAN_LOG_DIR is derived *after* this file is loaded (src/config.php requires
+// the user config first, then defines the derived paths), so uncommenting the
+// line below as written raises "Undefined constant PHPMAN_LOG_DIR" during
+// bootstrap — on every request. Uncomment the PHPMAN_LOG_DIR override near the
+// top first, or use a literal path:
+// define('PHPMAN_MF_LOG_FILE', '/path/to/logs/phpman_mf.log');
 
 // --- Google Analytics (v4.4.4+) ---
 // Set your GA4 measurement ID to enable pageview tracking.

@@ -64,16 +64,15 @@ TLDR endpoint      FTS5 3-source    Docs restructured     i18n                  
 > 对 3.7 系列的过渡 tag（内容是 batch_enhance.php，LLM emoji 增强的雏形，
 > v4.10 已整体移除）。）
 >
-> ⚠️ **本节整条 tag 链都不在 master 上。** `git merge-base master v3.7.12` 为空：
-> 这些提交（含 `v3.7.13`–`v3.7.19`）只存在于 tag 与远程，master 后来经历了
-> reset/rebase，这条支线被废弃。读这段历史要 `git log <tag>` 按提交走，不能
-> 在 master 的 `git log` 里找。
+> **这条 tag 链在 master 上** —— `git merge-base --is-ancestor v3.7.12 origin/master`
+> 成功，`git merge-base master v3.7.12` 就是 `4ab3aea` 本身。可以直接在 master 的
+> `git log` 里找，不需要只按 tag 单独走。
 >
-> ⚠️ **本地与远程的 v3.7.11 / v3.7.12 tag 对象不同**（远程是后来回填重打的），
-> `git fetch` 不会覆盖已有 tag。本地旧对象指向 `73cab20`（Fix #129 part 2）/
-> `016b815`（Fix #129 part 3），远程版指向 `df83482`（cross-reference links）/
-> `4ab3aea`（fallback cheat.sh → man7.org）。核对历史时用
-> `git ls-remote origin refs/tags/<tag>^` 看远程 tag 指向，别只看本地。
+> **核对 tag 指向时以远程为准。** `git fetch` 默认不覆盖已存在的 tag，所以旧
+> checkout 可能仍把 v3.7.11 / v3.7.12 指向重打之前的提交（`73cab20` / `016b815`，
+> 两者仍在对象库里）；远程与当前仓库都指向 `df83482`（cross-reference links）/
+> `4ab3aea`（fallback cheat.sh → man7.org）。用
+> `git ls-remote origin 'refs/tags/<tag>^{}'` 看远程。
 
 - **Config overridable constants**: `PHPMAN_WIDTH`, `PHPMAN_TOC_THRESHOLD`, `PHPMAN_GZIP_MIN_BYTES`, `PHPMAN_TLDR_MAX_EXAMPLES`, `PHPMAN_HOME_TITLE`, `PHPMAN_PROJECT_NAME` — all use `defined()` guard pattern, overridable via `phpman.config.php`
 - **Naming cleanup**: `$GLOBALS['PHPMAN_WIDTH']` → direct constant, `$site_name` → `PHPMAN_PROJECT_NAME`
@@ -176,7 +175,7 @@ was actually true, which is why this section is longer than the diff.
 
 **Cache invalidation — the gap that hid the fixes above**
 
-- **`cache.renderer_version`** — the page cache stores *finished* output under a 210-day TTL, so a renderer fix never reached an already-cached page. Deploying the OSC-8 and JSON-markdown fixes changed nothing on production until **1,703 rows were located and deleted by hand** (1,285 carrying a terminal escape, 418 json rows still holding markdown link syntax). `RENDERER_VERSION` (`src/config.php`, currently `2` — bumped to `2` by #238 when the footer change landed) is now written on every `set()` and is part of `get()`'s `WHERE` clause, so a row from a different renderer reads as a miss and re-renders on its next request, overwriting itself in place. Nothing needs purging and there is no re-render herd. The column is `renderer_version INTEGER NOT NULL DEFAULT 0` on the per-mode `cache` table, so rows predating it default to `0` and drain gradually through real traffic. `make cache-stats` reports a `stale` count per shard.
+- **`cache.renderer_version`** — the page cache stores *finished* output under a 210-day TTL, so a renderer fix never reached an already-cached page. Deploying the OSC-8 and JSON-markdown fixes changed nothing on production until **1,703 rows were located and deleted by hand** (1,285 carrying a terminal escape, 418 json rows still holding markdown link syntax). `RENDERER_VERSION` (`src/config.php`, currently `3` — `2` was #238's footer change, `3` invalidates #247's dotted-name negative rows) is now written on every `set()` and is part of `get()`'s `WHERE` clause, so a row from a different renderer reads as a miss and re-renders on its next request, overwriting itself in place. Nothing needs purging and there is no re-render herd. The column is `renderer_version INTEGER NOT NULL DEFAULT 0` on the per-mode `cache` table, so rows predating it default to `0` and drain gradually through real traffic. `make cache-stats` reports a `stale` count per shard.
   **There is no schema-version bump to go with it.** A follow-up commit (`91cb020`) removed `CACHE_SCHEMA_VERSION` and both migration ladders outright: each cache DB now creates its schema with `CREATE ... IF NOT EXISTS` on every open, so an additive change needs no migration, and since the pre-sharding DB is gone and rollback to older code is not supported there is no older shape to migrate from. The stamps that used to record it (`meta.schema_version`, `PRAGMA user_version`) existed only so a rolled-back deploy could re-stamp and re-migrate — that was the rollback provision, and it is gone.
   **Why this is not a repeat of `cache.generator_version`** (dropped in schema v5→v6): that column stored `GIT_DESCRIBE` on every `set()` and nothing ever read it, so it invalidated nothing. A version is only worth storing if `get()` filters on it.
   **Surveying the cache needs care:** in `json` rows a terminal escape is stored as the six-character sequence `\u001b`, not the raw byte, so a raw-byte search reports zero. Rows must be `json_decode`d before searching.

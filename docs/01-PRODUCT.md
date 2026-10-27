@@ -645,7 +645,7 @@ Parsing strategy (search for relevant function):
 
 ### 3.6 Search Format
 
-`getPydocSearchPage` runs `pydoc3 -k <keyword>`, output format:
+`getPydocSearchPage` runs `pydoc3 -k <keyword>` for **bare terms**; dotted module paths skip the scan and answer from the FTS pydoc index, and a timed-out scan falls back to that index too (see [04-SEARCH.md](04-SEARCH.md) §4.6). Output format:
 
 ```
 module_name - Description of the module
