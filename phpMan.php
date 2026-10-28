@@ -536,16 +536,24 @@ switch ( $mode ) {
     case "pydoc":
         $check['pydoc'] = " checked=\"checked\"";
         if ( $parameter != "" ) {
+            $indeterminate = false;
             $content = cacheOrSearchFallback('pydoc', $parameter, '', $format,
                 function() use ($parameter, $format) { return getPydocPage($parameter, $format); },
-                function() use ($parameter, $format) {
-                    // null when the keyword scan timed out: we do not know whether
-                    // this module exists, so nothing gets cached as "not found".
+                function() use ($parameter, $format, &$indeterminate) {
+                    // A timed-out keyword scan means "could not determine", not
+                    // "does not exist". But getPydocSearchPage() may still have
+                    // built a real body from the FTS pydoc index before the scan
+                    // was killed — returning null here threw those matches away
+                    // and then told the user nothing matched. Hand the body back
+                    // and flag the uncertainty instead; cacheOrSearchFallback()
+                    // keeps the body but gives the row the short timeout TTL.
                     $timedOut = false;
                     $body = getPydocSearchPage($parameter, $format, $timedOut);
-                    return $timedOut ? null : $body;
+                    $indeterminate = $timedOut;
+                    return $body;
                 },
-                $isSearchFallback);
+                $isSearchFallback,
+                $indeterminate);
             if ($isSearchFallback) {
                 http_response_code(404);
                 // #252: an empty fallback used to render as a bare title (markdown)

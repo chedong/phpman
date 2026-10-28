@@ -92,6 +92,11 @@ $stored = $cache->getWithStatus('pydoc', 'scanned', '', 'markdown');
 assert_equals('not_found', $stored['status'], "the reused row is still marked not_found");
 assert_equals('SCAN RESULT', $stored['content'], "the negative row stores the fallback body");
 
+$scannedTtl = pageCacheDb('pydoc')->querySingle(
+    "SELECT ttl FROM cache WHERE mode='pydoc' AND name='scanned' AND section='' AND format='markdown'", true);
+assert_equals(PHPMAN_CACHE_TTL_NOT_FOUND, (int)$scannedTtl['ttl'],
+    "a definitive miss keeps the ordinary not_found TTL");
+
 // A row written before #247 carries no body, but it still means "already
 // searched" — so it is reused, and no migration is needed.
 $cache->set('pydoc', 'legacy2', '', 'markdown', null, 'not_found');
@@ -190,6 +195,43 @@ assert_equals(1, $calls['fallback'],
     "after the short TTL expires the scan runs again — a timeout must not be frozen forever");
 assert_equals('SCAN RESULT', $cache->getWithStatus('pydoc', 'timed_out', '', 'markdown')['content'],
     "…and a real answer this time is cached normally");
+
+// A timed-out scan can still produce a body: getPydocSearchPage() falls back to
+// the FTS pydoc index, so the request has real suggestions even though the
+// subprocess was killed. That body must be returned (it used to be discarded,
+// and the user was told nothing matched), while the row must stay SHORT-lived
+// because "could not determine" is not "does not exist".
+$indeterminate = false;
+$partialFb = function() use (&$calls, &$indeterminate) {
+    $calls['fallback']++;
+    $indeterminate = true;
+    return "FTS SUGGESTIONS";
+};
+$calls = ['page' => 0, 'fallback' => 0];
+$isFallback = null;
+$partial = cacheOrSearchFallback('pydoc', 'timed_out_with_body', '', 'markdown',
+    $pageGen, $partialFb, $isFallback, $indeterminate);
+assert_equals('FTS SUGGESTIONS', $partial,
+    "a timed-out scan keeps its FTS body instead of being discarded");
+assert_equals(true, $isFallback, "…and is still flagged as a fallback (404 with suggestions)");
+
+$partialRow = $cache->getWithStatus('pydoc', 'timed_out_with_body', '', 'markdown');
+assert_equals('not_found', $partialRow['status'], "…the row is still negative");
+assert_equals('FTS SUGGESTIONS', $partialRow['content'], "…but carries the body");
+
+$partialTtl = pageCacheDb('pydoc')->querySingle(
+    "SELECT ttl FROM cache WHERE mode='pydoc' AND name='timed_out_with_body' AND section='' AND format='markdown'", true);
+assert_equals(PHPMAN_CACHE_TTL_TIMEOUT, (int)$partialTtl['ttl'],
+    "…with the short timeout TTL — an indeterminate result must not be frozen for 24h");
+
+// And it is reused inside the window rather than re-running the scan.
+$calls = ['page' => 0, 'fallback' => 0];
+$isFallback = null;
+$indeterminate = false;
+$partialAgain = cacheOrSearchFallback('pydoc', 'timed_out_with_body', '', 'markdown',
+    $pageGen, $fbGen, $isFallback, $indeterminate);
+assert_equals('FTS SUGGESTIONS', $partialAgain, "the stored body is served on the next request");
+assert_equals(0, $calls['fallback'], "…without re-running the fallback scan");
 
 cleanupTmpDir();
 

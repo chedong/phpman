@@ -698,7 +698,7 @@ function cacheOrExecute(string $mode, string $name, string $section, string $for
  */
 function cacheOrSearchFallback(string $mode, string $name, string $section, string $format,
                                callable $pageGenerator, callable $fallbackGenerator,
-                               ?bool &$isFallback = null): string {
+                               ?bool &$isFallback = null, ?bool &$indeterminate = null): string {
     $cache = new PageCache();
     $row = $cache->getWithStatus($mode, $name, $section, $format);
     if ($row !== null && $row['status'] === 'not_found') {
@@ -721,14 +721,21 @@ function cacheOrSearchFallback(string $mode, string $name, string $section, stri
     $content = $fallbackGenerator();
     $isFallback = true;
     // A null from the fallback means "could not determine", not "nothing there" —
-    // the subprocess behind it timed out.
-    if ($content !== null) {
+    // the subprocess behind it timed out. Since #247 the fallback can also return
+    // a *body* while still being indeterminate: a timed-out `pydoc3 -k` falls back
+    // to the FTS index and may find real matches. Those must be shown, but they
+    // must not be cached as a definitive 24h "does not exist" — hence the separate
+    // $indeterminate flag and the short TTL below.
+    if ($content !== null && !$indeterminate) {
         $cache->set($mode, $name, $section, $format, $content, 'not_found');
     } else {
         // #248: write a *short-lived* negative row so repeated enumeration of the
         // same name collapses into one scan. Production measured the same name
         // asked again 2s to 42s later, each repeat paying the full 20s pydoc scan
         // — a handful of those concurrently is what saturated the FastCGI pool.
+        //
+        // The body is kept when the fallback produced one (the indeterminate case
+        // above); for a plain null it is empty.
         //
         // Written only when no row is there yet. set()'s UPSERT refreshes
         // updated_at and ttl on conflict, so writing on every timeout would renew
@@ -737,7 +744,7 @@ function cacheOrSearchFallback(string $mode, string $name, string $section, stri
         // writing nothing at all. One write per window makes the TTL mean "10
         // minutes since the first timeout", not "10 minutes since the last hit".
         if ($cache->getWithStatus($mode, $name, $section, $format) === null) {
-            $cache->set($mode, $name, $section, $format, '', 'not_found', PHPMAN_CACHE_TTL_TIMEOUT);
+            $cache->set($mode, $name, $section, $format, (string)$content, 'not_found', PHPMAN_CACHE_TTL_TIMEOUT);
         }
     }
     return (string)$content;

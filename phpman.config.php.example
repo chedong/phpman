@@ -23,6 +23,13 @@
 // define('PHPMAN_CACHE_DIR', '/path/to/custom/cache');
 // define('PHPMAN_LOG_DIR', '/path/to/custom/logs');
 // define('PHPMAN_BACKUP_DIR', '/path/to/custom/backups');
+//
+// This file is loaded BEFORE src/config.php defines the derived defaults
+// (PHPMAN_CACHE_DIR / PHPMAN_LOG_DIR / PHPMAN_BACKUP_DIR), so those constants
+// are not available on the right-hand side of a define here — referencing one
+// raises "Undefined constant" during bootstrap, on every request. Set the
+// directory itself with a literal path, or define PHPMAN_LOG_DIR above first
+// and reference that.
 
 // --- Base URL (v4.3.3) ---
 // Public web URL of this phpMan instance. Used by CLI scripts (build-index,
@@ -101,11 +108,8 @@
 // 0 on either disables that trigger. Both 0 = no telemetry.
 // define('PHPMAN_MF_LOG_MS', 500);
 // define('PHPMAN_MF_LOG_BYTES', 65536);
-// PHPMAN_LOG_DIR is derived *after* this file is loaded (src/config.php requires
-// the user config first, then defines the derived paths), so uncommenting the
-// line below as written raises "Undefined constant PHPMAN_LOG_DIR" during
-// bootstrap — on every request. Uncomment the PHPMAN_LOG_DIR override near the
-// top first, or use a literal path:
+// Literal path on purpose: PHPMAN_LOG_DIR is not defined yet when this file
+// loads (see the PHPMAN_HOME section above).
 // define('PHPMAN_MF_LOG_FILE', '/path/to/logs/phpman_mf.log');
 
 // --- Google Analytics (v4.4.4+) ---
