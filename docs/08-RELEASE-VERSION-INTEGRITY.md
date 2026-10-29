@@ -3,6 +3,7 @@
 > 状态：设计已定，待实施
 > 日期：2026-10-16
 > 相关 issue：[phpman#250](https://github.com/chedong/phpman/issues/250)
+> 部署后的自动验证（质量门 G3）见 [09-QUALITY-GATES.md](09-QUALITY-GATES.md)。
 
 ## 为什么要做
 
