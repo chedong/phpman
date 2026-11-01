@@ -422,10 +422,24 @@ class PageCache {
         $db = $this->dbFor($mode);
         if (!$db) return false;
 
-        // Guard: never overwrite valid (non-empty) content with empty not_found.
+        // Guard: never overwrite valid (non-empty) content with a negative row.
         // Any transient content-generation failure can race a reader that has
         // already cached the good result, and the UPSERT would blindly destroy it.
-        if ($status === 'not_found' && ($content === null || $content === '')) {
+        //
+        // Keyed on the status alone, not on the content being empty. It used to
+        // be `$status === 'not_found' && ($content === null || $content === '')`,
+        // which held as long as every negative row carried an empty body. #247
+        // changed that: a timed-out `pydoc3 -k` now falls back to the FTS index
+        // and the resulting negative row carries a real body (#248), so the
+        // content test stopped firing exactly when the race got worse — the
+        // fallback runs for up to 20 seconds, a very wide window for a concurrent
+        // request to write the good `found` row and have it overwritten by search
+        // results for the next ten minutes.
+        //
+        // Narrowing to the status keeps the guard doing its job and still lets a
+        // negative row replace another negative row: get() folds those to the
+        // sentinel, isNotFound() is true, so the inner check does not fire.
+        if ($status === 'not_found') {
             $existing = $this->get($mode, $name, $section, $format);
             if ($existing !== null && $existing !== '' && !PageCache::isNotFound($existing)) {
                 return false;  // preserve existing valid content, skip overwrite

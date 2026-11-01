@@ -233,6 +233,38 @@ $partialAgain = cacheOrSearchFallback('pydoc', 'timed_out_with_body', '', 'markd
 assert_equals('FTS SUGGESTIONS', $partialAgain, "the stored body is served on the next request");
 assert_equals(0, $calls['fallback'], "…without re-running the fallback scan");
 
+// ──────────────────────────────────────────────
+// set() 的守卫 vs. 并发的 found 行
+// ──────────────────────────────────────────────
+echo "\n--- set() guard vs. a concurrent found row ---\n";
+
+// The race this guard exists for, and how #247/#248 reopened it:
+//   A: page render fails (slow or transient) -> falls back to the 20-second scan
+//   B: same name, render succeeds -> caches a found row
+//   A: finishes last, writes its negative row
+// Before #248 that row carried an empty body, so the guard's "content is empty"
+// half caught it. Once a timed-out fallback started carrying an FTS body the
+// content test stopped firing, and A overwrote B's good page with search results
+// for the next ten minutes. The guard has to key on the status alone.
+$cache->set('pydoc', 'raced', '', 'markdown', '# the real page', 'found');
+$overwrote = $cache->set('pydoc', 'raced', '', 'markdown', 'SEARCH RESULTS BODY', 'not_found', PHPMAN_CACHE_TTL_TIMEOUT);
+assert_equals(false, $overwrote, "a non-empty negative row does NOT overwrite a found row");
+assert_equals('# the real page', $cache->get('pydoc', 'raced', '', 'markdown'),
+    "…the found row survives — the guard keys on status, not on empty content");
+
+// The original case still holds.
+$cache->set('pydoc', 'raced2', '', 'markdown', '# another real page', 'found');
+assert_equals(false, $cache->set('pydoc', 'raced2', '', 'markdown', '', 'not_found', PHPMAN_CACHE_TTL_TIMEOUT),
+    "an empty negative row is still blocked from overwriting a found row");
+
+// A negative row must still be able to replace another negative row — otherwise a
+// retry that finally produces a real answer could never be cached.
+$cache->set('pydoc', 'raced3', '', 'markdown', 'first fallback body', 'not_found');
+assert_equals(true, $cache->set('pydoc', 'raced3', '', 'markdown', 'second fallback body', 'not_found', PHPMAN_CACHE_TTL_TIMEOUT),
+    "a negative row may replace another negative row");
+assert_equals('second fallback body', $cache->getWithStatus('pydoc', 'raced3', '', 'markdown')['content'],
+    "…and the newer body wins");
+
 cleanupTmpDir();
 
 exit(test_summary());
