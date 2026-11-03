@@ -53,16 +53,23 @@ fi
 ATTEMPTS=${PRECHECK_ATTEMPTS:-3}
 BACKOFF=${PRECHECK_BACKOFF:-2}
 
-# 跑一条可能因网络失败的命令；成功则把 stdout 存进 $2 指名的变量。
-# 用法: with_retry "<描述>" <变量名> <命令...>
+# 跑一条可能因网络失败的命令；成功时把它的 stdout 留在 $_out 里，由调用方读取。
+# 用法: with_retry "<描述>" <命令...>
+#
+# **这里刻意没有 eval，也不要加回来。** 早先的版本用 `eval "$_var=\$_out"` 把输出
+# 写进调用方指名的变量。那个写法**当时是安全的** —— `\$` 让 eval 收到的是字面量
+# `$_out`，而赋值右值不参与分词，所以值里的 `;`/反引号/`$( )` 都只是数据（已在
+# sh/bash/dash 上各用 7 种 payload 实测）。但它离可注入只差一个字符：去掉 `\` 之后
+# 值会被拼进 eval 的字符串再重新分词，实测 `_out='a; touch /tmp/X'` 会**真的执行**。
+# `\$` 看起来正像多余的转义，是清理代码时会顺手删掉的东西 —— 所以干脆不要 eval。
+# 只有两个调用点，让调用方直接读 $_out 比省这一行更值。
 with_retry() {
     _what=$1
-    _var=$2
-    shift 2
+    shift
+    _out=''
     _n=1
     while :; do
         if _out=$("$@" 2>/dev/null); then
-            eval "$_var=\$_out"
             return 0
         fi
         if [ "$_n" -ge "$ATTEMPTS" ]; then
@@ -79,7 +86,7 @@ with_retry() {
 # 先 fetch：origin/master 是本地跟踪引用，本身可能就是陈旧的，不 fetch 这个检查
 # 形同虚设。fetch 失败必须中止 —— 取不到远端状态时，「没落后」和「不知道」是两回事，
 # 不能当成前者。
-with_retry "取 origin/master" _FETCHED git fetch -q origin master || exit 1
+with_retry "取 origin/master" git fetch -q origin master || exit 1
 
 if ! git merge-base --is-ancestor origin/master HEAD 2>/dev/null; then
     echo "错误：origin/master 不是 HEAD 的祖先 —— 这个 checkout 落后了。" >&2
@@ -93,7 +100,8 @@ fi
 # ── 守卫 2 ──
 HEAD_SHA=$(git rev-parse HEAD)
 
-with_retry "取 origin 的 tag 列表" REMOTE_TAGS git ls-remote --tags origin || exit 1
+with_retry "取 origin 的 tag 列表" git ls-remote --tags origin || exit 1
+REMOTE_TAGS=$_out
 
 # annotated tag 在 ls-remote 里有两行（tag 对象 sha 与 "…^{}" 提交 sha），
 # lightweight tag 只有一行且直接就是提交 sha。先剥掉 ^{} 后缀再按 sha 比对，

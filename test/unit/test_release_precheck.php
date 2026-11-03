@@ -145,4 +145,31 @@ assert_not_equals(0, $rc, "重试耗尽后仍然拒绝");
 assert_contains("重试", $out, "失败时报告它重试过");
 $cleanup();
 
+// ──────────────────────────────────────────────
+// 不变量：脚本里没有 eval（#276）
+// ──────────────────────────────────────────────
+echo "\n--- no eval in the guard script (#276) ---";
+
+// `with_retry` used to write its output through `eval "$_var=\$_out"`. That was
+// safe as written — `\$` makes eval parse a *variable reference*, and an
+// assignment's right-hand side is not re-tokenised — but it was one character
+// away from an injection: drop the backslash and a value like `a; touch /tmp/X`
+// gets re-split into a command. A backslash looks like a redundant escape, so it
+// is exactly what a later cleanup would remove. The function now leaves its
+// output in $_out and the caller assigns it, so there is no eval to break.
+//
+// This assertion is a tripwire, not a style rule: if someone reintroduces eval
+// here, the test should fail and point at this comment.
+$script = (string)file_get_contents(__DIR__ . '/../../deploy/release-precheck.sh');
+// Strip comment lines first — the header explains the removed eval and would
+// otherwise match.
+$code = implode("\n", array_filter(
+    explode("\n", $script),
+    fn($line) => !preg_match('/^\s*#/', $line)
+));
+assert_equals(false, strpos($code, 'eval ') !== false,
+    "脚本正文里没有 eval —— with_retry 通过 \$_out 把输出交给调用方");
+assert_equals(true, strpos($code, 'REMOTE_TAGS=$_out') !== false,
+    "tag 列表确实是由调用方从 \$_out 赋值的（不是靠 eval）");
+
 exit(test_summary());
