@@ -99,9 +99,31 @@ STAGING_RELEASE_ID := $(STAGING_VERSION)-$(RELEASE_STAMP)
 # did exactly this, for exactly this reason.
 RELEASE_ID = $$(sed 's/[^A-Za-z0-9._-]/_/g' .release-version)-$(RELEASE_STAMP)
 
+# ─── SSH connection multiplexing (#267) ───
+#
+# DreamHost throttles new SSH connections: measured on 2026-11-03, 15 rapid
+# connections had the last SIX fail with "Connection timed out during banner
+# exchange" — TCP connects, sshd never sends its banner. The threshold is around
+# 9-10 connections. Single connections always work, so this is a rate limit, not
+# a network problem.
+#
+# A deploy opens far more than that: 2 parse-time $HOME lookups, 10 in
+# _release-code, and the logcheck sub-make re-parses for 2 more (plus its own).
+# Which step dies therefore depends on the window, not on the step — failures
+# have landed on the first ssh, on the CSS/JS rsync, and on detect-tools alike.
+#
+# ControlMaster collapses all of them onto ONE TCP connection. Measured the same
+# way: 15 rapid connections, 0 failures.
+#
+# -o ControlPath uses %r/%h/%p so staging and production never share a socket;
+#   "-" instead of ":" between host and port keeps the filename portable.
+# -o ControlPersist=60 leaves the master alive after make exits, so a
+#   `make staging` followed by `make release` reuses the same connection.
+SSH_CONTROL = -o ControlMaster=auto -o ControlPath=$$HOME/.ssh/phpman-%r@%h-%p -o ControlPersist=60
+
 # Resolve remote $HOME so config gets the literal path (mod_fcgid may not set HOME)
-STAGING_HOME := $(shell ssh -p $(TEST_PORT) $(TEST_HOST) 'echo $$HOME' 2>/dev/null || echo "")
-DEMO_HOME    := $(shell ssh -p $(DEMO_PORT) $(DEMO_HOST) 'echo $$HOME' 2>/dev/null || echo "")
+STAGING_HOME := $(shell ssh -p $(TEST_PORT) $(SSH_CONTROL) $(TEST_HOST) 'echo $$HOME' 2>/dev/null || echo "")
+DEMO_HOME    := $(shell ssh -p $(DEMO_PORT) $(SSH_CONTROL) $(DEMO_HOST) 'echo $$HOME' 2>/dev/null || echo "")
 
 # Guards for a remote $HOME that could not be resolved (SSH down, too many
 # connections, DNS). These are prerequisites of the targets that actually use
@@ -145,7 +167,7 @@ _deploy-code:
 	@echo "=== Preparing staging server ==="
 	@echo "--- Configuring staging home: ~/.phpman_test (debug ON) ---"
 	@# PHPMAN_HOME config: full config from .example (create if missing, update if exists)
-	@ssh -p $(TEST_PORT) $(TEST_HOST) " \
+	@ssh -p $(TEST_PORT) $(SSH_CONTROL) $(TEST_HOST) " \
 		if [ -f $(STAGING_HOME)/.phpman_test/phpman.config.php ] && [ -s $(STAGING_HOME)/.phpman_test/phpman.config.php ]; then \
 			sed -i \"s|define('PHPMAN_HOME',.*|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|\" $(STAGING_HOME)/.phpman_test/phpman.config.php; \
 			sed -i \"s|// define('PHPMAN_DEBUG'.*|define('PHPMAN_DEBUG', true);|\" $(STAGING_HOME)/.phpman_test/phpman.config.php; \
@@ -167,20 +189,20 @@ _deploy-code:
 	@# order, which was correct only for additive changes — a change that REMOVES
 	@# a symbol needs the opposite order, so no fixed order is safe in general.
 	@# See deploy/atomic-release.sh and CHANGELOG 2026-10-02.
-	@ssh -p $(TEST_PORT) $(TEST_HOST) "mkdir -p $(STAGING_HOME)/.phpman_test/releases/$(STAGING_RELEASE_ID)/src"
-	@rsync -avz -e "ssh -p $(TEST_PORT)" src/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/releases/$(STAGING_RELEASE_ID)/src/
-	@scp -P $(TEST_PORT) $(FILE).deploy $(TEST_HOST):$(STAGING_HOME)/.phpman_test/releases/$(STAGING_RELEASE_ID)/$(FILE)
+	@ssh -p $(TEST_PORT) $(SSH_CONTROL) $(TEST_HOST) "mkdir -p $(STAGING_HOME)/.phpman_test/releases/$(STAGING_RELEASE_ID)/src"
+	@rsync -avz -e "ssh -p $(TEST_PORT) $(SSH_CONTROL)" src/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/releases/$(STAGING_RELEASE_ID)/src/
+	@scp -P $(TEST_PORT) $(SSH_CONTROL) $(FILE).deploy $(TEST_HOST):$(STAGING_HOME)/.phpman_test/releases/$(STAGING_RELEASE_ID)/$(FILE)
 	@rm -f $(FILE).deploy
-	@rsync -avz -e "ssh -p $(TEST_PORT)" deploy/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/deploy/
-	@ssh -p $(TEST_PORT) $(TEST_HOST) "sh $(STAGING_HOME)/.phpman_test/deploy/atomic-release.sh '$(STAGING_HOME)/.phpman_test' '$(TEST_PATH)' '$(FILE)' '$(STAGING_RELEASE_ID)'"
-	@rsync -avz -e "ssh -p $(TEST_PORT)" $(CSS_FILE) $(JS_FILE) $(TEST_HOST):$(TEST_PATH)/
-	@rsync -avz -e "ssh -p $(TEST_PORT)" cli/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/cli/
-	@rsync -avz -e "ssh -p $(TEST_PORT)" phpman.config.php.example $(TEST_HOST):$(STAGING_HOME)/.phpman_test/
-	@ssh -p $(TEST_PORT) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE) $(TEST_PATH)/$(JS_FILE) && chmod +x \$$HOME/.phpman_test/cli/*.php"
+	@rsync -avz -e "ssh -p $(TEST_PORT) $(SSH_CONTROL)" deploy/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/deploy/
+	@ssh -p $(TEST_PORT) $(SSH_CONTROL) $(TEST_HOST) "sh $(STAGING_HOME)/.phpman_test/deploy/atomic-release.sh '$(STAGING_HOME)/.phpman_test' '$(TEST_PATH)' '$(FILE)' '$(STAGING_RELEASE_ID)'"
+	@rsync -avz -e "ssh -p $(TEST_PORT) $(SSH_CONTROL)" $(CSS_FILE) $(JS_FILE) $(TEST_HOST):$(TEST_PATH)/
+	@rsync -avz -e "ssh -p $(TEST_PORT) $(SSH_CONTROL)" cli/ $(TEST_HOST):$(STAGING_HOME)/.phpman_test/cli/
+	@rsync -avz -e "ssh -p $(TEST_PORT) $(SSH_CONTROL)" phpman.config.php.example $(TEST_HOST):$(STAGING_HOME)/.phpman_test/
+	@ssh -p $(TEST_PORT) $(SSH_CONTROL) $(TEST_HOST) "chmod 644 $(TEST_PATH)/$(FILE) $(TEST_PATH)/$(CSS_FILE) $(TEST_PATH)/$(JS_FILE) && chmod +x \$$HOME/.phpman_test/cli/*.php"
 	@echo "--- Detecting available documentation tools ---"
 	@# Write to a temp file and rename: rewriting in place truncates first, and a
 	# request served in that window would read an empty tools_config.php (#240).
-	@ssh -p $(TEST_PORT) $(TEST_HOST) "php $(STAGING_HOME)/.phpman_test/cli/detect-tools.php > $(STAGING_HOME)/.phpman_test/tools_config.php.tmp && mv $(STAGING_HOME)/.phpman_test/tools_config.php.tmp $(STAGING_HOME)/.phpman_test/tools_config.php && cat $(STAGING_HOME)/.phpman_test/tools_config.php"
+	@ssh -p $(TEST_PORT) $(SSH_CONTROL) $(TEST_HOST) "php $(STAGING_HOME)/.phpman_test/cli/detect-tools.php > $(STAGING_HOME)/.phpman_test/tools_config.php.tmp && mv $(STAGING_HOME)/.phpman_test/tools_config.php.tmp $(STAGING_HOME)/.phpman_test/tools_config.php && cat $(STAGING_HOME)/.phpman_test/tools_config.php"
 	@echo ""
 	@echo "=== Deployed to staging ($(STAGING_VERSION)) ==="
 	@echo "$(TEST_URL)"
@@ -198,7 +220,7 @@ _deploy-code:
 	@# write PHPMAN_BASE_URL with double quotes, which the earlier single-quoted
 	@# pattern reported as missing on every deploy.
 	@echo "--- Checking for new config options ---"; \
-		missing=$$(ssh -p $(TEST_PORT) $(TEST_HOST) " \
+		missing=$$(ssh -p $(TEST_PORT) $(SSH_CONTROL) $(TEST_HOST) " \
 			example=$(STAGING_HOME)/.phpman_test/phpman.config.php.example; \
 			config=$(STAGING_HOME)/.phpman_test/phpman.config.php; \
 			if [ ! -f \"\$$config\" ] || [ ! -f \"\$$example\" ]; then exit 0; fi; \
@@ -222,14 +244,14 @@ staging: test _deploy-code
 
 staging-reindex: test _deploy-code
 	@echo "=== Rebuilding staging search index ==="
-	ssh -p $(TEST_PORT) $(TEST_HOST) \
+	ssh -p $(TEST_PORT) $(SSH_CONTROL) $(TEST_HOST) \
 		"cd $(STAGING_HOME)/.phpman_test && php cli/build-index.php --cron"
 	@# Split sitemaps, matching reindex-staging below. This target kept the
 	@# pre-split form (uncompressed sitemap.phpman.xml, html only, no --sitemap-url,
 	@# no AI sitemap, no llms.txt) — #225 updated the other three targets and
 	@# missed this one, so staging never exercised what production actually serves. (#231)
 	@echo "=== Generating staging sitemap (html for Google, markdown/json for AI bots) ==="
-	ssh -p $(TEST_PORT) $(TEST_HOST) \
+	ssh -p $(TEST_PORT) $(SSH_CONTROL) $(TEST_HOST) \
 		"cd $(STAGING_HOME)/.phpman_test && php cli/build-sitemap.php --output $(TEST_PATH)/sitemap-phpman.xml.gz --base-url $(TEST_URL) --sitemap-url https://test.chedong.com/sitemap-phpman.xml.gz --formats html --max-urls 50000 \
 		 && php cli/build-sitemap.php --output $(TEST_PATH)/sitemap-phpman-ai.xml.gz --base-url $(TEST_URL) --sitemap-url https://test.chedong.com/sitemap-phpman-ai.xml.gz --formats markdown,json --max-urls 50000 --llms-output $(TEST_PATH)/llms.txt"
 	@echo "=== Staging index + sitemap complete ==="
@@ -260,20 +282,20 @@ _release-code:
 	@# production incidents (2026-07-13 additive, 2026-10-02 removal) that no
 	@# fixed upload order could fix. Kept releases (5) ARE the rollback targets,
 	@# which is why the old .bak backup/prune steps are gone.
-	@ssh -p $(DEMO_PORT) $(DEMO_HOST) "mkdir -p $(DEMO_HOME)/.phpman/releases/$(RELEASE_ID)/src"
-	@rsync -avz -e "ssh -p $(DEMO_PORT)" src/ $(DEMO_HOST):$(DEMO_HOME)/.phpman/releases/$(RELEASE_ID)/src/
-	@scp -P $(DEMO_PORT) $(FILE).deploy $(DEMO_HOST):$(DEMO_HOME)/.phpman/releases/$(RELEASE_ID)/$(FILE)
+	@ssh -p $(DEMO_PORT) $(SSH_CONTROL) $(DEMO_HOST) "mkdir -p $(DEMO_HOME)/.phpman/releases/$(RELEASE_ID)/src"
+	@rsync -avz -e "ssh -p $(DEMO_PORT) $(SSH_CONTROL)" src/ $(DEMO_HOST):$(DEMO_HOME)/.phpman/releases/$(RELEASE_ID)/src/
+	@scp -P $(DEMO_PORT) $(SSH_CONTROL) $(FILE).deploy $(DEMO_HOST):$(DEMO_HOME)/.phpman/releases/$(RELEASE_ID)/$(FILE)
 	@rm -f $(FILE).deploy
-	@rsync -avz -e "ssh -p $(DEMO_PORT)" deploy/ $(DEMO_HOST):$(DEMO_HOME)/.phpman/deploy/
-	@ssh -p $(DEMO_PORT) $(DEMO_HOST) "sh $(DEMO_HOME)/.phpman/deploy/atomic-release.sh '$(DEMO_HOME)/.phpman' '$(DEMO_PATH)' '$(FILE)' '$(RELEASE_ID)'"
-	@rsync -avz -e "ssh -p $(DEMO_PORT)" $(CSS_FILE) $(JS_FILE) $(DEMO_HOST):$(DEMO_PATH)/
-	@rsync -avz -e "ssh -p $(DEMO_PORT)" cli/ $(DEMO_HOST):$(DEMO_HOME)/.phpman/cli/
-	@rsync -avz -e "ssh -p $(DEMO_PORT)" phpman.config.php.example $(DEMO_HOST):$(DEMO_HOME)/.phpman/
-	@ssh -p $(DEMO_PORT) $(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(CSS_FILE) $(DEMO_PATH)/$(JS_FILE) && chmod +x \$$HOME/.phpman/cli/*.php"
+	@rsync -avz -e "ssh -p $(DEMO_PORT) $(SSH_CONTROL)" deploy/ $(DEMO_HOST):$(DEMO_HOME)/.phpman/deploy/
+	@ssh -p $(DEMO_PORT) $(SSH_CONTROL) $(DEMO_HOST) "sh $(DEMO_HOME)/.phpman/deploy/atomic-release.sh '$(DEMO_HOME)/.phpman' '$(DEMO_PATH)' '$(FILE)' '$(RELEASE_ID)'"
+	@rsync -avz -e "ssh -p $(DEMO_PORT) $(SSH_CONTROL)" $(CSS_FILE) $(JS_FILE) $(DEMO_HOST):$(DEMO_PATH)/
+	@rsync -avz -e "ssh -p $(DEMO_PORT) $(SSH_CONTROL)" cli/ $(DEMO_HOST):$(DEMO_HOME)/.phpman/cli/
+	@rsync -avz -e "ssh -p $(DEMO_PORT) $(SSH_CONTROL)" phpman.config.php.example $(DEMO_HOST):$(DEMO_HOME)/.phpman/
+	@ssh -p $(DEMO_PORT) $(SSH_CONTROL) $(DEMO_HOST) "chmod 644 $(DEMO_PATH)/$(FILE) $(DEMO_PATH)/$(CSS_FILE) $(DEMO_PATH)/$(JS_FILE) && chmod +x \$$HOME/.phpman/cli/*.php"
 	@echo "--- Detecting available documentation tools ---"
 	@# Write to a temp file and rename: rewriting in place truncates first, and a
 	# request served in that window would read an empty tools_config.php (#240).
-	@ssh -p $(DEMO_PORT) $(DEMO_HOST) "php $(DEMO_HOME)/.phpman/cli/detect-tools.php > $(DEMO_HOME)/.phpman/tools_config.php.tmp && mv $(DEMO_HOME)/.phpman/tools_config.php.tmp $(DEMO_HOME)/.phpman/tools_config.php && cat $(DEMO_HOME)/.phpman/tools_config.php"
+	@ssh -p $(DEMO_PORT) $(SSH_CONTROL) $(DEMO_HOST) "php $(DEMO_HOME)/.phpman/cli/detect-tools.php > $(DEMO_HOME)/.phpman/tools_config.php.tmp && mv $(DEMO_HOME)/.phpman/tools_config.php.tmp $(DEMO_HOME)/.phpman/tools_config.php && cat $(DEMO_HOME)/.phpman/tools_config.php"
 	@echo ""
 	@echo "=== Deployed to production ==="
 	@echo "$(DEMO_URL)"
@@ -283,7 +305,7 @@ _release-code:
 	@# (sed escaping and the quote-agnostic key match explained in the staging copy
 	@#  of this check — same 4/4/4.)
 	@echo "--- Checking for new config options ---"; \
-		missing=$$(ssh -p $(DEMO_PORT) $(DEMO_HOST) " \
+		missing=$$(ssh -p $(DEMO_PORT) $(SSH_CONTROL) $(DEMO_HOST) " \
 			example=$(DEMO_HOME)/.phpman/phpman.config.php.example; \
 			config=$(DEMO_HOME)/.phpman/phpman.config.php; \
 			if [ ! -f \"\$$config\" ] || [ ! -f \"\$$example\" ]; then exit 0; fi; \
@@ -338,10 +360,10 @@ release: test test-unit _release-code
 
 release-reindex: test test-unit _release-code
 	@echo "=== Rebuilding production search index ==="
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
+	ssh -p $(DEMO_PORT) $(SSH_CONTROL) $(DEMO_HOST) \
 		"cd $(DEMO_HOME)/.phpman && php cli/build-index.php --cron"
 	@echo "=== Generating production sitemap (html for Google, markdown/json for AI bots) ==="
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
+	ssh -p $(DEMO_PORT) $(SSH_CONTROL) $(DEMO_HOST) \
 		"cd $(DEMO_HOME)/.phpman && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman.xml.gz --formats html --max-urls 50000 \
 		 && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman-ai.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman-ai.xml.gz --formats markdown,json --max-urls 50000 --llms-output $(DEMO_PATH)/llms.txt"
 	@echo "=== Production index + sitemap complete ==="
@@ -351,7 +373,7 @@ release-reindex: test test-unit _release-code
 
 reindex:
 	@echo "=== Rebuilding production search index (no code push) ==="
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) \
+	ssh -p $(DEMO_PORT) $(SSH_CONTROL) $(DEMO_HOST) \
 		"cd $(DEMO_HOME)/.phpman && php cli/build-index.php --cron \
 		 && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman.xml.gz --formats html --max-urls 50000 \
 		 && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman-ai.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman-ai.xml.gz --formats markdown,json --max-urls 50000 --llms-output $(DEMO_PATH)/llms.txt"
@@ -359,7 +381,7 @@ reindex:
 
 reindex-staging:
 	@echo "=== Rebuilding staging search index (no code push) ==="
-	ssh -p $(TEST_PORT) $(TEST_HOST) \
+	ssh -p $(TEST_PORT) $(SSH_CONTROL) $(TEST_HOST) \
 		"cd $(STAGING_HOME)/.phpman_test && php cli/build-index.php --cron \
 		 && php cli/build-sitemap.php --output $(TEST_PATH)/sitemap-phpman.xml.gz --base-url $(TEST_URL) --sitemap-url https://test.chedong.com/sitemap-phpman.xml.gz --formats html --max-urls 50000 \
 		 && php cli/build-sitemap.php --output $(TEST_PATH)/sitemap-phpman-ai.xml.gz --base-url $(TEST_URL) --sitemap-url https://test.chedong.com/sitemap-phpman-ai.xml.gz --formats markdown,json --max-urls 50000 --llms-output $(TEST_PATH)/llms.txt"
@@ -376,7 +398,7 @@ reindex-staging:
 STEP ?= 1
 
 rollback:
-	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
+	@ssh -p $(DEMO_PORT) $(SSH_CONTROL) $(DEMO_HOST) \
 		"sh $(DEMO_HOME)/.phpman/deploy/rollback.sh '$(DEMO_HOME)/.phpman' '$(DEMO_PATH)' '$(FILE)' '$(STEP)'"
 	@echo "Verify: $(DEMO_URL)"
 
@@ -393,7 +415,7 @@ verify:
 # needs deploying first. Requires DEMO_ERROR_LOG and DEMO_ACCESS_LOG in
 # .deploy.mk; LOGCHECK_DAYS / LOGCHECK_RECENT_LINES tune the window.
 logcheck:
-	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
+	@ssh -p $(DEMO_PORT) $(SSH_CONTROL) $(DEMO_HOST) \
 		"DEMO_ERROR_LOG='$(DEMO_ERROR_LOG)' DEMO_ACCESS_LOG='$(DEMO_ACCESS_LOG)' \
 		 LOGCHECK_DAYS='$(LOGCHECK_DAYS)' LOGCHECK_RECENT_LINES='$(LOGCHECK_RECENT_LINES)' bash -s" < cli/logcheck.sh
 
@@ -403,22 +425,22 @@ logcheck:
 # deployed first. Preview with: make log-rotate LOG_ROTATE_DRY_RUN=1
 # The same script is deployed under cli/, which is what a cron entry would call.
 log-rotate:
-	@ssh -p $(DEMO_PORT) $(DEMO_HOST) \
+	@ssh -p $(DEMO_PORT) $(SSH_CONTROL) $(DEMO_HOST) \
 		"PHPMAN_LOG='$(PHPMAN_LOG)' LOG_ROTATE_KEEP='$(LOG_ROTATE_KEEP)' LOG_ROTATE_DRY_RUN='$(LOG_ROTATE_DRY_RUN)' bash -s" < cli/log-rotate.sh
 
 # ─── Cache management ───
 
 cache-flush:
 	@echo "=== Flushing production cache ==="
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) "cd $(DEMO_HOME)/.phpman && php cli/cache.php flush"
+	ssh -p $(DEMO_PORT) $(SSH_CONTROL) $(DEMO_HOST) "cd $(DEMO_HOME)/.phpman && php cli/cache.php flush"
 
 cache-flush-staging:
 	@echo "=== Flushing staging cache ==="
-	ssh -p $(TEST_PORT) $(TEST_HOST) "cd $(STAGING_HOME)/.phpman_test && php cli/cache.php flush"
+	ssh -p $(TEST_PORT) $(SSH_CONTROL) $(TEST_HOST) "cd $(STAGING_HOME)/.phpman_test && php cli/cache.php flush"
 
 cache-stats:
 	@echo "=== Production cache stats ==="
-	ssh -p $(DEMO_PORT) $(DEMO_HOST) "cd $(DEMO_HOME)/.phpman && php cli/cache.php stats"
+	ssh -p $(DEMO_PORT) $(SSH_CONTROL) $(DEMO_HOST) "cd $(DEMO_HOME)/.phpman && php cli/cache.php stats"
 
 package: test
 	gzip -k -f $(FILE)
