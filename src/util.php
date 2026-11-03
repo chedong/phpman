@@ -313,17 +313,24 @@ function malformedSegmentRedirect (array $segments, int $start, string $mode = "
  */
 function noMatchNotice (string $mode, string $parameter, string $format, string $reason): string {
     if ($format === "json" || $format === "mcp") {
+        // JSON_INVALID_UTF8_SUBSTITUTE: $parameter comes straight from the URL
+        // and normalizeParameter() does not require valid UTF-8. Without this
+        // flag json_encode() returns false for e.g. /pydoc/%FF/json, and the
+        // `: string` return type coerces that to '' — a 404 with
+        // Content-Type: application/json and ZERO bytes, which is exactly the
+        // empty-JSON failure this notice exists to prevent (#252).
+        $jsonFlags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE;
         $result = json_encode(array(
             "mode"      => $mode,
             "parameter" => $parameter,
             "results"   => array(),
             "note"      => $reason,
-        ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        ), $jsonFlags);
         if ($format === "mcp") {
             $result = json_encode(array(
                 "content" => array(array("type" => "text", "text" => $result)),
                 "structuredContent" => json_decode($result, true)
-            ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+            ), $jsonFlags | JSON_PRETTY_PRINT);
         }
         return $result;
     }

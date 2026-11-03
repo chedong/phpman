@@ -409,8 +409,7 @@ switch ( $mode ) {
                 $content = getSearchPage($parameter, $section, $format);
                 $isSearchFallback = true;
                 http_response_code(404);
-                $cache = new PageCache();
-                $cache->set('man', $parameter, $section, $format, null, 'not_found');
+                cacheNotFoundOnce('man', $parameter, $section, $format);
             }
         }
         //redirect to search sections
@@ -424,8 +423,7 @@ switch ( $mode ) {
             $content = cacheOrExecute('perldoc', $parameter, '', $format,
                 function() use ($parameter, $format) { return getPerldocPage($parameter, $format); });
             if (trim($content) == "") {
-                $cache = new PageCache();
-                $cache->set('perldoc', $parameter, '', $format, null, 'not_found');
+                cacheNotFoundOnce('perldoc', $parameter, '', $format);
             }
         }
         else {
@@ -444,8 +442,7 @@ switch ( $mode ) {
             $content = cacheOrExecute('info', $parameter, '', $format,
                 function() use ($parameter, $format) { return getInfoPage($parameter, $format); });
             if (trim($content) == "") {
-                $cache = new PageCache();
-                $cache->set('info', $parameter, '', $format, null, 'not_found');
+                cacheNotFoundOnce('info', $parameter, '', $format);
             }
         }
         else {

@@ -265,6 +265,56 @@ assert_equals(true, $cache->set('pydoc', 'raced3', '', 'markdown', 'second fallb
 assert_equals('second fallback body', $cache->getWithStatus('pydoc', 'raced3', '', 'markdown')['content'],
     "…and the newer body wins");
 
+// ──────────────────────────────────────────────
+// cacheNotFoundOnce()
+// ──────────────────────────────────────────────
+// man / perldoc / info call this on every miss, including when the miss came
+// from a negative row cacheOrExecute() already returned. A bare set() there is
+// an UPSERT that refreshes updated_at, so the 1-day TTL was renewed by every
+// request and a transient failure never expired.
+echo "\n--- cacheNotFoundOnce() ---\n";
+
+cacheNotFoundOnce('man', 'missing_twice', '1', 'markdown');
+$rowA = pageCacheDb('man')->querySingle(
+    "SELECT id, ttl FROM cache
+      WHERE mode='man' AND name='missing_twice' AND section='1' AND format='markdown'", true);
+assert_equals(true, is_array($rowA), "the first miss writes a negative row");
+assert_equals(PHPMAN_CACHE_TTL_NOT_FOUND, (int)$rowA['ttl'], "…with the ordinary 1-day TTL");
+
+// Age it, then miss again: the row must be left exactly as it was.
+pageCacheDb('man')->exec(
+    "UPDATE cache SET updated_at = updated_at - 100 WHERE id = " . (int)$rowA['id']);
+$agedAt = (int)pageCacheDb('man')->querySingle(
+    "SELECT updated_at FROM cache WHERE id = " . (int)$rowA['id'], true)['updated_at'];
+cacheNotFoundOnce('man', 'missing_twice', '1', 'markdown');
+$afterAt = (int)pageCacheDb('man')->querySingle(
+    "SELECT updated_at FROM cache WHERE id = " . (int)$rowA['id'], true)['updated_at'];
+assert_equals($agedAt, $afterAt,
+    "a second miss does NOT rewrite the row — otherwise the TTL never expires");
+
+// Contrast, pinning the bug itself: the old pattern was a bare set() on every
+// miss. That is an UPSERT, so it moves updated_at forward and the TTL restarts.
+cacheNotFoundOnce('man', 'contrast_row', '1', 'markdown');
+pageCacheDb('man')->exec(
+    "UPDATE cache SET updated_at = updated_at - 100
+      WHERE mode='man' AND name='contrast_row' AND section='1' AND format='markdown'");
+$beforeBare = (int)pageCacheDb('man')->querySingle(
+    "SELECT updated_at FROM cache WHERE mode='man' AND name='contrast_row'
+       AND section='1' AND format='markdown'", true)['updated_at'];
+$cache->set('man', 'contrast_row', '1', 'markdown', null, 'not_found');  // the old call
+$afterBare = (int)pageCacheDb('man')->querySingle(
+    "SELECT updated_at FROM cache WHERE mode='man' AND name='contrast_row'
+       AND section='1' AND format='markdown'", true)['updated_at'];
+assert_equals(true, $afterBare > $beforeBare,
+    "a bare set() renews the TTL — the behaviour cacheNotFoundOnce() replaces");
+
+// A found row must not be downgraded or touched.
+$cache->set('man', 'present_page', '1', 'markdown', '# real', 'found');
+cacheNotFoundOnce('man', 'present_page', '1', 'markdown');
+$present = $cache->getWithStatus('man', 'present_page', '1', 'markdown');
+assert_equals('found', $present['status'], "an existing found row is not downgraded");
+assert_equals('# real', $present['content'], "…and its content is untouched");
+
 cleanupTmpDir();
 
 exit(test_summary());

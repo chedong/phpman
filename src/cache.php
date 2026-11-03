@@ -689,6 +689,27 @@ function cacheOrExecute(string $mode, string $name, string $section, string $for
 }
 
 /**
+ * Write a negative row at most once (#248 follow-up).
+ *
+ * man / perldoc / info land here on every miss, including when the "miss" came
+ * from a negative row that cacheOrExecute() already returned. A bare set() at
+ * that point is an UPSERT: it refreshes updated_at, so a page that fails once
+ * and is then re-requested by a crawler keeps renewing its 1-day TTL and never
+ * expires — a transient failure becomes a permanent 404. Writing only when no
+ * row exists makes the TTL mean "one day since the first miss", not "one day
+ * since the last request".
+ *
+ * An existing found row is left alone: set()'s own guard refuses to replace it,
+ * and skipping the write keeps its timestamps untouched.
+ */
+function cacheNotFoundOnce (string $mode, string $name, string $section, string $format,
+                            ?string $content = null, ?int $ttl = null): void {
+    $cache = new PageCache();
+    if ($cache->getWithStatus($mode, $name, $section, $format) !== null) return;
+    $cache->set($mode, $name, $section, $format, $content, 'not_found', $ttl);
+}
+
+/**
  * Resolve a page whose miss path runs an expensive search fallback, reusing the
  * cached negative row instead of re-running that fallback (phpman#247).
  *
