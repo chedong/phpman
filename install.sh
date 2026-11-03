@@ -7,18 +7,54 @@
 #   curl ... | bash -s -- --reindex
 #   curl ... | bash -s -- --webroot /var/www/html
 #   curl ... | bash -s -- --webroot /var/www/html --no-server
+#   curl ... | bash -s -- --webroot /var/www/html --data-owner www-data --no-server
 #   PHPMAN_PORT=9090 curl ... | bash
+#   PHPMAN_HOME=/srv/phpman curl ... | bash
 # =============================================================================
-set -e
+set -eo pipefail
 
-INSTALL_DIR="$HOME/.phpman"
+INSTALL_DIR="${PHPMAN_HOME:-$HOME/.phpman}"
 REPO_URL="https://github.com/chedong/phpman.git"
 PORT="${PHPMAN_PORT:-45678}"
 WEBROOT=""
+WEBROOT_EXPLICIT=false
 NO_SERVER=false
+NO_SERVER_EXPLICIT=false
+DATA_OWNER=""
+MODE="install"
+
+STATE_FILE=""
+STATE_WEBROOT=""
+STATE_NO_SERVER="0"
+STATE_DATA_OWNER=""
+
+case "$INSTALL_DIR" in
+    /*) ;;
+    *)  echo "✗ PHPMAN_HOME must be an absolute path: $INSTALL_DIR" >&2; exit 1 ;;
+esac
+case "$INSTALL_DIR" in
+    *$'\n'*) echo "✗ PHPMAN_HOME must not contain newlines" >&2; exit 1 ;;
+esac
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; BLUE='\033[0;34m'
 YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
+
+die() {
+    echo -e "${RED}✗ $1${NC}" >&2
+    exit 1
+}
+
+require_abs_path() {
+    local value="$1" what="$2"
+    [ -n "$value" ] || die "$what needs a non-empty path"
+    case "$value" in
+        /*) ;;
+        *)  die "$what must be an absolute path: $value" ;;
+    esac
+    case "$value" in
+        *$'\n'*) die "$what must not contain newlines" ;;
+    esac
+}
 
 banner() {
     echo -e "${GREEN}"
@@ -132,6 +168,104 @@ run_checks() {
     echo ""
 }
 
+lint_php() {
+    local out
+    if ! out=$(php -l "$1" 2>&1); then
+        echo -e "${RED}✗ PHP syntax error in $1${NC}" >&2
+        printf '%s\n' "$out" | sed 's/^/    /' >&2
+        exit 1
+    fi
+}
+
+# ─── Install state ───────────────────────────────────────────────────────────
+
+# Stored inside .git/ so pulls cannot touch it. Values are read line-by-line
+# (never sourced), so a path is data, not shell code.
+state_path() {
+    printf '%s\n' "$INSTALL_DIR/.git/phpman-install-state"
+}
+
+state_get() {
+    local key="$1" file="$2" line=""
+    [ -f "$file" ] || return 0
+    line=$(grep -m1 "^${key}=" "$file" 2>/dev/null || true)
+    printf '%s\n' "${line#*=}"
+}
+
+load_state() {
+    STATE_FILE=$(state_path)
+    [ -f "$STATE_FILE" ] || return 0
+    STATE_WEBROOT=$(state_get webroot "$STATE_FILE")
+    STATE_NO_SERVER=$(state_get no_server "$STATE_FILE")
+    STATE_DATA_OWNER=$(state_get data_owner "$STATE_FILE")
+}
+
+save_state() {
+    [ -d "$INSTALL_DIR/.git" ] || return 0
+    STATE_FILE=$(state_path)
+    local no_server=0
+    if $NO_SERVER; then no_server=1; fi
+    {
+        printf 'webroot=%s\n' "$WEBROOT"
+        printf 'no_server=%s\n' "$no_server"
+        printf 'data_owner=%s\n' "$DATA_OWNER"
+    } > "$STATE_FILE" 2>/dev/null || {
+        echo -e "${YELLOW}⚠  Could not save install state to $STATE_FILE${NC}"
+        return 0
+    }
+    chmod 600 "$STATE_FILE" 2>/dev/null || true
+}
+
+# ─── Data directories / ownership ────────────────────────────────────────────
+
+prepare_data_dirs() {
+    [ "${DATA_DIRS_PREPARED:-0}" = "1" ] && return 0
+    DATA_DIRS_PREPARED=1
+
+    local d
+    for d in "$INSTALL_DIR/db" "$INSTALL_DIR/logs" "$INSTALL_DIR/backups"; do
+        mkdir -p "$d" || die "cannot create $d"
+        if [ -n "$DATA_OWNER" ]; then
+            chown "$DATA_OWNER" "$d" 2>/dev/null \
+                || die "cannot chown $d to $DATA_OWNER (re-run with sudo?)"
+            # Files already in the dir must change hands too, or SQLite cannot
+            # write to them. The dirs are flat (db shards / log files).
+            local f
+            for f in "$d"/*; do
+                [ -f "$f" ] || continue
+                chown "$DATA_OWNER" "$f" 2>/dev/null || true
+            done
+            chmod 750 "$d" || die "cannot chmod $d"
+        fi
+        [ -w "$d" ] || die "$d is not writable by $(id -un)"
+        if [ "$(id -u)" = "0" ] && [ -n "$DATA_OWNER" ] && command -v sudo >/dev/null 2>&1; then
+            sudo -u "$DATA_OWNER" test -w "$d" 2>/dev/null \
+                || die "$DATA_OWNER cannot write $d"
+        fi
+    done
+
+    if [ -n "$WEBROOT" ] && [ -z "$DATA_OWNER" ]; then
+        echo -e "${YELLOW}⚠  Data dirs are owned by $(id -un); make sure the web server user can write:${NC}"
+        echo "    $INSTALL_DIR/db and $INSTALL_DIR/logs"
+        echo "    Re-run with --data-owner www-data (or chown -R www-data those dirs)."
+    fi
+}
+
+# A root + --data-owner deploy is only useful if the web user can read the
+# source tree through $INSTALL_DIR's parents (a 0700 home blocks everything).
+check_web_reader() {
+    [ -n "$DATA_OWNER" ] || return 0
+    [ "$(id -u)" = "0" ] || return 0
+    command -v sudo >/dev/null 2>&1 || return 0
+
+    local f
+    for f in "$INSTALL_DIR/phpMan.php" "$INSTALL_DIR/src/config.php" "$INSTALL_DIR/phpman.config.php"; do
+        [ -e "$f" ] || continue
+        sudo -u "$DATA_OWNER" test -r "$f" 2>/dev/null \
+            || die "$DATA_OWNER cannot read $f — make parent dirs traversable (e.g. chmod o+x \"$(dirname "$INSTALL_DIR")\") or install under a shared path via PHPMAN_HOME=..."
+    done
+}
+
 # ─── Config Generator ─────────────────────────────────────────────────────────
 
 # Compare user config against .example — report new config keys added since install
@@ -203,40 +337,67 @@ generate_config() {
 
 # ─── Deploy to Webroot ────────────────────────────────────────────────────────
 
+# Write a deployed copy of phpMan.php with PHPMAN_HOME baked in. var_export
+# keeps paths with quotes/backslashes safe (the old sed broke on them), and the
+# temp-file + mv keeps a concurrent request from reading a partial file.
+deploy_phpman_file() {
+    local target="$1"
+    local src="$INSTALL_DIR/phpMan.php"
+    local tmp="$target/.phpMan.php.tmp.$$"
+
+    php -r '
+        $src = $argv[1]; $dest = $argv[2]; $home = $argv[3];
+        $code = file_get_contents($src);
+        if ($code === false) { fwrite(STDERR, "cannot read $src\n"); exit(1); }
+        $lines = explode("\n", $code);
+        $patched = false;
+        foreach ($lines as $i => $line) {
+            if (preg_match("/^define\(\x27PHPMAN_HOME\x27, /", $line)) {
+                $lines[$i] = "define(\x27PHPMAN_HOME\x27, " . var_export($home, true) . ");";
+                $patched = true;
+                break;
+            }
+        }
+        if (!$patched) { fwrite(STDERR, "PHPMAN_HOME define line not found in $src\n"); exit(1); }
+        if (file_put_contents($dest, implode("\n", $lines)) === false) {
+            fwrite(STDERR, "cannot write $dest\n"); exit(1);
+        }
+    ' -- "$src" "$tmp" "$INSTALL_DIR" || {
+        rm -f "$tmp"
+        die "failed to patch PHPMAN_HOME into $target/phpMan.php"
+    }
+
+    chmod 644 "$tmp" || { rm -f "$tmp"; die "cannot chmod $tmp"; }
+    mv -f "$tmp" "$target/phpMan.php" || { rm -f "$tmp"; die "cannot replace $target/phpMan.php"; }
+}
+
 do_deploy_webroot() {
     local target="$1"
 
-    if [ ! -d "$target" ]; then
-        echo -e "${RED}✗ Webroot does not exist: $target${NC}"
-        exit 1
-    fi
+    [ -d "$target" ] || die "webroot does not exist: $target"
+    [ -w "$target" ] || die "webroot is not writable: $target (fix ownership or re-run with sudo)"
 
     echo "→ Deploying phpMan to $target ..."
 
     # Copy dispatcher + CSS + JS (only 3 files in webroot)
-    cp "$INSTALL_DIR/phpMan.php" "$target/"
+    deploy_phpman_file "$target"
     cp "$INSTALL_DIR/phpman.css" "$target/" 2>/dev/null || true
     cp "$INSTALL_DIR/phpman.js" "$target/" 2>/dev/null || true
     chmod 644 "$target/phpMan.php" "$target/phpman.css" "$target/phpman.js" 2>/dev/null || true
 
-    # Patch PHPMAN_HOME into phpMan.php (replaces __PHPMAN_HOME__ placeholder)
-    local home; home=$(php -r 'echo getenv("HOME") ?: ($_SERVER["HOME"] ?? "");')
-    sed -i '' "s|__PHPMAN_HOME__|${home}/.phpman|" "$target/phpMan.php" 2>/dev/null || \
-    sed -i "s|__PHPMAN_HOME__|${home}/.phpman|" "$target/phpMan.php"
-
-    # Data directories live outside webroot, under PHPMAN_HOME (~/.phpman)
-    mkdir -p "$HOME/.phpman/db" "$HOME/.phpman/logs" "$HOME/.phpman/backups"
+    prepare_data_dirs
+    check_web_reader
 
     echo ""
     echo -e "${GREEN}✓ Deployed to $target${NC}"
     echo "  phpMan.php  → $target/phpMan.php"
     [ -f "$target/phpman.css" ] && echo "  phpman.css   → $target/phpman.css"
     [ -f "$target/phpman.js" ] && echo "  phpman.js    → $target/phpman.js"
-    echo "  config       → $HOME/.phpman/phpman.config.php (all settings)"
-    echo "  data dir     → $HOME/.phpman/ (src/ cli/ db/ logs/)"
+    echo "  config       → $INSTALL_DIR/phpman.config.php (all settings)"
+    echo "  data dir     → $INSTALL_DIR/ (src/ cli/ db/ logs/)"
     echo ""
     echo "  Next: configure your web server to serve PHP from $target"
-    echo "  Edit $HOME/.phpman/phpman.config.php to configure:"
+    echo "  Edit $INSTALL_DIR/phpman.config.php to configure:"
     echo "    PHPMAN_BASE_URL  — your public URL for correct link generation"
     echo "    PHPMAN_GA_ID     — for Google Analytics"
 }
@@ -247,16 +408,24 @@ do_install() {
     banner
     run_checks
 
-    mkdir -p "$INSTALL_DIR"
+    mkdir -p "$INSTALL_DIR" || die "cannot create $INSTALL_DIR"
 
     if [ -d "$INSTALL_DIR/.git" ]; then
         echo -e "${YELLOW}phpMan already installed at $INSTALL_DIR${NC}"
         echo "Use --update to pull latest, or --reindex to rebuild index."
         echo ""
     else
+        if [ -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
+            die "$INSTALL_DIR is not empty and is not a git clone — move it aside and re-run"
+        fi
         echo "→ Cloning phpMan into $INSTALL_DIR ..."
-        git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
+        git clone --depth 1 "$REPO_URL" "$INSTALL_DIR" \
+            || die "git clone failed: $REPO_URL"
     fi
+
+    [ -f "$INSTALL_DIR/phpMan.php" ] || die "phpMan.php missing in $INSTALL_DIR"
+    [ -d "$INSTALL_DIR/src" ] || die "src/ missing in $INSTALL_DIR"
+    lint_php "$INSTALL_DIR/phpMan.php"
 
     cd "$INSTALL_DIR"
 
@@ -264,32 +433,29 @@ do_install() {
     echo "→ Generating config..."
     generate_config
 
-    # Patch PHPMAN_HOME into phpMan.php for the built-in dev server
-    local home; home=$(php -r 'echo getenv("HOME") ?: ($_SERVER["HOME"] ?? "");')
-    sed -i '' "s|__PHPMAN_HOME__|${home}/.phpman|" "$INSTALL_DIR/phpMan.php" 2>/dev/null || \
-    sed -i "s|__PHPMAN_HOME__|${home}/.phpman|" "$INSTALL_DIR/phpMan.php"
-
     # 2. Create data directories (db/, logs/, backups/) under PHPMAN_HOME
-    mkdir -p "$HOME/.phpman/db" "$HOME/.phpman/logs" "$HOME/.phpman/backups"
+    prepare_data_dirs
 
     # 3. Build FTS5 search index (config must exist first for PHPMAN_HOME)
     echo "→ Building FTS5 search index (man + pydoc3 + ri) ..."
     echo "  (this may take 1–2 minutes on first run)"
-    php cli/build-index.php
+    PHPMAN_HOME="$INSTALL_DIR" php cli/build-index.php
 
     echo ""
     echo -e "${GREEN}✓ phpMan installed!${NC}"
     echo "  phpMan.php  → $INSTALL_DIR/phpMan.php"
     echo "  config      → $INSTALL_DIR/phpman.config.php (all settings)"
-    echo "  src/        → $INSTALL_DIR/src/ ($(ls $INSTALL_DIR/src/*.php 2>/dev/null | wc -l) files)"
+    echo "  src/        → $INSTALL_DIR/src/ ($(ls "$INSTALL_DIR"/src/*.php 2>/dev/null | wc -l) files)"
     echo "  cli/        → $INSTALL_DIR/cli/"
-    echo "  data dir    → $HOME/.phpman/"
+    echo "  data dir    → $INSTALL_DIR/"
     echo ""
 
-    # If --webroot specified, deploy there too
+    # If --webroot was given (now or by a previous run), deploy there too
     if [ -n "$WEBROOT" ]; then
         do_deploy_webroot "$WEBROOT"
     fi
+
+    save_state
 
     if [ "$NO_SERVER" = false ]; then
         start_server
@@ -301,26 +467,48 @@ do_install() {
 do_update() {
     banner
 
-    if [ ! -d "$INSTALL_DIR/.git" ]; then
-        echo -e "${RED}Not installed. Run without --update first.${NC}"
-        exit 1
-    fi
+    [ -d "$INSTALL_DIR/.git" ] || die "not installed at $INSTALL_DIR — run without --update first"
 
     run_checks
 
     cd "$INSTALL_DIR"
+
+    # Older installers patched the tracked phpMan.php in place, which makes
+    # `git pull --ff-only` fail. The placeholder now resolves from PHPMAN_HOME
+    # at runtime, so restore only that patch before pulling.
+    if ! git diff --quiet -- phpMan.php; then
+        local patch_diff
+        patch_diff=$(git diff -- phpMan.php)
+        case "$patch_diff" in
+            *PHPMAN_HOME*)
+                echo -e "${YELLOW}⚠  Restoring installer-patched phpMan.php before pull${NC}"
+                git checkout -- phpMan.php || die "cannot restore phpMan.php"
+                ;;
+            *)
+                die "phpMan.php has local changes unrelated to PHPMAN_HOME — commit/stash them, then re-run"
+                ;;
+        esac
+    fi
+
     echo "→ Pulling latest code..."
-    git pull --ff-only
+    git pull --ff-only \
+        || die "git pull failed — resolve local changes or divergence in $INSTALL_DIR, then re-run"
+
+    lint_php "$INSTALL_DIR/phpMan.php"
 
     # Check for new config options in .example not in user's config
     check_config_updates "$INSTALL_DIR/phpman.config.php"
 
+    prepare_data_dirs
+
     echo "→ Rebuilding FTS5 search index..."
-    php cli/build-index.php
+    PHPMAN_HOME="$INSTALL_DIR" php cli/build-index.php
 
     if [ -n "$WEBROOT" ]; then
         do_deploy_webroot "$WEBROOT"
     fi
+
+    save_state
 
     echo ""
     echo -e "${GREEN}✓ phpMan updated!${NC}"
@@ -334,13 +522,11 @@ do_update() {
 # ─── Reindex Only ─────────────────────────────────────────────────────────────
 
 do_reindex() {
-    if [ ! -f "$INSTALL_DIR/phpMan.php" ]; then
-        echo -e "${RED}phpMan.php not found at $INSTALL_DIR — run install first.${NC}"
-        exit 1
-    fi
+    [ -f "$INSTALL_DIR/phpMan.php" ] || die "phpMan.php not found at $INSTALL_DIR — run install first"
 
+    prepare_data_dirs
     echo "→ Rebuilding search index..."
-    php "$INSTALL_DIR/cli/build-index.php"
+    PHPMAN_HOME="$INSTALL_DIR" php "$INSTALL_DIR/cli/build-index.php"
     echo -e "${GREEN}✓ Index rebuilt.${NC}"
 }
 
@@ -363,10 +549,45 @@ start_server() {
     echo ""
 
     cd "$INSTALL_DIR"
-    php -S "localhost:${PORT}"
+    PHPMAN_HOME="$INSTALL_DIR" php -S "localhost:${PORT}"
 }
 
 # ─── Main ────────────────────────────────────────────────────────────────────
+
+# ─── Help ────────────────────────────────────────────────────────────────────
+
+usage() {
+    cat <<'USAGE'
+phpMan Installer
+
+Usage:
+  curl -sSL https://raw.githubusercontent.com/chedong/phpman/master/install.sh | bash
+
+With options (note the -s -- between bash and options):
+  curl ... | bash -s -- --update
+  curl ... | bash -s -- --webroot /var/www/html --no-server
+  curl ... | bash -s -- --webroot /var/www/html --data-owner www-data --no-server
+  curl ... | bash -s -- --reindex
+
+Options:
+  --update, -u         Pull latest code, reindex and (if configured) redeploy
+  --reindex, -r        Rebuild the FTS5 search index only
+  --webroot <path>     Deploy phpMan.php + css/js to an absolute webroot path
+  --no-server          Skip starting php -S (alias: --no-start)
+  --data-owner <user>  chown db/, logs/ and backups/ to <user> and chmod 750
+                       (alias: --cache-owner). Needed when the web server
+                       runs as another user.
+  --help, -h           Show this help
+
+Environment:
+  PHPMAN_PORT=9090     Override the default port (45678)
+  PHPMAN_HOME=<path>   Install directory (default: ~/.phpman)
+
+The webroot, --no-server and data-owner choices are saved in
+$PHPMAN_HOME/.git/phpman-install-state and re-used by later --update runs.
+Delete that file to forget a saved target.
+USAGE
+}
 
 # Parse arguments
 while [ $# -gt 0 ]; do
@@ -376,38 +597,57 @@ while [ $# -gt 0 ]; do
         --reindex|-r)
             MODE="reindex"; shift ;;
         --webroot)
-            WEBROOT="$2"; shift 2 ;;
+            [ $# -ge 2 ] || die "--webroot needs a path"
+            WEBROOT="$2"; WEBROOT_EXPLICIT=true; shift 2 ;;
         --webroot=*)
-            WEBROOT="${1#*=}"; shift ;;
-        --no-server)
-            NO_SERVER=true; shift ;;
+            WEBROOT="${1#*=}"; WEBROOT_EXPLICIT=true; shift ;;
+        --no-server|--no-start)
+            NO_SERVER=true; NO_SERVER_EXPLICIT=true; shift ;;
+        --data-owner|--cache-owner)
+            [ $# -ge 2 ] || die "$1 needs a user name"
+            DATA_OWNER="$2"; shift 2 ;;
+        --data-owner=*|--cache-owner=*)
+            DATA_OWNER="${1#*=}"; shift ;;
         --help|-h)
-            echo "phpMan Installer"
-            echo ""
-            echo "Usage:"
-            echo "  curl -sSL https://raw.githubusercontent.com/chedong/phpman/master/install.sh | bash"
-            echo ""
-            echo "With options (note the -s -- between bash and options):"
-            echo "  curl ... | bash -s -- --update"
-            echo "  curl ... | bash -s -- --webroot /var/www/html"
-            echo "  curl ... | bash -s -- --webroot /var/www/html --no-server"
-            echo "  curl ... | bash -s -- --reindex"
-            echo ""
-            echo "Options:"
-            echo "  --update          Pull latest code + reindex + start server"
-            echo "  --reindex         Rebuild FTS5 search index only"
-            echo "  --webroot <path>  Also deploy phpMan.php + config to a webroot directory"
-            echo "  --no-server       Skip starting php -S (use with --webroot for Apache/Nginx)"
-            echo ""
-            echo "Environment:"
-            echo "  PHPMAN_PORT=9090   Override default port (45678)"
-            exit 0
-            ;;
-        *)  shift ;;
+            usage; exit 0 ;;
+        -*)
+            die "unknown option: $1 (see --help)" ;;
+        *)
+            die "unexpected argument: $1 (see --help)" ;;
     esac
 done
 
-case "${MODE:-install}" in
+# Re-use the deployment target and ownership recorded by the previous run.
+if [ -d "$INSTALL_DIR/.git" ]; then
+    load_state
+fi
+if [ "$WEBROOT_EXPLICIT" = false ] && [ -n "$STATE_WEBROOT" ]; then
+    WEBROOT="$STATE_WEBROOT"
+    if [ "$MODE" != "reindex" ]; then
+        echo -e "${GREEN}↺${NC} Using previous webroot: $WEBROOT"
+    fi
+fi
+if [ "$NO_SERVER_EXPLICIT" = false ] && [ "$STATE_NO_SERVER" = "1" ]; then
+    NO_SERVER=true
+fi
+if [ -z "$DATA_OWNER" ] && [ -n "$STATE_DATA_OWNER" ]; then
+    DATA_OWNER="$STATE_DATA_OWNER"
+fi
+
+if [ -n "$WEBROOT" ]; then
+    require_abs_path "$WEBROOT" "--webroot"
+fi
+case "$PORT" in
+    ''|*[!0-9]*) die "invalid port: $PORT" ;;
+esac
+if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+    die "invalid port: $PORT (expected 1-65535)"
+fi
+if [ -n "$DATA_OWNER" ]; then
+    id -u "$DATA_OWNER" >/dev/null 2>&1 || die "unknown user: $DATA_OWNER"
+fi
+
+case "$MODE" in
     install) do_install ;;
     update)  do_update ;;
     reindex) do_reindex ;;
