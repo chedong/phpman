@@ -141,7 +141,17 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
     // Common patterns: email, URL, closing >
     $patterns[] = "/(([\w\-\.]+)@([\w\-]+)(\.[\w\-]+)+)/";  //link to email
     $replace[] = '<a href="mailto:$2 AT $3$4">$2<u> AT </u>$3$4</a>';
-    $patterns[] = "/([\w]+:\/\/[\w%\-\?&;#~=\.\/\@]+[\w\/])/i"; //link to url
+    // Scheme allowlist (#275). This used to be `[\w]+://`, which accepts any
+    // scheme at all — including `javascript://%0Aalert(1)` (`//` parses as a JS
+    // comment, the %0A starts a new line) and `data://…`. The OSC 8 path above
+    // already restricts itself to http/https/ftp/mailto; this is the same list,
+    // minus mailto, which the email pattern on the previous line already covers
+    // and which has no `://` form anyway.
+    //
+    // The `://` requirement also means the common `javascript:alert(1)` never
+    // matched — only the `javascript://` form did — so this narrows a real gap
+    // rather than closing a hypothetical one.
+    $patterns[] = "/((?:https?|ftp):\/\/[\w%\-\?&;#~=\.\/\@]+[\w\/])/i"; //link to url
     $replace[] = '<a href="$1" rel="noopener noreferrer">$1</a>';
     $patterns[] = "/".chr(7)."/";  //reverse '>'
     $replace[] = "&gt;";

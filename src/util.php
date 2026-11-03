@@ -101,12 +101,30 @@ function baseUrl(): string {
  * Check if the current request is from localhost (like phpinfo() visibility).
  * Used to restrict server version disclosure to local access only.
  */
+/**
+ * Is this address loopback? Split out from isLocalRequest() so the decision is
+ * testable: isLocalRequest() short-circuits on PHP_SAPI === 'cli', and every
+ * unit test runs under the CLI SAPI, so the address rule would otherwise never
+ * be exercised (#277).
+ *
+ * An EMPTY address is not loopback. It means the SAPI or a proxy chain did not
+ * fill REMOTE_ADDR in, and answering "yes, localhost" there would grant every
+ * such request the local-only privileges (server version disclosure, the HSTS
+ * skip, and anything added later). Fail closed.
+ *
+ * Private network IPs (RFC1918) are not loopback either — admin actions use CLI
+ * or explicit auth, not IP-based trust.
+ */
+function isLoopbackAddress (string $addr): bool {
+    return in_array($addr, ["127.0.0.1", "::1"], true);
+}
+
 function isLocalRequest (): bool {
-    $remoteAddr = serverValue("REMOTE_ADDR", "");
-    // Loopback only — private network IPs (RFC1918) are NOT local.
-    // Admin actions use CLI or explicit auth, not IP-based trust.
-    if (in_array($remoteAddr, ["127.0.0.1", "::1", ""], true)) return true;
-    return false;
+    // CLI is not a request at all: `php phpMan.php` writes a page to stdout and
+    // there is nobody to disclose anything to.
+    if (PHP_SAPI === 'cli') return true;
+
+    return isLoopbackAddress(serverValue("REMOTE_ADDR", ""));
 }
 
 function requestValue (array $source, string $key): string {

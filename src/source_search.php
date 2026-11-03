@@ -1,5 +1,11 @@
 <?php
 function renderGroupedResults(array $results, string $scriptName): array {
+    // Escaped once at the entry (#278): every use of $scriptName inside this
+    // function is an HTML attribute value (the two hrefs below), so escaping
+    // here also covers any href added later. Callers keep their own unescaped
+    // copy — PHP passes the string by value — which matters because the same
+    // callers also emit JSON and Markdown links where h() would corrupt the URL.
+    $scriptName = h($scriptName);
     $total = count($results);
     $ALPHA_THRESHOLD = 80;
 

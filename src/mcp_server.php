@@ -130,16 +130,35 @@ function handleMcp (): void {
         return;
     }
 
-    // Limit request body size to 64KB (#31, #42)
+    // Limit request body size to 64KB (#31, #42, #269)
+    $maxBody = 65536;
     $contentLength = (int)(serverValue("CONTENT_LENGTH", "0"));
-    if ($contentLength > 65536) {
+    if ($contentLength > $maxBody) {
         sendMcpError(null, -32700, "Payload too large (max 64KB)");
         return;
     }
 
-    // Read JSON-RPC body
-    $rawBody = file_get_contents("php://input");
-    if ($rawBody === false || trim($rawBody) === "") {
+    // Read JSON-RPC body.
+    //
+    // The length argument is what actually enforces the cap. CONTENT_LENGTH is
+    // a header, and a `Transfer-Encoding: chunked` request carries none at all —
+    // `(int)""` is 0, so the check above passes regardless of how big the body
+    // is. Asking for $maxBody + 1 bytes bounds the read no matter what the
+    // headers claim, and reading one byte past the limit is how we learn it was
+    // too big without ever holding more than 64KB + 1.
+    //
+    // The header check stays as a fast reject before the read; it is not the
+    // guarantee.
+    $rawBody = file_get_contents("php://input", false, null, 0, $maxBody + 1);
+    if ($rawBody === false) {
+        sendMcpError(null, -32700, "Parse error: could not read the request body");
+        return;
+    }
+    if (strlen($rawBody) > $maxBody) {
+        sendMcpError(null, -32700, "Payload too large (max 64KB)");
+        return;
+    }
+    if (trim($rawBody) === "") {
         sendMcpError(null, -32700, "Parse error: empty body");
         return;
     }

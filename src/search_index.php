@@ -180,7 +180,12 @@ function searchFtsBySource(string $parameter, string $source, string $format) {
         if ($format === 'html') {
             $out = "<ul>\n";
             foreach ($entries as $e) {
-                $out .= '<li><a href="' . $script_name . '/' . $source . '/' . urlencode($e['name']) . '">'
+                // h() on the prefix only (#278). $script_name is also used above
+                // for the JSON "link" field and below for the Markdown target,
+                // where HTML-escaping would turn & into &amp; and corrupt the
+                // URL — so the escape belongs here, at the one HTML attribute,
+                // not at the variable's assignment.
+                $out .= '<li><a href="' . h($script_name) . '/' . $source . '/' . urlencode($e['name']) . '">'
                      . h($e['name']) . '</a>';
                 if ($e['description'] !== '') {
                     $out .= ' — ' . h($e['description']);

@@ -29,6 +29,7 @@ $suites = [
         "{$testDir}/unit/test_next_version.php",
         "{$testDir}/unit/test_release_precheck.php",
         "{$testDir}/unit/test_exec_timeout.php",
+        "{$testDir}/unit/test_security_hardening.php",
         "{$testDir}/unit/test_logcheck_families.php",
         "{$testDir}/unit/test_no_match_notice.php",
     ],
