@@ -148,6 +148,19 @@ function normalizeMode ($mode): string {
 
 function normalizeParameter ($parameter): string {
     $parameter = trim((string)$parameter);
+    // Invalid UTF-8 (a URL like /man/%FF decodes to the single byte 0xFF) makes
+    // every /u regex downstream return null instead of failing loudly, and that
+    // null then arrives at a `string` parameter — a 500 with an empty body
+    // (phpman#268). Reject it here, where the input is still just a string and
+    // there is nothing to break. mbstring is a hard install dependency, checked
+    // by install.sh's check_mbstring(), so mb_check_encoding() is safe to call.
+    //
+    // Returning '' sends the request down the "empty parameter" paths every mode
+    // already handles (index page, or an empty search), which is the honest
+    // answer: there is no page whose name is a byte that is not text.
+    if ($parameter !== '' && !mb_check_encoding($parameter, 'UTF-8')) {
+        return '';
+    }
     $parameter = str_replace(array("/", "\0"), array(" ", ""), $parameter);
     $parameter = preg_replace("/[\x00-\x1F\x7F]+/", " ", $parameter);
     // Defense-in-depth: reject unambiguous shell metacharacters.

@@ -38,7 +38,7 @@ function buildFtsQuery(string $raw): string {
     // Handles: enumeration comma (、), Chinese comma (，), Chinese semicolon (；).
     // Only Unicoded-specific punctuation is handled here; ASCII , and ; are
     // already stripped by the [^\p{L}\p{N}\.\-_:] regex below.
-    $raw = preg_replace('/[、，；]/u', ' ', $raw);
+    $raw = preg_replace('/[、，；]/u', ' ', $raw) ?? '';
 
     // Exact phrase (quoted) — sanitize and pass through.
     // Checked before operator handling so a quoted phrase is never split on an
@@ -75,7 +75,7 @@ function buildFtsQuery(string $raw): string {
         // Preserve hyphens, underscores, dots, internal colons — critical for commands.
         // Strip leading/trailing colons to prevent FTS5 column-filter misinterpretation.
         // E.g. "SQL:" → FTS5 reads "SQL" as column name; "Apache::Session" stays intact.
-        $term = preg_replace('/[^\p{L}\p{N}\.\-_:]/u', '', $term);
+        $term = preg_replace('/[^\p{L}\p{N}\.\-_:]/u', '', $term) ?? '';
         $term = preg_replace('/^:+|:+$/', '', $term);
         if ($term === '') continue;
 

@@ -120,7 +120,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
     // e.g. "URL、curl" works as a two-word search for both FTS5 and apropos.
     // Only handles Chinese-specific punctuation; ASCII , and ; are already
     // stripped by the regex in buildFtsQuery() and cause no issues in apropos.
-    $parameter = preg_replace('/[、，；]/u', ' ', $parameter);
+    $parameter = preg_replace('/[、，；]/u', ' ', $parameter) ?? '';
 
     if ($parameter === "") {
         return "";

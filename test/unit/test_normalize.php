@@ -80,4 +80,40 @@ assert_not_contains("\x01", $result, "control char 0x01 stripped");
 $result = normalizeParameter("ls\x7Ftest");
 assert_not_contains("\x7F", $result, "DEL char 0x7F stripped");
 
+// ──────────────────────────────────────────────
+// 非法 UTF-8（#268）
+// ──────────────────────────────────────────────
+echo "\n--- invalid UTF-8 (#268) ---\n";
+// `/man/%FF` decodes to the single byte 0xFF. Every /u regex downstream then
+// returns null instead of failing loudly, and that null arrives at a `string`
+// parameter — a 500 with an empty body. normalizeParameter() is the one entry
+// point for input, so it rejects the bytes there.
+assert_equals("", normalizeParameter("\xFF"), "isolated 0xFF byte → empty");
+assert_equals("", normalizeParameter("ls\xFF"), "valid prefix + trailing invalid byte → empty");
+assert_equals("", normalizeParameter("\xC3"), "truncated 2-byte sequence → empty");
+assert_equals("", normalizeParameter("\xED\xA0\x80"), "UTF-16 surrogate half (invalid in UTF-8) → empty");
+assert_equals("", normalizeParameter("\xC3\x28"), "invalid continuation byte → empty");
+
+// Valid multi-byte text must survive — the guard must not over-reject.
+assert_equals("café", normalizeParameter("café"), "valid UTF-8 Latin-1 supplement survives");
+assert_equals("中文", normalizeParameter("中文"), "valid UTF-8 CJK survives");
+assert_equals("ls", normalizeParameter("ls"), "plain ASCII unaffected");
+assert_equals("Foo::Bar", normalizeParameter("Foo::Bar"), "perl module name unaffected");
+
+echo "\n--- downstream no longer fatals (#268) ---\n";
+// Two independent defences, tested separately: normalizeParameter() clears the
+// parameter, AND each /u regex has its own ?? '' so a caller that bypasses the
+// normaliser still gets an empty result rather than a TypeError.
+$ok = false;
+try { $ok = (buildFtsQuery("\xFF") === ""); } catch (\Throwable $e) { $ok = false; }
+assert_equals(true, $ok, "buildFtsQuery() on invalid UTF-8 returns an empty query, does not throw");
+
+$ok = false;
+try { $ok = (getSearchPage("\xFF", "", "markdown") === ""); } catch (\Throwable $e) { $ok = false; }
+assert_equals(true, $ok, "getSearchPage() on invalid UTF-8 returns empty, does not throw");
+
+$ok = false;
+try { $ok = (getSearchPage("\xFF", "", "json") === ""); } catch (\Throwable $e) { $ok = false; }
+assert_equals(true, $ok, "…same for the json format");
+
 exit(test_summary());
