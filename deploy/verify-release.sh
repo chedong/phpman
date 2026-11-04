@@ -50,17 +50,59 @@ fi
 pass=0
 fail=0
 skip=0
+warn=0
 ok()   { printf '[PASS] %-22s %s\n' "$1" "$2"; pass=$((pass + 1)); }
 no()   { printf '[FAIL] %-22s %s\n' "$1" "$2"; fail=$((fail + 1)); }
 skp()  { printf '[SKIP] %-22s %s\n' "$1" "$2"; skip=$((skip + 1)); }
+warn() { printf '[WARN] %-22s %s\n' "$1" "$2"; warn=$((warn + 1)); }
 
 TMP=$(mktemp 2>/dev/null) || TMP=""
 cleanup() { [ -n "$TMP" ] && rm -f "$TMP"; }
 trap cleanup EXIT INT TERM
 
-# fetch <url> → stdout, empty on any failure
+# 跨洋链路会偶发超时或空响应：实测 5 次 HEAD 里有 1 次什么都没收到，而站点一直
+# 是好的。任何「一次读数定生死」的检查都会因此随机挡住发布，所以每个网络读数
+# 都重试，只有连续失败才算数。
+RETRIES=3
+
+# retry_out <cmd...>：非空输出即成功，输出写到 stdout；重试用尽返回 1
+retry_out() {
+    _i=1
+    _o=''
+    while [ "$_i" -le "$RETRIES" ]; do
+        _o=$("$@" 2>/dev/null) || _o=''
+        [ -n "$_o" ] && { printf '%s' "$_o"; return 0; }
+        [ "$_i" -lt "$RETRIES" ] && sleep 2
+        _i=$((_i + 1))
+    done
+    return 1
+}
+
+# fetch <url> → 页面正文，失败为空
 fetch() {
-    curl -fsS --max-time 20 "$1" 2>/dev/null || true
+    retry_out curl -fsS --max-time 20 "$1"
+}
+
+# head_etag <url> → ETag 值，取不到为空
+head_etag() {
+    curl -sI --max-time 20 "$1" 2>/dev/null \
+        | tr -d '\r' | sed -n 's/^[Ee][Tt][Aa][Gg]: *//p' | head -1
+}
+
+# nf_code <url> → HTTP 状态码；连不上返回 1（好让 retry_out 重试）
+nf_code() {
+    _c=$(curl -s -o "${TMP:-/dev/null}" -w '%{http_code}' --max-time 20 "$1" 2>/dev/null) || _c=000
+    [ "$_c" = "000" ] && return 1
+    printf '%s' "$_c"
+}
+
+# hit_times → 三次请求各占一行（热身 / 缓存页 / 静态对照）；不满三条视为失败
+hit_times() {
+    _t=$(curl -fsS -o /dev/null -w '%{time_total}\n' --max-time 30 "$HIT_URL" \
+             --next -fsS -o /dev/null -w '%{time_total}\n' --max-time 30 "$HIT_URL" \
+             --next -fsS -o /dev/null -w '%{time_total}\n' --max-time 30 "$SITE/phpman.css" 2>/dev/null) || return 1
+    [ "$(printf '%s\n' "$_t" | grep -c .)" -ge 3 ] || return 1
+    printf '%s' "$_t"
 }
 
 echo "=== verify release: expected $TAG at $BASE ==="
@@ -110,7 +152,7 @@ fi
 
 # ── 4. 已知不存在：404 且给出版面说明（不是裸标题） ────────────────────────
 NF_URL="$BASE/man/zzz_phpman_verify/1/markdown"
-NF_CODE=$(curl -s -o "${TMP:-/dev/null}" -w '%{http_code}' --max-time 20 "$NF_URL" 2>/dev/null || echo 000)
+NF_CODE=$(retry_out nf_code "$NF_URL") || NF_CODE=000
 NF_BODY=$(cat "${TMP:-/dev/null}" 2>/dev/null || true)
 if [ "$NF_CODE" != "404" ]; then
     no "not-found page" "expected 404, got $NF_CODE"
@@ -120,38 +162,38 @@ else
     no "not-found page" "404 but the body has no notice (bare title looks broken)"
 fi
 
-# ── 5. 缓存命中：缓存页不该比同站静态文件更贵 ──────────────────────────────
+# ── 5. 缓存页耗时（只告警，不判失败） ──────────────────────────────────────
 #
 # 三次请求放进**同一次** curl 调用（--next）：第一条约等于热身，第二、三条复用
 # 同一条连接，DNS/TCP/TLS 只在第一条付。第三条取同一 vhost 上的静态 phpman.css
 # 作对照 —— 它不跑 PHP。
 #
-# 为什么不用绝对阈值：从开发机到 DreamHost，链路抖动远大于缓存命中与未命中的
-# 差距。实测同一分钟内缓存页 0.44→2.50s，静态 css 0.55→23s。早先那句
-# 「第二次 < 1s」量的是这条跨洋链路，不是缓存，把健康的 v4.12.18 判死过一次。
-# 链路抖动会同时作用在两条请求上，所以比的是两者之差：缓存页若和静态文件同价，
-# 说明它没有在每次请求里重算；真退化成逐请求全量渲染，差值会拉开到秒级。
+# 为什么只告警：这条检查量不出「缓存命中」。跨洋链路抖动（同一分钟内缓存页
+# 0.44→2.50s、静态 css 0.55→23s）加上共享主机的 PHP-FCGI 排队（#259），让页面
+# 自身耗时的方差大于缓存命中与未命中的差距。绝对阈值和「与静态文件比」都会
+# 误杀：实测后者仍有 2/5 次失败，而站点完全正常。
 #
-# 这不是「缓存命中」的直接证据 —— 服务端 hits 计数器才是，那属于 #253 的后续。
+# 一个只产生假警报的发布门比没有门更糟 —— 它会训练人忽略验证输出。留着数字
+# 供人看，判定权交给前面五项确定性检查。
+#
+# 真正确定的缓存断言需要服务端证据：给响应加 X-Cache: HIT|MISS，或读 hits
+# 计数器。那是 #253 的后续，不是这里能测出来的。
 SITE=${BASE%/phpMan.php}
 HIT_URL="$BASE/man/ls/1/markdown"
-TIMES=$(curl -fsS -o /dev/null -w '%{time_total}\n' --max-time 30 "$HIT_URL" \
-            --next -fsS -o /dev/null -w '%{time_total}\n' --max-time 30 "$HIT_URL" \
-            --next -fsS -o /dev/null -w '%{time_total}\n' --max-time 30 "$SITE/phpman.css" 2>/dev/null || true)
+TIMES=$(retry_out hit_times) || TIMES=''
 T1=$(printf '%s\n' "$TIMES" | sed -n '1p')
 T2=$(printf '%s\n' "$TIMES" | sed -n '2p')
 T3=$(printf '%s\n' "$TIMES" | sed -n '3p')
 if [ -z "$T2" ] || [ -z "$T3" ]; then
-    no "cache vs static" "a request on the reused connection failed (page ${T2:-?}, static ${T3:-?})"
+    warn "page vs static" "a request on the reused connection failed (page ${T2:-?}, static ${T3:-?})"
 elif php -r 'exit((float)$argv[1] > 0 && (float)$argv[2] > 0 && (float)$argv[1] <= (float)$argv[2] + 0.5 ? 0 : 1);' "$T2" "$T3" 2>/dev/null; then
-    ok "cache vs static" "page ${T2}s, static ${T3}s on one warm connection (cold ${T1}s)"
+    ok "page vs static" "page ${T2}s, static ${T3}s on one warm connection (cold ${T1}s)"
 else
-    no "cache vs static" "page ${T2}s vs static ${T3}s — the cached page should not cost more than a static file (+0.5s)"
+    warn "page vs static" "page ${T2}s vs static ${T3}s — slower than a static file, worth a look"
 fi
 
 # ── 6. ETag 形态 ───────────────────────────────────────────────────────────
-ETAG=$(curl -sI --max-time 20 "$BASE/man/ls/1" 2>/dev/null \
-    | tr -d '\r' | sed -n 's/^[Ee][Tt][Aa][Gg]: *//p' | head -1)
+ETAG=$(retry_out head_etag "$BASE/man/ls/1") || ETAG=''
 if printf '%s' "$ETAG" | grep -qE '^"[0-9a-f]{32}"$'; then
     ok "ETag shape" "$ETAG"
 else
@@ -159,7 +201,7 @@ else
 fi
 
 # ── 汇总 ───────────────────────────────────────────────────────────────────
-echo "=== $pass passed, $fail failed, $skip skipped ==="
+echo "=== $pass passed, $fail failed, $warn warned, $skip skipped ==="
 if [ "$fail" -gt 0 ]; then
     echo "" >&2
     echo "验证未通过。部署可能没生效或已退化。" >&2
