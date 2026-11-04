@@ -11,6 +11,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../test_helper.php';
 require_once __DIR__ . '/../../src/util.php';
+require_once __DIR__ . '/../../src/source_man.php';   // manNoMatchNotice (#253)
 
 echo "=== Unit: noMatchNotice() ===\n\n";
 
@@ -41,5 +42,20 @@ assert_equals("> reason text\n", noMatchNotice('pydoc', 'x', 'markdown', 'reason
     "markdown is a plain blockquote");
 assert_equals("<p>reason text</p>\n", noMatchNotice('pydoc', 'x', 'html', 'reason text'),
     "html is a paragraph");
+
+// man's miss path had no notice at all until #253 — an empty apropos result
+// rendered as a 41-byte bare title. The deploy verifier (deploy/verify-release.sh)
+// now asserts this text is present after a release.
+echo "\n--- man wrapper (#253) ---\n";
+$manMd = manNoMatchNotice('zzz_phpman_verify', '1', 'markdown');
+assert_contains('No man page matches "zzz_phpman_verify(1)"', $manMd,
+    "the man notice names the page with its section");
+assert_equals(true, strpos($manMd, '> ') === 0, "…and renders as a blockquote");
+$manNoSection = manNoMatchNotice('zzz_phpman_verify', '', 'markdown');
+assert_contains('"zzz_phpman_verify"', $manNoSection,
+    "with no section it does not invent an empty ()");
+$manJson = json_decode(manNoMatchNotice('x', '', 'json'), true);
+assert_equals('man', $manJson['mode'] ?? null, "json envelope carries mode=man");
+assert_equals([], $manJson['results'] ?? null, "…and an empty results array");
 
 exit(test_summary());

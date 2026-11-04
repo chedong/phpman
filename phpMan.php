@@ -409,6 +409,14 @@ switch ( $mode ) {
                 $content = getSearchPage($parameter, $section, $format);
                 $isSearchFallback = true;
                 http_response_code(404);
+                // #253: an empty apropos result used to render as a bare title
+                // (41 bytes), which reads as broken rather than as "no such
+                // page". cacheNotFoundOnce() below writes the negative row with
+                // a NULL body, so this notice is display-time only — changing the
+                // wording later needs no cache bump.
+                if (trim($content) === '') {
+                    $content = manNoMatchNotice($parameter, $section, $format);
+                }
                 cacheNotFoundOnce('man', $parameter, $section, $format);
             }
         }

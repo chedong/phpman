@@ -1,0 +1,79 @@
+name: CI
+
+# Why this file exists (#253)
+# --------------------------
+# Until now the only gate between a change and production was `make test`
+# (php -l / sh -n) run by hand on the machine doing the release. That gate cannot
+# see a behavioural regression: the 2026-10-19 incident shipped a TypeError that
+# 500'd every cache miss while `make test` stayed green, because syntax was fine.
+#
+# `unit` runs the behavioural suite (test/run_all.php) on every push and PR, on
+# the PHP versions the project claims to support. `make test-unit` is already a
+# prerequisite of `make release`, so this job mostly protects the window between
+# a commit and the next release — and it runs on a clean machine, which is the
+# only place "it works on my box" gets checked.
+#
+# fetch-depth: 0 is not a default worth omitting: the release-version tests
+# (#250) read real tags and history, and a shallow clone makes them pass for the
+# wrong reason or fail outright.
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    # Daily staging smoke. Off the :00 mark so it does not pile onto GitHub's
+    # busiest scheduling minute.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: unit (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.1', '8.2', '8.3']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - name: syntax gate
+        run: make test
+      - name: behavioural suite
+        run: php test/run_all.php
+
+  shellcheck:
+    name: shellcheck (advisory)
+    runs-on: ubuntu-latest
+    # Advisory on purpose: the shell scripts predate shellcheck and a red X here
+    # would block merges over style, not correctness. Fix them, then flip this.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck cli/*.sh deploy/*.sh install.sh
+
+  staging-smoke:
+    name: staging smoke (daily, advisory)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # Advisory: this hits a live host, and a DreamHost hiccup is not a reason to
+    # mark the repository red for a day.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: regression against staging
+        env:
+          PHP_MAN_URL: https://test.chedong.com/phpMan.php
+        run: bash test/phpman-regression.sh

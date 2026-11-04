@@ -65,6 +65,23 @@ function getManPage (string $parameter, string $section = "", string $format = "
  *   Where tocItems is array of ['id'=>, 'label'=>, 'children'=>[['id'=>, 'label'=>],...]]
  */
 
+/**
+ * What to show when a man page miss found no apropos matches (#253).
+ *
+ * Same shape as the pydoc/ri notices (#252): an empty fallback used to render as
+ * a bare title — 41 bytes for `/man/zzz_phpman_verify/1/markdown` — which reads
+ * as "this page is broken" rather than as "no such page". man's fallback is
+ * `apropos`, which costs ~0.03s, so unlike pydoc the wording can say the search
+ * really did run.
+ */
+function manNoMatchNotice (string $parameter, string $section, string $format): string {
+    $what = $section !== "" ? "{$parameter}({$section})" : $parameter;
+    $reason = 'No man page matches "' . $what . '". The fallback search ran '
+            . 'apropos over the whatis index and found nothing — check the '
+            . 'spelling, or use the search page for a partial name.';
+    return noMatchNotice("man", $parameter, $format, $reason);
+}
+
 function getManIndex (string $format = "html"): string {
     $script_name = ($format === "markdown" || $format === "json" || $format === "mcp") ? baseUrl() : scriptName();
     if ($format === "markdown") {

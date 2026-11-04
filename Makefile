@@ -355,7 +355,12 @@ _release-tag:
 	    exit 1; \
 	  fi
 
-release: test test-unit _release-code
+# Verification runs BEFORE _release-tag (#253): if the deployed build does not
+# behave, the tag is never pushed — a version number is permanent, and a bad one
+# would claim a release that never worked. The verifier is read-only HTTP and
+# never rolls back on its own (a broken verifier must not be able to roll back
+# production); it just refuses to let the release finish.
+release: test test-unit _release-code _verify-release
 	@$(MAKE) _release-tag
 
 release-reindex: test test-unit _release-code
@@ -367,7 +372,14 @@ release-reindex: test test-unit _release-code
 		"cd $(DEMO_HOME)/.phpman && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman.xml.gz --formats html --max-urls 50000 \
 		 && php cli/build-sitemap.php --output $(DEMO_PATH)/sitemap-phpman-ai.xml.gz --base-url $(DEMO_URL) --sitemap-url https://www.chedong.com/sitemap-phpman-ai.xml.gz --formats markdown,json --max-urls 50000 --llms-output $(DEMO_PATH)/llms.txt"
 	@echo "=== Production index + sitemap complete ==="
+	@$(MAKE) _verify-release
 	@$(MAKE) _release-tag
+
+# Read-only post-deploy verification (#253). Kept as its own target so it can be
+# run by hand against staging too:
+#   make _verify-release VERIFY_TAG=v4.12.17 VERIFY_URL=https://test.chedong.com
+_verify-release:
+	@deploy/verify-release.sh "$$(cat .release-version)" "$(DEMO_URL)"
 
 # ─── Standalone search index rebuild (no code push) ───
 
