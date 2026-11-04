@@ -60,11 +60,16 @@ jobs:
         # Cheap canary: mb_check_encoding() runs on every request, and a broken
         # or partial mbstring makes normalizeParameter() return "" for every
         # name — the page still renders, it just stops finding anything. Print
-        # the three facts that decide it, so a failing suite points here first.
+        # the facts that decide it, so a failing suite points here first.
         run: |
-          php -r 'printf("PHP %s, mbstring=%s, check_encoding(ls)=%s, default_charset=%s\n",
+          php -r 'printf("PHP %s, mbstring=%s, check_encoding(ls)=%s, default_charset=%s, PCRE=%s\n",
               PHP_VERSION, extension_loaded("mbstring") ? "yes" : "NO",
-              var_export(mb_check_encoding("ls", "UTF-8"), true), ini_get("default_charset"));'
+              var_export(mb_check_encoding("ls", "UTF-8"), true), ini_get("default_charset"),
+              PCRE_VERSION);'
+          php -r 'require "src/util.php";
+              var_dump(normalizeParameter("ls"));
+              var_dump(preg_replace("/[\x00-\x1F\x7F]+/", " ", "ls"));
+              var_dump(preg_last_error_msg());'
       - name: syntax gate
         run: make test
       - name: behavioural suite
