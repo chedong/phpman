@@ -120,24 +120,33 @@ else
     no "not-found page" "404 but the body has no notice (bare title looks broken)"
 fi
 
-# ── 5. 缓存命中：同一连接上的第二次请求应远快于 1s ─────────────────────────
+# ── 5. 缓存命中：缓存页不该比同站静态文件更贵 ──────────────────────────────
 #
-# 两次请求放进**同一次** curl 调用（--next）：第二条复用同一条连接，DNS/TCP/TLS
-# 只在第一次付。从开发机到 DreamHost，光握手就要 0.7–0.8s —— 同一 vhost 上的静态
-# phpman.css 单次请求也要 1.2s。拿单次请求的总耗时去卡 1s，量到的是跨洋链路，不是
-# 缓存；那样这条检查会把完全健康的发布判死（2026-11-04 的 v4.12.18 就是这样被
-# 挡下的）。排除握手后，第二次请求的耗时才真正反映服务端有没有走缓存。
+# 三次请求放进**同一次** curl 调用（--next）：第一条约等于热身，第二、三条复用
+# 同一条连接，DNS/TCP/TLS 只在第一条付。第三条取同一 vhost 上的静态 phpman.css
+# 作对照 —— 它不跑 PHP。
+#
+# 为什么不用绝对阈值：从开发机到 DreamHost，链路抖动远大于缓存命中与未命中的
+# 差距。实测同一分钟内缓存页 0.44→2.50s，静态 css 0.55→23s。早先那句
+# 「第二次 < 1s」量的是这条跨洋链路，不是缓存，把健康的 v4.12.18 判死过一次。
+# 链路抖动会同时作用在两条请求上，所以比的是两者之差：缓存页若和静态文件同价，
+# 说明它没有在每次请求里重算；真退化成逐请求全量渲染，差值会拉开到秒级。
+#
+# 这不是「缓存命中」的直接证据 —— 服务端 hits 计数器才是，那属于 #253 的后续。
+SITE=${BASE%/phpMan.php}
 HIT_URL="$BASE/man/ls/1/markdown"
 TIMES=$(curl -fsS -o /dev/null -w '%{time_total}\n' --max-time 30 "$HIT_URL" \
-            --next -fsS -o /dev/null -w '%{time_total}\n' --max-time 30 "$HIT_URL" 2>/dev/null || true)
+            --next -fsS -o /dev/null -w '%{time_total}\n' --max-time 30 "$HIT_URL" \
+            --next -fsS -o /dev/null -w '%{time_total}\n' --max-time 30 "$SITE/phpman.css" 2>/dev/null || true)
 T1=$(printf '%s\n' "$TIMES" | sed -n '1p')
 T2=$(printf '%s\n' "$TIMES" | sed -n '2p')
-if [ -z "$T2" ]; then
-    no "cache second hit" "the second request on the reused connection failed"
-elif php -r 'exit((float)$argv[1] > 0 && (float)$argv[1] < 1.0 ? 0 : 1);' "$T2" 2>/dev/null; then
-    ok "cache second hit" "${T2}s (first ${T1}s, handshake excluded)"
+T3=$(printf '%s\n' "$TIMES" | sed -n '3p')
+if [ -z "$T2" ] || [ -z "$T3" ]; then
+    no "cache vs static" "a request on the reused connection failed (page ${T2:-?}, static ${T3:-?})"
+elif php -r 'exit((float)$argv[1] > 0 && (float)$argv[2] > 0 && (float)$argv[1] <= (float)$argv[2] + 0.5 ? 0 : 1);' "$T2" "$T3" 2>/dev/null; then
+    ok "cache vs static" "page ${T2}s, static ${T3}s on one warm connection (cold ${T1}s)"
 else
-    no "cache second hit" "${T2}s on a warm connection — expected < 1s (first ${T1}s)"
+    no "cache vs static" "page ${T2}s vs static ${T3}s — the cached page should not cost more than a static file (+0.5s)"
 fi
 
 # ── 6. ETag 形态 ───────────────────────────────────────────────────────────
