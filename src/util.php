@@ -67,11 +67,24 @@ function getSafeHost (): string {
     }
 
     $host = serverValue("HTTP_HOST", "");
+    $serverName = serverValue("SERVER_NAME", "");
     // Valid host: alphanumeric, hyphens, dots, optional port (e.g., "example.com:8080")
     if ($host !== "" && preg_match('/^[a-zA-Z0-9]([a-zA-Z0-9\-\.]*[a-zA-Z0-9])?(\:\d+)?$/', $host) === 1) {
-        return $host;
+        // SERVER_NAME comes from the vhost configuration; HTTP_HOST comes from
+        // the request. When the vhost names itself, a Host header that disagrees
+        // with it is a forgery, not a route — honouring it would let the caller
+        // choose the canonical URL and the Schema.org @id (#272).
+        //
+        // Only the host part is compared, so a legitimate ":8080" is not read as
+        // a mismatch. When SERVER_NAME is empty (some CGI setups) the Host is
+        // still used: it is format-checked, and there is nothing to compare
+        // against.
+        $hostOnly = strtolower((string)preg_replace('/:\d+$/', '', $host));
+        if ($serverName === "" || $hostOnly === strtolower($serverName)) {
+            return $host;
+        }
     }
-    return serverValue("SERVER_NAME", "localhost");
+    return $serverName !== "" ? $serverName : "localhost";
 }
 
 /**

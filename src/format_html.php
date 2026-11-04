@@ -4,7 +4,10 @@ function renderTocSidebar(array $tocItems, string $pageLabel): string {
         return '';
     }
     $out = "<div id=\"toc-sidebar\">\n";
-    $out .= "<div class=\"toc-title\" id=\"toc-toggle\" onclick=\"document.body.classList.toggle('toc-open');\">" . h($pageLabel) . " <span class=\"toc-open-icon\">&#9633;</span><span class=\"toc-close-icon\">&#10005;</span></div>\n";
+    // The click handler lives in phpman.js (#273): an inline onclick is covered
+    // by script-src, so keeping it would force 'unsafe-inline' back into the CSP.
+    // phpman.js delegates on #toc-toggle and #alpha-toggle by id.
+    $out .= "<div class=\"toc-title\" id=\"toc-toggle\">" . h($pageLabel) . " <span class=\"toc-open-icon\">&#9633;</span><span class=\"toc-close-icon\">&#10005;</span></div>\n";
     foreach ($tocItems as $l1) {
         $out .= "<a href=\"#" . h($l1["id"]) . "\">" . h($l1["label"]) . "</a>\n";
         if (!empty($l1["children"])) {

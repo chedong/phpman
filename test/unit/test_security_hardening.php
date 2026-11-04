@@ -83,4 +83,47 @@ foreach (['https://example.com/a', 'http://example.com/a', 'ftp://ftp.example.co
 $host = $probe('https://example.com.cn/path?x=1&y=2');
 assert_contains('<a href="', $host, "a URL with a query string still becomes a link");
 
+// ──────────────────────────────────────────────
+// #273 CSP nonce / no inline event handlers
+// ──────────────────────────────────────────────
+echo "\n--- #273 CSP nonce replaces 'unsafe-inline' ---\n";
+
+// The nonce must exist for every request and be listed by the CSP. header()
+// is a no-op under the CLI SAPI, so the header itself is checked by the live
+// verification, not here; what can be checked here is the markup that has to
+// carry the nonce.
+assert_equals(true, defined('PHPMAN_CSP_NONCE'), "a nonce is defined at load time");
+assert_equals(true, strlen(PHPMAN_CSP_NONCE) >= 20, "…and is long enough to be unguessable");
+
+ob_start();
+showHeader("Test page", "", "", "man", true, false, "");
+$headerHtml = (string)ob_get_clean();
+
+assert_contains('nonce="' . h(PHPMAN_CSP_NONCE) . '"', $headerHtml,
+    "the JSON-LD blocks carry the nonce");
+assert_not_contains('onclick=', $headerHtml, "…and no inline event handler survives in the header");
+
+// Both toggle headers moved their handler into phpman.js. renderTocSidebar() is
+// called directly: renderTocSidebar only emits the toggle when there is more than
+// one entry, so driving it through formatManPerlDoc() would silently test nothing.
+$tocHtml = renderTocSidebar([
+    ["id" => "sec-a", "label" => "A", "children" => []],
+    ["id" => "sec-b", "label" => "B", "children" => []],
+], "Contents");
+assert_contains('id="toc-toggle"', $tocHtml, "the TOC toggle is still rendered (phpman.js needs the id)");
+assert_not_contains('onclick=', $tocHtml, "the TOC toggle carries no inline onclick");
+
+$grouped = [];
+for ($i = 0; $i < 90; $i++) {
+    $grouped[] = ['name' => sprintf('cmd%02d', $i), 'section' => '', 'description' => '', 'sources' => ['pydoc']];
+}
+$g = renderGroupedResults($grouped, 'https://example.com/phpMan.php');
+assert_not_contains('onclick=', $g['html'], "the A-Z toggle carries no inline onclick");
+assert_not_contains('onclick=', $g['sidebar'] ?? '', "…nor does the A-Z sidebar");
+
+// The behaviour still exists — it just lives in phpman.js now.
+$js = (string)file_get_contents(__DIR__ . '/../../phpman.js');
+assert_contains("'toc-toggle': 'toc-open'", $js, "phpman.js handles #toc-toggle");
+assert_contains("'alpha-toggle': 'alpha-open'", $js, "phpman.js handles #alpha-toggle");
+
 exit(test_summary());

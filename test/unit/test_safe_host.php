@@ -89,6 +89,26 @@ assert_equals("localhost",
     runUtil('getSafeHost()', [], null),
     "no Host and no SERVER_NAME falls back to localhost");
 
+echo "\n--- unconfigured: a Host that disagrees with the vhost is ignored (#272) ---\n";
+// SERVER_NAME comes from the vhost configuration, HTTP_HOST from the request.
+// When the vhost names itself, a forged Host must not reach the canonical URL.
+assert_equals("real.example",
+    runUtil('getSafeHost()', ["HTTP_HOST" => "evil.com", "SERVER_NAME" => "real.example"], null),
+    "a forged Host loses to SERVER_NAME");
+assert_equals("real.example",
+    runUtil('getSafeHost()', ["HTTP_HOST" => "evil.com:8080", "SERVER_NAME" => "real.example"], null),
+    "…even with a port attached");
+// Matching Hosts keep the Host form, so a non-standard port survives.
+assert_equals("real.example:8080",
+    runUtil('getSafeHost()', ["HTTP_HOST" => "real.example:8080", "SERVER_NAME" => "real.example"], null),
+    "a matching Host is still used as-is (port preserved)");
+assert_equals("REAL.example:8080",
+    runUtil('getSafeHost()', ["HTTP_HOST" => "REAL.example:8080", "SERVER_NAME" => "real.example"], null),
+    "…compared case-insensitively (the request's spelling is preserved, not rejected)");
+assert_equals("real.example",
+    runUtil('getSafeHost()', ["SERVER_NAME" => "real.example"], null),
+    "no Host at all falls back to SERVER_NAME");
+
 echo "\n--- end to end: baseUrl() ---\n";
 assert_equals("https://www.chedong.com/phpMan.php",
     runUtil('baseUrl()', ["HTTPS" => "on", "HTTP_HOST" => "evil.com"], $PROD),

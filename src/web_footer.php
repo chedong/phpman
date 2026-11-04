@@ -119,7 +119,7 @@ function showFooter (string $validator = "", bool $showNav = false, string $mode
         "<script type=\"text/javascript\" src=\"".h(str_replace('phpMan.php', 'phpman.js', scriptName()))."?v=".h(PHPMAN_VERSION)."\"></script>\n" .
         ((defined('PHPMAN_GA_ID') && PHPMAN_GA_ID !== '') ?
          "<script async=\"async\" type=\"text/javascript\" src=\"https://www.googletagmanager.com/gtag/js?id=".h(PHPMAN_GA_ID)."\"></script>\n".
-         "<script type=\"text/javascript\">\n//<![CDATA[\n".
+         "<script type=\"text/javascript\" nonce=\"" . h(PHPMAN_CSP_NONCE) . "\">\n//<![CDATA[\n".
          "window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','".h(PHPMAN_GA_ID)."');".
          "\n//]]>\n</script>\n"
          : "") .

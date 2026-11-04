@@ -74,3 +74,28 @@
         wrapper.appendChild(btn);
     });
 })();
+
+/* ── Sidebar toggles (#273) ──
+   These used to be inline onclick attributes. An inline event handler is covered
+   by script-src, so keeping them would have forced 'unsafe-inline' back into the
+   CSP and defeated the point of the nonce. Delegated from one listener instead:
+   the markup only carries the id, and this file carries the behaviour. */
+(function () {
+    var TOGGLES = {
+        'toc-toggle': 'toc-open',
+        'alpha-toggle': 'alpha-open'
+    };
+
+    document.addEventListener('click', function (e) {
+        var el = e.target;
+        // Walk up from the click target: these headers contain <span> icons, so
+        // the click rarely lands on the div itself.
+        while (el && el !== document.body) {
+            if (el.id && TOGGLES[el.id]) {
+                document.body.classList.toggle(TOGGLES[el.id]);
+                return;
+            }
+            el = el.parentElement;
+        }
+    });
+})();

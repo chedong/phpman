@@ -218,6 +218,27 @@ save_state() {
 
 # ─── Data directories / ownership ────────────────────────────────────────────
 
+# build-index.php creates the SQLite shards as the *invoking* user — root, when
+# --data-owner was used with sudo — so the chown in prepare_data_dirs() (which
+# runs before the build) does not cover them (#271). Without this the web user
+# can read the directory but not write the database.
+#
+# Quiet on failure on purpose: this is a best-effort repair after the fact. The
+# install itself already succeeded, and a chown error here would tell the operator
+# less than the writability warning prepare_data_dirs() prints.
+fix_data_ownership() {
+    [ -n "$DATA_OWNER" ] || return 0
+    local d f
+    for d in "$INSTALL_DIR/db" "$INSTALL_DIR/logs" "$INSTALL_DIR/backups"; do
+        [ -d "$d" ] || continue
+        chown "$DATA_OWNER" "$d" 2>/dev/null || true
+        for f in "$d"/*; do
+            [ -f "$f" ] || continue
+            chown "$DATA_OWNER" "$f" 2>/dev/null || true
+        done
+    done
+}
+
 prepare_data_dirs() {
     [ "${DATA_DIRS_PREPARED:-0}" = "1" ] && return 0
     DATA_DIRS_PREPARED=1
@@ -225,6 +246,13 @@ prepare_data_dirs() {
     local d
     for d in "$INSTALL_DIR/db" "$INSTALL_DIR/logs" "$INSTALL_DIR/backups"; do
         mkdir -p "$d" || die "cannot create $d"
+        # 0750, not the umask's 0755 (#271): these dirs hold the SQLite cache
+        # and logs with client IPs, URLs and user agents. On a shared host 0755
+        # lets every other local user list and read them. The web server runs as
+        # the same user under mod_fcgid, so owner+group is enough; a deploy where
+        # the web user is somebody else needs --data-owner, which this script
+        # already refuses to guess (see the warning below).
+        chmod 750 "$d" || die "cannot chmod $d"
         if [ -n "$DATA_OWNER" ]; then
             chown "$DATA_OWNER" "$d" 2>/dev/null \
                 || die "cannot chown $d to $DATA_OWNER (re-run with sudo?)"
@@ -323,6 +351,11 @@ generate_config() {
 
     # Copy from .example — single source of truth for config format
     cp "$example" "$config_file"
+
+    # The config holds MCP_API_KEY, so it must not be readable by anyone but its
+    # owner (#271). `cp` inherits the umask, which on a default 022 install is
+    # 0644 — readable by every other local user on a shared host.
+    chmod 600 "$config_file" || die "cannot chmod $config_file"
 
     # Generate a random 32-char hex key for MCP authentication
     local mcp_key; mcp_key=$(php -r 'echo bin2hex(random_bytes(16));')
@@ -440,6 +473,7 @@ do_install() {
     echo "→ Building FTS5 search index (man + pydoc3 + ri) ..."
     echo "  (this may take 1–2 minutes on first run)"
     PHPMAN_HOME="$INSTALL_DIR" php cli/build-index.php
+    fix_data_ownership
 
     echo ""
     echo -e "${GREEN}✓ phpMan installed!${NC}"
@@ -503,6 +537,7 @@ do_update() {
 
     echo "→ Rebuilding FTS5 search index..."
     PHPMAN_HOME="$INSTALL_DIR" php cli/build-index.php
+    fix_data_ownership
 
     if [ -n "$WEBROOT" ]; then
         do_deploy_webroot "$WEBROOT"
@@ -527,6 +562,7 @@ do_reindex() {
     prepare_data_dirs
     echo "→ Rebuilding search index..."
     PHPMAN_HOME="$INSTALL_DIR" php "$INSTALL_DIR/cli/build-index.php"
+    fix_data_ownership
     echo -e "${GREEN}✓ Index rebuilt.${NC}"
 }
 
@@ -636,6 +672,23 @@ fi
 
 if [ -n "$WEBROOT" ]; then
     require_abs_path "$WEBROOT" "--webroot"
+    # PHPMAN_HOME must not live inside the document root (#271). Everything under
+    # it — phpman.config.php with MCP_API_KEY, db/, logs/ — would otherwise be
+    # fetchable over HTTP unless the web server happens to deny dot-directories.
+    #
+    # Both sides are resolved with `pwd -P` first so a symlinked webroot, a
+    # trailing slash or a `..` segment cannot slip past the prefix test. The
+    # install dir itself may not exist yet on a fresh install, so resolve its
+    # parent (which does) and append the basename.
+    _webroot_real=$(cd "$WEBROOT" 2>/dev/null && pwd -P) || _webroot_real=""
+    _install_real="$(cd "$(dirname "$INSTALL_DIR")" 2>/dev/null && pwd -P)/$(basename "$INSTALL_DIR")"
+    case "$_install_real/" in
+        "$_webroot_real"/*)
+            die "PHPMAN_HOME ($INSTALL_DIR) is inside the webroot ($WEBROOT).
+    Its phpman.config.php (which holds MCP_API_KEY) and db/ + logs/ would be
+    served over HTTP. Install it outside the document root instead, e.g.
+    PHPMAN_HOME=\$HOME/.phpman" ;;
+    esac
 fi
 case "$PORT" in
     ''|*[!0-9]*) die "invalid port: $PORT" ;;

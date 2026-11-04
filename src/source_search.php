@@ -39,9 +39,10 @@ function renderGroupedResults(array $results, string $scriptName): array {
             }
         }
         $sb .= '</div>';
+        // Click handler lives in phpman.js (#273) — an inline onclick would force
+        // 'unsafe-inline' back into script-src. It delegates by element id.
         $sidebar = '<div id="alpha-sidebar">' . "\n"
-                 . '<div class="alpha-title" id="alpha-toggle"'
-                 . ' onclick="document.body.classList.toggle(\'alpha-open\');">'
+                 . '<div class="alpha-title" id="alpha-toggle">'
                  . 'A-Z Index <span class="alpha-open-icon">&#9633;</span>'
                  . '<span class="alpha-close-icon">&#10005;</span></div>' . "\n"
                  . $sb . "\n"

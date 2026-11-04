@@ -177,7 +177,7 @@ _deploy-code:
 			sed -e \"s|// define('PHPMAN_HOME'.*\\.phpman_test.*|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|\" \
 			    -e \"s|// define('PHPMAN_DEBUG'.*|define('PHPMAN_DEBUG', true);|\" \
 				$(STAGING_HOME)/.phpman_test/phpman.config.php.example | \
-			cat > $(STAGING_HOME)/.phpman_test/phpman.config.php && chmod 644 $(STAGING_HOME)/.phpman_test/phpman.config.php && echo 'Created phpman.config.php'; \
+			cat > $(STAGING_HOME)/.phpman_test/phpman.config.php && chmod 600 $(STAGING_HOME)/.phpman_test/phpman.config.php && echo 'Created phpman.config.php'; \
 		fi"
 	@# Patch placeholders in phpMan.php and upload (never touches local FILE)
 	@sed -e "s|define('PHPMAN_HOME',[^;]*;|define('PHPMAN_HOME', '$(STAGING_HOME)/.phpman_test');|" \

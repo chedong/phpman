@@ -1,4 +1,16 @@
 <?php
+// CSP nonce (#273). Defined at file scope, not inside showHeader(): bootstrap
+// requires this file on every request, so the constant exists wherever it is
+// needed, including showFooter() — which test/unit/test_footer_format_links.php
+// calls without ever calling showHeader().
+//
+// One nonce per request. script-src lists it instead of 'unsafe-inline', so only
+// the inline blocks we emit (the GA snippet and the JSON-LD data blocks) run; an
+// injected <script> has no nonce and is blocked.
+if (!defined('PHPMAN_CSP_NONCE')) {
+    define('PHPMAN_CSP_NONCE', base64_encode(random_bytes(18)));
+}
+
 function showHeader (string $title = "", string $parameter = "", string $section = "", string $mode = "", bool $hasRealContent = true, bool $showNav = false, string $etag = ""): void {
     header("Content-Type: text/html; charset=UTF-8");
     // Security response headers (#40, #36, #29)
@@ -6,6 +18,13 @@ function showHeader (string $title = "", string $parameter = "", string $section
     header("X-Frame-Options: DENY");
     header("Referrer-Policy: strict-origin-when-cross-origin");
     // CSP: allow GA/AdSense domains only when enabled (#158)
+    //
+    // script-src carries the per-request nonce defined at the top of this file
+    // instead of 'unsafe-inline' (#273). 'unsafe-inline' made the CSP useless as
+    // a backstop: any injected <script> would run. With a nonce, only the blocks
+    // we emit — the GA snippet and the JSON-LD data blocks — execute.
+    // The two inline onclick handlers moved to phpman.js (event delegation) for
+    // the same reason: inline event handlers are covered by script-src too.
     $gaEnabled      = defined('PHPMAN_GA_ID') && PHPMAN_GA_ID !== '';
     $adsenseEnabled = defined('PHPMAN_ADSENSE_ID') && PHPMAN_ADSENSE_ID !== '';
     // img-src: GA conversion/remarketing pixels (…/ads/ga-audiences) are images,
@@ -14,7 +33,11 @@ function showHeader (string $title = "", string $parameter = "", string $section
     if ($gaEnabled) {
         $imgSrc .= " https://*.google.com https://*.google.co.jp https://*.doubleclick.net";
     }
-    $csp = "default-src 'self'; style-src 'self' 'unsafe-inline'; " . $imgSrc . "; script-src 'self' 'unsafe-inline'";
+    // style-src keeps 'unsafe-inline': the only inline styles left are in the
+    // debug-only profiling table (src/cache.php), which is a developer view, and
+    // style-src-attr hashes would be more machinery than the exposure is worth.
+    $csp = "default-src 'self'; style-src 'self' 'unsafe-inline'; " . $imgSrc
+         . "; script-src 'self' 'nonce-" . PHPMAN_CSP_NONCE . "'";
     // script-src: extend with GA + AdSense domains as needed
     if ($gaEnabled) {
         $csp .= " https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com";
@@ -142,7 +165,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         // #37: escape </ to prevent breaking out of <script> context
         $schema_json = str_replace('</', '<\/', $schema_json);
-        echo "<script type=\"application/ld+json\">\n{$schema_json}\n</script>\n";
+        echo "<script type=\"application/ld+json\" nonce=\"" . h(PHPMAN_CSP_NONCE) . "\">\n{$schema_json}\n</script>\n";
     } else {
         // Homepage/index: WebApplication schema
         $schema_json = json_encode([
@@ -160,7 +183,7 @@ function showHeader (string $title = "", string $parameter = "", string $section
             "operatingSystem" => "Linux, Unix"
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         $schema_json = str_replace('</', '<\/', $schema_json);
-        echo "<script type=\"application/ld+json\">\n{$schema_json}\n</script>\n";
+        echo "<script type=\"application/ld+json\" nonce=\"" . h(PHPMAN_CSP_NONCE) . "\">\n{$schema_json}\n</script>\n";
     }
 
     $bodyClass = $showNav ? ' class="ext-nav"' : '';
