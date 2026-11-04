@@ -197,6 +197,32 @@ if (!defined('PHPMAN_MF_LOG_BYTES')) {
     define('PHPMAN_MF_LOG_BYTES', ($phpman_mf_log_bytes === false || $phpman_mf_log_bytes === '') ? 65536 : (int) $phpman_mf_log_bytes);
 }
 
+// #256: HTML had no telemetry at all. The 31-Oct incident's 7,805 200s were
+// almost entirely HTML pages, and the mf log could not see a single one of them
+// — so any p95 derived from the log was a percentile of the machine formats
+// only, which is not the traffic that saturates the pool.
+//
+// Two knobs, because HTML volume (~28k/day) makes "log everything" useless:
+//
+//   PHPMAN_HTML_LOG_MS  same role as PHPMAN_MF_LOG_MS, for HTML (default 500).
+//                       A slow HTML render is always logged, no sampling.
+//   PHPMAN_HTML_SAMPLE  fraction of the *fast* HTML renders to log (default
+//                       0.01 = 1%). Without it the log holds only the slow
+//                       tail, and a p95 over a tail-only sample is a
+//                       percentile of the bad requests, not of traffic.
+//
+// Sampling is deterministic on the page identity, not random per request — see
+// phpManSampleHit(). 0 disables the sample; the elapsed/size thresholds still
+// apply.
+if (!defined('PHPMAN_HTML_LOG_MS')) {
+    $phpman_html_log_ms = getenv('PHPMAN_HTML_LOG_MS');
+    define('PHPMAN_HTML_LOG_MS', ($phpman_html_log_ms === false || $phpman_html_log_ms === '') ? 500 : (int) $phpman_html_log_ms);
+}
+if (!defined('PHPMAN_HTML_SAMPLE')) {
+    $phpman_html_sample = getenv('PHPMAN_HTML_SAMPLE');
+    define('PHPMAN_HTML_SAMPLE', ($phpman_html_sample === false || $phpman_html_sample === '') ? 0.01 : (float) $phpman_html_sample);
+}
+
 // #248: upper bound, in seconds, on every document-render subprocess (man,
 // perldoc, pydoc3, ri, info — see src/exec.php). Without it a single request can
 // hold a FastCGI slot for the whole time the command runs, and production has

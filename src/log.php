@@ -63,18 +63,22 @@ function phpManLogSafeField(string $value, int $maxLen = 120): string {
 function phpManMachineRenderLine(
     string $mode, string $parameter, string $section, string $format,
     string $content, float $startedAt, int $thresholdMs, int $thresholdBytes = 0,
-    ?float $now = null
+    ?float $now = null, bool $sampled = false
 ): ?string {
-    if ($thresholdMs <= 0 && $thresholdBytes <= 0) return null;
     $now = $now ?? microtime(true);
     $elapsedMs = (int) round(($now - $startedAt) * 1000);
     $bytes = strlen($content);
-    // OR, not AND (#249): the requests that lose their body are large, not slow —
-    // see the note on PHPMAN_MF_LOG_BYTES in src/config.php.
-    $slow = $thresholdMs > 0 && $elapsedMs >= $thresholdMs;
-    $large = $thresholdBytes > 0 && $bytes >= $thresholdBytes;
-    if (!$slow && !$large) return null;
-    return sprintf(
+    // A sampled line bypasses the thresholds by definition — it exists precisely
+    // because the render was NOT over them (#256).
+    if (!$sampled) {
+        if ($thresholdMs <= 0 && $thresholdBytes <= 0) return null;
+        // OR, not AND (#249): the requests that lose their body are large, not
+        // slow — see the note on PHPMAN_MF_LOG_BYTES in src/config.php.
+        $slow = $thresholdMs > 0 && $elapsedMs >= $thresholdMs;
+        $large = $thresholdBytes > 0 && $bytes >= $thresholdBytes;
+        if (!$slow && !$large) return null;
+    }
+    $line = sprintf(
         'mf mode=%s name=%s sec=%s fmt=%s elapsed=%dms peak=%.1fMB bytes=%d',
         phpManLogSafeField($mode),
         phpManLogSafeField($parameter),
@@ -84,6 +88,27 @@ function phpManMachineRenderLine(
         memory_get_peak_usage(true) / 1048576,
         $bytes
     );
+    return $sampled ? $line . ' sampled=1' : $line;
+}
+
+/**
+ * Deterministic sampling for the HTML telemetry (#256).
+ *
+ * A fast HTML render is logged only when it samples, and the sample must be a
+ * slice of *traffic* — otherwise the log holds only the slow tail and a p95
+ * computed over it is a percentile of the bad requests, not of the site.
+ *
+ * Keyed on the page identity rather than the clock or mt_rand(): the same page
+ * always lands on the same side, so a page that samples once keeps sampling.
+ * That makes two runs comparable and keeps a single popular page from swinging
+ * in and out of the sample. md5 is not a security choice — it is stable and
+ * evenly distributed, which is all this needs.
+ */
+function phpManSampleHit(string $key, float $rate): bool {
+    if ($rate <= 0) return false;
+    if ($rate >= 1) return true;
+    $h = hexdec(substr(md5($key), 0, 8));   // 32 bits, 0 .. 4294967295
+    return ($h / 4294967296.0) < $rate;
 }
 
 /**
@@ -105,17 +130,34 @@ function phpManMachineRenderLine(
 function phpManLogMachineRender(
     string $mode, string $parameter, string $section, string $format, string $content
 ): void {
-    $threshold = defined('PHPMAN_MF_LOG_MS') ? PHPMAN_MF_LOG_MS : 0;
+    // #256: HTML is included now. It used to be machine formats only, which left
+    // the format that produces almost all traffic (and almost all of the 31-Oct
+    // load) with no telemetry whatsoever.
+    $isMachine = $format === 'markdown' || $format === 'json' || $format === 'mcp';
+    $threshold = $isMachine
+        ? (defined('PHPMAN_MF_LOG_MS') ? PHPMAN_MF_LOG_MS : 0)
+        : (defined('PHPMAN_HTML_LOG_MS') ? PHPMAN_HTML_LOG_MS : 0);
     $thresholdBytes = defined('PHPMAN_MF_LOG_BYTES') ? PHPMAN_MF_LOG_BYTES : 0;
     if ($threshold <= 0 && $thresholdBytes <= 0) return;
     // CLI has no REQUEST_TIME_FLOAT. Stay silent rather than invent a start
     // time and log a meaningless elapsed.
     $startedAt = $_SERVER['REQUEST_TIME_FLOAT'] ?? null;
     if (!is_numeric($startedAt)) return;
+    $startedAt = (float) $startedAt;
     $line = phpManMachineRenderLine(
-        $mode, $parameter, $section, $format, $content, (float) $startedAt,
+        $mode, $parameter, $section, $format, $content, $startedAt,
         (int) $threshold, (int) $thresholdBytes
     );
+    if ($line === null && !$isMachine) {
+        // Fast HTML render: take the deterministic 1% slice instead, so the log
+        // describes traffic rather than only its slow tail.
+        $rate = defined('PHPMAN_HTML_SAMPLE') ? (float) PHPMAN_HTML_SAMPLE : 0.0;
+        if (phpManSampleHit($mode . '/' . $parameter . '/' . $section . '/' . $format, $rate)) {
+            $line = phpManMachineRenderLine(
+                $mode, $parameter, $section, $format, $content, $startedAt, 0, 0, null, true
+            );
+        }
+    }
     if ($line !== null) phpManLogMachine($line);
 }
 

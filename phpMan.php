@@ -611,13 +611,13 @@ switch ( $mode ) {
 // Profiler: content generation complete
 Profiler::mark('content');
 
-// #244: telemetry for the machine formats. Before the format branches so one
-// call covers all three, and before the body is echoed — so a 5xx with no line
-// from here means the process died mid-render rather than finishing and failing
-// at delivery. See phpManLogMachineRender().
-if ($format === "markdown" || $format === "json" || $format === "mcp") {
-    phpManLogMachineRender($mode, $parameter, $section, $format, $content);
-}
+// #244/#256: one call covers all four formats — HTML included since #256, so the
+// format that carries most of the traffic is finally measurable; it samples
+// rather than logging every request. Kept before the format branches and before
+// the body is echoed, so a 5xx with no line from here means the process died
+// mid-render rather than finishing and failing at delivery.
+// See phpManLogMachineRender().
+phpManLogMachineRender($mode, $parameter, $section, $format, $content);
 
 // Show Markdown or HTML output
 if ($format === "markdown") {
