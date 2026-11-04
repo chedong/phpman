@@ -84,10 +84,22 @@ foreach ($suites as $suite => $files) {
         
         if ($exitCode !== 0) {
             $failed[] = $name;
-            // Show failure details
+            // Show failure details. The expected/actual lines do not contain ❌
+            // themselves, so a filter on ❌ alone printed the assertion label and
+            // dropped the two lines that say what went wrong — which is exactly
+            // the information needed when this runs in CI, where the file cannot
+            // be re-run by hand. Print the ❌ line and anything indented under it.
+            $printing = false;
             foreach ($output as $line) {
-                if (strpos($line, "❌") !== false) {
+                $isFail = strpos($line, "❌") !== false;
+                $isDetail = preg_match('/^\s+(expected|actual):/', $line) === 1;
+                if ($isFail) {
                     echo "     {$line}\n";
+                    $printing = true;
+                } elseif ($isDetail && $printing) {
+                    echo "     {$line}\n";
+                } else {
+                    $printing = false;
                 }
             }
         }

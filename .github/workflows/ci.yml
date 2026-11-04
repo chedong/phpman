@@ -45,6 +45,11 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           coverage: none
+          # mbstring is a hard install dependency (install.sh's
+          # check_mbstring()); normalizeParameter() calls mb_check_encoding()
+          # on every request. Ask for it explicitly rather than relying on each
+          # PHP image's default extension set, which differs between versions.
+          extensions: mbstring, sqlite3
       # The Makefile refuses to run without .deploy.mk (it holds server settings
       # and is gitignored). `test` / `test-unit` never read those values, so the
       # example's placeholders are enough — this keeps the CI and the release
@@ -79,6 +84,7 @@ jobs:
         with:
           php-version: '8.3'
           coverage: none
+          extensions: mbstring, sqlite3
       - name: regression against staging
         env:
           PHP_MAN_URL: https://test.chedong.com/phpMan.php
