@@ -193,7 +193,7 @@ function normalizeParameter ($parameter): string {
         return '';
     }
     $parameter = str_replace(array("/", "\0"), array(" ", ""), $parameter);
-    $parameter = preg_replace("/[\x00-\x1F\x7F]+/", " ", $parameter);
+    $parameter = preg_replace('/[\x00-\x1F\x7F]+/', ' ', $parameter);
     // Defense-in-depth: reject unambiguous shell metacharacters.
     // All downstream exec() calls use escapeshellarg(), but this guard catches
     // any future call site that might forget. Allows (){}[] for man references

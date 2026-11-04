@@ -21,7 +21,7 @@ function cleanTerminalOutput (array &$lines, string $linkStyle = 'markdown'): vo
     // OSC 8 link target — an absolute URL on a known-safe scheme, or a scheme-less
     // relative one. See the note on the OSC pattern below. mailto: is listed
     // separately because it carries no "//".
-    $oscUri = "(?:(?:https?|ftp)://[^\"'\x00-\x20]+|mailto:[^\"'\x00-\x20]+|(?![\\w+.\\-]*:)[^\"'\x00-\x20]+)";
+    $oscUri = '(?:(?:https?|ftp)://[^"\'\x00-\x20]+|mailto:[^"\'\x00-\x20]+|(?![\\w+.\\-]*:)[^"\'\x00-\x20]+)';
     $patterns = array(
         "/{$ac}".chr(8)."{$ac}".chr(8)."({$ac})".chr(8)."{$ac}/",  // ?^H?^H?^H? => bold
         "/_".chr(8)."({$ac})/",  // _^H? => underline

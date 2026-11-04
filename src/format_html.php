@@ -100,7 +100,7 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
     // scheme-less relative one. Anything else — javascript:, data:, vbscript: —
     // stays unmatched, so the sequence is dropped and only its text survives.
     // mailto: is listed separately because it carries no "//".
-    $oscUri = "(?:(?:https?|ftp)://[^\"'\x00-\x20]+|mailto:[^\"'\x00-\x20]+|(?![\\w+.\\-]*:)[^\"'\x00-\x20]+)";
+    $oscUri = '(?:(?:https?|ftp)://[^"\'\x00-\x20]+|mailto:[^"\'\x00-\x20]+|(?![\\w+.\\-]*:)[^"\'\x00-\x20]+)';
     // Applied by $oscPattern before the pattern pass — see the loop below.
     $oscPattern = "#".chr(27)."\]8;[^;]*;(".$oscUri.")".chr(27)."\\\\(.*?)".chr(27)."\]8;;".chr(27)."\\\\#i";
     // Cleanup duplicated / orphan tags from combined overstrike + SGR processing
