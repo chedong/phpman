@@ -56,6 +56,15 @@ jobs:
       # running the same `make` targets instead of a hand-copied duplicate.
       - name: provide a placeholder .deploy.mk
         run: cp .deploy.mk.example .deploy.mk
+      - name: php sanity
+        # Cheap canary: mb_check_encoding() runs on every request, and a broken
+        # or partial mbstring makes normalizeParameter() return "" for every
+        # name — the page still renders, it just stops finding anything. Print
+        # the three facts that decide it, so a failing suite points here first.
+        run: |
+          php -r 'printf("PHP %s, mbstring=%s, check_encoding(ls)=%s, default_charset=%s\n",
+              PHP_VERSION, extension_loaded("mbstring") ? "yes" : "NO",
+              var_export(mb_check_encoding("ls", "UTF-8"), true), ini_get("default_charset"));'
       - name: syntax gate
         run: make test
       - name: behavioural suite
