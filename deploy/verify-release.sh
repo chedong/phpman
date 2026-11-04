@@ -8,9 +8,10 @@
 # 这个脚本把「部署是否生效」拆成几条可以机器判定的检查，接在 _release-tag
 # **之前**：验证不过就不打 tag，坏版本号不会被推到远端。
 #
-# 用法: verify-release.sh <expected-tag> [base-url]
+# 用法: verify-release.sh <expected-tag> [entry-url]
 #   verify-release.sh v4.12.17
-#   verify-release.sh v4.12.17 https://test.chedong.com
+#   verify-release.sh v4.12.17 https://www.chedong.com/phpMan.php
+#   verify-release.sh v4.12.17 https://test.chedong.com      # 只给主机也行
 #   全部通过：退出 0
 #   任一不过：退出 1，并提示 make rollback STEP=1
 #
@@ -29,13 +30,20 @@
 set -u
 
 TAG=${1:-}
+# BASE 是 phpman 的**入口 URL**，也就是用户在浏览器里打开的那个地址。Makefile
+# 传的是 $(DEMO_URL)，其中已经含 phpMan.php，所以这里绝不能再拼一次入口文件：
+# 早先这么拼，拼出了 /phpMan.php/phpMan.php/man/ls/1，四项检查全报「取不到页面」。
 BASE=${2:-https://www.chedong.com}
 case "$BASE" in */) BASE=${BASE%/};; esac
+case "$BASE" in
+    */phpMan.php) ;;                          # 已带入口文件
+    *)            BASE="$BASE/phpMan.php" ;;  # 只给了主机或目录，补上
+esac
 VER=${TAG#v}
 
 if [ -z "$TAG" ]; then
-    echo "用法: $0 <expected-tag> [base-url]" >&2
-    echo "  例: $0 v4.12.17 https://www.chedong.com" >&2
+    echo "用法: $0 <expected-tag> [entry-url]" >&2
+    echo "  例: $0 v4.12.17 https://www.chedong.com/phpMan.php" >&2
     exit 2
 fi
 
@@ -58,9 +66,9 @@ fetch() {
 echo "=== verify release: expected $TAG at $BASE ==="
 
 # ── 1. 页脚版本（GIT_DESCRIBE） ────────────────────────────────────────────
-PAGE=$(fetch "$BASE/phpMan.php/man/ls/1")
+PAGE=$(fetch "$BASE/man/ls/1")
 if [ -z "$PAGE" ]; then
-    no "version footer" "could not fetch $BASE/phpMan.php/man/ls/1"
+    no "version footer" "could not fetch $BASE/man/ls/1"
 else
     GOT=$(printf '%s' "$PAGE" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?' | head -1)
     if [ "$GOT" = "$TAG" ]; then
@@ -74,7 +82,7 @@ fi
 if [ -z "${PHPMAN_MCP_KEY:-}" ]; then
     skp "version MCP" "PHPMAN_MCP_KEY not set (footer + assets already cover the version)"
 else
-    RESP=$(curl -sS --max-time 20 -X POST "$BASE/phpMan.php/mcp" \
+    RESP=$(curl -sS --max-time 20 -X POST "$BASE/mcp" \
         -H 'Content-Type: application/json' \
         -H 'Accept: application/json, text/event-stream' \
         -H "X-API-Key: ${PHPMAN_MCP_KEY}" \
@@ -101,7 +109,7 @@ else
 fi
 
 # ── 4. 已知不存在：404 且给出版面说明（不是裸标题） ────────────────────────
-NF_URL="$BASE/phpMan.php/man/zzz_phpman_verify/1/markdown"
+NF_URL="$BASE/man/zzz_phpman_verify/1/markdown"
 NF_CODE=$(curl -s -o "${TMP:-/dev/null}" -w '%{http_code}' --max-time 20 "$NF_URL" 2>/dev/null || echo 000)
 NF_BODY=$(cat "${TMP:-/dev/null}" 2>/dev/null || true)
 if [ "$NF_CODE" != "404" ]; then
@@ -112,18 +120,28 @@ else
     no "not-found page" "404 but the body has no notice (bare title looks broken)"
 fi
 
-# ── 5. 缓存命中：第二次应远快于 1s ─────────────────────────────────────────
-HIT_URL="$BASE/phpMan.php/man/ls/1/markdown"
-T1=$(curl -s -o /dev/null -w '%{time_total}' --max-time 30 "$HIT_URL" 2>/dev/null || echo 99)
-T2=$(curl -s -o /dev/null -w '%{time_total}' --max-time 30 "$HIT_URL" 2>/dev/null || echo 99)
-if php -r 'exit((float)$argv[1] < 1.0 ? 0 : 1);' "$T2" 2>/dev/null; then
-    ok "cache second hit" "${T2}s (first ${T1}s)"
+# ── 5. 缓存命中：同一连接上的第二次请求应远快于 1s ─────────────────────────
+#
+# 两次请求放进**同一次** curl 调用（--next）：第二条复用同一条连接，DNS/TCP/TLS
+# 只在第一次付。从开发机到 DreamHost，光握手就要 0.7–0.8s —— 同一 vhost 上的静态
+# phpman.css 单次请求也要 1.2s。拿单次请求的总耗时去卡 1s，量到的是跨洋链路，不是
+# 缓存；那样这条检查会把完全健康的发布判死（2026-11-04 的 v4.12.18 就是这样被
+# 挡下的）。排除握手后，第二次请求的耗时才真正反映服务端有没有走缓存。
+HIT_URL="$BASE/man/ls/1/markdown"
+TIMES=$(curl -fsS -o /dev/null -w '%{time_total}\n' --max-time 30 "$HIT_URL" \
+            --next -fsS -o /dev/null -w '%{time_total}\n' --max-time 30 "$HIT_URL" 2>/dev/null || true)
+T1=$(printf '%s\n' "$TIMES" | sed -n '1p')
+T2=$(printf '%s\n' "$TIMES" | sed -n '2p')
+if [ -z "$T2" ]; then
+    no "cache second hit" "the second request on the reused connection failed"
+elif php -r 'exit((float)$argv[1] > 0 && (float)$argv[1] < 1.0 ? 0 : 1);' "$T2" 2>/dev/null; then
+    ok "cache second hit" "${T2}s (first ${T1}s, handshake excluded)"
 else
-    no "cache second hit" "${T2}s — expected < 1s"
+    no "cache second hit" "${T2}s on a warm connection — expected < 1s (first ${T1}s)"
 fi
 
 # ── 6. ETag 形态 ───────────────────────────────────────────────────────────
-ETAG=$(curl -sI --max-time 20 "$BASE/phpMan.php/man/ls/1" 2>/dev/null \
+ETAG=$(curl -sI --max-time 20 "$BASE/man/ls/1" 2>/dev/null \
     | tr -d '\r' | sed -n 's/^[Ee][Tt][Aa][Gg]: *//p' | head -1)
 if printf '%s' "$ETAG" | grep -qE '^"[0-9a-f]{32}"$'; then
     ok "ETag shape" "$ETAG"
