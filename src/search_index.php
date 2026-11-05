@@ -126,6 +126,36 @@ function mergeSearchResults(array $rows): array {
 }
 
 /**
+ * Does the index carry this source at all? (#280)
+ *
+ * The search cascade shells out when FTS returns nothing. That is right when
+ * the source was never indexed — a fresh install, or a rebuild that ran before
+ * this source existed — but once it IS indexed, an FTS miss means "no such
+ * module", not "I cannot answer", and the fallback spends 8-14s
+ * (`pydoc3 -k`, which imports the whole stdlib) confirming the same nothing.
+ *
+ * Keyed on search_index_meta.source rather than a hardcoded list, so a machine
+ * whose index was never built keeps its fallbacks instead of silently finding
+ * nothing.
+ */
+function sourceIsIndexed(string $source): bool {
+    static $cache = array();
+    if (isset($cache[$source])) return $cache[$source];
+    $cache[$source] = false;
+    try {
+        $db = cacheDb();
+        if ($db === null) return false;
+        $stmt = $db->prepare("SELECT 1 FROM search_index_meta WHERE source = :s LIMIT 1");
+        $stmt->bindValue(':s', $source, SQLITE3_TEXT);
+        $res = $stmt->execute();
+        $cache[$source] = ($res->fetchArray() !== false);
+    } catch (\Throwable $e) {
+        phpManLog("sourceIsIndexed({$source}): " . $e->getMessage());
+    }
+    return $cache[$source];
+}
+
+/**
  * Search FTS5 index for pydoc or ri entries matching a query.
  * Returns results in the format expected by the search cascade:
  *   - 'json': array of ['name' => ..., 'description' => ..., 'link' => ...]
@@ -623,14 +653,20 @@ function rebuildSearchIndex(): string {
         if ($pydocExit === 0 && !empty($pydocLines)) {
             $pydocCount = 0;
             $pydocErrors = 0;
-            $inBody = false;
+            // The module list starts AFTER the "Please wait…" banner, not after
+            // the first blank line: `pydoc3 modules` opens with a blank line, so
+            // the old `$inBody = true` on any blank line fired immediately and
+            // the banner itself was indexed as a module. It is in production's
+            // index right now as `Please wait a moment while I gather a list of
+            // all available modules...` — a search for "wait" finds it (#280).
+            $sawBanner = false;
             foreach ($pydocLines as $line) {
                 $trimmed = trim($line);
-                if ($trimmed === '') {
-                    $inBody = true;
+                if (!$sawBanner) {
+                    if (stripos($trimmed, 'Please wait') !== false) $sawBanner = true;
                     continue;
                 }
-                if (!$inBody) continue;
+                if ($trimmed === '') continue;
                 if (preg_match('/^Enter any module name/i', $trimmed)) break;
                 $parts = preg_split('/\s{2,}/', $trimmed);
                 foreach ($parts as $part) {

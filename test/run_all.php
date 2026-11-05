@@ -33,6 +33,7 @@ $suites = [
         "{$testDir}/unit/test_logcheck_families.php",
         "{$testDir}/unit/test_no_match_notice.php",
         "{$testDir}/unit/test_metrics.php",
+        "{$testDir}/unit/test_source_indexed.php",
     ],
     "Integration" => [
         "{$testDir}/integration/test_formatter_html.php",

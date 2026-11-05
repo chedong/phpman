@@ -482,7 +482,7 @@ switch ( $mode ) {
                     if ($format === "html") {
                         $inner = "<h2>" . ($source === 'fts' ? 'man' : 'apropos') . "</h2>\n" . $inner . "\n";
                         $pydocResults = searchFtsBySource($parameter, 'pydoc', 'html');
-                        if ($pydocResults === "" && !$hasManResults && !$sectionOnly) {
+                        if ($pydocResults === "" && !$hasManResults && !$sectionOnly && !sourceIsIndexed('pydoc')) {
                             $pydocResults = getPydocSearchPage($parameter, "html");
                         }
                         Profiler::mark('pydoc:done');
@@ -490,7 +490,7 @@ switch ( $mode ) {
                             $inner .= "<h2>Python 3 (pydoc3)</h2>\n" . $pydocResults . "\n";
                         }
                         $riResults = searchFtsBySource($parameter, 'ri', 'html');
-                        if ($riResults === "" && !$sectionOnly) {
+                        if ($riResults === "" && !$sectionOnly && !sourceIsIndexed('ri')) {
                             $riResults = getRiSearchPage($parameter, "html");
                         }
                         Profiler::mark('ri:done');
@@ -500,7 +500,7 @@ switch ( $mode ) {
                     } elseif ($format === "markdown") {
                         $inner = "## " . ($source === 'fts' ? 'man' : 'apropos') . "\n\n" . $inner . "\n";
                         $pydocResults = searchFtsBySource($parameter, 'pydoc', 'markdown');
-                        if ($pydocResults === "" && !$sectionOnly) {
+                        if ($pydocResults === "" && !$sectionOnly && !sourceIsIndexed('pydoc')) {
                             $pydocResults = getPydocSearchPage($parameter, "markdown");
                         }
                         Profiler::mark('pydoc:done');
@@ -508,7 +508,7 @@ switch ( $mode ) {
                             $inner .= "\n\n## Python 3 (pydoc3)\n\n" . $pydocResults;
                         }
                         $riResults = searchFtsBySource($parameter, 'ri', 'markdown');
-                        if ($riResults === "" && !$sectionOnly) {
+                        if ($riResults === "" && !$sectionOnly && !sourceIsIndexed('ri')) {
                             $riResults = getRiSearchPage($parameter, "markdown");
                         }
                         Profiler::mark('ri:done');
@@ -522,10 +522,10 @@ switch ( $mode ) {
                         Profiler::mark('pydoc:done');
                         if (!empty($pydocFts)) {
                             $current["pydoc_results"] = $pydocFts;
-                        } elseif (!$sectionOnly) {
+                        } elseif (!$sectionOnly && !sourceIsIndexed('pydoc')) {
                             // Not `else`: an empty $pydocFts also happens for a
-                            // section listing, and that must not reach the shell
-                            // (see $sectionOnly above).
+                            // section listing or a source the index has no rows
+                            // for, and neither may reach the shell.
                             $pydocJson = getPydocSearchPage($parameter, "json");
                             if ($pydocJson !== "") {
                                 $pydocData = json_decode($pydocJson, true);
@@ -536,7 +536,7 @@ switch ( $mode ) {
                         Profiler::mark('ri:done');
                         if (!empty($riFts)) {
                             $current["ri_results"] = $riFts;
-                        } elseif (!$sectionOnly) {
+                        } elseif (!$sectionOnly && !sourceIsIndexed('ri')) {
                             $riJson = getRiSearchPage($parameter, "json");
                             if ($riJson !== "") {
                                 $riData = json_decode($riJson, true);
