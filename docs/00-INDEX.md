@@ -18,6 +18,7 @@
 ## Operations
 - **[08-RELEASE-VERSION-INTEGRITY.md](08-RELEASE-VERSION-INTEGRITY.md)** — 发布版本号完整性设计（[#250](https://github.com/chedong/phpman/issues/250)）：版本号的权威来源改为 origin 的 tag，`make tag` 并入 `make release`
 - **[09-QUALITY-GATES.md](09-QUALITY-GATES.md)** — 质量门与外部验证：四层验证模型、原始材料清单、方法与工具、G1–G9 门（[#253](https://github.com/chedong/phpman/issues/253)–[#257](https://github.com/chedong/phpman/issues/257)）
+- **[10-OPEN-ISSUES-PLAN.md](10-OPEN-ISSUES-PLAN.md)** — 9 个 open issue 的解决方案：依赖图、四阶段落地、RenderResult/RequestBudget/并发闸/指标与质量门（[#249](https://github.com/chedong/phpman/issues/249)、[#253](https://github.com/chedong/phpman/issues/253)–[#259](https://github.com/chedong/phpman/issues/259)、[#265](https://github.com/chedong/phpman/issues/265)）
 
 ## Planning
 - **[05-PLAN.md](05-PLAN.md)** — 项目路线图 & 版本规划
