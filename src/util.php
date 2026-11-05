@@ -363,7 +363,7 @@ function malformedSegmentRedirect (array $segments, int $start, string $mode = "
  * made those requests take 21-23s was the pydoc/ri cascade that runs after it:
  * `pydoc3 -k '(1)'` imports the entire stdlib to match nothing (measured 7.97s,
  * 0 results) and `ri '(1)'` likewise (0.39s, 0 results). Neither can ever match
- * a section listing, so the search branch skips both for these (#266).
+ * a section listing, so the search branch skips both for these.
  *
  * The same pattern appears inside getSearchPage() as $sectionOnly; this function
  * exists so the guard at the call site is named and testable.

@@ -116,7 +116,7 @@ $ok = false;
 try { $ok = (getSearchPage("\xFF", "", "json") === ""); } catch (\Throwable $e) { $ok = false; }
 assert_equals(true, $ok, "…same for the json format");
 
-echo "\n--- isSectionListingQuery() (#266) ---\n";
+echo "\n--- isSectionListingQuery() ---\n";
 // A section listing is not a keyword: the search branch skips the pydoc/ri
 // cascade for it, because `pydoc3 -k '(1)'` costs ~8s and matches nothing.
 assert_equals(true,  isSectionListingQuery("(1)"),   "(1) is a section listing");
