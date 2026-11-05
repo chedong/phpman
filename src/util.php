@@ -355,6 +355,23 @@ function malformedSegmentRedirect (array $segments, int $start, string $mode = "
  * $mode is the mode whose fallback ran ("pydoc", "ri"); $reason says why this
  * mode's search did not match, in the caller's own terms.
  */
+/**
+ * Is this search parameter a whole-section listing — "(1)", "(2)" … "(9)", "(n)"?
+ *
+ * These are not keywords. getSearchPage() already routes them to
+ * `apropos -s N .`, which returns a whole section in ~0.03s on the server. What
+ * made those requests take 21-23s was the pydoc/ri cascade that runs after it:
+ * `pydoc3 -k '(1)'` imports the entire stdlib to match nothing (measured 7.97s,
+ * 0 results) and `ri '(1)'` likewise (0.39s, 0 results). Neither can ever match
+ * a section listing, so the search branch skips both for these (#266).
+ *
+ * The same pattern appears inside getSearchPage() as $sectionOnly; this function
+ * exists so the guard at the call site is named and testable.
+ */
+function isSectionListingQuery(string $parameter): bool {
+    return preg_match('/^\(([0-9n]+)\)$/', trim($parameter)) === 1;
+}
+
 function noMatchNotice (string $mode, string $parameter, string $format, string $reason): string {
     if ($format === "json" || $format === "mcp") {
         // JSON_INVALID_UTF8_SUBSTITUTE: $parameter comes straight from the URL

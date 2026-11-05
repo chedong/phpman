@@ -469,10 +469,20 @@ switch ( $mode ) {
                     // Cascade to pydoc3 and ri — always check FTS5 (fast),
                     // command-line only when man search had no results.
                     $hasManResults = ($inner !== "" && $inner !== "<ul>\n</ul>\n");
+
+                    // A section listing -- "(1)", "(2)", ... "(9)", "(n)" -- is not a
+                    // keyword. getSearchPage() already routes it to `apropos -s N .`,
+                    // which returns a whole section in 0.03s; what made those
+                    // requests take 21-23s was the cascade below then running
+                    // `pydoc3 -k '(1)'`, which imports the entire stdlib to match
+                    // nothing (measured 7.97s, 0 results), plus `ri '(1)'` (0.39s,
+                    // 0 results). Neither can ever match a section listing, so the
+                    // two shell fallbacks are skipped for it.
+                    $sectionOnly = isSectionListingQuery((string)$parameter);
                     if ($format === "html") {
                         $inner = "<h2>" . ($source === 'fts' ? 'man' : 'apropos') . "</h2>\n" . $inner . "\n";
                         $pydocResults = searchFtsBySource($parameter, 'pydoc', 'html');
-                        if ($pydocResults === "" && !$hasManResults) {
+                        if ($pydocResults === "" && !$hasManResults && !$sectionOnly) {
                             $pydocResults = getPydocSearchPage($parameter, "html");
                         }
                         Profiler::mark('pydoc:done');
@@ -480,7 +490,7 @@ switch ( $mode ) {
                             $inner .= "<h2>Python 3 (pydoc3)</h2>\n" . $pydocResults . "\n";
                         }
                         $riResults = searchFtsBySource($parameter, 'ri', 'html');
-                        if ($riResults === "") {
+                        if ($riResults === "" && !$sectionOnly) {
                             $riResults = getRiSearchPage($parameter, "html");
                         }
                         Profiler::mark('ri:done');
@@ -490,7 +500,7 @@ switch ( $mode ) {
                     } elseif ($format === "markdown") {
                         $inner = "## " . ($source === 'fts' ? 'man' : 'apropos') . "\n\n" . $inner . "\n";
                         $pydocResults = searchFtsBySource($parameter, 'pydoc', 'markdown');
-                        if ($pydocResults === "") {
+                        if ($pydocResults === "" && !$sectionOnly) {
                             $pydocResults = getPydocSearchPage($parameter, "markdown");
                         }
                         Profiler::mark('pydoc:done');
@@ -498,7 +508,7 @@ switch ( $mode ) {
                             $inner .= "\n\n## Python 3 (pydoc3)\n\n" . $pydocResults;
                         }
                         $riResults = searchFtsBySource($parameter, 'ri', 'markdown');
-                        if ($riResults === "") {
+                        if ($riResults === "" && !$sectionOnly) {
                             $riResults = getRiSearchPage($parameter, "markdown");
                         }
                         Profiler::mark('ri:done');
@@ -508,22 +518,25 @@ switch ( $mode ) {
                     } elseif ($format === "json" || $format === "mcp") {
                         $current = json_decode($inner, true);
                         if ($current === null) $current = [];
-                        $pydocFts = searchFtsBySource($parameter, 'pydoc', 'json');
+                        $pydocFts = $sectionOnly ? [] : searchFtsBySource($parameter, 'pydoc', 'json');
                         Profiler::mark('pydoc:done');
                         if (!empty($pydocFts)) {
                             $current["pydoc_results"] = $pydocFts;
-                        } else {
+                        } elseif (!$sectionOnly) {
+                            // Not `else`: an empty $pydocFts also happens for a
+                            // section listing, and that must not reach the shell
+                            // (see $sectionOnly above).
                             $pydocJson = getPydocSearchPage($parameter, "json");
                             if ($pydocJson !== "") {
                                 $pydocData = json_decode($pydocJson, true);
                                 if ($pydocData !== null) $current["pydoc_results"] = $pydocData["results"] ?? [];
                             }
                         }
-                        $riFts = searchFtsBySource($parameter, 'ri', 'json');
+                        $riFts = $sectionOnly ? [] : searchFtsBySource($parameter, 'ri', 'json');
                         Profiler::mark('ri:done');
                         if (!empty($riFts)) {
                             $current["ri_results"] = $riFts;
-                        } else {
+                        } elseif (!$sectionOnly) {
                             $riJson = getRiSearchPage($parameter, "json");
                             if ($riJson !== "") {
                                 $riData = json_decode($riJson, true);

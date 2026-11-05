@@ -116,4 +116,20 @@ $ok = false;
 try { $ok = (getSearchPage("\xFF", "", "json") === ""); } catch (\Throwable $e) { $ok = false; }
 assert_equals(true, $ok, "…same for the json format");
 
+echo "\n--- isSectionListingQuery() (#266) ---\n";
+// A section listing is not a keyword: the search branch skips the pydoc/ri
+// cascade for it, because `pydoc3 -k '(1)'` costs ~8s and matches nothing.
+assert_equals(true,  isSectionListingQuery("(1)"),   "(1) is a section listing");
+assert_equals(true,  isSectionListingQuery("(9)"),   "(9) is a section listing");
+assert_equals(true,  isSectionListingQuery("(n)"),   "(n) is a section listing");
+assert_equals(true,  isSectionListingQuery("  (2)  "), "surrounding whitespace is ignored");
+assert_equals(false, isSectionListingQuery("talk"),  "a keyword is not a section listing");
+assert_equals(true,  isSectionListingQuery("(10)"),
+    "(10) matches the same [0-9n]+ pattern getSearchPage() uses; treating it as a " .
+    "listing is the faster wrong answer (apropos finds nothing) rather than the " .
+    "slow one (pydoc3 -k '(10)' costs ~8s to find nothing either)");
+assert_equals(false, isSectionListingQuery("(1) gcc"), "a section plus a keyword is a keyword search");
+assert_equals(false, isSectionListingQuery("(pydoc)"), "a non-section word in parens is not a listing");
+assert_equals(false, isSectionListingQuery(""),      "empty is not a listing");
+
 exit(test_summary());
