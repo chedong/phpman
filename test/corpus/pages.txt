@@ -1,0 +1,7 @@
+# id	tool	name	section
+man-ls	man	ls	1
+man-tar	man	tar	1
+man-ssh_config	man	ssh_config	5
+perldoc-perlfunc	perldoc	perlfunc	
+perldoc-perlvar	perldoc	perlvar	
+perldoc-DBI	perldoc	DBI	
