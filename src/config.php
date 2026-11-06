@@ -364,6 +364,16 @@ if (!is_dir(PHPMAN_LOG_DIR)) @mkdir(PHPMAN_LOG_DIR, 0755, true);
 // request rather than disabling the check. Set it in ~/.phpman/phpman.config.php.
 if (!defined('MCP_API_KEY')) define('MCP_API_KEY', '');
 
+// #255: kill switch for fetchOfficialTldr() — a man section-1 render would
+// otherwise make up to four outbound requests (tldr-pages x3 + cheat.sh), which
+// golden-corpus rendering cannot afford: corpus output must be offline and
+// deterministic. Set PHPMAN_TLDR_DISABLE=1 in the environment for corpus runs;
+// user overrides may also define('PHPMAN_TLDR_DISABLE', true) in
+// phpman.config.php (load order above guarantees that wins). Default stays off.
+if (!defined('PHPMAN_TLDR_DISABLE')) {
+    define('PHPMAN_TLDR_DISABLE', getenv('PHPMAN_TLDR_DISABLE') === '1');
+}
+
 // Debug mode: phpman.config.php > env var > default false
 if (!defined('PHPMAN_DEBUG')) define('PHPMAN_DEBUG', getenv('PHPMAN_DEBUG') === 'true');
 // Profiler::init() called by cache.php after class definition

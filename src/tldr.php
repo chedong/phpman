@@ -1,5 +1,11 @@
 <?php
 function fetchOfficialTldr(string $command, string $mode = "man", string $section = ""): array {
+    // #255: golden-corpus rendering must be offline and deterministic. The
+    // switch short-circuits before the cache or any network request, so corpus
+    // output never depends on tldr-pages/cheat.sh being reachable. Off by
+    // default — with the constant unset/false, TLDR works exactly as before.
+    if (defined('PHPMAN_TLDR_DISABLE') && PHPMAN_TLDR_DISABLE) return [];
+
     // Lowercase for cache key and tldr-pages / cheat.sh lookup
     $command = strtolower($command);
     $cacheKey = $command;
