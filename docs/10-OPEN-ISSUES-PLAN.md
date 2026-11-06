@@ -1,8 +1,9 @@
 # 10 — Open Issues 解决方案设计
 
-> 状态：设计（2026-11-03）
-> 基线：`master` @ `v4.12.13-9-g32db740`
-> 覆盖：9 个 open issue —— [#265](https://github.com/chedong/phpman/issues/265)、[#259](https://github.com/chedong/phpman/issues/259)、[#258](https://github.com/chedong/phpman/issues/258)、[#257](https://github.com/chedong/phpman/issues/257)、[#256](https://github.com/chedong/phpman/issues/256)、[#255](https://github.com/chedong/phpman/issues/255)、[#254](https://github.com/chedong/phpman/issues/254)、[#253](https://github.com/chedong/phpman/issues/253)、[#249](https://github.com/chedong/phpman/issues/249)
+> 状态：设计（2026-11-06 复核；#254/#258/#259/#280 的实现细节已按代码校正）
+> 基线：`master` @ `d01333d`
+> 覆盖的 open issue（9）：[#280](https://github.com/chedong/phpman/issues/280)、[#259](https://github.com/chedong/phpman/issues/259)、[#258](https://github.com/chedong/phpman/issues/258)、[#257](https://github.com/chedong/phpman/issues/257)、[#256](https://github.com/chedong/phpman/issues/256)、[#255](https://github.com/chedong/phpman/issues/255)、[#254](https://github.com/chedong/phpman/issues/254)、[#249](https://github.com/chedong/phpman/issues/249)、[#281](https://github.com/chedong/phpman/issues/281)
+> [#253](https://github.com/chedong/phpman/issues/253) 与 [#265](https://github.com/chedong/phpman/issues/265) **已关闭**；§2 中保留为已实现的记录，不再是待办。#281（man 的 4 空格 `name(` 被 pydoc 的 L2 启发式误判）是独立的渲染器问题，本文未展开。
 > 前置阅读：[09-QUALITY-GATES.md](09-QUALITY-GATES.md)（四层验证模型、G1–G9）、[08-RELEASE-VERSION-INTEGRITY.md](08-RELEASE-VERSION-INTEGRITY.md)（发布版本号）
 
 ## 0. 一页结论
@@ -16,7 +17,7 @@
 | **C. 质量基础设施** | #255、#257 | 用真实语料与不变量抓住"输出形状"和"解析器"回归 | 可并行，但依赖 #253 的 CI 落点 |
 | **已完成** | #265 | install.sh 参数解析 | 已在 PR #266 修复，只差验证与关闭 |
 
-**一句话顺序**：先装仪表（#253/#256），再改语义（#254/#258），最后限流（#259）；质量门（#255/#257）全程并行。
+**一句话顺序**：先装仪表（#256；#253 已关闭），再改语义（#254/#258），最后限流（#259）；质量门（#255/#257）全程并行。
 
 ## 1. 依赖图与阶段
 
@@ -35,7 +36,7 @@ P3  #255 golden corpus    #257 PHPStan + property/fuzz
 
 | 阶段 | 内容 | 预计 | 退出标准 |
 |---|---|---|---|
-| **P0** | #265 验证关闭；#253 的 `verify-release.sh` + CI unit | 1–2 天 | 版本写错时验证器非 0；`make release` 末尾有逐项 PASS |
+| **P0** | ~~#265 验证关闭；#253 的 `verify-release.sh` + CI unit~~（**均已关闭并落地**；见 §2 的 A/B） | 1–2 天 | 版本写错时验证器非 0；`make release` 末尾有逐项 PASS |
 | **P1** | #256 最小可用（HTML 采样 + `metrics.php` + SLO）；修复 log-rotate cron | 2–3 天 | 能回答"p95 多少 / 5xx 哪族 / slot 几次" |
 | **P2** | #254（pydoc/ri/man/search）+ #258 RequestBudget | 4–6 天 | 超时/预算耗尽不写最终负缓存；`/man/snice/1/json` ≤ 20s |
 | **P3** | #259 并发闸 + 廉价 404；#255/#257 质量门 | 5–8 天 | 下一次尖峰：显式 503 + Retry-After，slot 消息为 0 |
@@ -105,16 +106,27 @@ P3  #255 golden corpus    #257 PHPStan + property/fuzz
 
 #### B. Makefile 接线
 
+**验证必须在重建索引之后、打 tag 之前。** GNU make 会先执行所有前置依赖，
+再执行 recipe；把 `_verify-release` 写成 `release-reindex` 的 prerequisite，
+它会在 recipe 里的 `build-index.php` 之前跑 —— 用旧索引验证新代码，坏索引照样
+会被打上 tag。正确做法是把它放进 recipe：
+
 ```make
-release: test test-unit _release-code _verify-release
-	@$(MAKE) _release-tag
-release-reindex: test test-unit _release-code _verify-release
-	@$(MAKE) _release-tag
-_verify-release:
+release: test test-unit _release-code
 	@deploy/verify-release.sh "$$(cat .release-version)" "$(DEMO_URL)"
+	@$(MAKE) _release-tag
+
+release-reindex: test test-unit _release-code
+	@echo "=== Rebuilding production search index ==="
+	ssh ... "cd $(DEMO_HOME)/.phpman && php cli/build-index.php --cron"
+	@echo "=== Generating production sitemap ==="
+	ssh ... "cd $(DEMO_HOME)/.phpman && php cli/build-sitemap.php ..."
+	@deploy/verify-release.sh "$$(cat .release-version)" "$(DEMO_URL)"
+	@$(MAKE) _release-tag
 ```
 
-放在 `_release-tag` **之前**：验证不过就不打 tag，避免把坏版本号推出去。
+（ssh 细节与现有 `release-reindex` recipe 相同，此处省略；关键是
+`_verify-release` 从 prerequisite 移到 rebuild **之后**。）验证不过就不打 tag。
 
 #### C. GitHub Actions
 
@@ -195,6 +207,22 @@ phpman_5xx_ratio 0.0023
 | `can't apply process slot` | = 0 | 5m |
 | 预算耗尽 | < 0.1% | 1h |
 | 投递短差（`%b` < `bytes=`） | 观察值，不设阈值 | 1h |
+
+**采样偏差必须显式处理，否则 p95 是错的：**
+
+- **机器格式只在 `>=500ms` 或 `>=64KB` 时记录** —— 日志里是被截断的尾部，对它
+  求 p95 得到的是「被记录者的 p95」，通常已经接近总体 p99。真实 p95 是 1.5s 时，
+  日志 p95 可能报 4s，SLO 会假红。
+- **HTML 是「慢的 100% + 快的 1%」**，属于不等概率抽样；直接混合求分位数同样
+  有偏（慢请求被高估约 100 倍）。
+
+所以分位数**只能用等概率样本**：
+
+- 在 `phpManLogMachineRender()` 里给每个请求一个**与耗时无关**的 1% 稳定抽样
+  标记（`sampled=1`）；p95 只在这个子集上算；
+- 阈值触发的行（`sampled=0`）只用于诊断与计数，不参与分位数；
+- `--check-slo` 在 1h 内等概率样本 < 100 时输出「样本不足，未判定」并**非 0**，
+  不要静默当作通过。
 
 #### D. 缓存抽样复算（第二期，**未做**）
 
@@ -279,8 +307,18 @@ final class RenderResult {
 **不变量（构造函数/工厂里 assert）**
 
 1. `NOT_FOUND` 的 body 非空；JSON/MCP 是合法空信封，不是 0 字节。
-2. `INDETERMINATE` 永远 `cacheable() === false`；HTTP 503 + `Retry-After`，不是 404。
+2. `INDETERMINATE` 不写**最终**负行（found / 24h not_found），但**可以**写 600s 的
+   超时短行（`PHPMAN_CACHE_TTL_TIMEOUT`），否则同名会被反复打满 20 秒（#248 的原始
+   问题）。HTTP 用 503 + `Retry-After`，不是 404。因此接口用 `ttl()` /
+   `cacheStatus()` 表达这件事，**不要**用二值的 `cacheable()` —— 原文「永远
+   `cacheable() === false`」与 #258 D 的「保留 600s 短 TTL 行」互相矛盾；照前者做
+   会让重复请求重跑 20 秒扫描，照后者做又会让行在 TTL 内被读成确定的 404。
 3. `NOT_FOUND` 只能由"命令成功返回、确认无结果"产生；`rc=124` / 非零退出 ≠ not found。
+   **这要求每个 generator 都能把 rc 带出来**：`getManPage()` 目前把 rc=124 收敛成
+   `''`（BSD 回退后 `return ""`），man 分支于是调用 `cacheNotFoundOnce()` 写 24h
+   负行。迁移时必须给 `getManPage()` 加 indeterminate 出参（或直接返回
+   RenderResult），否则不变量 3 在 man 上不成立，"注入超时后只剩 600s 行"的验收
+   也过不了。
 4. HTTP 状态只由 `httpStatus()` 映射，调用点不再各自 `http_response_code()`。
 
 #### B. 迁移顺序（一次只动一组）
@@ -290,13 +328,30 @@ final class RenderResult {
 3. `search` 级联最后改（它现在把空串当"无该来源"信号）。
 4. 输出边界（`phpMan.php` markdown/json/html 三个分支）统一读 `$result->httpStatus()`。
 
-#### C. 缓存行加 `reason`（可选但推荐）
+#### C. 缓存行加 `reason`（可选，按需再定）
 
-```sql
-ALTER TABLE cache ADD COLUMN reason TEXT;  -- absent | timeout | budget | empty
+**缓存表是分片的。** 自 v4.11 起 `cache` 只存在于 `phpman_cache_<mode>.db`；
+中央 `cacheDb()` 里没有 `cache` 表（只有 `meta` / `search_fts` /
+`search_index_meta` / `tldr_cache`）。所以：
+
+- `ALTER TABLE cache` 必须对 `pageCacheDb($mode)` **逐个分片**执行；对
+  `cacheDb()` 执行会抛 `no such table: cache`；
+- 只给一个分片加列，其他分片的 `fetchRow()` SELECT 会抛
+  `no such column: reason`，那些 mode 直接 500；
+- 读侧 `fetchRow()` 的 SELECT 也要显式列出 `reason`，否则加了列也读不到。
+
+另外，现有 `ttl` 列已经能区分 600s 超时行与 86400s 负行，`reason` 的边际价值
+只是再区分 `empty` 与 `timeout`。**建议先不做**；真要做时按分片执行：
+
+```php
+foreach (pageCacheModes() as $m) {
+    $db = pageCacheDb($m);
+    $cols = []; // PRAGMA table_info(cache) → 列名
+    if (!in_array('reason', $cols, true)) {
+        $db->exec("ALTER TABLE cache ADD COLUMN reason TEXT");
+    }
+}
 ```
-
-SQLite 不支持 `ADD COLUMN IF NOT EXISTS`，用 `PRAGMA table_info(cache)` 判断后再加（与现有 `CREATE ... IF NOT EXISTS` 的自愈风格一致）。`getWithStatus()` 一并返回 `reason`，供 #256 区分"超时负行"与"真的不存在"。
 
 **验收**：表驱动 9 种 (status × cached/uncached) 组合，断言 HTTP 码、是否写缓存、body 非空；注入超时后 DB 里**没有**最终负行（只有 600s 短 TTL 行）；现有断言全绿。
 
@@ -314,20 +369,38 @@ SQLite 不支持 `ADD COLUMN IF NOT EXISTS`，用 `PRAGMA table_info(cache)` 判
 
 ```php
 final class RequestBudget {
-    public function __construct(int $limitMs, ?float $startMs = null);
-    public static function current(): self;   // 单例；PHPMAN_REQUEST_TIMEOUT_MS 默认 20000，0=不限
-    public function remainingMs(): int;       // max(0, deadline - now)
-    public function exhausted(): bool;
-    public function slice(int $requestedMs): int; // min(requested, remaining)
+    public function __construct(int $limitMs, ?float $startMs = null); // $limitMs = 0 → 不限
+    public static function current(): self;   // 单例；PHPMAN_REQUEST_TIMEOUT_MS 默认 20000
+    public function remainingMs(): int;       // 不限时返回 PHP_INT_MAX，**不是 0**
+    public function exhausted(): bool;        // 不限时永远 false
+    public function sliceMs(int $requestedMs): int; // min(requested, remaining)
 }
 ```
 
-#### B. `phpManExec()` 集成（零调用点改动）
+**0 的语义必须是“不限”，否则会把站点打死。** `PHPMAN_REQUEST_TIMEOUT_MS=0`
+与现有的 `PHPMAN_CMD_TIMEOUT=0` 都表示不设上限；`max(0, deadline-now)` 会把 0
+算成“deadline 已到”，于是每条命令都不 spawn —— 缓存命中正常、所有冷请求 503 或
+24h 404，正是之前那类“命中正常、未命中全挂”的故障。构造函数里对 `0` 直接返回
+一个不限的实例，`remainingMs()` 返回 `PHP_INT_MAX`。
 
-- 默认取 `RequestBudget::current()`；
-- `$effectiveMs = min($timeoutMs ?? PHPMAN_CMD_TIMEOUT*1000, $budget->remainingMs())`；
-- `$effectiveMs <= 0` → **不 spawn**：`$rc = 124; $lines = [];`，记一行 `budget exhausted: mode=… stage=… remaining=0ms`，返回 false；
-- `timeout(1)` 只接受秒：`ceil($effectiveMs / 1000)`，最小 1；因此预算会有 ≤1s 的粒度误差，配置上留 1s 余量。
+#### B. `phpManExec()` 集成
+
+**第 4 个参数的单位是秒，不是毫秒。** 现在签名是
+`phpManExec(string $cmd, array &$lines, ?int &$rc = null, ?int $timeout = null)`，
+`timeout` 直接传给 `timeout(1)`；唯一显式调用点是
+`phpManExec(..., PHPMAN_PYDOC_K_TIMEOUT)`，而该常量是 **20（秒）**。照原文
+`min($timeoutMs ?? PHPMAN_CMD_TIMEOUT*1000, ...)` 的写法，20 会被当成 20ms，
+`ceil(20/1000)` 得 1 秒 —— `pydoc3 -k` 需要 10–14 秒，会在 1 秒时被杀。
+
+保持秒单位，预算只在边界换算：
+
+- `$requestedSec = $timeout ?? PHPMAN_CMD_TIMEOUT`；
+- `$requestedSec === 0` → 不限，跳过预算（保持现有 `0 = no limit` 契约）；
+- `$budgetMs = RequestBudget::current()->remainingMs()`；
+- `$budgetMs <= 0` → **不 spawn**：`$rc = 124; $lines = [];`，记一行
+  `budget exhausted: mode=… stage=…`，返回 false；
+- 否则 `$effectiveSec = min($requestedSec, intdiv($budgetMs + 999, 1000))`，
+  最小 1 秒；因此预算有 ≤1s 的粒度误差，配置上留 1s 余量。
 - 新增可选 `$stage` 参数（`man.primary` / `man.bsd` / `man.search` / `pydoc.page` / `pydoc.search` / `ri.page` / `perldoc.page` / `info.page` / `search.apropos`），用于日志与指标。
 
 #### C. 调用点的短路
@@ -368,7 +441,22 @@ if (!phpManExec($cmd, $lines, $rc, null, 'man.primary') && RequestBudget::curren
 
 #### B. 并发闸（`src/inflight.php`）
 
-只在**冷渲染**（`cacheOrExecute()` 即将调用 `$generator()`）取一个槽；缓存命中不过闸。**一个请求最多一个 token**（静态 re-entrant），由 `register_shutdown_function` 释放。
+**闸必须包住所有会 fork 的路径，而不只是 `cacheOrExecute()` 的 primary
+generator。** 现在真正贵的是 `cacheOrSearchFallback()` 在 `cacheOrExecute()`
+返回**之后**才调用的 `$fallbackGenerator()`（`pydoc3 -k` 8–14 秒、`ri`
+0.4–1.3 秒），以及 man 未命中时直接调用的 `getSearchPage()` / `apropos`。只包
+primary 的话，`/pydoc/<不存在>` 与 `/man/<不存在>` 的突发完全不取 token，
+`inflight` 显示还有余量，而 mod_fcgid 照样被打满 —— #259 的验收「slot 消息 = 0」
+达不到。
+
+取槽点应放在**每个会 spawn 子进程的入口**（或直接放进 `phpManExec()`，见
+#258），而不是 `cacheOrExecute()` 一家。缓存命中仍然不过闸。
+
+**一个请求最多一个 token**（静态 re-entrant），由 `register_shutdown_function`
+释放。`PHPMAN_MAX_CONCURRENT_RENDERS` 默认 `0` 必须是**关闭**；原文的「0 = 关闭」
+要写成显式分支，不能落进「大于等于 0」的比较。闸满时如果直接返回 `''`，
+man/perldoc/info 的 miss 分支会把它写成 24h 负行 —— 必须走显式的 503 路径
+（#254 的 INDETERMINATE），不能伪装成「没有这个页面」。
 
 ```sql
 CREATE TABLE IF NOT EXISTS inflight (
@@ -454,13 +542,26 @@ test/corpus/
 
 #### C. `test/corpus/run.php`（无需网络）
 
-1. **格式纯度**：markdown 无 HTML 标签；JSON `json_decode` 成功；HTML `xmllint --noout --valid`（有 DTD 时）。
+1. **格式纯度**：markdown 无 HTML 标签；JSON `json_decode` 成功；HTML 用
+   `xmllint --noout --nonet --catalogs --valid` **配本地 XHTML DTD catalog**。
+   注意：`xmllint --valid` 在 DTD 拉不到时只打印 `no DTD found` 并**照样
+   exit 0** —— 等于没校验。必须把 `no DTD found` / 空 catalog 当失败，或把
+   DTD 随语料一起入库。
 2. **golden 字节**：sha256 不等 → 打印 diff 的页面与第一处差异。
 3. **参考实现差分**（可选 `--oracle`）：`groff -Thtml` / `pydoc3 -w` / `Pod::Html` / `ri` 的纯文本归一化后 diff。
 4. **跨格式不变量**：同一页面的章节标题序列在 html/json/md 中一致；`see_also` 链接不丢失。
 5. **与 `RENDERER_VERSION` 联动**：corpus 的 `meta.json` 记录生成时的 `RENDERER_VERSION`；如果代码 bump 了而 corpus 没更新，gate 直接失败并提示"要么解释输出变化，要么更新语料"。
 
 **验收**：≥ 5 工具 × 3 页；故意去掉一个转义 → 至少 1 个 diff；`php test/corpus/run.php` 在无网络环境全绿。
+
+**确定性前提（否则 corpus 每次都是红的）：** golden 必须能离线、逐字节复现。
+
+- **关掉 TLDR 抓取** —— `man/ls/1` 等页面会去 GitHub raw / cheat.sh 拉数据，
+  无网络或超时时输出与 golden 不同。加一个测试用开关（如
+  `PHPMAN_TLDR=0`），生成与比较都置为关闭。
+- **归一化易变字段** —— JSON 里的生成时间戳、footer 的日期/版本串、ETag；
+  在 sha256 之前替换成固定占位符，或把这些页面排除在字节比较之外。
+- **固定 locale / TZ** —— 写进 `meta.json`，并在 runner 里 export。
 
 **风险**：不同 OS 的工具版本会产生不同 raw 输出。语料在**生产同款 OS** 生成；CI 只跑纯格式断言，sha256 断言在 staging-smoke 跑。
 
@@ -485,11 +586,21 @@ test/corpus/
 
 | 性质 | 生成器 |
 |---|---|
-| `h()` 输出可被 `html_entity_decode` 还原 | 任意字节串（含非法 UTF-8） |
-| `phpManLogSafeField()` 永远单行、≤ 120 字符、无控制字符 | 含 `\n`/`\0`/超长串 |
+| `h()` 对**合法 UTF-8** 可被 `html_entity_decode` 还原；非法输入替换为 U+FFFD，输出仍是合法 UTF-8 | 合法 UTF-8 串 + 含非法字节的串（**分两组断言**） |
+| `phpManLogSafeField()` 单行、无控制字符、输出是合法 UTF-8，长度 ≤ `maxLen + 3` **字节**（截断后追加 `...`） | 含 `\n`/`\0`/超长串/多字节串 |
 | `normalizeParameter()` 幂等 | 随机路径片段 |
 | `formatManPerlDocToMarkdown()` 不含 HTML 标签 | 随机 overstrike/ANSI 行 |
 | JSON round-trip | 嵌套数组/Unicode/控制字符 |
+
+**两条现有实现决定会影响性质的定义，必须先对齐：**
+
+- `h()` 用 `ENT_SUBSTITUTE`，非法 UTF-8 **不可能**原样 round-trip —— 性质要写成
+  「合法输入 round-trip；非法输入替换为 U+FFFD 后再 round-trip」。
+- `phpManLogSafeField()` 是 `substr($clean, 0, $maxLen) . '...'`：上限是
+  `maxLen + 3` 字节，不是 120；而且 `substr` 会切断多字节序列，输出可能不是合法
+  UTF-8。要么把实现改成 `mb_strcut($clean, 0, $maxLen, 'UTF-8')`，要么把性质
+  降到「≤ maxLen+3 字节」并另加一条「输出合法 UTF-8」—— 后者会直接抓到当前的
+  切字节 bug。
 
 每次 500 个种子，固定 seed 可复现；失败打印最小化输入。
 
@@ -603,34 +714,62 @@ gate shed: mode=man limit=8 inflight=8 wait=0ms
 
 ### 7.4 索引要灌什么
 
-| 来源 | 清单命令 | 条数 | 离线耗时 | 描述列 |
+| 来源 | 现状 | 清单命令 | 条数 | 描述列 |
 |---|---|---|---|---|
-| **ri** | `ri -l` | 3,699 | 0.42s | 常量（"Ruby class"） |
-| **perldoc** | 递归扫 `@INC` 的 `*.pm` → `Foo::Bar` | 5,357 | 0.98s | 常量（"Perl module"） |
-| **pydoc** | `pkgutil.walk_packages(onerror=…)` | 6,197 | 6.17s | 常量（"Python 3 module"） |
+| **ri** | **已有代码** | `ri -l` | 3,699 | 常量（"Ruby class/module"） |
+| **pydoc** | **已有代码** | `pydoc3 modules` | ~331（仅 top-level） | 常量（"Python 3 module"） |
+| **perldoc** | **没有** | 递归扫 `@INC` 的 `*.pm` | ~5,357 | 常量（"Perl module"） |
 
-合计 **约 7.6 秒**，一次性。写进 `search_fts`，`section` 列取 `ri` / `perldoc` /
-`pydoc` —— `searchFtsBySource($q, $source, …)` 的 `WHERE s.section = :source`
-本来就是这么用的，读侧不用改。
+**修正原文的三处事实错误：**
 
-三处实现要点：
+1. **pydoc / ri 不需要新增 ingestion。** `rebuildSearchIndex()` 已经在跑
+   `pydoc3 modules` 与 `ri -l`（`src/search_index.php:652,716`）。生产里 0 行是
+   「这份索引没重建过」，不是「代码没灌」—— 见 §7.1 的复核命令。真正缺的只有
+   **perldoc**。
+2. **`pydoc3 modules` 只列 top-level，约 331 行，不是 6,197。** 它不会列出
+   `json.decoder` 这类子模块；`walk_packages` 的 6,197 与「不传 onerror 会截断到
+   791」都不适用于现有实现（`pydoc3 modules` 是外部命令，不走 `walk_packages`）。
+   含点子模块在索引里**仍然没有**，所以 pydoc 回退还不能删。
+3. **常量描述会污染 `MATCH`。** FTS5 的 `MATCH` 会命中 `description` 列：搜
+   `python` 会匹配所有 `Python 3 module` 行，`searchFtsBySource()` 返回 LIMIT 100
+   的任意集合，级联随即认为「pydoc 有结果」而跳过 `pydoc3 -k`。因此 §7.5 的开关
+   不能只数行数。
 
-1. **pydoc 必须传 `onerror`。** 不传的话 `walk_packages()` 会在第一个 import
-   失败的模块上抛异常并**静默截断** —— 生产上实测只走到 791 个就停了，而全量是
-   6,197 个。
-2. **不 import 模块取描述**，那正是 `pydoc3 -k` 慢的原因（它为了拿摘要把整个
-   stdlib import 一遍）。名字来自目录遍历，描述用常量。
-3. **`::` 已经有人处理了**：`expandNameForFts()` 会把 `File::Find` 展开成
-   `File Find file find`，现有索引里 `Image::ExifTool::Shift` 就是这么存的。
-   perldoc 的名字直接沿用同一条路径，不需要新逻辑。
+**perldoc 的读侧还差一步。** `getSearchPage()` 把非 pydoc/ri 的行放进 `$lines`，
+而 `parseAproposLine()` 只接受 `(?:\d\w*|n)\w*` 形式的 section
+（`src/search_index.php:312,318`）—— `section='perldoc'` 的行会被**静默丢弃**。
+要么扩展 `parseAproposLine()` 接受 `perldoc`，要么给 perldoc 单独的渲染分支；
+不做这一步，索引里灌了也显示不出来。
+
+**`::` 不需要新逻辑**：`expandNameForFts()` 已把 `File::Find` 展开成
+`File Find file find`，perldoc 名字沿用同一条路径。
 
 ### 7.5 回退怎么拆
 
-**按来源逐个拆，用索引的覆盖情况当开关 —— 不硬编码。**
+**按来源逐个拆，但不能只数行数。** 「> 0 行就关回退」有两个问题：
 
-阶段 1：索引建好后，如果 `search_index_meta` / `search_fts` 里该来源的行数 > 0，
-该来源的回退就不跑。用行数而不是写死常量，是为了「新装的机器索引还没建」时
-仍然能回退，而不是搜索什么都搜不到。
+1. **描述列污染**（§7.4 第 3 条）：索引里只要有一行 pydoc，搜 `python` 就会命中
+   它，级联据此跳过 `pydoc3 -k`，而真实结果可能一条都没返回；
+2. **部分覆盖**：`pydoc3 modules` 只有 top-level，含点子模块永远不在索引里；
+   一旦关掉回退，`/search/json.decoder` 就彻底搜不到。
+
+用一个**按来源的完整性标记**当开关，行数只作观察指标（表建在中央
+`phpman_cache.db`，不在分片里）：
+
+```sql
+CREATE TABLE IF NOT EXISTS source_state (
+    source     TEXT PRIMARY KEY,   -- pydoc | ri | perldoc
+    complete   INTEGER NOT NULL,   -- 1 = 清单命令成功跑完
+    row_count  INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+```
+
+- 只有 `complete=1` 才允许关该来源的回退；
+- `searchFtsBySource()` 的 MATCH 应**只作用在 `name` 列**（如
+  `name : "x*"`），不要让常量 `description` 参与匹配；
+- 新装的 gem / pip 包在下次 reindex 前仍搜不到 —— 保留回退或接受这个时效，
+  见 §7.7。
 
 阶段 2（可选）：
 
@@ -659,6 +798,9 @@ reindex 之前完全搜不到」，而 reindex 是手工的。
 - **匹配语义变了。** `pydoc3 -k` 是「模块名 + 摘要」的**子串**匹配，FTS5 是
   前缀/布尔查询。搜类名（`DatabaseError`）两者都找不到 —— 索引里只有模块名，
   与 #252 已经记过的边界一致。
-- **索引体积**：约 15,000 行新数据，相对现有 ~15,000 行翻倍；`search_fts` 是
-  FTS5 外部内容表，实测增长可接受，但 `make reindex` 的耗时和 DB 大小要在实施时
-  量一次。
+- **索引体积**：`search_fts` 是**普通（standalone）FTS5 表**，没有 `content=`；
+  只有 `cache_fts` 是 external-content（`content='cache'`）。所以新行会各自存
+  一份索引数据，约 9,000 行（ri 3,699 + perldoc 5,357）相对现有 ~15,000 行
+  增长约 60%。`make reindex` 的耗时与 DB 大小要在实施时量一次。
+  **不要按 external-content 的方式写清理/重建逻辑** —— `INSERT INTO
+  search_fts(search_fts) VALUES('rebuild')` 那套只适用于 `cache_fts`。
