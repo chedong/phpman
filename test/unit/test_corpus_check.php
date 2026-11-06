@@ -8,7 +8,10 @@
  *   - golden md 被改坏 → exit 1，输出含 [FAIL] <id> golden-md 与行号差异；
  *   - fingerprint 被改坏 → exit 1，输出含 [FAIL] <id> fingerprint；
  *   - 修好 → exit 0；
- *   - 空 raw/ → [SKIP] no corpus，exit 0（controller ruling：CI 先接线后抓语料）。
+ *   - 无 manifest / manifest 零条目 → [SKIP] no corpus，exit 0（bootstrap 态）；
+ *   - manifest 有条目但 raw/ 空 → corpus 级 [FAIL]，exit 1（整分支评审修订：
+ *     raw/ 已入库，此时 SKIP 是假绿——语料被删或路径错必须红）；
+ *   - manifest 条目缺 raw（其余页有 raw）→ [FAIL] <id> raw，exit 1。
  *
  * Task 6 增加 xhtml 检查（整页 showHeader + formatManPerlDoc + showFooter，
  * 用本机 xmllint --noout --nonet --dtdvalid 校验随仓库离线解析的 XHTML 1.0
@@ -160,7 +163,9 @@ if (trim((string)shell_exec('command -v xmllint 2>/dev/null')) === '') {
     assert_not_equals('', trim($res2['output']), "失败时给出 xmllint 诊断（前 5 行）");
 }
 
-echo "\n--- 空 raw/：[SKIP] no corpus，exit 0 ---\n";
+echo "\n--- 无 manifest / 零条目：[SKIP] no corpus，exit 0 ---\n";
+// 修订后的 ruling：只有"没有语料"（无 manifest 或 manifest 零条目）才 SKIP；
+// 有条目但 raw 空 = 语料被删或路径错，必须红（见下节）。
 $tmp2 = sys_get_temp_dir() . '/phpman-check-empty-' . getmypid();
 if (is_dir($tmp2)) {
     foreach (glob($tmp2 . '/*/*') ?: [] as $f) { unlink($f); }
@@ -169,19 +174,32 @@ if (is_dir($tmp2)) {
     @rmdir($tmp2);
 }
 mkdir($tmp2 . '/raw', 0777, true);
+[$rc, $out] = run_php($check, ['--corpus=' . $tmp2]);
+assert_equals(0, $rc, "无 manifest 退出码 0");
+assert_contains('[SKIP] no corpus', $out, "无 manifest 输出 [SKIP] no corpus");
+
+// manifest 只有注释行 = 零条目，同样是 bootstrap 态
+file_put_contents($tmp2 . '/pages.txt', "# id\ttool\tname\tsection\n");
+[$rc, $out] = run_php($check, ['--corpus=' . $tmp2]);
+assert_equals(0, $rc, "manifest 零条目退出码 0");
+assert_contains('[SKIP] no corpus', $out, "manifest 零条目输出 [SKIP] no corpus");
+
+echo "\n--- manifest 有条目但 raw/ 空：exit 1（不再静默 SKIP） ---\n";
 file_put_contents($tmp2 . '/pages.txt', "# id\ttool\tname\tsection\nnothing\tman\tnope\t1\n");
 [$rc, $out] = run_php($check, ['--corpus=' . $tmp2]);
-assert_equals(0, $rc, "空语料退出码 0（controller ruling）");
-assert_contains('[SKIP] no corpus', $out, "空语料输出 [SKIP] no corpus");
+assert_equals(1, $rc, "有条目但 raw 空退出码 1");
+assert_contains('[FAIL] corpus: manifest lists 1 page(s) but raw/ is empty (or missing)', $out,
+    "输出带条目数的 corpus 级 FAIL");
 
-echo "\n--- manifest 条目缺 raw：exit 1 并报 FAIL ---\n";
-// 注意不能删掉唯一的 raw 文件——那会让语料变空、触发 [SKIP] no corpus（上节）。
-// 追加一个没有 raw 的条目，让语料保持非空，才轮到逐页检查。
+echo "\n--- manifest 条目缺 raw：exit 1 并报 [FAIL] <id> raw ---\n";
+// 注意不能删掉唯一的 raw 文件——那会让 raw/ 变空、触发 corpus 级 FAIL（上节）。
+// 追加一个没有 raw 的条目，让 raw/ 保持非空，才轮到逐页检查。
 file_put_contents($tmp . '/pages.txt',
     "# id\ttool\tname\tsection\ncheck-demo\tman\tdemo\t1\ncheck-noraw\tman\tgone\t1\n");
 [$rc, $out] = run_php($check, ['--corpus=' . $tmp]);
 assert_equals(1, $rc, "条目缺 raw 退出码 1");
-assert_contains('[FAIL] check-noraw golden-md', $out, "缺 raw 的条目报 [FAIL] <id> golden-md");
+assert_contains('[FAIL] check-noraw raw', $out, "缺 raw 的条目报 [FAIL] <id> raw（独立检查名）");
+assert_not_contains('[FAIL] check-noraw golden-md', $out, "缺 raw 不再挂在 golden-md 名下");
 assert_contains('raw output missing', $out, "FAIL 原因指出 raw 缺失");
 assert_contains('[OK] check-demo', $out, "其余页仍报 [OK]");
 

@@ -51,10 +51,14 @@
  *
  * All checks pass → exit 0. Any failure → exit 1.
  *
- * Empty corpus (controller ruling): when raw/ holds no *.txt, print
- * `[SKIP] no corpus` and exit 0. Task 7 wires this gate into CI before Task 8
- * captures the real pages; without the skip the CI job would be red on an
- * empty corpus.
+ * Empty corpus (controller ruling, revised by whole-branch review): a corpus
+ * dir with no manifest, or a manifest with zero entries, is the genuine
+ * bootstrap state — print `[SKIP] no corpus` and exit 0. But a manifest WITH
+ * entries whose raw/ is empty (or missing) means the corpus was deleted or a
+ * path is wrong — exactly when the gate must go red: print
+ * `[FAIL] corpus: manifest lists N page(s) but raw/ is empty (or missing)`
+ * and exit 1. (The original ruling — skip whenever raw/ was empty — predates
+ * the corpus being committed and would have false-passed that state.)
  *
  * Environment isolation mirrors cli/corpus.php render (Task 4): the constants
  * are defined BEFORE the bootstrap require, so the golden comparison cannot
@@ -274,7 +278,8 @@ function corpusCheckPage(array $entry, string $rawDir, string $goldenDir): array
     $raw = is_file($rawFile) ? file_get_contents($rawFile) : false;
     if ($raw === false || $raw === '') {
         // Without raw nothing downstream can be checked; one FAIL for the page.
-        $fails['golden-md'] = ['reason' => 'raw output missing or empty: ' . $rawFile, 'detail' => []];
+        // Own check name `raw` — the problem is upstream of any golden file.
+        $fails['raw'] = ['reason' => 'raw output missing or empty: ' . $rawFile, 'detail' => []];
         return $fails;
     }
     $lines = corpusCheckLines($raw);
@@ -395,18 +400,33 @@ function corpusCheckMain(array $argv): int {
         }
     }
 
+    // No manifest = genuine bootstrap state → skip, not fail (controller
+    // ruling, revised by whole-branch review).
     $manifestFile = $corpusDir . '/pages.txt';
     if (!is_file($manifestFile)) {
-        fwrite(STDERR, "corpus: manifest not found: {$manifestFile} (--corpus=DIR, manifest expected at DIR/pages.txt)\n");
-        return 1;
+        echo "[SKIP] no corpus\n";
+        return 0;
     }
 
-    // Empty corpus: nothing frozen yet → skip, not fail (controller ruling).
+    // corpusReadManifest lives in the standalone normalize lib (no bootstrap
+    // needed) — read it before deciding on raw/ so the empty-manifest skip
+    // and the manifest-vs-raw mismatch failure both key off the real count.
+    require_once __DIR__ . '/normalize.php';
+    $entries = corpusReadManifest($manifestFile);
+    if (count($entries) === 0) {
+        echo "[SKIP] no corpus\n";
+        return 0;
+    }
+
+    // Manifest has entries but nothing frozen: the corpus was deleted or a
+    // path is wrong — the gate must go red, not silently skip (the original
+    // empty-raw skip was a false-pass once raw/ landed in the repo).
     $rawDir = $corpusDir . '/raw';
     $rawFiles = is_dir($rawDir) ? glob($rawDir . '/*.txt') : [];
     if ($rawFiles === false || count($rawFiles) === 0) {
-        echo "[SKIP] no corpus\n";
-        return 0;
+        echo "[FAIL] corpus: manifest lists " . count($entries)
+            . " page(s) but raw/ is empty (or missing)\n";
+        return 1;
     }
 
     // Environment isolation BEFORE the bootstrap require — same as render.
@@ -414,10 +434,8 @@ function corpusCheckMain(array $argv): int {
     define('PHPMAN_BASE_URL', 'https://www.chedong.com/phpMan.php');
     define('PHPMAN_TLDR_DISABLE', true);
     require_once dirname(__DIR__, 2) . '/src/bootstrap.php';
-    require_once __DIR__ . '/normalize.php';
     require_once __DIR__ . '/fingerprint.php';
 
-    $entries = corpusReadManifest($manifestFile);
     $goldenDir = $corpusDir . '/golden';
     $nFail = 0;
     $nPages = 0;
