@@ -1,0 +1,1 @@
+?(0lines) ; ?(0lines)>Traditional usage|UNIX-style usage|GNU-style usage ; ?(0lines) ; ?(0lines)>Option styles|Operation mode|-A --catenate --concatenate|-c --create|-d --diff --compare|... ; ?(0lines)>Operation modifiers|--check-device|-g --listed-incremental|-G --incremental|--ignore-failed-read|... ; ?(0lines) ; ?(0lines) ; ?(0lines) ; ?(0lines)

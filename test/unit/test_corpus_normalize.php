@@ -45,6 +45,13 @@ assert_contains("LS(1)", corpusNormalizeText($onlyHeader), "末行不同时首�
 $squeezed = "a\n\n\n\nb\n";
 assert_equals("a\n\nb", corpusNormalizeText($squeezed), "连续空行压成一个");
 
+// Ruling 22：邮箱改写为渲染器混淆后的 "user AT host" 形式（#255 Task 8）
+assert_equals("<bug-tar AT gnu.org>.", corpusNormalizeText("<bug-tar@gnu.org>."), "尖括号内邮箱改写");
+assert_equals("bugs AT gnu.org", corpusNormalizeText("bugs@gnu.org"), "裸邮箱改写");
+assert_equals("a.b-c+d AT mail.example.com", corpusNormalizeText("a.b-c+d@mail.example.com"), "含点/加号/连字符的本地部分");
+assert_contains("not-an-email", corpusNormalizeText("not-an-email"), "无 @ 不改写");
+assert_equals("x AT y.example.org, z AT y.example.org", corpusNormalizeText("x@y.example.org, z@y.example.org"), "多处邮箱各自改写");
+
 echo "\n--- corpusTokens() ---\n";
 assert_equals(['ls', '-l'], corpusTokens("  ls  -l\n"), "按空白切分并去空串");
 assert_equals([], corpusTokens("   \n\t "), "纯空白产出空数组");

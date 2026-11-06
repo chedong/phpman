@@ -38,6 +38,10 @@ function corpusStripFormatting(string $text): string {
 
 function corpusNormalizeText(string $text): string {
     $text = corpusStripFormatting($text);
+    // Ruling 22（#255 Task 8）：邮箱混淆是渲染器的刻意变换
+    // （src/format_html.php：user@host → user<u> AT </u>host，mailto href 同），
+    // raw 侧同步改写为 "user AT host"，两侧 token 才可比。内容保持，不放松断言。
+    $text = preg_replace('/(\b[\w.+-]+)@([\w-]+(?:\.[\w-]+)+)/', '$1 AT $2', $text);
     // 逐行 trim：rtrim 去行尾空白与 \r；行首缩进抹平（man 用 4 空格缩进、
     // perldoc 用 7 空格，归一化后的正文要逐词可比）
     $lines = array_map(static fn(string $l): string => trim($l), explode("\n", $text));

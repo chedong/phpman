@@ -1,0 +1,1068 @@
+[4mTAR[24m(1)                                     GNU TAR Manual                                     [4mTAR[24m(1)
+
+[1mNAME[0m
+       tar - an archiving utility
+
+[1mSYNOPSIS[0m
+   [1mTraditional usage[0m
+       [1mtar [22m{[1mA[22m|[1mc[22m|[1md[22m|[1mr[22m|[1mt[22m|[1mu[22m|[1mx[22m}[[1mGnSkUWOmpsMBiajJzZhPlRvwo[22m] [[4mARG[24m...]
+
+   [1mUNIX-style usage[0m
+       [1mtar -A [22m[[4mOPTIONS[24m] [1m-f [4m[22mARCHIVE[24m [4mARCHIVE[24m...
+
+       [1mtar -c [22m[[1m-f [4m[22mARCHIVE[24m] [[4mOPTIONS[24m] [[4mFILE[24m...]
+
+       [1mtar -d [22m[[1m-f [4m[22mARCHIVE[24m] [[4mOPTIONS[24m] [[4mFILE[24m...]
+
+       [1mtar -r [22m[[1m-f [4m[22mARCHIVE[24m] [[4mOPTIONS[24m] [[4mFILE[24m...]
+
+       [1mtar -t [22m[[1m-f [4m[22mARCHIVE[24m] [[4mOPTIONS[24m] [[4mMEMBER[24m...]
+
+       [1mtar -u [22m[[1m-f [4m[22mARCHIVE[24m] [[4mOPTIONS[24m] [[4mFILE[24m...]
+
+       [1mtar -x [22m[[1m-f [4m[22mARCHIVE[24m] [[4mOPTIONS[24m] [[4mMEMBER[24m...]
+
+   [1mGNU-style usage[0m
+       [1mtar [22m{[1m--catenate[22m|[1m--concatenate[22m} [[4mOPTIONS[24m] [1m--file [4m[22mARCHIVE[24m [4mARCHIVE[24m...
+
+       [1mtar --create [22m[[1m--file [4m[22mARCHIVE[24m] [[4mOPTIONS[24m] [[4mFILE[24m...]
+
+       [1mtar [22m{[1m--diff[22m|[1m--compare[22m} [[1m--file [4m[22mARCHIVE[24m] [[4mOPTIONS[24m] [[4mFILE[24m...]
+
+       [1mtar --delete [22m[[1m--file [4m[22mARCHIVE[24m] [[4mOPTIONS[24m] [[4mMEMBER[24m...]
+
+       [1mtar --append [22m[[1m--file [4m[22mARCHIVE[24m] [[4mOPTIONS[24m] [[4mFILE[24m...]
+
+       [1mtar --list [22m[[1m--file [4m[22mARCHIVE[24m] [[4mOPTIONS[24m] [[4mMEMBER[24m...]
+
+       [1mtar --test-label [22m[[1m--file [4m[22mARCHIVE[24m] [[4mOPTIONS[24m] [[4mLABEL[24m...]
+
+       [1mtar --update [22m[[1m--file [4m[22mARCHIVE[24m] [[4mOPTIONS[24m] [[4mFILE[24m...]
+
+       [1mtar [22m{[1m--extract[22m|[1m--get[22m} [[1m--file [4m[22mARCHIVE[24m] [[4mOPTIONS[24m] [[4mMEMBER[24m...]
+
+[1mNOTE[0m
+       This  manpage  is a short description of GNU [1mtar[22m.  For a detailed discussion, including exam‐
+       ples and usage recommendations, refer to the [1mGNU Tar Manual [22mavailable in texinfo format.   If
+       the [1minfo [22mreader and the tar documentation are properly installed on your system, the command
+
+           [1minfo tar[0m
+
+       should give you access to the complete manual.
+
+       You  can  also view the manual using the info mode in [1memacs[22m(1), or find it in various formats
+       online at
+
+           [1mhttps://www.gnu.org/software/tar/manual[0m
+
+       If any discrepancies occur between this manpage and the [1mGNU Tar Manual[22m, the  later  shall  be
+       considered the authoritative source.
+
+[1mDESCRIPTION[0m
+       GNU  [1mtar  [22mis  an  archiving  program  designed  to  store multiple files in a single file (an
+       [1marchive[22m), and to manipulate such archives.  The archive can be either a regular file or a de‐
+       vice (e.g. a tape drive, hence the name of the program,  which  stands  for  [1mt[22mape  [1mar[22mchiver),
+       which can be located either on the local or on a remote machine.
+
+   [1mOption styles[0m
+       Options  to  GNU [1mtar [22mcan be given in three different styles.  In [1mtraditional style[22m, the first
+       argument is a cluster of option letters and all  subsequent  arguments  supply  arguments  to
+       those options that require them.  The arguments are read in the same order as the option let‐
+       ters.   Any  command line words that remain after all options have been processed are treated
+       as non-option arguments: file or archive member names.
+
+       For example, the [1mc [22moption requires creating the archive, the [1mv [22moption  requests  the  verbose
+       operation,  and  the  [1mf [22moption takes an argument that sets the name of the archive to operate
+       upon.  The following command, written in the traditional style, instructs tar  to  store  all
+       files  from the directory [1m/etc [22minto the archive file [1metc.tar[22m, verbosely listing the files be‐
+       ing archived:
+
+       tar cfv etc.tar /etc
+
+       In [1mUNIX [22mor [1mshort-option style[22m, each option letter is prefixed with a single dash, as in other
+       command line utilities.  If an option takes an argument, the argument follows it, either as a
+       separate command line word, or immediately following the  option.   However,  if  the  option
+       takes  an [1moptional [22margument, the argument must follow the option letter without any interven‐
+       ing whitespace, as in [1m-g/tmp/snar.db[22m.
+
+       Any number of options not taking arguments can be clustered together  after  a  single  dash,
+       e.g.  [1m-vkp[22m.   An  option that takes an argument (whether mandatory or optional) can appear at
+       the end of such a cluster, e.g. [1m-vkpf a.tar[22m.
+
+       The example command above written in the [1mshort-option style [22mcould look like:
+
+       tar -cvf etc.tar /etc
+       or
+       tar -c -v -f etc.tar /etc
+
+       In [1mGNU [22mor [1mlong-option style[22m, each option begins with two dashes and has  a  meaningful  name,
+       consisting  of  lower-case letters and dashes.  When used, the long option can be abbreviated
+       to its initial letters, provided that this does not create ambiguity.  Arguments to long  op‐
+       tions  are supplied either as a separate command line word, immediately following the option,
+       or separated from the option by an equals sign with no intervening whitespace.  Optional  ar‐
+       guments must always use the latter method.
+
+       Here are several ways of writing the example command in this style:
+
+       tar --create --file etc.tar --verbose /etc
+       or (abbreviating some options):
+       tar --cre --file=etc.tar --verb /etc
+
+       The  options in all three styles can be intermixed, although doing so with old options is not
+       encouraged.
+
+   [1mOperation mode[0m
+       The options listed in the table below tell GNU [1mtar [22mwhat operation it is to perform.   Exactly
+       one of them must be given.  The meaning of non-option arguments depends on the operation mode
+       requested.
+
+       [1m-A[22m, [1m--catenate[22m, [1m--concatenate[0m
+              Append archives to the end of another archive.  The arguments are treated as the names
+              of  archives  to  append.  All archives must be of the same format as the archive they
+              are appended to, otherwise the resulting archive might be unusable with non-GNU imple‐
+              mentations of [1mtar[22m.  Notice also that when more than one archive is given, the  members
+              from  archives  other  than  the first one will be accessible in the resulting archive
+              only when using the [1m-i [22m([1m--ignore-zeros[22m) option.
+
+              Compressed archives cannot be concatenated.
+
+       [1m-c[22m, [1m--create[0m
+              Create a new archive.  Arguments supply the names of the files to be archived.  Direc‐
+              tories are archived recursively, unless the [1m--no-recursion [22moption is given.
+
+       [1m-d[22m, [1m--diff[22m, [1m--compare[0m
+              Find differences between archive and file system.   The  arguments  are  optional  and
+              specify  archive  members  to compare.  If not given, the current working directory is
+              assumed.
+
+       [1m--delete[0m
+              Delete from the archive.  The arguments supply names of the archive members to be  re‐
+              moved.  At least one argument must be given.
+
+              This option does not operate on compressed archives.  There is no short option equiva‐
+              lent.
+
+       [1m-r[22m, [1m--append[0m
+              Append  files  to  the  end  of an archive.  Arguments have the same meaning as for [1m-c[0m
+              ([1m--create[22m).
+
+       [1m-t[22m, [1m--list[0m
+              List the contents of an archive.  Arguments are optional.  When  given,  they  specify
+              the names of the members to list.
+
+       [1m--test-label[0m
+              Test  the  archive  volume label and exit.  When used without arguments, it prints the
+              volume label (if any) and exits with status [1m0[22m.  When one or more  command  line  argu‐
+              ments  are  given.   [1mtar  [22mcompares the volume label with each argument.  It exits with
+              code [1m0 [22mif a match is found, and with code [1m1 [22motherwise.  No output is displayed, unless
+              used together with the [1m-v [22m([1m--verbose[22m) option.
+
+              There is no short option equivalent for this option.
+
+       [1m-u[22m, [1m--update[0m
+              Append files which are newer than the corresponding copy in  the  archive.   Arguments
+              have  the  same meaning as with the [1m-c [22mand [1m-r [22moptions.  Notice, that newer files don't
+              replace their old archive copies, but instead are appended to the end of archive.  The
+              resulting archive can thus contain several members of the same name, corresponding  to
+              various versions of the same file.
+
+       [1m-x[22m, [1m--extract[22m, [1m--get[0m
+              Extract  files  from  an  archive.   Arguments are optional.  When given, they specify
+              names of the archive members to be extracted.
+
+       [1m--show-defaults[0m
+              Show built-in defaults for various [1mtar [22moptions and exit.
+
+       [1m-?[22m, [1m--help[0m
+              Display a short option summary and exit.
+
+       [1m--usage[0m
+              Display a list of available options and exit.
+
+       [1m--version[0m
+              Print program version and copyright information and exit.
+
+[1mOPTIONS[0m
+   [1mOperation modifiers[0m
+       [1m--check-device[0m
+              Check device numbers when creating incremental archives (default).
+
+       [1m-g[22m, [1m--listed-incremental[22m=[4mFILE[0m
+              Handle new GNU-format incremental backups.  [4mFILE[24m is the name of a [1msnapshot file[22m, where
+              [1mtar [22mstores additional information which is used to decide which  files  changed  since
+              the  previous  incremental dump and, consequently, must be dumped again.  If [4mFILE[24m does
+              not exist when creating an archive, it will be created and all files will be added  to
+              the  resulting archive (the [1mlevel 0 [22mdump).  To create incremental archives of non-zero
+              level [1mN[22m, you need a copy of the snapshot file created for level [1mN-1[22m,  and  use  it  as
+              [4mFILE[24m.
+
+              When  listing or extracting, the actual content of [4mFILE[24m is not inspected, it is needed
+              only due to  syntactical  requirements.   It  is  therefore  common  practice  to  use
+              [1m/dev/null [22min its place.
+
+       [1m--hole-detection[22m=[4mMETHOD[0m
+              Use [4mMETHOD[24m to detect holes in sparse files.  This option implies [1m--sparse[22m.  Valid val‐
+              ues  for  [4mMETHOD[24m  are [1mseek [22mand [1mraw[22m.  Default is [1mseek [22mwith fallback to [1mraw [22mwhen not ap‐
+              plicable.
+
+       [1m-G[22m, [1m--incremental[0m
+              Handle old GNU-format incremental backups.
+
+       [1m--ignore-failed-read[0m
+              Do not exit with nonzero on unreadable files.
+
+       [1m--level[22m=[4mNUMBER[0m
+              Set dump level for a created listed-incremental archive.  Currently only [1m--level=0  [22mis
+              meaningful:  it  instructs  [1mtar  [22mto truncate the snapshot file before dumping, thereby
+              forcing a level 0 dump.
+
+       [1m-n[22m, [1m--seek[0m
+              Assume the archive is seekable.  Normally [1mtar  [22mdetermines  automatically  whether  the
+              archive  can  be  seeked  or  not.  This option is intended for use in cases when such
+              recognition fails.  It takes effect only if the archive is open for reading (e.g. with
+              [1m--list [22mor [1m--extract [22moptions).
+
+       [1m--no-check-device[0m
+              Do not check device numbers when creating incremental archives.
+
+       [1m--no-seek[0m
+              Assume the archive is not seekable.
+
+       [1m--occurrence[22m[=[4mN[24m]
+              Process only the [4mN[24mth occurrence of each file in the archive.   This  option  is  valid
+              only  when  used with one of the following subcommands: [1m--delete[22m, [1m--diff[22m, [1m--extract [22mor
+              [1m--list [22mand when a list of files is given either on the command line or via the [1m-T  [22mop‐
+              tion.  The default [4mN[24m is [1m1[22m.
+
+       [1m--restrict[0m
+              Disable the use of some potentially harmful options.
+
+       [1m--sparse-version[22m=[4mMAJOR[24m[.[4mMINOR[24m]
+              Set  which  version of the sparse format to use.  This option implies [1m--sparse[22m.  Valid
+              argument values are [1m0.0[22m, [1m0.1[22m, and [1m1.0[22m.  For a detailed discussion of  sparse  formats,
+              refer  to the [1mGNU Tar Manual[22m, appendix [1mD[22m, "[1mSparse Formats[22m".  Using the [1minfo [22mreader, it
+              can be accessed running the following command: [1minfo tar 'Sparse Formats'[22m.
+
+       [1m-S[22m, [1m--sparse[0m
+              Handle sparse files efficiently.  Some files in the  file  system  may  have  segments
+              which  were  actually  never  written (quite often these are database files created by
+              such systems as [1mDBM[22m).  When given this option, [1mtar [22mattempts to determine if  the  file
+              is  sparse  prior  to archiving it, and if so, to reduce the resulting archive size by
+              not dumping empty parts of the file.
+
+   [1mOverwrite control[0m
+       These options control [1mtar [22mactions when extracting a file over an existing copy on disk.
+
+       [1m-k[22m, [1m--keep-old-files[0m
+              Don't replace existing files when extracting.
+
+       [1m--keep-newer-files[0m
+              Don't replace existing files that are newer than their archive copies.
+
+       [1m--keep-directory-symlink[0m
+              Don't replace existing symlinks to directories when extracting.
+
+       [1m--no-overwrite-dir[0m
+              Preserve metadata of existing directories.
+
+       [1m--one-top-level[22m[[1m=[4m[22mDIR[24m]
+              Extract all files into [4mDIR[24m, or, if used without argument, into a subdirectory named by
+              the base name of the archive (minus  standard  compression  suffixes  recognizable  by
+              [1m--auto-compress).[0m
+
+       [1m--overwrite[0m
+              Overwrite existing files when extracting.
+
+       [1m--overwrite-dir[0m
+              Overwrite metadata of existing directories when extracting (default).
+
+       [1m--recursive-unlink[0m
+              Recursively remove all files in the directory prior to extracting it.
+
+       [1m--remove-files[0m
+              Remove files from disk after adding them to the archive.
+
+       [1m--skip-old-files[0m
+              Don't replace existing files when extracting, silently skip over them.
+
+       [1m-U[22m, [1m--unlink-first[0m
+              Remove each file prior to extracting over it.
+
+       [1m-W[22m, [1m--verify[0m
+              Verify the archive after writing it.
+
+   [1mOutput stream selection[0m
+       [1m--ignore-command-error[0m
+              Ignore subprocess exit codes.
+
+       [1m--no-ignore-command-error[0m
+              Treat non-zero exit codes of children as error (default).
+
+       [1m-O[22m, [1m--to-stdout[0m
+              Extract files to standard output.
+
+       [1m--to-command[22m=[4mCOMMAND[0m
+              Pipe extracted files to [4mCOMMAND[24m.  The argument is the pathname of an external program,
+              optionally  with command line arguments.  The program will be invoked and the contents
+              of the file being extracted supplied to it on its  standard  input.   Additional  data
+              will be supplied via the following environment variables:
+
+              [1mTAR_FILETYPE[0m
+                     Type of the file. It is a single letter with the following meaning:
+
+                             f           Regular file
+                             d           Directory
+                             l           Symbolic link
+                             h           Hard link
+                             b           Block device
+                             c           Character device
+
+                     Currently only regular files are supported.
+
+              [1mTAR_MODE[0m
+                     File mode, an octal number.
+
+              [1mTAR_FILENAME[0m
+                     The name of the file.
+
+              [1mTAR_REALNAME[0m
+                     Name of the file as stored in the archive.
+
+              [1mTAR_UNAME[0m
+                     Name of the file owner.
+
+              [1mTAR_GNAME[0m
+                     Name of the file owner group.
+
+              [1mTAR_ATIME[0m
+                     Time  of  last  access.  It is a decimal number, representing seconds since the
+                     Epoch.  If the archive provides times with nanosecond precision,  the  nanosec‐
+                     onds are appended to the timestamp after a decimal point.
+
+              [1mTAR_MTIME[0m
+                     Time of last modification.
+
+              [1mTAR_CTIME[0m
+                     Time of last status change.
+
+              [1mTAR_SIZE[0m
+                     Size of the file.
+
+              [1mTAR_UID[0m
+                     UID of the file owner.
+
+              [1mTAR_GID[0m
+                     GID of the file owner.
+
+              Additionally, the following variables contain information about [1mtar [22moperation mode and
+              the archive being processed:
+
+              [1mTAR_VERSION[0m
+                     GNU [1mtar [22mversion number.
+
+              [1mTAR_ARCHIVE[0m
+                     The name of the archive [1mtar [22mis processing.
+
+              [1mTAR_BLOCKING_FACTOR[0m
+                     Current blocking factor, i.e. number of 512-byte blocks in a record.
+
+              [1mTAR_VOLUME[0m
+                     Ordinal  number  of the volume [1mtar [22mis processing (set if reading a multi-volume
+                     archive).
+
+              [1mTAR_FORMAT[0m
+                     Format of the archive being processed.  One of: [1mgnu[22m, [1moldgnu[22m, [1mposix[22m, [1mustar[22m, [1mv7[22m.
+
+              [1mTAR_SUBCOMMAND[0m
+                     A short option (with a leading dash) describing the operation [1mtar [22mis executing.
+
+   [1mHandling of file attributes[0m
+       [1m--atime-preserve[22m[=[4mMETHOD[24m]
+              Preserve access times on dumped files, either by restoring  the  times  after  reading
+              ([4mMETHOD[24m=[1mreplace[22m,  this  is the default) or by not setting the times in the first place
+              ([4mMETHOD[24m=[1msystem[22m).
+
+       [1m--delay-directory-restore[0m
+              Delay setting modification times and permissions of extracted  directories  until  the
+              end  of extraction.  Use this option when extracting from an archive which has unusual
+              member ordering.
+
+       [1m--group[22m=[4mNAME[24m[:[4mGID[24m]
+              Force [4mNAME[24m as group for added files.  If [4mGID[24m is not supplied, [4mNAME[24m  can  be  either  a
+              user  name  or  numeric  GID.  In this case the missing part (GID or name) will be in‐
+              ferred from the current host's group database.
+
+              When used with [1m--group-map[22m=[4mFILE[24m, affects only those files whose  owner  group  is  not
+              listed in [4mFILE[24m.
+
+       [1m--group-map[22m=[4mFILE[0m
+              Read  group  translation map from [4mFILE[24m.  Empty lines are ignored.  Comments are intro‐
+              duced with [1m# [22msign and extend to the end of line.  Each non-empty line in [4mFILE[24m  defines
+              translation  for  a  single  group.   It  must consist of two fields, delimited by any
+              amount of whitespace:
+
+              [4mOLDGRP[24m [4mNEWGRP[24m[[1m:[4m[22mNEWGID[24m]
+
+              [4mOLDGRP[24m is either a valid group name or a GID prefixed with [1m+[22m.  Unless [4mNEWGID[24m  is  sup‐
+              plied,  [4mNEWGRP[24m must also be either a valid group name or a [1m+[4m[22mGID[24m.  Otherwise, both [4mNEW‐[0m
+              [4mGRP[24m and [4mNEWGID[24m need not be listed in the system group database.
+
+              As a result, each input file with owner group [4mOLDGRP[24m will be stored  in  archive  with
+              owner group [4mNEWGRP[24m and GID [4mNEWGID[24m.
+
+       [1m--mode[22m=[4mCHANGES[0m
+              Force symbolic mode [4mCHANGES[24m for added files.
+
+       [1m--mtime[22m=[4mDATE-OR-FILE[0m
+              Set  mtime  for  added  files.  [4mDATE-OR-FILE[24m is either a date/time in almost arbitrary
+              format, or the name of an existing file.  In the latter case the mtime  of  that  file
+              will be used.
+
+       [1m-m[22m, [1m--touch[0m
+              Don't extract file modified time.
+
+       [1m--no-delay-directory-restore[0m
+              Cancel the effect of the prior [1m--delay-directory-restore [22moption.
+
+       [1m--no-same-owner[0m
+              Extract files as yourself (default for ordinary users).
+
+       [1m--no-same-permissions[0m
+              Apply the user's umask when extracting permissions from the archive (default for ordi‐
+              nary users).
+
+       [1m--numeric-owner[0m
+              Always use numbers for user/group names.
+
+       [1m--owner[22m=[4mNAME[24m[:[4mUID[24m]
+              Force  [4mNAME[24m  as  owner  for added files.  If [4mUID[24m is not supplied, [4mNAME[24m can be either a
+              user name or numeric UID.  In this case the missing part (UID or  name)  will  be  in‐
+              ferred from the current host's user database.
+
+              When used with [1m--owner-map[22m=[4mFILE[24m, affects only those files whose owner is not listed in
+              [4mFILE[24m.
+
+       [1m--owner-map[22m=[4mFILE[0m
+              Read  owner  translation map from [4mFILE[24m.  Empty lines are ignored.  Comments are intro‐
+              duced with [1m# [22msign and extend to the end of line.  Each non-empty line in [4mFILE[24m  defines
+              translation  for a single UID.  It must consist of two fields, delimited by any amount
+              of whitespace:
+
+              [4mOLDUSR[24m [4mNEWUSR[24m[[1m:[4m[22mNEWUID[24m]
+
+              [4mOLDUSR[24m is either a valid user name or a UID prefixed with [1m+[22m.  Unless  [4mNEWUID[24m  is  sup‐
+              plied, [4mNEWUSR[24m must also be either a valid user name or a [1m+[4m[22mUID[24m.  Otherwise, both [4mNEWUSR[0m
+              and [4mNEWUID[24m need not be listed in the system user database.
+
+              As a result, each input file owned by [4mOLDUSR[24m will be stored in archive with owner name
+              [4mNEWUSR[24m and UID [4mNEWUID[24m.
+
+       [1m-p[22m, [1m--preserve-permissions[22m, [1m--same-permissions[0m
+              Set permissions of extracted files to those recorded in the archive (default for supe‐
+              ruser).
+
+       [1m--same-owner[0m
+              Try extracting files with the same ownership as exists in the archive (default for su‐
+              peruser).
+
+       [1m-s[22m, [1m--preserve-order[22m, [1m--same-order[0m
+              Tell  [1mtar  [22mthat  the  list of file names to process is sorted in the same order as the
+              files in the archive.
+
+       [1m--sort=[4m[22mORDER[0m
+              When creating an archive, sort directory entries according to [4mORDER[24m, which is  one  of
+              [1mnone[22m, [1mname[22m, or [1minode[22m.
+
+              The default is [1m--sort=none[22m, which stores archive members in the same order as returned
+              by the operating system.
+
+              Using  [1m--sort=name  [22mensures  the member ordering in the created archive is uniform and
+              reproducible.
+
+              Using [1m--sort=inode [22mreduces the number of disk seeks made when creating the archive and
+              thus can considerably speed up archivation.  This sorting order is supported  only  if
+              the underlying system provides the necessary information.
+
+   [1mExtended file attributes[0m
+       [1m--acls [22mEnable POSIX ACLs support.
+
+       [1m--no-acls[0m
+              Disable POSIX ACLs support.
+
+       [1m--selinux[0m
+              Enable SELinux context support.
+
+       [1m--no-selinux[0m
+              Disable SELinux context support.
+
+       [1m--xattrs[0m
+              Enable extended attributes support.
+
+       [1m--no-xattrs[0m
+              Disable extended attributes support.
+
+       [1m--xattrs-exclude=[4m[22mPATTERN[0m
+              Specify  the  exclude  pattern  for  xattr  keys.  [4mPATTERN[24m is a globbing pattern, e.g.
+              [1m--xattrs-exclude='user.*' [22mto include only attributes from the user namespace.
+
+       [1m--xattrs-include=[4m[22mPATTERN[0m
+              Specify the include pattern for xattr keys.  [4mPATTERN[24m is a globbing pattern.
+
+   [1mDevice selection and switching[0m
+       [1m-f[22m, [1m--file[22m=[4mARCHIVE[0m
+              Use archive file or device [4mARCHIVE[24m.  If this option is not given, [1mtar [22mwill first exam‐
+              ine the environment variable `TAPE'.  If it is set, its value  will  be  used  as  the
+              archive  name.  Otherwise, [1mtar [22mwill assume the compiled-in default.  The default value
+              can be inspected either using the [1m--show-defaults [22moption, or at the  end  of  the  [1mtar[0m
+              [1m--help [22moutput.
+
+              An archive name that has a colon in it specifies a file or device on a remote machine.
+              The part before the colon is taken as the machine name or IP address, and the part af‐
+              ter it as the file or device pathname, e.g.:
+
+              --file=remotehost:/dev/sr0
+
+              An optional username can be prefixed to the hostname, placing a [1m@ [22msign between them.
+
+              By default, the remote host is accessed via the [1mrsh[22m(1) command.  Nowadays it is common
+              to use [1mssh[22m(1) instead.  You can do so by giving the following command line option:
+
+              --rsh-command=/usr/bin/ssh
+
+              The remote machine should have the [1mrmt[22m(8) command installed.  If its pathname does not
+              match  [1mtar[22m's  default,  you  can  inform  [1mtar  [22mabout  the  correct  pathname using the
+              [1m--rmt-command [22moption.
+
+       [1m--force-local[0m
+              Archive file is local even if it has a colon.
+
+       [1m-F[22m, [1m--info-script[22m=[4mCOMMAND[24m, [1m--new-volume-script[22m=[4mCOMMAND[0m
+              Run [4mCOMMAND[24m at the end of each tape (implies [1m-M[22m).  The command can include  arguments.
+              When started, it will inherit [1mtar[22m's environment plus the following variables:
+
+              [1mTAR_VERSION[0m
+                     GNU [1mtar [22mversion number.
+
+              [1mTAR_ARCHIVE[0m
+                     The name of the archive [1mtar [22mis processing.
+
+              [1mTAR_BLOCKING_FACTOR[0m
+                     Current blocking factor, i.e. number of 512-byte blocks in a record.
+
+              [1mTAR_VOLUME[0m
+                     Ordinal  number  of the volume [1mtar [22mis processing (set if reading a multi-volume
+                     archive).
+
+              [1mTAR_FORMAT[0m
+                     Format of the archive being processed.  One of: [1mgnu[22m, [1moldgnu[22m, [1mposix[22m, [1mustar[22m, [1mv7[22m.
+
+              [1mTAR_SUBCOMMAND[0m
+                     A short option (with a leading dash) describing the operation [1mtar [22mis executing.
+
+              [1mTAR_FD [22mFile descriptor which can be used to communicate the new volume name to [1mtar[22m.
+
+              If the info script fails, [1mtar [22mexits; otherwise, it begins writing the next volume.
+
+       [1m-L[22m, [1m--tape-length[22m=[4mN[0m
+              Change tape after writing [4mN[24mx1024 bytes.  If [4mN[24m is followed by a size  suffix  (see  the
+              subsection  [1mSize suffixes [22mbelow), the suffix specifies the multiplicative factor to be
+              used instead of 1024.
+
+              This option implies [1m-M[22m.
+
+       [1m-M[22m, [1m--multi-volume[0m
+              Create/list/extract multi-volume archive.
+
+       [1m--rmt-command[22m=[4mCOMMAND[0m
+              Use [4mCOMMAND[24m instead of [1mrmt [22mwhen accessing remote archives.  See the description of the
+              [1m-f [22moption, above.
+
+       [1m--rsh-command[22m=[4mCOMMAND[0m
+              Use [4mCOMMAND[24m instead of [1mrsh [22mwhen accessing remote archives.  See the description of the
+              [1m-f [22moption, above.
+
+       [1m--volno-file[22m=[4mFILE[0m
+              When this option is used in conjunction with [1m--multi-volume[22m, [1mtar [22mwill  keep  track  of
+              which volume of a multi-volume archive it is working in [4mFILE[24m.
+
+   [1mDevice blocking[0m
+       [1m-b[22m, [1m--blocking-factor[22m=[4mBLOCKS[0m
+              Set record size to [4mBLOCKS[24mx[1m512 [22mbytes.
+
+       [1m-B[22m, [1m--read-full-records[0m
+              When listing or extracting, accept incomplete input records after end-of-file marker.
+
+       [1m-i[22m, [1m--ignore-zeros[0m
+              Ignore  zeroed blocks in archive.  Normally two consecutive 512-blocks filled with ze‐
+              roes mean EOF and [1mtar [22mstops reading after encountering them.  This option instructs it
+              to read further and is useful when reading archives created with the [1m-A [22moption.
+
+       [1m--record-size[22m=[4mNUMBER[0m
+              Set record size.  [4mNUMBER[24m is the number of bytes per record.  It must  be  multiple  of
+              [1m512[22m.   It can can be suffixed with a [1msize suffix[22m, e.g. [1m--record-size=10K[22m, for 10 Kilo‐
+              bytes.  See the subsection [1mSize suffixes[22m, for a list of valid suffixes.
+
+   [1mArchive format selection[0m
+       [1m-H[22m, [1m--format[22m=[4mFORMAT[0m
+              Create archive of the given format.  Valid formats are:
+
+              [1mgnu    [22mGNU tar 1.13.x format
+
+              [1moldgnu [22mGNU format as per tar <= 1.12.
+
+              [1mpax[22m, [1mposix[0m
+                     POSIX 1003.1-2001 (pax) format.
+
+              [1mustar  [22mPOSIX 1003.1-1988 (ustar) format.
+
+              [1mv7     [22mOld V7 tar format.
+
+       [1m--old-archive[22m, [1m--portability[0m
+              Same as [1m--format=v7[22m.
+
+       [1m--pax-option[22m=[4mkeyword[24m[[:]=[4mvalue[24m][,[4mkeyword[24m[[:]=[4mvalue[24m]]...
+              Control pax keywords when creating [1mPAX [22marchives ([1m-H pax[22m).  This option  is  equivalent
+              to the [1m-o [22moption of the [1mpax[22m(1) utility.
+
+       [1m--posix[0m
+              Same as [1m--format=posix[22m.
+
+       [1m-V[22m, [1m--label[22m=[4mTEXT[0m
+              Create  archive  with volume name [4mTEXT[24m.  If listing or extracting, use [4mTEXT[24m as a glob‐
+              bing pattern for volume name.
+
+   [1mCompression options[0m
+       [1m-a[22m, [1m--auto-compress[0m
+              Use archive suffix to determine the compression program.
+
+       [1m-I[22m, [1m--use-compress-program[4m[22m=COMMAND[0m
+              Filter data through [4mCOMMAND[24m.  It must accept the [1m-d [22moption,  for  decompression.   The
+              argument can contain command line options.
+
+       [1m-j[22m, [1m--bzip2[0m
+              Filter the archive through [1mbzip2[22m(1).
+
+       [1m-J[22m, [1m--xz[0m
+              Filter the archive through [1mxz[22m(1).
+
+       [1m--lzip [22mFilter the archive through [1mlzip[22m(1).
+
+       [1m--lzma [22mFilter the archive through [1mlzma[22m(1).
+
+       [1m--lzop [22mFilter the archive through [1mlzop[22m(1).
+
+       [1m--no-auto-compress[0m
+              Do not use archive suffix to determine the compression program.
+
+       [1m-z[22m, [1m--gzip[22m, [1m--gunzip[22m, [1m--ungzip[0m
+              Filter the archive through [1mgzip[22m(1).
+
+       [1m-Z[22m, [1m--compress[22m, [1m--uncompress[0m
+              Filter the archive through [1mcompress[22m(1).
+
+       [1m--zstd [22mFilter the archive through [1mzstd[22m(1).
+
+   [1mLocal file selection[0m
+       [1m--add-file[22m=[4mFILE[0m
+              Add [4mFILE[24m to the archive (useful if its name starts with a dash).
+
+       [1m--backup[22m[=[4mCONTROL[24m]
+              Backup before removal.  The [4mCONTROL[24m argument, if supplied, controls the backup policy.
+              Its valid values are:
+
+              [1mnone[22m, [1moff[0m
+                     Never make backups.
+
+              [1mt[22m, [1mnumbered[0m
+                     Make numbered backups.
+
+              [1mnil[22m, [1mexisting[0m
+                     Make numbered backups if numbered backups exist, simple backups otherwise.
+
+              [1mnever[22m, [1msimple[0m
+                     Always make simple backups
+
+              If [4mCONTROL[24m is not given, the value is taken from the [1mVERSION_CONTROL [22menvironment vari‐
+              able.  If it is not set, [1mexisting [22mis assumed.
+
+       [1m-C[22m, [1m--directory[22m=[4mDIR[0m
+              Change  to [4mDIR[24m before performing any operations.  This option is order-sensitive, i.e.
+              it affects all options that follow.
+
+       [1m--exclude[22m=[4mPATTERN[0m
+              Exclude files matching [4mPATTERN[24m, a [1mglob[22m(3)-style wildcard pattern.
+
+       [1m--exclude-backups[0m
+              Exclude backup and lock files.
+
+       [1m--exclude-caches[0m
+              Exclude contents of directories containing file [1mCACHEDIR.TAG[22m, except for the tag  file
+              itself.
+
+       [1m--exclude-caches-all[0m
+              Exclude directories containing file [1mCACHEDIR.TAG [22mand the file itself.
+
+       [1m--exclude-caches-under[0m
+              Exclude everything under directories containing [1mCACHEDIR.TAG[0m
+
+       [1m--exclude-ignore=[4m[22mFILE[0m
+              Before  dumping  a directory, see if it contains [4mFILE[24m.  If so, read exclusion patterns
+              from this file.  The patterns affect only the directory itself.
+
+       [1m--exclude-ignore-recursive=[4m[22mFILE[0m
+              Same as [1m--exclude-ignore[22m, except that patterns from [4mFILE[24m affect both the directory and
+              all its subdirectories.
+
+       [1m--exclude-tag[22m=[4mFILE[0m
+              Exclude contents of directories containing [4mFILE[24m, except for [4mFILE[24m itself.
+
+       [1m--exclude-tag-all[22m=[4mFILE[0m
+              Exclude directories containing [4mFILE[24m.
+
+       [1m--exclude-tag-under[22m=[4mFILE[0m
+              Exclude everything under directories containing [4mFILE[24m.
+
+       [1m--exclude-vcs[0m
+              Exclude version control system directories.
+
+       [1m--exclude-vcs-ignores[0m
+              Exclude files that match patterns read  from  VCS-specific  ignore  files.   Supported
+              files are: [1m.cvsignore[22m, [1m.gitignore[22m, [1m.bzrignore[22m, and [1m.hgignore[22m.
+
+       [1m-h[22m, [1m--dereference[0m
+              Follow symlinks; archive and dump the files they point to.
+
+       [1m--hard-dereference[0m
+              Follow hard links; archive and dump the files they refer to.
+
+       [1m-K[22m, [1m--starting-file[22m=[4mMEMBER[0m
+              Begin at the given member in the archive.
+
+       [1m--newer-mtime[22m=[4mDATE[0m
+              Work  on  files  whose  data changed after the [4mDATE[24m.  If [4mDATE[24m starts with [1m/ [22mor [1m. [22mit is
+              taken to be a file name; the mtime of that file is used as the date.
+
+       [1m--no-null[0m
+              Disable the effect of the previous [1m--null [22moption.
+
+       [1m--no-recursion[0m
+              Avoid descending automatically in directories.
+
+       [1m--no-unquote[0m
+              Do not unquote input file or member names.
+
+       [1m--no-verbatim-files-from[0m
+              Treat each line read from a file list as if it were  supplied  in  the  command  line.
+              I.e.,  leading  and trailing whitespace is removed and, if the resulting string begins
+              with a dash, it is treated as [1mtar [22mcommand line option.
+
+              This is the default behavior.  The [1m--no-verbatim-files-from [22moption is  provided  as  a
+              way to restore it after [1m--verbatim-files-from [22moption.
+
+              This option is positional: it affects all [1m--files-from [22moptions that occur after it in,
+              until [1m--verbatim-files-from [22moption or end of line, whichever occurs first.
+
+              It is implied by the [1m--no-null [22moption.
+
+       [1m--null [22mInstruct  subsequent  [1m-T [22moptions to read null-terminated names verbatim (disables spe‐
+              cial handling of names that start with a dash).
+
+              See also [1m--verbatim-files-from[22m.
+
+       [1m-N[22m, [1m--newer[22m=[4mDATE[24m, [1m--after-date[22m=[4mDATE[0m
+              Only store files newer than DATE.  If [4mDATE[24m starts with [1m/ [22mor [1m. [22mit is taken to be a file
+              name; the mtime of that file is used as the date.
+
+       [1m--one-file-system[0m
+              Stay in local file system when creating archive.
+
+       [1m-P[22m, [1m--absolute-names[0m
+              Don't strip leading slashes from file names when creating archives.
+
+       [1m--recursion[0m
+              Recurse into directories (default).
+
+       [1m--suffix[22m=[4mSTRING[0m
+              Backup before removal, override usual suffix.  Default suffix is [1m~[22m, unless  overridden
+              by environment variable [1mSIMPLE_BACKUP_SUFFIX[22m.
+
+       [1m-T[22m, [1m--files-from[22m=[4mFILE[0m
+              Get names to extract or create from [4mFILE[24m.
+
+              Unless  specified  otherwise, the [4mFILE[24m must contain a list of names separated by ASCII
+              [1mLF [22m(i.e. one name per line).  The names read are handled the same way as command  line
+              arguments.   They undergo quote removal and word splitting, and any string that starts
+              with a [1m- [22mis handled as [1mtar [22mcommand line option.
+
+              If this behavior is undesirable, it can be turned off using the  [1m--verbatim-files-from[0m
+              option.
+
+              The  [1m--null  [22moption  instructs  [1mtar  [22mthat the names in [4mFILE[24m are separated by ASCII [1mNUL[0m
+              character, instead of [1mLF[22m.  It is useful if the list is generated  by  [1mfind[22m(1)  [1m-print0[0m
+              predicate.
+
+       [1m--unquote[0m
+              Unquote file or member names (default).
+
+       [1m--verbatim-files-from[0m
+              Treat  each  line  obtained  from a file list as a file name, even if it starts with a
+              dash.  File lists are supplied with the [1m--files-from [22m([1m-T[22m) option.  The default  behav‐
+              ior  is  to  handle  names supplied in file lists as if they were typed in the command
+              line, i.e. any names starting with a dash are treated as [1mtar  [22moptions.   The  [1m--verba‐[0m
+              [1mtim-files-from [22moption disables this behavior.
+
+              This  option affects all [1m--files-from [22moptions that occur after it in the command line.
+              Its effect is reverted by the [1m--no-verbatim-files-from [22moption.
+
+              This option is implied by the [1m--null [22moption.
+
+              See also [1m--add-file[22m.
+
+       [1m-X[22m, [1m--exclude-from[22m=[4mFILE[0m
+              Exclude files matching patterns listed in FILE.
+
+   [1mFile name transformations[0m
+       [1m--strip-components[22m=[4mNUMBER[0m
+              Strip [4mNUMBER[24m leading components from file names on extraction.
+
+       [1m--transform[22m=[4mEXPRESSION[24m, [1m--xform[22m=[4mEXPRESSION[0m
+              Use sed replace [4mEXPRESSION[24m to transform file names.
+
+   [1mFile name matching options[0m
+       These options affect both exclude and include patterns.
+
+       [1m--anchored[0m
+              Patterns match file name start.
+
+       [1m--ignore-case[0m
+              Ignore case.
+
+       [1m--no-anchored[0m
+              Patterns match after any [1m/ [22m(default for exclusion).
+
+       [1m--no-ignore-case[0m
+              Case sensitive matching (default).
+
+       [1m--no-wildcards[0m
+              Verbatim string matching.
+
+       [1m--no-wildcards-match-slash[0m
+              Wildcards do not match [1m/[22m.
+
+       [1m--wildcards[0m
+              Use wildcards (default for exclusion).
+
+       [1m--wildcards-match-slash[0m
+              Wildcards match [1m/ [22m(default for exclusion).
+
+   [1mInformative output[0m
+       [1m--checkpoint[22m[=[4mN[24m]
+              Display progress messages every [4mN[24mth record (default 10).
+
+       [1m--checkpoint-action[22m=[4mACTION[0m
+              Run [4mACTION[24m on each checkpoint.
+
+       [1m--clamp-mtime[0m
+              Only set time when the file is more recent than what was given with [1m--mtime[22m.
+
+       [1m--full-time[0m
+              Print file time to its full resolution.
+
+       [1m--index-file[22m=[4mFILE[0m
+              Send verbose output to [4mFILE[24m.
+
+       [1m-l[22m, [1m--check-links[0m
+              Print a message if not all links are dumped.
+
+       [1m--no-quote-chars[22m=[4mSTRING[0m
+              Disable quoting for characters from [4mSTRING[24m.
+
+       [1m--quote-chars[22m=[4mSTRING[0m
+              Additionally quote characters from [4mSTRING[24m.
+
+       [1m--quoting-style[22m=[4mSTYLE[0m
+              Set quoting style for file and member names.  Valid  values  for  [4mSTYLE[24m  are  [1mliteral[22m,
+              [1mshell[22m, [1mshell-always[22m, [1mc[22m, [1mc-maybe[22m, [1mescape[22m, [1mlocale[22m, [1mclocale[22m.
+
+       [1m-R[22m, [1m--block-number[0m
+              Show block number within archive with each message.
+
+       [1m--show-omitted-dirs[0m
+              When listing or extracting, list each directory that does not match search criteria.
+
+       [1m--show-transformed-names[22m, [1m--show-stored-names[0m
+              Show file or archive names after transformation by [1m--strip [22mand [1m--transform [22moptions.
+
+       [1m--totals[22m[=[4mSIGNAL[24m]
+              Print total bytes after processing the archive.  If [4mSIGNAL[24m is given, print total bytes
+              when this signal is delivered.  Allowed signals are: [1mSIGHUP[22m, [1mSIGQUIT[22m, [1mSIGINT[22m, [1mSIGUSR1[22m,
+              and [1mSIGUSR2[22m.  The [1mSIG [22mprefix can be omitted.
+
+       [1m--utc  [22mPrint file modification times in UTC.
+
+       [1m-v[22m, [1m--verbose[0m
+              Verbosely  list files processed.  Each instance of this option on the command line in‐
+              creases the verbosity level by one.  The maximum verbosity level is 3.  For a detailed
+              discussion of how various verbosity levels affect tar's output, please  refer  to  [1mGNU[0m
+              [1mTar Manual[22m, subsection 2.5.2 "[1mThe '--verbose' Option[22m".
+
+       [1m--warning[22m=[4mKEYWORD[0m
+              Enable or disable warning messages identified by [4mKEYWORD[24m.  The messages are suppressed
+              if [4mKEYWORD[24m is prefixed with [1mno- [22mand enabled otherwise.
+
+              Multiple [1m--warning [22moptions accumulate.
+
+              Keywords controlling general [1mtar [22moperation:
+
+              [1mall    [22mEnable all warning messages.  This is the default.
+
+              [1mnone   [22mDisable all warning messages.
+
+              [1mfilename-with-nuls[0m
+                     "%s: file name read contains nul character"
+
+              [1malone-zero-block[0m
+                     "A lone zero block at %s"
+
+              Keywords applicable for [1mtar --create[22m:
+
+              [1mcachedir[0m
+                     "%s: contains a cache directory tag %s; %s"
+
+              [1mfile-shrank[0m
+                     "%s: File shrank by %s bytes; padding with zeros"
+
+              [1mxdev   [22m"%s: file is on a different filesystem; not dumped"
+
+              [1mfile-ignored[0m
+                     "%s: Unknown file type; file ignored"
+                     "%s: socket ignored"
+                     "%s: door ignored"
+
+              [1mfile-unchanged[0m
+                     "%s: file is unchanged; not dumped"
+
+              [1mignore-archive[0m
+                     "%s: archive cannot contain itself; not dumped"
+
+              [1mfile-removed[0m
+                     "%s: File removed before we read it"
+
+              [1mfile-changed[0m
+                     "%s: file changed as we read it"
+
+              [1mfailed-read[0m
+                     Suppresses warnings about unreadable files or directories. This keyword applies
+                     only if used together with the [1m--ignore-failed-read [22moption.
+
+              Keywords applicable for [1mtar --extract[22m:
+
+              [1mexisting-file[0m
+                     "%s: skipping existing file"
+
+              [1mtimestamp[0m
+                     "%s: implausibly old time stamp %s"
+                     "%s: time stamp %s is %s s in the future"
+
+              [1mcontiguous-cast[0m
+                     "Extracting contiguous files as regular files"
+
+              [1msymlink-cast[0m
+                     "Attempting extraction of symbolic links as hard links"
+
+              [1munknown-cast[0m
+                     "%s: Unknown file type '%c', extracted as normal file"
+
+              [1mignore-newer[0m
+                     "Current %s is newer or same age"
+
+              [1munknown-keyword[0m
+                     "Ignoring unknown extended header keyword '%s'"
+
+              [1mdecompress-program[0m
+                     Controls  verbose description of failures occurring when trying to run alterna‐
+                     tive decompressor programs.  This warning is disabled by default (unless [1m--ver‐[0m
+                     [1mbose [22mis used).  A common example of what you can get when  using  this  warning
+                     is:
+
+                     $ tar --warning=decompress-program -x -f archive.Z
+                     tar (child): cannot run compress: No such file or directory
+                     tar (child): trying gzip
+
+                     This  means  that  [1mtar [22mfirst tried to decompress [1marchive.Z [22musing [1mcompress[22m, and,
+                     when that failed, switched to [1mgzip[22m.
+
+              [1mrecord-size[0m
+                     "Record size = %lu blocks"
+
+              Keywords controlling incremental extraction:
+
+              [1mrename-directory[0m
+                     "%s: Directory has been renamed from %s"
+                     "%s: Directory has been renamed"
+
+              [1mnew-directory[0m
+                     "%s: Directory is new"
+
+              [1mxdev   [22m"%s: directory is on a different device: not purging"
+
+              [1mbad-dumpdir[0m
+                     "Malformed dumpdir: 'X' never used"
+
+       [1m-w[22m, [1m--interactive[22m, [1m--confirmation[0m
+              Ask for confirmation for every action.
+
+   [1mCompatibility options[0m
+       [1m-o     [22mWhen creating, same as [1m--old-archive[22m.  When extracting, same as [1m--no-same-owner[22m.
+
+   [1mSize suffixes[0m
+               [4mSuffix[24m    [4mUnits[24m                   [4mByte[24m [4mEquivalent[0m
+               b         Blocks                  [4mSIZE[24m x 512
+               B         Kilobytes               [4mSIZE[24m x 1024
+               c         Bytes                   [4mSIZE[0m
+               G         Gigabytes               [4mSIZE[24m x 1024^3
+               K         Kilobytes               [4mSIZE[24m x 1024
+               k         Kilobytes               [4mSIZE[24m x 1024
+               M         Megabytes               [4mSIZE[24m x 1024^2
+               P         Petabytes               [4mSIZE[24m x 1024^5
+               T         Terabytes               [4mSIZE[24m x 1024^4
+               w         Words                   [4mSIZE[24m x 2
+
+[1mRETURN VALUE[0m
+       Tar's exit code indicates whether it was able to successfully perform  the  requested  opera‐
+       tion, and if not, what kind of error occurred.
+
+       [1m0      [22mSuccessful termination.
+
+       [1m1      [4m[22mSome[24m  [4mfiles[24m  [4mdiffer.[24m   If [1mtar [22mwas invoked with the [1m--compare [22m([1m--diff[22m, [1m-d[22m) command line
+              option, this means that some files in the archive differ from their disk counterparts.
+              If [1mtar [22mwas given one of the [1m--create[22m, [1m--append [22mor [1m--update  [22moptions,  this  exit  code
+              means  that  some files were changed while being archived and so the resulting archive
+              does not contain the exact copy of the file set.
+
+       [1m2      [4m[22mFatal[24m [4merror.[24m  This means that some fatal, unrecoverable error occurred.
+
+       If a subprocess that had been invoked by [1mtar [22mexited with a nonzero exit code, [1mtar [22mitself  ex‐
+       its  with that code as well.  This can happen, for example, if a compression option (e.g. [1m-z[22m)
+       was used and the external compressor program failed.  Another example is [1mrmt  [22mfailure  during
+       backup to a remote device.
+
+[1mSEE ALSO[0m
+       [1mbzip2[22m(1), [1mcompress[22m(1), [1mgzip[22m(1), [1mlzma[22m(1), [1mlzop[22m(1), [1mrmt[22m(8), [1msymlink[22m(7), [1mxz[22m(1), [1mzstd[22m(1).
+
+       Complete [1mtar [22mmanual: run [1minfo tar [22mor use [1memacs[22m(1) info mode to read it.
+
+       Online copies of [1mGNU tar [22mdocumentation in various formats can be found at:
+
+           [1mhttps://www.gnu.org/software/tar/manual[0m
+
+[1mBUG REPORTS[0m
+       Report bugs to <bug-tar@gnu.org>.
+
+[1mCOPYRIGHT[0m
+       Copyright © 2023 Free Software Foundation, Inc.
+       License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+       This  is free software: you are free to change and redistribute it.  There is NO WARRANTY, to
+       the extent permitted by law.
+
+TAR                                         July 11, 2022                                     [4mTAR[24m(1)
