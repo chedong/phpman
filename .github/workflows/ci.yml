@@ -75,6 +75,28 @@ jobs:
       - name: behavioural suite
         run: php test/run_all.php
 
+  # Golden-corpus gate (#255, test/corpus/check.php). Separate from `unit` and
+  # pinned to PHP 8.3 only — the corpus is frozen against the production web
+  # SAPI version, so running it on the 8.1/8.2 matrix legs would compare
+  # renders from versions the goldens were never captured on. xmllint
+  # (libxml2-utils) must be present or the xhtml check SKIPs and the gate runs
+  # hollow; ubuntu-latest does not ship it by default.
+  corpus:
+    name: corpus (PHP 8.3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          extensions: mbstring, sqlite3
+      - run: sudo apt-get update && sudo apt-get install -y libxml2-utils
+      # Same placeholder-copy as `unit`: the Makefile $(error)s without
+      # .deploy.mk at parse time, and test-corpus never reads its values.
+      - run: cp .deploy.mk.example .deploy.mk
+      - run: make test-corpus
+
   shellcheck:
     name: shellcheck (advisory)
     runs-on: ubuntu-latest

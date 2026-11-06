@@ -51,7 +51,7 @@ FILE ?= phpMan.php
 CSS_FILE ?= phpman.css
 JS_FILE  ?= phpman.js
 
-.PHONY: test test-unit staging staging-reindex release release-reindex reindex reindex-staging rollback verify logcheck log-rotate package upload-release clean cache-flush cache-flush-staging cache-stats _deploy-code _release-code _release-tag require-staging require-production release-precheck
+.PHONY: test test-unit test-corpus staging staging-reindex release release-reindex reindex reindex-staging rollback verify logcheck log-rotate package upload-release clean cache-flush cache-flush-staging cache-stats _deploy-code _release-code _release-tag require-staging require-production release-precheck
 
 # 会被实际上传到服务器的路径。既是「工作树是否脏」的判定范围，也是
 # deploy/release-precheck.sh 的入参 —— 只在这一个地方定义。
@@ -159,6 +159,16 @@ test:
 # must not be able to ship.
 test-unit:
 	php test/run_all.php
+
+# Golden-corpus gate (#255, test/corpus/check.php). Deliberately NOT folded
+# into `test` or `test-unit`: those run on every CI matrix leg and must stay
+# fast, while the corpus re-render only matters when src/ renderers change.
+# Exits 0 with `[SKIP] no corpus` while test/corpus/raw/ is empty (Task 8
+# captures the real pages); after that it fails on any golden/fingerprint/
+# token/JSON/XHTML drift. The xhtml check needs xmllint (libxml2-utils) —
+# CI installs it; without it that one check SKIPs.
+test-corpus:
+	php test/corpus/check.php
 
 # ─── Staging ───
 
