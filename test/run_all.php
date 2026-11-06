@@ -36,6 +36,7 @@ $suites = [
         "{$testDir}/unit/test_metrics.php",
         "{$testDir}/unit/test_source_indexed.php",
         "{$testDir}/unit/test_corpus_normalize.php",
+        "{$testDir}/unit/test_corpus_capture.php",
     ],
     "Integration" => [
         "{$testDir}/integration/test_formatter_html.php",
