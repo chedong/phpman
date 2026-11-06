@@ -20,8 +20,9 @@
  * - corpusTokens：preg_split('/\s+/', trim($s))，过滤空串。
  * - corpusMissingTokens：对 raw 做计数多重集，逐 token 消耗 rendered 的计数，
  *   返回仍未满足的 token（保持 raw 中的出现顺序）。
- * - corpusTextFromHtml：标签替换为空格（strip_tags 会把 "<p>a</p><p>b</p>"
- *   变成 "ab"，丢失词边界）→ html_entity_decode(…, ENT_QUOTES|ENT_HTML5,
+ * - corpusTextFromHtml：块级标签（p, div, br, li, ul, ol, pre, blockquote,
+ *   h1-h6, tr, td, th, table, hr, section, article）替换为空格，行内及其余
+ *   标签替换为空串 → html_entity_decode(…, ENT_QUOTES|ENT_HTML5,
  *   'UTF-8') → preg_replace('/\s+/', ' ', …) → trim。
  */
 
@@ -142,12 +143,17 @@ function corpusMissingTokens(array $rawTokens, array $renderedTokens): array {
 }
 
 /**
- * HTML 抽正文：标签替换为空格（strip_tags 会把 "<p>a</p><p>b</p>" 折成 "ab"，
- * 丢掉词边界）→ 实体解码（ENT_QUOTES|ENT_HTML5, UTF-8）→ 连续空白折成一个
- * 空格 → trim。
+ * HTML 抽正文：块级标签替换为空格（保词边界："a</p><p>b" 不会折成 "ab"），
+ * 行内及其余标签替换为空串（"[<u>OPTIONS</u>]" 必须抽成 "[OPTIONS]" 才能和
+ * raw 的词元对上；perldoc 的 "<http://…>" 同理）→ 实体解码
+ * （ENT_QUOTES|ENT_HTML5, UTF-8）→ 连续空白折成一个空格 → trim。
  */
 function corpusTextFromHtml(string $html): string {
-    $text = preg_replace('/<[^>]*>/', ' ', $html);
+    // 块级标签 → 空格（先做，避免被下面的兜底正则当成行内吃掉）
+    static $blockRe = '/<\/?(?:p|div|br|li|ul|ol|pre|blockquote|h[1-6]|tr|td|th|table|hr|section|article)\b[^>]*>/i';
+    $text = preg_replace($blockRe, ' ', $html);
+    // 行内及其余标签 → 空串
+    $text = preg_replace('/<[^>]*>/', '', $text);
     $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     $text = preg_replace('/\s+/', ' ', $text);
     return trim($text);

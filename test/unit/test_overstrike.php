@@ -63,4 +63,43 @@ $lines = ["{$esc}[4munderlined{$esc}[0m"];
 $result = formatManPerlDoc($lines, "man");
 assert_contains("<u>underlined</u>", $result, "SGR underline → <u>underlined</u>");
 
+// T9: real man-tar.txt fragment — underline opens exactly where bold closes.
+// Two non-greedy regexes produced interleaved tags (<b>-f <u></b>ARCHIVE</u>,
+// invalid HTML); the state machine must emit well-nested tags instead.
+echo "\nT9: SGR bold/underline handoff (real tar fragment)\n";
+$lines = ["{$esc}[1mtar -A {$esc}[22m[{$esc}[4mOPTIONS{$esc}[24m] {$esc}[1m-f {$esc}[4m{$esc}[22mARCHIVE{$esc}[24m {$esc}[4mARCHIVE{$esc}[24m..."];
+$result = trim(formatManPerlDoc($lines, "man"));
+assert_equals(
+    "<b>tar -A </b>[<u>OPTIONS</u>] <b>-f </b><u>ARCHIVE</u> <u>ARCHIVE</u>...",
+    $result,
+    "真实 tar 片段输出合法嵌套"
+);
+assert_not_contains("<u></b>", $result, "无交错：<u> 内不得直接闭合 </b>");
+assert_not_contains("<b></u>", $result, "无交错：<b> 内不得直接闭合 </u>");
+
+// T10: bold→underline handoff — the state machine itself must produce
+// well-nested output (<b>io<u>_</u>cancel</b>), opening <b> before <u> and
+// closing in reverse. The full pipeline keeps the existing <u>_</u>→_ cleanup.
+echo "\nT10: SGR state machine — bold/underline handoff\n";
+$sgrSplit = "{$esc}[1mio{$esc}[4m_{$esc}[24mcancel{$esc}[0m";
+assert_equals("<b>io<u>_</u>cancel</b>", sgrToHtmlTags($sgrSplit), "状态机直接输出合法嵌套");
+assert_equals("<b>io_cancel</b>\n", formatManPerlDoc([$sgrSplit], "man"), "管线保留既有 <u>_</u> 清理");
+
+echo "\nT11: SGR state machine — only underline\n";
+assert_equals("<u>OPTIONS</u>", sgrToHtmlTags("{$esc}[4mOPTIONS{$esc}[24m"), "只有下划线");
+
+echo "\nT12: SGR state machine — only bold\n";
+assert_equals("<b>bold</b>", sgrToHtmlTags("{$esc}[1mbold{$esc}[0m"), "只有加粗");
+
+echo "\nT13: SGR ESC[0m closes all mid-line\n";
+assert_equals("<b>abc</b>def", sgrToHtmlTags("{$esc}[1mabc{$esc}[0mdef"), "ESC[0m 全关");
+assert_equals("<b>abc</b>def\n", formatManPerlDoc(["{$esc}[1mabc{$esc}[0mdef"], "man"), "管线中 ESC[0m 全关");
+
+echo "\nT14: SGR state machine — close still-open tags at end of line\n";
+assert_equals("<b>tail <u>under</u></b>", sgrToHtmlTags("{$esc}[1mtail {$esc}[4munder"), "行尾补齐闭合（逆序）");
+
+echo "\nT15: SGR color codes are dropped\n";
+assert_equals("color", sgrToHtmlTags("{$esc}[34mcolor{$esc}[0m"), "颜色码丢弃");
+assert_equals("{$esc}[3;5Hx", sgrToHtmlTags("{$esc}[3;5Hx"), "非 m 结尾的转义序列原样保留");
+
 exit(test_summary());

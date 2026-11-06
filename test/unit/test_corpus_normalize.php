@@ -56,7 +56,10 @@ assert_equals([], corpusMissingTokens(['ls'], ['ls', 'extra']), "rendered 足量
 assert_equals(['x'], corpusMissingTokens(['x', 'x'], ['x']), "raw 计数超出 rendered 报告差额");
 
 echo "\n--- corpusTextFromHtml() ---\n";
-assert_equals("a b", corpusTextFromHtml("<p>a</p><p>b</p>"), "标签去除并折叠空白");
+assert_equals("a b", corpusTextFromHtml("<p>a</p><p>b</p>"), "块级标签替换为空格并折叠空白");
+assert_equals("a b", corpusTextFromHtml("<li>a</li><li>b</li>"), "列表项同样按块级处理");
+assert_equals("[OPTIONS]", corpusTextFromHtml("[<u>OPTIONS</u>]"), "行内标签替换为空串，不留空格");
+assert_equals("http://example.com/x", corpusTextFromHtml('<a href="x">http://example.com/x</a>'), "perldoc 行内链接不被空格打断");
 assert_equals("Tom & Jerry", corpusTextFromHtml("<p>Tom &amp; Jerry</p>"), "实体解码");
 assert_equals("x", corpusTextFromHtml("  <b> x </b>  "), "首尾空白去除");
 
