@@ -1,0 +1,20 @@
+<!-- phpman local extension of the W3C XHTML 1.0 Transitional DTD (#255 Task 6).
+
+     The other four files in this directory (xhtml1-transitional.dtd,
+     xhtml-lat1.ent, xhtml-special.ent, xhtml-symbol.ent) are byte-for-byte
+     W3C downloads — do not edit them. This file is phpman's own: it includes
+     the W3C DTD unchanged and redeclares, via extra ATTLIST declarations
+     (XML DTD ATTLISTs are additive), the attributes the live pages
+     deliberately emit that the 2002 DTD predates:
+
+       script/@nonce — CSP nonce, script-src allows only blocks carrying it (#273)
+       script/@async — async script loading (GA gtag.js bootstrap)
+
+     Everything else still validates against the full W3C DTD: structure,
+     nesting, escaping, entity use. A page introducing any OTHER
+     non-XHTML1.0 construct still fails the corpus check. -->
+<!ENTITY % xhtml1-transitional.dtd PUBLIC
+    "-//W3C//DTD XHTML 1.0 Transitional//EN" "xhtml1-transitional.dtd">
+%xhtml1-transitional.dtd;
+<!ATTLIST script nonce CDATA #IMPLIED>
+<!ATTLIST script async CDATA #IMPLIED>

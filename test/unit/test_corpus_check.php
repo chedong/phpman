@@ -10,6 +10,15 @@
  *   - 修好 → exit 0；
  *   - 空 raw/ → [SKIP] no corpus，exit 0（controller ruling：CI 先接线后抓语料）。
  *
+ * Task 6 增加 xhtml 检查（整页 showHeader + formatManPerlDoc + showFooter，
+ * 用本机 xmllint --noout --nonet --dtdvalid 校验随仓库离线解析的 XHTML 1.0
+ * Transitional DTD）：
+ *   - 干净语料 → 输出含 [PASS] xhtml；
+ *   - 清空 PATH（找不到 xmllint）→ [SKIP] xhtml，exit 0，无 [FAIL]；
+ *   - 进程内直接调 corpusCheckRenderFullPage()/corpusCheckXhtmlValidate()：
+ *     完整页面通过；篡改渲染出的页面（去掉 </body></html>）→ 拒绝；
+ *   - 本机没有 xmllint → 打印 [SKIP] xhtml 跳过本节，仍算通过。
+ *
  * 语料用合成 raw（不跑 man/perldoc），黄金由 cli/corpus.php render 子进程生成，
  * 保证 check 与 render 走同一条渲染路径。fixture 带真实 man 形状的页眉/页脚
  * （首末相同的行），验证 tokens 检查对页眉噪声的行为。
@@ -102,6 +111,52 @@ file_put_contents($mdPath, $mdOriginal);
 assert_equals(0, $rc, "修好后退出码 0");
 assert_not_contains('[FAIL]', $out, "修好后无 [FAIL]");
 
+echo "\n--- xhtml（Task 6）：干净语料输出 [PASS] xhtml ---\n";
+[$rc, $out] = run_php($check, ['--corpus=' . $tmp]);
+assert_equals(0, $rc, "xhtml 干净语料退出码 0");
+assert_contains('[PASS] xhtml', $out, "干净语料输出 [PASS] xhtml");
+assert_contains('[OK] check-demo', $out, "整页有效时该页仍报 [OK]");
+
+echo "\n--- xhtml：清空 PATH（无 xmllint）→ [SKIP] xhtml，exit 0 ---\n";
+$out2 = [];
+$rc2 = 0;
+exec("env PATH=/nonexistent " . escapeshellarg(PHP_BINARY) . " "
+    . escapeshellarg($check) . " --corpus=" . escapeshellarg($tmp) . " 2>&1", $out2, $rc2);
+$out2s = implode("\n", $out2);
+assert_equals(0, $rc2, "无 xmllint 时退出码 0（不 fail）");
+assert_contains('[SKIP] xhtml', $out2s, "无 xmllint 输出 [SKIP] xhtml");
+assert_not_contains('[FAIL]', $out2s, "无 xmllint 不产生 [FAIL]");
+
+if (trim((string)shell_exec('command -v xmllint 2>/dev/null')) === '') {
+    // 本机没有 xmllint：xhtml 检查在生产里会记 SKIP，这里同样跳过本节。
+    echo "[SKIP] xhtml\n";
+} else {
+    echo "\n--- xhtml：进程内整页渲染 + 篡改拒绝 ---\n";
+    // 整页组装需要 src/ 的 showHeader/showFooter；PHPMAN_HOME 指向临时目录，
+    // 避免碰本机 ~/.phpman（与 check.php 的环境隔离同理）。
+    define('PHPMAN_HOME', sys_get_temp_dir() . '/phpman-xhtml-test-home-' . getmypid());
+    @mkdir(PHPMAN_HOME, 0777, true);
+    define('PHPMAN_BASE_URL', 'https://www.chedong.com/phpMan.php');
+    define('PHPMAN_TLDR_DISABLE', true);
+    require_once $root . '/src/bootstrap.php';
+    require_once $check;
+
+    $page = corpusCheckRenderFullPage(corpusCheckLines(RAW_PAGE), 'demo', '1', 'man');
+    assert_contains('<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"', $page, "整页含 XHTML DOCTYPE");
+    assert_contains('</body></html>', $page, "整页含闭合的 body/html");
+
+    $res = corpusCheckXhtmlValidate($page, 'in-process-valid');
+    assert_equals(true, $res['pass'], "完整页面通过 xmllint --dtdvalid");
+    if (!$res['pass']) {
+        echo "  xmllint diagnostics:\n" . $res['output'] . "\n";
+    }
+
+    $broken = str_replace('</body></html>', '', $page);
+    $res2 = corpusCheckXhtmlValidate($broken, 'in-process-broken');
+    assert_equals(false, $res2['pass'], "未闭合 body 的渲染页面被 xmllint 拒绝");
+    assert_not_equals('', trim($res2['output']), "失败时给出 xmllint 诊断（前 5 行）");
+}
+
 echo "\n--- 空 raw/：[SKIP] no corpus，exit 0 ---\n";
 $tmp2 = sys_get_temp_dir() . '/phpman-check-empty-' . getmypid();
 if (is_dir($tmp2)) {
@@ -136,5 +191,12 @@ foreach (glob($tmp2 . '/*/*') ?: [] as $f) { unlink($f); }
 @rmdir($tmp2 . '/raw');
 @rmdir($tmp2 . '/golden');
 @rmdir($tmp2);
+if (defined('PHPMAN_HOME') && is_dir(PHPMAN_HOME)) {
+    foreach (glob(PHPMAN_HOME . '/*/*') ?: [] as $f) { @unlink($f); }
+    @rmdir(PHPMAN_HOME . '/db');
+    @rmdir(PHPMAN_HOME . '/logs');
+    @rmdir(PHPMAN_HOME . '/backups');
+    @rmdir(PHPMAN_HOME);
+}
 
 exit(test_summary());
