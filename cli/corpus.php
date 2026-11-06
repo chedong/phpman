@@ -1,25 +1,37 @@
 <?php
 /**
- * Golden-corpus capture (#255, Task 3).
+ * Golden-corpus tooling (#255).
  *
- * Usage: php cli/corpus.php capture [--out=DIR]
+ * Usage:
+ *   php cli/corpus.php render  [--out=DIR]   — render frozen raw into golden files
+ *   php cli/corpus.php capture [--out=DIR]   — freeze raw tool output on a host
  *
- * Runs the real documentation tools (man / perldoc pipeline) on the current
- * host and freezes their output byte-for-byte:
+ * capture (Task 3) runs the real documentation tools (man / perldoc pipeline)
+ * on the current host and freezes their output byte-for-byte:
  *   DIR/raw/<id>.txt  — raw stdout of the tool (shell_exec, never exec(),
  *                       whose line splitting loses the exact byte stream)
  *   DIR/VERSIONS.md   — tool versions + per-page byte count and sha256
  *
- * Standalone by design: this file does NOT require _bootstrap.php or src/.
- * Copy it to any host (`scp cli/corpus.php host:/tmp/`, plus the manifest
- * DIR/pages.txt) and run it there — CI never runs these tools. It is still
- * safe to require from a unit test: the main flow only runs when the file is
- * executed directly (realpath($argv[0]) === __FILE__; $argv may be unset
- * when the file is included, hence the isset guards).
+ * render (Task 4) replays that frozen raw through the real renderers and
+ * writes the regression baseline:
+ *   DIR/golden/<id>.md           — formatManPerlDocToMarkdown() output
+ *                                  (mode = the page's tool; man pages also
+ *                                  carry their section)
+ *   DIR/golden/<id>.fingerprint  — jsonStructureFingerprint(buildJsonData(...))
+ *
+ * Standalone capture by design: the capture path does NOT require _bootstrap.php
+ * or src/. Copy cli/corpus.php to any host (`scp cli/corpus.php host:/tmp/`,
+ * plus the manifest DIR/pages.txt) and run `capture` there — CI never runs
+ * these tools. `render` is different: it replays the raw through the real
+ * renderers, so it loads src/bootstrap.php. It is still safe to require this
+ * file from a unit test: the main flow only runs when the file is executed
+ * directly (realpath($argv[0]) === __FILE__; $argv may be unset when the file
+ * is included, hence the isset guards), and render's bootstrap require lives
+ * inside corpusRenderMain(), so a bare require defines functions only.
  *
  * WIDTH: the man command pins -rLL=100n and the pod2text pipeline pins
  * -w 100. Both match PHPMAN_WIDTH in src/config.php (default 100, override
- * via phpman.config.php) — the value is written literally here so this file
+ * via phpman.config.php) — the value is written literally here so capture
  * works without loading any phpman code. Keep the two in sync: the golden
  * corpus must be produced by the same commands the live server runs.
  */
@@ -201,12 +213,133 @@ function corpusCaptureMain(array $argv): int {
     return 0;
 }
 
+/**
+ * render: replay the frozen raw output of every manifest entry through the
+ * real renderers and write the golden regression baseline:
+ *   DIR/golden/<id>.md           — markdown rendering (mode = page's tool)
+ *   DIR/golden/<id>.fingerprint  — JSON structure fingerprint
+ * Exits 1 when the manifest, a raw file, or a rendering is missing/empty —
+ * an empty golden file would look like real evidence, same rule as capture.
+ *
+ * Environment isolation is set here, BEFORE the bootstrap require: the golden
+ * baseline must not depend on the generating host's user config (PHPMAN_HOME
+ * points at a throwaway temp dir, so no user cache/config is read or written)
+ * nor on local TLDR fetches (PHPMAN_TLDR_DISABLE), and the pinned
+ * PHPMAN_BASE_URL keeps every link identical no matter where render runs.
+ *
+ * Line splitting mirrors exec(): preg_split('/\n/') then drop the trailing
+ * empty element (raw files end with a newline; exec() would not yield an
+ * empty last line for it). Internal empty lines are kept, as exec() keeps.
+ *
+ * The renderers take $lines BY REFERENCE and mutate it (cleanTerminalOutput),
+ * so every format call gets its own fresh copy of the line array.
+ *
+ * @param string[] $argv
+ */
+function corpusRenderMain(array $argv): int {
+    $outDir = 'test/corpus';
+    $argc = count($argv);
+    for ($i = 2; $i < $argc; $i++) {
+        if (preg_match('/^--out=(.+)$/', $argv[$i], $m) === 1) {
+            $outDir = rtrim($m[1], '/');
+        }
+    }
+
+    $manifestFile = $outDir . '/pages.txt';
+    if (!is_file($manifestFile)) {
+        fwrite(STDERR, "corpus: manifest not found: {$manifestFile} (--out=DIR, manifest expected at DIR/pages.txt)\n");
+        return 1;
+    }
+
+    // Environment isolation, then the real renderers. render is a CLI tool in
+    // the repo, so the corpus libraries are required by relative path too.
+    define('PHPMAN_HOME', sys_get_temp_dir() . '/phpman-corpus-home');
+    define('PHPMAN_BASE_URL', 'https://www.chedong.com/phpMan.php');
+    define('PHPMAN_TLDR_DISABLE', true);
+    require_once dirname(__DIR__) . '/src/bootstrap.php';
+    require_once dirname(__DIR__) . '/test/corpus/normalize.php';
+    require_once dirname(__DIR__) . '/test/corpus/fingerprint.php';
+
+    $entries = corpusReadManifest($manifestFile);
+    if (count($entries) === 0) {
+        fwrite(STDERR, "corpus: no entries in {$manifestFile}\n");
+        return 1;
+    }
+
+    $goldenDir = $outDir . '/golden';
+    if (!is_dir($goldenDir) && !mkdir($goldenDir, 0777, true)) {
+        fwrite(STDERR, "corpus: cannot create {$goldenDir}\n");
+        return 1;
+    }
+
+    foreach ($entries as $entry) {
+        $id = $entry['id'];
+        $name = $entry['name'];
+        $section = $entry['section'];
+        $mode = $entry['tool']; // 'man' | 'perldoc' — also buildJsonData()'s mode
+
+        $rawFile = $outDir . '/raw/' . $id . '.txt';
+        if (!is_file($rawFile)) {
+            fwrite(STDERR, "corpus: raw output missing: {$rawFile} (run capture first)\n");
+            return 1;
+        }
+        $raw = file_get_contents($rawFile);
+        if ($raw === false || $raw === '') {
+            fwrite(STDERR, "corpus: raw output empty: {$rawFile}\n");
+            return 1;
+        }
+
+        $lines = preg_split('/\n/', $raw);
+        if ($lines === false) {
+            fwrite(STDERR, "corpus: cannot split raw output: {$rawFile}\n");
+            return 1;
+        }
+        // exec() does not yield an empty last line for the trailing newline
+        // the tool output ends with — drop exactly that element.
+        if ($lines !== [] && end($lines) === '') {
+            array_pop($lines);
+        }
+
+        // One fresh copy per format: the renderers rewrite the buffer in place.
+        $linesMd = $lines;
+        $md = $mode === 'perldoc'
+            ? formatManPerlDocToMarkdown($linesMd, $name, 'perldoc')
+            : formatManPerlDocToMarkdown($linesMd, $name, 'man', $section);
+        $linesJson = $lines;
+        $fp = jsonStructureFingerprint(buildJsonData($linesJson, $name, $section, $mode));
+
+        if ($md === '' || $fp === '') {
+            fwrite(STDERR, "corpus: empty rendering for {$id} (md=" . strlen($md) . " fp=" . strlen($fp) . ")\n");
+            return 1;
+        }
+
+        file_put_contents($goldenDir . '/' . $id . '.md', $md);
+        file_put_contents($goldenDir . '/' . $id . '.fingerprint', $fp);
+
+        // Progress line carries the page's canonical URL on the pinned base —
+        // a second, human-visible guard that the baseline URL does not drift
+        // with the generating environment.
+        $canonical = $mode === 'perldoc'
+            ? 'https://www.chedong.com/phpMan.php/perldoc/' . rawurlencode($name) . '/markdown'
+            : 'https://www.chedong.com/phpMan.php/man/' . rawurlencode($name)
+                . ($section !== '' ? '/' . rawurlencode($section) : '') . '/markdown';
+        echo "render {$id}: {$canonical} md=" . strlen($md) . " fp=" . strlen($fp) . "\n";
+        echo "  -> {$goldenDir}/{$id}.md {$goldenDir}/{$id}.fingerprint\n";
+    }
+
+    echo "wrote " . count($entries) . " golden pages to {$goldenDir}\n";
+    return 0;
+}
+
 // Main flow only when executed directly — a unit test may require this file.
 if (isset($argv) && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
     $command = isset($argv[1]) ? $argv[1] : '';
-    if ($command !== 'capture') {
-        fwrite(STDERR, "Usage: php corpus.php capture [--out=DIR]\n");
-        exit(1);
+    if ($command === 'capture') {
+        exit(corpusCaptureMain($argv));
     }
-    exit(corpusCaptureMain($argv));
+    if ($command === 'render') {
+        exit(corpusRenderMain($argv));
+    }
+    fwrite(STDERR, "Usage: php corpus.php capture|render [--out=DIR]\n");
+    exit(1);
 }
