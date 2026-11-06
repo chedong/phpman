@@ -111,26 +111,29 @@ file_put_contents($mdPath, $mdOriginal);
 assert_equals(0, $rc, "修好后退出码 0");
 assert_not_contains('[FAIL]', $out, "修好后无 [FAIL]");
 
-echo "\n--- xhtml（Task 6）：干净语料输出 [PASS] xhtml ---\n";
-[$rc, $out] = run_php($check, ['--corpus=' . $tmp]);
-assert_equals(0, $rc, "xhtml 干净语料退出码 0");
-assert_contains('[PASS] xhtml', $out, "干净语料输出 [PASS] xhtml");
-assert_contains('[OK] check-demo', $out, "整页有效时该页仍报 [OK]");
-
-echo "\n--- xhtml：清空 PATH（无 xmllint）→ [SKIP] xhtml，exit 0 ---\n";
-$out2 = [];
-$rc2 = 0;
-exec("env PATH=/nonexistent " . escapeshellarg(PHP_BINARY) . " "
-    . escapeshellarg($check) . " --corpus=" . escapeshellarg($tmp) . " 2>&1", $out2, $rc2);
-$out2s = implode("\n", $out2);
-assert_equals(0, $rc2, "无 xmllint 时退出码 0（不 fail）");
-assert_contains('[SKIP] xhtml', $out2s, "无 xmllint 输出 [SKIP] xhtml");
-assert_not_contains('[FAIL]', $out2s, "无 xmllint 不产生 [FAIL]");
-
+// 本机没有 xmllint：xhtml 检查在生产里会记 SKIP，这里的 xhtml 断言同样整体
+// 跳过、打印 [SKIP] xhtml——下面的 [PASS] 断言依赖 xmllint 真实存在，不能在
+// 没有它的机器上把套件打红（keep-the-suite-green）。清空 PATH 那节放在守卫
+// 内也一样成立：有 xmllint 时它模拟缺失；真缺失时输出同样是 [SKIP]。
 if (trim((string)shell_exec('command -v xmllint 2>/dev/null')) === '') {
-    // 本机没有 xmllint：xhtml 检查在生产里会记 SKIP，这里同样跳过本节。
     echo "[SKIP] xhtml\n";
 } else {
+    echo "\n--- xhtml（Task 6）：干净语料输出 [PASS] xhtml ---\n";
+    [$rc, $out] = run_php($check, ['--corpus=' . $tmp]);
+    assert_equals(0, $rc, "xhtml 干净语料退出码 0");
+    assert_contains('[PASS] xhtml', $out, "干净语料输出 [PASS] xhtml");
+    assert_contains('[OK] check-demo', $out, "整页有效时该页仍报 [OK]");
+
+    echo "\n--- xhtml：清空 PATH（无 xmllint）→ [SKIP] xhtml，exit 0 ---\n";
+    $out2 = [];
+    $rc2 = 0;
+    exec("env PATH=/nonexistent " . escapeshellarg(PHP_BINARY) . " "
+        . escapeshellarg($check) . " --corpus=" . escapeshellarg($tmp) . " 2>&1", $out2, $rc2);
+    $out2s = implode("\n", $out2);
+    assert_equals(0, $rc2, "无 xmllint 时退出码 0（不 fail）");
+    assert_contains('[SKIP] xhtml', $out2s, "无 xmllint 输出 [SKIP] xhtml");
+    assert_not_contains('[FAIL]', $out2s, "无 xmllint 不产生 [FAIL]");
+
     echo "\n--- xhtml：进程内整页渲染 + 篡改拒绝 ---\n";
     // 整页组装需要 src/ 的 showHeader/showFooter；PHPMAN_HOME 指向临时目录，
     // 避免碰本机 ~/.phpman（与 check.php 的环境隔离同理）。
