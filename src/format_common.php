@@ -1,5 +1,122 @@
 <?php
 /**
+ * SGR (Select Graphic Rendition) bold/underline → emphasis markers, shared by
+ * the HTML path (formatManPerlDoc → <b>/<u>) and the markdown path
+ * (cleanTerminalOutput → \x01..\x04 markers).
+ *
+ * Replaces per-path non-greedy pairing regexes. Real input
+ * (test/corpus/raw/man-tar.txt line 11):
+ *
+ *   ESC[1m-f ESC[4mESC[22mARCHIVE ESC[24m
+ *
+ * underline opens exactly where bold closes, so no single-pass regex pairing
+ * can produce well-nested output — the old pair emitted
+ * `<b>-f <u></b>ARCHIVE</u>` / `**-f _**ARCHIVE_` (interleaved). This state
+ * machine:
+ *
+ * - recognizes ESC[1m (bold on), ESC[22m (bold off), ESC[4m (underline on),
+ *   ESC[24m (underline off), ESC[0m (all off); any other ESC[...m is dropped;
+ * - always opens in the fixed order b,u and closes in reverse;
+ * - closes whatever is still open at end of line (tags never span lines);
+ * - batches consecutive codes (ESC[4mESC[22m) into a single transition, so no
+ *   empty pair is emitted where attributes merely hand over mid-token.
+ *
+ * $emitters maps 'b'/'u' to [open, close] marker pairs; the default emits
+ * HTML <b>/<u>.
+ */
+function sgrToTags (string $line, ?array $emitters = null): string {
+    static $html = null;
+    if ($html === null) {
+        $html = array('b' => array('<b>', '</b>'), 'u' => array('<u>', '</u>'));
+    }
+    $em = $emitters ?? $html;
+    static $esc = null;
+    if ($esc === null) { $esc = chr(27); }
+    if (strpos($line, $esc . '[') === false) {
+        return $line;
+    }
+    $parts = preg_split('/(' . $esc . '\[[0-9;]*m)/', $line, -1, PREG_SPLIT_DELIM_CAPTURE);
+    if ($parts === false || count($parts) === 1) {
+        return $line;
+    }
+    $out = '';
+    $stack = [];       // open tags in open order: 'b' always before 'u'
+    $bold = false;     // target state accumulated over consecutive codes
+    $under = false;
+    $pending = false;  // state changed by codes since the last emission
+
+    // Reconcile the open stack with the target state. Close from the top while
+    // the top tag must go — unwanted itself, or u sitting above a b whose
+    // state changes (the open order is fixed b,u, so u closes and reopens
+    // whenever b underneath it has to appear or disappear) — then reopen the
+    // wanted tags in the fixed order.
+    $flush = static function (bool $wantBold, bool $wantUnder) use (&$out, &$stack, $em): void {
+        $curBold = in_array('b', $stack, true);
+        $curUnder = in_array('u', $stack, true);
+        if ($curBold === $wantBold && $curUnder === $wantUnder) {
+            return;
+        }
+        while ($stack) {
+            $top = end($stack);
+            if ($top === 'b') {
+                if (!$wantBold) {
+                    $out .= $em['b'][1];
+                    array_pop($stack);
+                    continue;
+                }
+                break;
+            }
+            // top === 'u': close when unwanted, or when the b beneath it
+            // does not match the wanted bold state.
+            if (!$wantUnder || $wantBold !== in_array('b', $stack, true)) {
+                $out .= $em['u'][1];
+                array_pop($stack);
+                continue;
+            }
+            break;
+        }
+        if ($wantBold && !in_array('b', $stack, true)) { $out .= $em['b'][0]; $stack[] = 'b'; }
+        if ($wantUnder && !in_array('u', $stack, true)) { $out .= $em['u'][0]; $stack[] = 'u'; }
+    };
+
+    // preg_split with DELIM_CAPTURE: even indices are text, odd are ESC[...m.
+    foreach ($parts as $i => $part) {
+        if ($i % 2 === 1) {
+            $params = substr($part, 2, -1);
+            foreach (explode(';', $params) as $p) {
+                if ($p === '0' || $p === '') {
+                    $bold = false; $under = false;
+                } elseif ($p === '1') {
+                    $bold = true;
+                } elseif ($p === '22') {
+                    $bold = false;
+                } elseif ($p === '4') {
+                    $under = true;
+                } elseif ($p === '24') {
+                    $under = false;
+                }
+                // anything else (colors etc.) is dropped
+            }
+            $pending = true;
+        } else {
+            // Flush only on non-empty text: an empty segment between two
+            // consecutive codes (ESC[4mESC[22m) must not split the batch.
+            if ($pending && $part !== '') {
+                $flush($bold, $under);
+                $pending = false;
+            }
+            $out .= $part;
+        }
+    }
+    if ($pending) {
+        $flush($bold, $under);
+    }
+    // Close whatever is still open at end of line.
+    $flush(false, false);
+    return $out;
+}
+
+/**
  * Strip terminal control sequences from raw command output, in place.
  *
  * Rewrites $lines by reference instead of returning a second array. On a
@@ -26,34 +143,45 @@ function cleanTerminalOutput (array &$lines, string $linkStyle = 'markdown'): vo
         "/{$ac}".chr(8)."{$ac}".chr(8)."({$ac})".chr(8)."{$ac}/",  // ?^H?^H?^H? => bold
         "/_".chr(8)."({$ac})/",  // _^H? => underline
         "/{$ac}".chr(8)."({$ac})/",  // ?^H? => bold
-        "/".chr(27)."\[1m(.*?)".chr(27)."\[(?:0|22)m/",  // ANSI bold
-        "/".chr(27)."\[4m(.*?)".chr(27)."\[(?:0|24)m/",  // ANSI underline
-        // SGR color codes carry no meaning in text/markdown output, so drop the
-        // whole sequence. groff emits them for man pages that use color escapes
-        // (util-linux, systemd); left in place they leaked through as literal
-        // "[34m" / "[0m" in the body text. Must stay last: the bold/underline
-        // patterns above need to see their own ESC[0m terminator first.
-        "/".chr(27)."\[[0-9;]*m/",  // ANSI color / reset
-        // OSC 8 hyperlinks — groff emits these for man pages that use .UR/.UE
-        // (netpbm and friends): ESC ] 8 ; params ; URI ST  TEXT  ESC ] 8 ; ; ST
-        // (ST = ESC \). Kept as a markdown link so the target survives; the bold
-        // and underline patterns above have already marked up the link text.
-        // $oscUri allowlists the scheme and excludes quotes and whitespace, so a
-        // javascript:/data: target is left unmatched and the sequence dropped.
-        "#".chr(27)."\]8;[^;]*;(".$oscUri.")".chr(27)."\\\\(.*?)".chr(27)."\]8;;".chr(27)."\\\\#i",
-        // Any leftover OSC (window titles, an unclosed 8) is terminal-only.
-        "/".chr(27)."\][^".chr(27).chr(7)."]*(?:".chr(27)."\\\\|".chr(7).")/",
     );
     $replace = array(
         "\x01$1\x02",
         "\x03$1\x04",
         "\x01$1\x02",
-        "\x01$1\x02",
-        "\x03$1\x04",
-        "",
-        ($linkStyle === 'markdown') ? '[$2]($1)' : '$2',
-        "",
     );
+    // Pass 2 starts fresh below — the pass-1 entries must NOT run again after
+    // the SGR machine, or the leftover backspaces/placeholders would corrupt
+    // the markers pass 1 just produced.
+    $prePatterns = $patterns;
+    $preReplace = $replace;
+    $patterns = array();
+    $replace = array();
+    // SGR bold/underline — the same state machine as the HTML path (sgrToTags),
+    // emitting this function's \x01..\x04 markers. The two non-greedy pairing
+    // regexes that used to live here produced interleaved markers on real man
+    // pages wherever underline opened exactly where bold closed
+    // (man-tar.txt line 11: ESC[1m-f ESC[4mESC[22mARCHIVE ESC[24m became
+    // "**-f _**ARCHIVE_"). Runs before the OSC-8 pattern below so the link
+    // text is already marked up, exactly as the old regexes did.
+    $sgrEmitters = array('b' => array("\x01", "\x02"), 'u' => array("\x03", "\x04"));
+    // SGR color codes carry no meaning in text/markdown output, so drop the
+    // whole sequence. groff emits them for man pages that use color escapes
+    // (util-linux, systemd); left in place they leaked through as literal
+    // "[34m" / "[0m" in the body text. The state machine above already drops
+    // every ESC[...m; this stays as a safety net.
+    $patterns[] = "/".chr(27)."\[[0-9;]*m/";  // ANSI color / reset
+    $replace[] = "";
+    // OSC 8 hyperlinks — groff emits these for man pages that use .UR/.UE
+    // (netpbm and friends): ESC ] 8 ; params ; URI ST  TEXT  ESC ] 8 ; ; ST
+    // (ST = ESC \). Kept as a markdown link so the target survives; the SGR
+    // machine above has already marked up the link text.
+    // $oscUri allowlists the scheme and excludes quotes and whitespace, so a
+    // javascript:/data: target is left unmatched and the sequence dropped.
+    $patterns[] = "#".chr(27)."\]8;[^;]*;(".$oscUri.")".chr(27)."\\\\(.*?)".chr(27)."\]8;;".chr(27)."\\\\#i";
+    $replace[] = ($linkStyle === 'markdown') ? '[$2]($1)' : '$2';
+    // Any leftover OSC (window titles, an unclosed 8) is terminal-only.
+    $patterns[] = "/".chr(27)."\][^".chr(27).chr(7)."]*(?:".chr(27)."\\\\|".chr(7).")/";
+    $replace[] = "";
     if (!array_is_list($lines)) {
         // Every caller passes exec() output, which is always a packed list; a
         // keyed array is normalised here so the loop below can index by
@@ -62,7 +190,9 @@ function cleanTerminalOutput (array &$lines, string $linkStyle = 'markdown'): vo
     }
     $count = count($lines);
     for ($i = 0; $i < $count; $i ++) {
-        $line = preg_replace($patterns, $replace, $lines[$i]);
+        $line = preg_replace($prePatterns, $preReplace, $lines[$i]);
+        $line = sgrToTags($line, $sgrEmitters);
+        $line = preg_replace($patterns, $replace, $line);
         $line = str_replace("\x08", "", $line);  // strip remaining backspaces
         $line = str_replace(array("\x02\x01", "\x04\x03"), "", $line);
         $lines[$i] = str_replace(array("\x01", "\x02", "\x03", "\x04"), array("**", "**", "_", "_"), $line);

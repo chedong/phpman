@@ -27,111 +27,9 @@ function renderTocSidebar(array $tocItems, string $pageLabel): string {
 //   php cli/build-index.php           Search index rebuild
 //   php cli/build-index.php --cron    Index rebuild with timestamp
 
-
-/**
- * SGR (Select Graphic Rendition) bold/underline → well-nested <b>/<u> tags.
- *
- * Replaces two non-greedy regexes. Real input (test/corpus/raw/man-tar.txt):
- *
- *   ESC[1m-f ESC[4mESC[22mARCHIVE ESC[24m
- *
- * underline opens exactly where bold closes, so no single-pass regex pairing
- * can produce well-nested tags — the old pair emitted `<b>-f <u></b>ARCHIVE</u>`
- * (interleaved, xmllint-invalid). This state machine:
- *
- * - recognizes ESC[1m (bold on), ESC[22m (bold off), ESC[4m (underline on),
- *   ESC[24m (underline off), ESC[0m (all off); any other ESC[...m is dropped;
- * - always opens in the fixed order <b><u> and closes in reverse;
- * - closes whatever is still open at end of line (tags never span lines);
- * - batches consecutive codes (ESC[4mESC[22m) into a single transition, so no
- *   empty <u></u> is emitted where attributes merely hand over mid-token.
- */
-function sgrToHtmlTags (string $line): string {
-    static $esc = null;
-    if ($esc === null) { $esc = chr(27); }
-    if (strpos($line, $esc . '[') === false) {
-        return $line;
-    }
-    $parts = preg_split('/(' . $esc . '\[[0-9;]*m)/', $line, -1, PREG_SPLIT_DELIM_CAPTURE);
-    if ($parts === false || count($parts) === 1) {
-        return $line;
-    }
-    $out = '';
-    $stack = [];       // open tags in open order: 'b' always before 'u'
-    $bold = false;     // target state accumulated over consecutive codes
-    $under = false;
-    $pending = false;  // state changed by codes since the last emission
-
-    // Reconcile the open stack with the target state. Close from the top while
-    // the top tag must go — unwanted itself, or <u> sitting above a <b> whose
-    // state changes (the open order is fixed <b><u>, so <u> closes and reopens
-    // whenever <b> underneath it has to appear or disappear) — then reopen the
-    // wanted tags in the fixed order.
-    $flush = static function (bool $wantBold, bool $wantUnder) use (&$out, &$stack): void {
-        $curBold = in_array('b', $stack, true);
-        $curUnder = in_array('u', $stack, true);
-        if ($curBold === $wantBold && $curUnder === $wantUnder) {
-            return;
-        }
-        while ($stack) {
-            $top = end($stack);
-            if ($top === 'b') {
-                if (!$wantBold) {
-                    $out .= '</b>';
-                    array_pop($stack);
-                    continue;
-                }
-                break;
-            }
-            // top === 'u': close when unwanted, or when the <b> beneath it
-            // does not match the wanted bold state.
-            if (!$wantUnder || $wantBold !== in_array('b', $stack, true)) {
-                $out .= '</u>';
-                array_pop($stack);
-                continue;
-            }
-            break;
-        }
-        if ($wantBold && !in_array('b', $stack, true)) { $out .= '<b>'; $stack[] = 'b'; }
-        if ($wantUnder && !in_array('u', $stack, true)) { $out .= '<u>'; $stack[] = 'u'; }
-    };
-
-    // preg_split with DELIM_CAPTURE: even indices are text, odd are ESC[...m.
-    foreach ($parts as $i => $part) {
-        if ($i % 2 === 1) {
-            $params = substr($part, 2, -1);
-            foreach (explode(';', $params) as $p) {
-                if ($p === '0' || $p === '') {
-                    $bold = false; $under = false;
-                } elseif ($p === '1') {
-                    $bold = true;
-                } elseif ($p === '22') {
-                    $bold = false;
-                } elseif ($p === '4') {
-                    $under = true;
-                } elseif ($p === '24') {
-                    $under = false;
-                }
-                // anything else (colors etc.) is dropped
-            }
-            $pending = true;
-        } else {
-            // Flush only on non-empty text: an empty segment between two
-            // consecutive codes (ESC[4mESC[22m) must not split the batch.
-            if ($pending && $part !== '') {
-                $flush($bold, $under);
-                $pending = false;
-            }
-            $out .= $part;
-        }
-    }
-    if ($pending) {
-        $flush($bold, $under);
-    }
-    // Close whatever is still open at end of line.
-    $flush(false, false);
-    return $out;
-}
+// SGR bold/underline handling lives in format_common.php: sgrToTags() is the
+// shared state machine (this path uses the default HTML emitters <b>/<u>;
+// cleanTerminalOutput() passes the markdown \x01..\x04 markers).
 
 function formatManPerlDoc (array $lines, string $mode = "man"): string {
     $script_name = h(scriptName());
@@ -179,7 +77,8 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
                );
 
     // Main text conversions — pass 1, before SGR handling. The SGR state
-    // machine (sgrToHtmlTags) runs between pass 1 and pass 2: it must run
+    // machine (sgrToTags, format_common.php) runs between pass 1 and pass 2:
+    // it must run
     // AFTER the &<> → placeholder escaping (its <b>/<u> output would otherwise
     // be escaped) and BEFORE linkification, so that SGR-split names
     // (e.g. ESC[1mioESC[4m_ESC[24mcancelESC[0m) are rejoined into clean
@@ -285,7 +184,7 @@ function formatManPerlDoc (array $lines, string $mode = "man"): string {
             return "\x0e" . (count($oscLinks) - 1) . "\x0e" . $m[2] . "\x0f\x0f";
         }, $lines[$i]);
         $line = preg_replace($prePatterns, $preReplace, $line);
-        $line = sgrToHtmlTags($line);
+        $line = sgrToTags($line);
         $line = preg_replace($patterns, $replace, $line);
         if ($oscLinks) {
             $line = preg_replace_callback("/\x0e(\d+)\x0e/", function ($m) use ($oscLinks) {

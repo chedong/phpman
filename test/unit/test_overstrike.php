@@ -82,24 +82,52 @@ assert_not_contains("<b></u>", $result, "无交错：<b> 内不得直接闭合 <
 // closing in reverse. The full pipeline keeps the existing <u>_</u>→_ cleanup.
 echo "\nT10: SGR state machine — bold/underline handoff\n";
 $sgrSplit = "{$esc}[1mio{$esc}[4m_{$esc}[24mcancel{$esc}[0m";
-assert_equals("<b>io<u>_</u>cancel</b>", sgrToHtmlTags($sgrSplit), "状态机直接输出合法嵌套");
+assert_equals("<b>io<u>_</u>cancel</b>", sgrToTags($sgrSplit), "状态机直接输出合法嵌套");
 assert_equals("<b>io_cancel</b>\n", formatManPerlDoc([$sgrSplit], "man"), "管线保留既有 <u>_</u> 清理");
 
 echo "\nT11: SGR state machine — only underline\n";
-assert_equals("<u>OPTIONS</u>", sgrToHtmlTags("{$esc}[4mOPTIONS{$esc}[24m"), "只有下划线");
+assert_equals("<u>OPTIONS</u>", sgrToTags("{$esc}[4mOPTIONS{$esc}[24m"), "只有下划线");
 
 echo "\nT12: SGR state machine — only bold\n";
-assert_equals("<b>bold</b>", sgrToHtmlTags("{$esc}[1mbold{$esc}[0m"), "只有加粗");
+assert_equals("<b>bold</b>", sgrToTags("{$esc}[1mbold{$esc}[0m"), "只有加粗");
 
 echo "\nT13: SGR ESC[0m closes all mid-line\n";
-assert_equals("<b>abc</b>def", sgrToHtmlTags("{$esc}[1mabc{$esc}[0mdef"), "ESC[0m 全关");
+assert_equals("<b>abc</b>def", sgrToTags("{$esc}[1mabc{$esc}[0mdef"), "ESC[0m 全关");
 assert_equals("<b>abc</b>def\n", formatManPerlDoc(["{$esc}[1mabc{$esc}[0mdef"], "man"), "管线中 ESC[0m 全关");
 
 echo "\nT14: SGR state machine — close still-open tags at end of line\n";
-assert_equals("<b>tail <u>under</u></b>", sgrToHtmlTags("{$esc}[1mtail {$esc}[4munder"), "行尾补齐闭合（逆序）");
+assert_equals("<b>tail <u>under</u></b>", sgrToTags("{$esc}[1mtail {$esc}[4munder"), "行尾补齐闭合（逆序）");
 
 echo "\nT15: SGR color codes are dropped\n";
-assert_equals("color", sgrToHtmlTags("{$esc}[34mcolor{$esc}[0m"), "颜色码丢弃");
-assert_equals("{$esc}[3;5Hx", sgrToHtmlTags("{$esc}[3;5Hx"), "非 m 结尾的转义序列原样保留");
+assert_equals("color", sgrToTags("{$esc}[34mcolor{$esc}[0m"), "颜色码丢弃");
+assert_equals("{$esc}[3;5Hx", sgrToTags("{$esc}[3;5Hx"), "非 m 结尾的转义序列原样保留");
+
+// --- markdown path: cleanTerminalOutput() markers \x01..\x04 → ** / _ ---
+// Same SGR handoff class that corrupted the HTML path; the markdown regexes
+// produced "**-f _**ARCHIVE_"-style interleaved markers on man-tar.txt line 11.
+
+// T16: real tar fragment — must be well-nested markers, "**" closing before
+// "_" opens (old output: "**-f _**ARCHIVE_").
+echo "\nT16: cleanTerminalOutput — SGR bold/underline handoff (markdown)\n";
+$lines = ["{$esc}[1m-f {$esc}[4m{$esc}[22mARCHIVE{$esc}[24m"];
+cleanTerminalOutput($lines);
+assert_equals("**-f **_ARCHIVE_", $lines[0], "真实交接片段输出合法嵌套标记");
+$lines = ["{$esc}[1mtar -A {$esc}[22m[{$esc}[4mOPTIONS{$esc}[24m] {$esc}[1m-f {$esc}[4m{$esc}[22mARCHIVE{$esc}[24m {$esc}[4mARCHIVE{$esc}[24m..."];
+cleanTerminalOutput($lines);
+assert_equals("**tar -A **[_OPTIONS_] **-f **_ARCHIVE_ _ARCHIVE_...", $lines[0], "man-tar 第 11 行全文");
+
+// T17: bold→underline handoff mid-token (pins the pre-existing output of the
+// old regexes for this input — no regression; the literal _ between the
+// markers makes three underscores, same as the old pairing regexes).
+echo "\nT17: cleanTerminalOutput — bold/underline handoff mid-token\n";
+$lines = ["{$esc}[1mio{$esc}[4m_{$esc}[24mcancel{$esc}[0m"];
+cleanTerminalOutput($lines);
+assert_equals("**io___cancel**", $lines[0], "io-cancel 标记输出与旧实现一致");
+
+// T18: unclosed SGR at end of line — close still-open markers in reverse.
+echo "\nT18: cleanTerminalOutput — close still-open markers at end of line\n";
+$lines = ["{$esc}[1mtail {$esc}[4munder"];
+cleanTerminalOutput($lines);
+assert_equals("**tail _under_**", $lines[0], "行尾补齐闭合（逆序）");
 
 exit(test_summary());
