@@ -247,8 +247,9 @@ if ($format === "html" && $mode !== "mcp" && $mode !== "copyright" && $mode !== 
 
 /**
  * 获取标题用的一句话说明（man page NAME 段 / apropos description）。
- * man/pydoc/ri/perldoc 都在 search_fts 有 description（perldoc 的 name 在
- * section 3perl/3pm 段）；info 无 FTS5 索引返回空串。
+ * man 在 search_fts 有真摘要（perldoc 的 name 在 section 3perl/3pm 段）；
+ * pydoc/ri 只有名字、description 为空（`pydoc3 modules` / `ri -l` 都不给摘要）；
+ * info 无 FTS5 索引返回空串。
  * 查询失败时安全退化为空串，不影响页面渲染。
  */
 function getTitleDescription (string $mode, string $parameter, string $section): string {

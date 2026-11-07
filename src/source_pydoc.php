@@ -143,8 +143,9 @@ function getPydocSearchPage (string $parameter, string $format = "html", ?bool &
         // 而这是每次「未命中的 pydoc 名」的首次访问都要付的。超时（或真的没有结果）时
         // 退到 FTS：索引里已经有 pydoc 的模块名，查询是毫秒级的。
         //
-        // 代价是描述退化成索引里的统一常量（src/search_index.php:655 写死 'Python 3
-        // module'）。**有名字好过挂 20 秒然后报错**，而且这是 404 兜底页，语境已经说明
+        // 代价是描述没有了 —— `pydoc3 modules` 只给名字，索引里的 description 是空的
+        // （曾经写死 'Python 3 module'，那是常量，会把 MATCH 带偏，见 #280）。
+        // **有名字好过挂 20 秒然后报错**，而且这是 404 兜底页，语境已经说明
         // 「没找到，这是相近的」。
         //
         // 这是**降级路径，不是替代**：正常路径仍然用 pydoc3 -k 的真 docstring 描述

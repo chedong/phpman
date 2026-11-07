@@ -146,7 +146,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
     $riFtsLines = [];
 
     if (!$sectionOnly) {
-        $ftsQuery = buildFtsQuery($parameter);
+        $ftsQuery = scopeFtsQuery(buildFtsQuery($parameter));
         if ($ftsQuery !== '') {
             try {
                 $db = cacheDb();

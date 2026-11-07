@@ -89,7 +89,7 @@ FTS5 index is built offline via `php cli/build-index.php` (the old `phpMan.php
 CREATE VIRTUAL TABLE search_fts USING fts5(
     name,               -- expanded name: "JSON::Ext::Parser JSON Ext Parser json ext parser json::ext::parser"
     section,            -- "1", "3pm", "pydoc", "ri"
-    description,        -- one-line summary: "Python 3 module", "Ruby class/module"
+    description,        -- one-line summary; '' for pydoc/ri (their listing commands give no summary)
     body,               -- empty (body text NOT indexed)
     tokenize='unicode61 tokenchars ''-:''',
     prefix='1,2,3'
@@ -101,6 +101,16 @@ CREATE VIRTUAL TABLE search_fts USING fts5(
 - `apropos -s N .` traverses 9,000+ entries in ~3 seconds. Indexing body text requires forking `man` per entry (~0.15s/page × 13,000 ≈ 30 minutes)
 - Shared hosting environments trigger `fork: retry: Resource temporarily unavailable` when forking many `man` processes
 - Title + description is sufficient for the vast majority of search scenarios
+
+**MATCH is scoped to `{name description}` (#280).** A bare `MATCH` also searches
+`section` (a per-source constant: `pydoc`, `ri`, `3pm` …) and `body` (always
+empty). Searching `ri` matched the section column of all 3,699 ri rows, and
+searching `1` matched every section-1 man page. `scopeFtsQuery()` wraps every
+query as `{name description} : (…)`. `description` stays in scope because the
+endpoint mirrors `apropos`, which searches the NAME section — "copy files" finds
+cp(1) through its summary. That only holds while descriptions are real, which is
+why pydoc/ri store `''` rather than a constant: a constant matches every row of
+its source.
 
 ### 2.3 Build Steps
 
@@ -115,12 +125,12 @@ CREATE VIRTUAL TABLE search_fts USING fts5(
 
 4. pydoc3 modules:
    exec("pydoc3 modules") → split multi-column layout on 2+ spaces
-   INSERT INTO search_fts (expandNameForFts(module), 'pydoc', 'Python 3 module', '')
+   INSERT INTO search_fts (expandNameForFts(module), 'pydoc', '', '')
    INSERT INTO search_index_meta (module, 'pydoc', 'pydoc')
 
 5. ri classes/modules:
    exec("ri -l") → one class name per line
-   INSERT INTO search_fts (expandNameForFts(class), 'ri', 'Ruby class/module', '')
+   INSERT INTO search_fts (expandNameForFts(class), 'ri', '', '')
    INSERT INTO search_index_meta (class, 'ri', 'ri')
 ```
 

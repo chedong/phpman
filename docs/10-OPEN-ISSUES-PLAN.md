@@ -692,24 +692,53 @@ gate shed: mode=man limit=8 inflight=8 wait=0ms
 >   开始，把那句 `Please wait a moment while I gather a list of all available
 >   modules...` 当成模块名灌进了索引（搜 `wait` 能搜到）。重建后已清零。
 >
-> **§7.5 的反对意见是对的，而实现没有按它做。** 实测确认：
+> **§7.5 的反对意见是对的，但修法不是它写的那一种。** 生产实测（只读，2026-11-07）：
 >
 > ```
-> MATCH python      → 330 行     ← 全部 pydoc 行，因为 description 是常量
-> name : python*    →   1 行     ← 真正的匹配
+>                        裸 MATCH   {name description}   name 列
+> ri                       3,720          23              —
+> python                     352         352              8
+> module                   4,295       4,295              —
+> 1                        3,198         255              —
 > ```
 >
-> 三条待补：
+> 两处污染来源不同，必须分别治：
 >
-> 1. **`source_state` 没有建。** 现在用的是「有没有行」，而 §7.5 的第 1 条风险
->    正是这个：描述列被 MATCH 命中时，门控会以为「pydoc 有结果」而跳过回退。
-> 2. **`searchFtsBySource()` 与 `getSearchPage()` 的 MATCH 仍作用于所有列**，
->    没有收窄到 `name`。索引只有 man 时这没问题（描述是真的摘要）；灌入
->    pydoc/ri 之后，`python` / `module` 这类词会命中全部 330 行。
-> 3. **perldoc 的读侧**未处理。
+> 1. **`section` 列**（每行一个常量：`pydoc` / `ri` / `3pm` …）。裸 MATCH 搜 `ri`
+>    会命中全部 3,699 条 ri 行的 section 列，搜 `1` 会命中所有 1 段 man page。
+>    → `scopeFtsQuery()` 把查询包成 `{name description} : (…)`，`ri` 3,720→23、
+>    `1` 3,198→255。
+> 2. **常量描述**（`Python 3 module` × 330、`Ruby class/module` × 3,699）。
+>    收窄到 `{name description}` **治不了它**：`python` 仍是 352、`module` 仍是
+>    4,295。→ 重建时 pydoc/ri 的 description 写 `''`（`pydoc3 modules` / `ri -l`
+>    本来就没有摘要，写什么都是常量）。
 >
-> 也就是说：**这一节的目标 1（关键词 search 不再 shell）已达成，目标 2（按覆盖
-> 范围逐个拆）只做了粗糙版** —— 词表类的宽泛查询仍可能被常量描述带偏。
+> **为什么不是只收窄到 `name`：** `name : ("copy"* AND "files"*)` 命中 **0** 行，
+> 而 `{name description} : (…)` 命中 cp(1)。`/search` 的语义就是 `apropos` ——
+> 查 NAME 段（名字 + 一句摘要）。只留 name 会把每个多词查询重新推回 shell，
+> 正是这一节要消灭的东西。
+>
+> **§7.5 的 `source_state` 不建。** 它担心的两条都不再成立：
+>
+> - 「描述污染让门控说谎」——常量描述已经不存在，MATCH 也不再看 section/body。
+>   FTS 没命中 pydoc，就是索引里真的没有这个名字。
+> - 「部分覆盖：`/search/json.decoder` 彻底搜不到」——这条举错了例子。
+>   `getPydocSearchPage()` 第一步就是 `pydocSearchWorthScanning()`，**含点号直接
+>   返回空串**，`pydoc3 -k` 从来就没被调用过。`sourceIsIndexed()` 在这条路径上
+>   什么都没改变。
+> - 它想防的「清单命令只跑了一半」也不会发生：`pydoc3 modules` / `ri -l` 没有
+>   「部分成功」的退出码，失败就是 0 行；0 行 = 门控关着 = 回退照跑，正是想要的。
+>
+> 剩下的风险是**时效**（新装的 gem / pip 包在下次 reindex 前搜不到）。`complete`
+> 标记同样解决不了它，§7.7 已经记着，保持现状。
+>
+> **还剩一件事：重建一次。** 索引里现在仍是旧的常量描述，代码改完不重建，
+> `python` / `module` 的宽泛匹配不会消失。
+>
+> **perldoc 的读侧**仍未处理（`parseAproposLine()` 不认 `section='perldoc'`）。
+>
+> 也就是说：**目标 1（关键词 search 不再 shell）已达成；目标 2（按覆盖范围逐个
+> 拆）现在成立了** —— 词表类宽泛查询不再被常量带偏。
 
 ### 7.1 现状与数据（生产，24h）
 
@@ -779,6 +808,9 @@ gate shed: mode=man limit=8 inflight=8 wait=0ms
 
 ### 7.5 回退怎么拆
 
+> **已弃用（2026-11-07）。** 本节的两个前提被 §7 顶部的实测推翻：`source_state`
+> 不建，MATCH 收窄到 `{name description}` 而不是 `name`。以下保留为历史推理。
+
 **按来源逐个拆，但不能只数行数。** 「> 0 行就关回退」有两个问题：
 
 1. **描述列污染**（§7.4 第 3 条）：索引里只要有一行 pydoc，搜 `python` 就会命中
@@ -798,9 +830,11 @@ CREATE TABLE IF NOT EXISTS source_state (
 );
 ```
 
-- 只有 `complete=1` 才允许关该来源的回退；
+- 只有 `complete=1` 才允许关该来源的回退；**（未实施 —— 见 §7 顶部，`source_state` 不建）**
 - `searchFtsBySource()` 的 MATCH 应**只作用在 `name` 列**（如
   `name : "x*"`），不要让常量 `description` 参与匹配；
+  **（已实施，但收窄到 `{name description}` —— 只留 `name` 会让 `copy files`
+  这类 apropos 式查询命中 0 行）**
 - 新装的 gem / pip 包在下次 reindex 前仍搜不到 —— 保留回退或接受这个时效，
   见 §7.7。
 

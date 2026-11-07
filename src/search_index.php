@@ -96,6 +96,33 @@ function buildFtsQuery(string $raw): string {
 }
 
 /**
+ * Scope an FTS5 query to the columns a name search may match (#280).
+ *
+ * A bare `MATCH` searches every column of search_fts, and two of them are
+ * liabilities here:
+ *
+ *   section  — a per-source constant ('pydoc', 'ri', '3pm', ...). A bare match
+ *              for "ri" hits the section column of all 3,699 ri rows and
+ *              returns 100 arbitrary ones; "1" returns section-1 man pages for
+ *              a term that was never a keyword. Measured on production: the
+ *              MATCH for "ri" returned the whole ri index.
+ *   body     — always empty by design (docs/04-SEARCH.md §2.2): filling it
+ *              needs one `man` fork per page (~30 min on shared hosting). If it
+ *              is ever populated, including it would make any common word match
+ *              every page that merely mentions it — a full-text search, which
+ *              this endpoint is not.
+ *
+ * `description` stays in scope because the endpoint mirrors `apropos`, which
+ * searches the NAME section: "copy files" has to find cp(1) through its
+ * one-line summary. That only works while descriptions are real summaries — a
+ * source whose description is a constant must store '' instead; see
+ * rebuildSearchIndex().
+ */
+function scopeFtsQuery(string $ftsQuery): string {
+    return $ftsQuery === '' ? '' : '{name description} : (' . $ftsQuery . ')';
+}
+
+/**
  * Merge search results from multiple sources by (name, section).
  * Same (name, section) from different sources are combined into one entry.
  */
@@ -170,7 +197,7 @@ function sourceIsIndexed(string $source): bool {
 function searchFtsBySource(string $parameter, string $source, string $format) {
     try {
         $db = cacheDb();
-        $ftsQuery = buildFtsQuery($parameter);
+        $ftsQuery = scopeFtsQuery(buildFtsQuery($parameter));
         if ($ftsQuery === '') return $format === 'json' ? [] : '';
 
         // No JOIN on search_index_meta — see the note in source_search.php: the
@@ -248,6 +275,11 @@ function searchFtsBySource(string $parameter, string $source, string $format) {
  * Used by the FTS5 search path (getSearchPage) for AND/OR query strategies.
  */
 function searchFtsQuery(SQLite3 $db, string $ftsQuery, string $parameter, string $section, int $limit): array {
+    // Same column scope as getSearchPage() and searchFtsBySource(): a bare
+    // MATCH would also test the section column (per-source constant) and the
+    // body column (always empty). See scopeFtsQuery().
+    $ftsQuery = scopeFtsQuery($ftsQuery);
+    if ($ftsQuery === '') return [];
     // COALESCE(m.name, s.name) AS display_name: prefer original name from meta
     // (unexpanded), fall back to FTS expanded name. JOIN on section + name
     // prefix match because search_fts.name stores expandNameForFts() output.
@@ -693,7 +725,14 @@ function rebuildSearchIndex(): string {
                             );
                             $stmt->bindValue(':name', $expandedName, SQLITE3_TEXT);
                             $stmt->bindValue(':section', 'pydoc', SQLITE3_TEXT);
-                            $stmt->bindValue(':description', 'Python 3 module', SQLITE3_TEXT);
+                            // No description: `pydoc3 modules` lists names only, so
+                            // any string here is a constant shared by all 330 rows.
+                            // A constant in a searched column is a trap — `MATCH
+                            // python` returned every pydoc row, and the UI printed
+                            // "— Python 3 module" 100 times (#280). An empty
+                            // description matches nothing, and the renderer already
+                            // omits the dash when it is empty.
+                            $stmt->bindValue(':description', '', SQLITE3_TEXT);
                             $stmt->execute();
                         }
 
@@ -739,7 +778,10 @@ function rebuildSearchIndex(): string {
                         );
                         $stmt->bindValue(':name', $expandedName, SQLITE3_TEXT);
                         $stmt->bindValue(':section', 'ri', SQLITE3_TEXT);
-                        $stmt->bindValue(':description', 'Ruby class/module', SQLITE3_TEXT);
+                        // Constant → noise, exactly as for pydoc above: `ri -l`
+                        // has no summaries, and "Ruby class/module" made every ri
+                        // row match a search for "module" (#280).
+                        $stmt->bindValue(':description', '', SQLITE3_TEXT);
                         $stmt->execute();
                     }
 

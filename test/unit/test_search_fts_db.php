@@ -224,10 +224,33 @@ echo "\n--- Single character prefix ---\n";
 $results = searchFtsQuery($db, '"z"*', 'z', '', 50);
 assert_not_equals(null, $results, "single-char prefix query executes without error");
 
-echo "\n--- Search across multiple columns (name + description + body) ---\n";
-// "client" appears in curl body and Apache2::Request description
+echo "\n--- MATCH is scoped to name + description (#280) ---\n";
+// A bare MATCH searches every column, and two of them must not be searched:
+//
+//   body      — never populated (docs/04-SEARCH.md §2.2), and if it were, any
+//               common word would match every page that merely mentions it.
+//               "client" occurs only in curl's seeded body.
+//   section   — a per-source constant ('1', '3pm', 'pydoc', 'ri'). A query that
+//               happens to equal one returned that whole source: on production
+//               `MATCH ri` returned all 3,699 ri rows through this column.
 $results = searchFtsQuery($db, '"client"*', 'client', '', 50);
-assert_not_equals(0, count($results), "'client' returns results across name/desc/body columns");
+assert_equals(0, count($results), "a body-only term does not match — body is out of scope");
+
+$results = searchFtsQuery($db, '"3pm"*', '3pm', '', 50);
+assert_equals(0, count($results), "a query equal to a section value does not match the section column");
+
+// description stays IN scope: this endpoint mirrors apropos, which searches the
+// NAME section, so a summary-only word must still find the page.
+$results = searchFtsQuery($db, '"traverse"*', 'traverse', '', 50);
+$foundFFByDesc = false;
+foreach ($results as $r) {
+    if (strpos($r['name'], 'File::Find') !== false) $foundFFByDesc = true;
+}
+assert_equals(true, $foundFFByDesc, "'traverse' finds File::Find through its description");
+
+echo "\n--- Empty query short-circuits ---\n";
+// scopeFtsQuery('') must not produce '{name description} : ()' — FTS5 rejects it.
+assert_equals(0, count(searchFtsQuery($db, '', '', '', 50)), "empty query returns no rows, no FTS5 error");
 
 echo "\n--- FTS5 engine string not in raw results ---\n";
 // engine field should not be set by searchFtsQuery (it's set by searchFts or getSearchPage)

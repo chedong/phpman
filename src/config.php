@@ -291,7 +291,12 @@ if (!defined('PHPMAN_PYDOC_K_TIMEOUT')) {
 //     negative row for e.g. /pydoc/sos.report.plugins.kafka holds the old body,
 //     and a negative row is reused whatever it carries, so without this bump the
 //     old list would keep being served for the whole 24h not_found TTL.
-define('RENDERER_VERSION', 3);
+// 4 — MATCH is scoped to {name description} and pydoc/ri no longer store a
+//     constant description (#280). Cached `/search/python` pages hold the 100
+//     arbitrary pydoc links the constant produced, and cached pydoc page titles
+//     read "<name> - Python 3 module - pydoc"; a page row is reused whatever it
+//     carries, so the deploy alone would not reach them.
+define('RENDERER_VERSION', 4);
 
 // PHPMAN_VERSION — numeric version (e.g. "4.9.19").
 // Set by Makefile in phpMan.php at deploy time; provide fallback for CLI scripts.
