@@ -480,9 +480,16 @@ switch ( $mode ) {
                     // 0 results). Neither can ever match a section listing, so the
                     // two shell fallbacks are skipped for it.
                     $sectionOnly = isSectionListingQuery((string)$parameter);
+                    // A section listing is not a keyword, so pydoc/ri cannot
+                    // contribute to one — but their FTS lookup ran anyway. "(1)"
+                    // reaches FTS as `"1"*`, which matches any name starting with
+                    // 1, so the section-1 listing grew a "Ruby (ri)" block holding
+                    // ActiveRecord::Migration::Compatibility::V5_1 and two
+                    // Regexp::Syntax::V1_9_1-style names. The json branch was
+                    // already gated; html and markdown were not.
                     if ($format === "html") {
                         $inner = "<h2>" . ($source === 'fts' ? 'man' : 'apropos') . "</h2>\n" . $inner . "\n";
-                        $pydocResults = searchFtsBySource($parameter, 'pydoc', 'html');
+                        $pydocResults = $sectionOnly ? "" : searchFtsBySource($parameter, 'pydoc', 'html');
                         if ($pydocResults === "" && !$hasManResults && !$sectionOnly && !sourceIsIndexed('pydoc')) {
                             $pydocResults = getPydocSearchPage($parameter, "html");
                         }
@@ -490,7 +497,7 @@ switch ( $mode ) {
                         if ($pydocResults !== "") {
                             $inner .= "<h2>Python 3 (pydoc3)</h2>\n" . $pydocResults . "\n";
                         }
-                        $riResults = searchFtsBySource($parameter, 'ri', 'html');
+                        $riResults = $sectionOnly ? "" : searchFtsBySource($parameter, 'ri', 'html');
                         if ($riResults === "" && !$sectionOnly && !sourceIsIndexed('ri')) {
                             $riResults = getRiSearchPage($parameter, "html");
                         }
@@ -500,7 +507,7 @@ switch ( $mode ) {
                         }
                     } elseif ($format === "markdown") {
                         $inner = "## " . ($source === 'fts' ? 'man' : 'apropos') . "\n\n" . $inner . "\n";
-                        $pydocResults = searchFtsBySource($parameter, 'pydoc', 'markdown');
+                        $pydocResults = $sectionOnly ? "" : searchFtsBySource($parameter, 'pydoc', 'markdown');
                         if ($pydocResults === "" && !$sectionOnly && !sourceIsIndexed('pydoc')) {
                             $pydocResults = getPydocSearchPage($parameter, "markdown");
                         }
@@ -508,7 +515,7 @@ switch ( $mode ) {
                         if ($pydocResults !== "") {
                             $inner .= "\n\n## Python 3 (pydoc3)\n\n" . $pydocResults;
                         }
-                        $riResults = searchFtsBySource($parameter, 'ri', 'markdown');
+                        $riResults = $sectionOnly ? "" : searchFtsBySource($parameter, 'ri', 'markdown');
                         if ($riResults === "" && !$sectionOnly && !sourceIsIndexed('ri')) {
                             $riResults = getRiSearchPage($parameter, "markdown");
                         }
