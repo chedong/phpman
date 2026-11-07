@@ -678,6 +678,39 @@ gate shed: mode=man limit=8 inflight=8 wait=0ms
 > `isSectionListingQuery()`）；这一节是剩下的那半。
 > 登记在 [#280](https://github.com/chedong/phpman/issues/280)。
 
+> **实现状态（2026-11-07，`d01333d` / v4.12.20）**
+>
+> - **索引**：`pydoc3 modules` / `ri -l` 的代码从 v4.4.0 就在，生产缺的只是**一次重建**。
+>   2026-11-06 重建后 `man 10,093 / pydoc 330 / ri 3,699`，7.35 秒。（`331` → `330`
+>   是修掉下面那个解析 bug 之后。）
+> - **门控**：已实现 `sourceIsIndexed()`，判据是「该来源在 `search_index_meta` 里
+>   有没有行」。man 的 apropos 回退保留。线上实测 `/search/zzz_no_such_thing_xyz`
+>   只跑 `apropos`，没有 `pydoc3 -k`、没有 `ri`。
+> - **perldoc 未做**（清单命令已验证：递归扫 `@INC`，5,357 条 / 0.98s；读侧还差
+>   `parseAproposLine()` 认 `section='perldoc'`）。
+> - **pydoc 解析 bug 已修**：`pydoc3 modules` 第一行就是空行，原逻辑据此认为正文
+>   开始，把那句 `Please wait a moment while I gather a list of all available
+>   modules...` 当成模块名灌进了索引（搜 `wait` 能搜到）。重建后已清零。
+>
+> **§7.5 的反对意见是对的，而实现没有按它做。** 实测确认：
+>
+> ```
+> MATCH python      → 330 行     ← 全部 pydoc 行，因为 description 是常量
+> name : python*    →   1 行     ← 真正的匹配
+> ```
+>
+> 三条待补：
+>
+> 1. **`source_state` 没有建。** 现在用的是「有没有行」，而 §7.5 的第 1 条风险
+>    正是这个：描述列被 MATCH 命中时，门控会以为「pydoc 有结果」而跳过回退。
+> 2. **`searchFtsBySource()` 与 `getSearchPage()` 的 MATCH 仍作用于所有列**，
+>    没有收窄到 `name`。索引只有 man 时这没问题（描述是真的摘要）；灌入
+>    pydoc/ri 之后，`python` / `module` 这类词会命中全部 330 行。
+> 3. **perldoc 的读侧**未处理。
+>
+> 也就是说：**这一节的目标 1（关键词 search 不再 shell）已达成，目标 2（按覆盖
+> 范围逐个拆）只做了粗糙版** —— 词表类的宽泛查询仍可能被常量描述带偏。
+
 ### 7.1 现状与数据（生产，24h）
 
 | mode | 渲染数 | >3s | >10s | 慢的比例 |
