@@ -686,8 +686,7 @@ gate shed: mode=man limit=8 inflight=8 wait=0ms
 > - **门控**：已实现 `sourceIsIndexed()`，判据是「该来源在 `search_index_meta` 里
 >   有没有行」。man 的 apropos 回退保留。线上实测 `/search/zzz_no_such_thing_xyz`
 >   只跑 `apropos`，没有 `pydoc3 -k`、没有 `ri`。
-> - **perldoc 未做**（清单命令已验证：递归扫 `@INC`，5,357 条 / 0.98s；读侧还差
->   `parseAproposLine()` 认 `section='perldoc'`）。
+> - **perldoc 不做了**（2026-11-07 实测，见下）。
 > - **pydoc 解析 bug 已修**：`pydoc3 modules` 第一行就是空行，原逻辑据此认为正文
 >   开始，把那句 `Please wait a moment while I gather a list of all available
 >   modules...` 当成模块名灌进了索引（搜 `wait` 能搜到）。重建后已清零。
@@ -735,7 +734,28 @@ gate shed: mode=man limit=8 inflight=8 wait=0ms
 > **还剩一件事：重建一次。** 索引里现在仍是旧的常量描述，代码改完不重建，
 > `python` / `module` 的宽泛匹配不会消失。
 >
-> **perldoc 的读侧**仍未处理（`parseAproposLine()` 不认 `section='perldoc'`）。
+> **perldoc 不建索引了 —— 它和 man 的 3pm/3perl 几乎完全重叠。** 生产实测：
+>
+> ```
+> @INC 里的模块名                                6,419
+> Perl 的 man page（apropos -s 3pm / 3perl）      4,437
+> 两边都有                                        3,888
+> 只在 @INC 里、没有 man page                     2,531
+>   └ 其中文件里根本没有 POD                      2,404
+>   └ 有 =head1 NAME 行                             127
+>   └ 有真正的 "名字 - 说明"                          98
+> ```
+>
+> Debian 把 `.pm` 里的 POD 同时装成 `3perl`/`3pm` 的 man page，所以
+> `perldoc File::Find` 和 `man File::Find` 渲染的是同一份文档（实测
+> 18,425B vs 18,443B，NAME/SYNOPSIS 一致）。补 6,419 行索引，其中 3,729 行
+> 和 `3pm` 重复，真正新增的有效结果只有 **98 条** —— 而这个来源的描述还得靠
+> 读每个 `.pm` 的 `=head1 NAME` 才有内容，否则又是常量（正是刚修掉的坑）。
+>
+> 另外 `/man/<带 :: 的名字>` 本来就先走 `perldoc`（`phpMan.php:366`），所以
+> 模块页面从来没缺过，缺的只是搜索里的那 98 条。
+>
+> **结论：`parseAproposLine()` 不用扩，perldoc 不进索引。**
 >
 > 也就是说：**目标 1（关键词 search 不再 shell）已达成；目标 2（按覆盖范围逐个
 > 拆）现在成立了** —— 词表类宽泛查询不再被常量带偏。
@@ -780,7 +800,7 @@ gate shed: mode=man limit=8 inflight=8 wait=0ms
 |---|---|---|---|---|
 | **ri** | **已有代码** | `ri -l` | 3,699 | 常量（"Ruby class/module"） |
 | **pydoc** | **已有代码** | `pydoc3 modules` | ~331（仅 top-level） | 常量（"Python 3 module"） |
-| **perldoc** | **没有** | 递归扫 `@INC` 的 `*.pm` | ~5,357 | 常量（"Perl module"） |
+| **perldoc** | **没有** | 递归扫 `@INC` 的 `*.pm` | 6,419 | **不做** —— 与 man 的 3pm/3perl 重叠 3,888，净增仅 98 条（见 §7 顶部） |
 
 **修正原文的三处事实错误：**
 
