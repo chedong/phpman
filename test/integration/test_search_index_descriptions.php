@@ -97,6 +97,22 @@ assert_equals(1, count($json), "'json' finds the json module");
 assert_equals('json', $json[0]['name'] ?? null, "the result is named json");
 assert_equals('', $json[0]['description'] ?? null, "with an empty description, so the UI prints no dash");
 
+// #280 follow-up: the JSON merge in getSearchPage() used to require a
+// non-empty description (`\s+(.+)$` after the em dash). With the description
+// now '', the line ends at "— " and every pydoc/ri row was silently dropped
+// from `pydoc_results` / `ri_results` — the index was right and the response
+// was empty.
+echo "\n--- getSearchPage() JSON keeps rows with empty descriptions ---\n";
+$rendered = getSearchPage('json', '', 'json');
+$decoded = json_decode($rendered, true);
+assert_equals(true, is_array($decoded), "getSearchPage returns valid JSON");
+assert_equals(1, count($decoded['pydoc_results'] ?? []),
+    "the pydoc hit survives the JSON merge despite its empty description");
+assert_equals('json', $decoded['pydoc_results'][0]['name'] ?? null, "…with its name");
+assert_equals('', $decoded['pydoc_results'][0]['description'] ?? null, "…and an empty description");
+assert_equals(0, count($decoded['ri_results'] ?? []),
+    "the ri rows are not pulled in by a 'json' query");
+
 // cleanup — temp home and stub bin only
 foreach (['apropos', 'pydoc3', 'ri'] as $bin) {
     @unlink($stubDir . '/' . $bin);

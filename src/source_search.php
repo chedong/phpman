@@ -253,7 +253,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
         }
         // Merge FTS5 pydoc/ri results
         foreach ($pydocFtsLines as $pl) {
-            if (preg_match('/^(.+)\s+\(pydoc\)\s+—\s+(.+)$/', $pl, $m)) {
+            if (preg_match('/^(.+)\s+\(pydoc\)\s+—\s*(.*)$/', $pl, $m)) {
                 $pydoc_results[] = array(
                     "name" => trim($m[1]),
                     "description" => trim($m[2]),
@@ -262,7 +262,7 @@ function getSearchPage (string $parameter, string $section = "", string $format 
             }
         }
         foreach ($riFtsLines as $rl) {
-            if (preg_match('/^(.+)\s+\(ri\)\s+—\s+(.+)$/', $rl, $m)) {
+            if (preg_match('/^(.+)\s+\(ri\)\s+—\s*(.*)$/', $rl, $m)) {
                 $ri_results[] = array(
                     "name" => trim($m[1]),
                     "description" => trim($m[2]),

@@ -1,21 +1,22 @@
 # 10 — Open Issues 解决方案设计
 
-> 状态：设计（2026-11-06 复核；#254/#258/#259/#280 的实现细节已按代码校正）
-> 基线：`master` @ `d01333d`
-> 覆盖的 open issue（9）：[#280](https://github.com/chedong/phpman/issues/280)、[#259](https://github.com/chedong/phpman/issues/259)、[#258](https://github.com/chedong/phpman/issues/258)、[#257](https://github.com/chedong/phpman/issues/257)、[#256](https://github.com/chedong/phpman/issues/256)、[#255](https://github.com/chedong/phpman/issues/255)、[#254](https://github.com/chedong/phpman/issues/254)、[#249](https://github.com/chedong/phpman/issues/249)、[#281](https://github.com/chedong/phpman/issues/281)
-> [#253](https://github.com/chedong/phpman/issues/253) 与 [#265](https://github.com/chedong/phpman/issues/265) **已关闭**；§2 中保留为已实现的记录，不再是待办。#281（man 的 4 空格 `name(` 被 pydoc 的 L2 启发式误判）是独立的渲染器问题，本文未展开。
+> 状态：设计（2026-11-08 复核；#254/#258/#259/#280 的实现细节已按代码校正）
+> 基线：`master` @ `2bce1d3`
+> 覆盖的 open issue（9）：[#282](https://github.com/chedong/phpman/issues/282)、[#259](https://github.com/chedong/phpman/issues/259)、[#258](https://github.com/chedong/phpman/issues/258)、[#257](https://github.com/chedong/phpman/issues/257)、[#256](https://github.com/chedong/phpman/issues/256)、[#255](https://github.com/chedong/phpman/issues/255)、[#254](https://github.com/chedong/phpman/issues/254)、[#249](https://github.com/chedong/phpman/issues/249)、[#281](https://github.com/chedong/phpman/issues/281)
+> [#280](https://github.com/chedong/phpman/issues/280) 已于 2026-11-07 **关闭**（`d01333d` / `ea4d0a5` / `f625264` / `2bce1d3` 修掉了 pydoc/ri 常量描述与分节列表的两次 shell）；§7 保留为已实现的记录。
+> [#253](https://github.com/chedong/phpman/issues/253) 与 [#265](https://github.com/chedong/phpman/issues/265) 也**已关闭**；§2 保留为已实现的记录。#281 是独立的渲染器问题，本文未展开；#282（pydoc/ri 的 404 兜底被爬虫扫类名）与 §7 强相关，但尚未展开设计。
 > 前置阅读：[09-QUALITY-GATES.md](09-QUALITY-GATES.md)（四层验证模型、G1–G9）、[08-RELEASE-VERSION-INTEGRITY.md](08-RELEASE-VERSION-INTEGRITY.md)（发布版本号）
 
 ## 0. 一页结论
 
-9 个 issue 不是 9 件独立的事，而是**三条链 + 一件已完成**：
+9 个 issue 不是 9 件独立的事，而是**三条链**（另外记录三件已完成）：
 
 | 链 | issue | 目标 | 先做哪条 |
 |---|---|---|---|
-| **A. 可观测性与发布安全** | #253、#256 | 让"部署没生效 / 池饱和 / 500 分族"变成机器判定 | **最先**：没有判据，后面的改动无法验收 |
-| **B. 渲染语义与资源占用** | #254 → #258 → #259（+ #249） | 把"空串/超时/不存在"类型化，再给请求与并发封顶 | 第二步：#254 是 #258/#259 的地基 |
+| **A. 可观测性与发布安全** | #256（#253 已关闭） | 让"部署没生效 / 池饱和 / 500 分族"变成机器判定 | **最先**：没有判据，后面的改动无法验收 |
+| **B. 渲染语义与资源占用** | #254 → #258 → #259（+ #249、#282） | 把"空串/超时/不存在"类型化，再给请求与并发封顶 | 第二步：#254 是 #258/#259 的地基 |
 | **C. 质量基础设施** | #255、#257 | 用真实语料与不变量抓住"输出形状"和"解析器"回归 | 可并行，但依赖 #253 的 CI 落点 |
-| **已完成** | #265 | install.sh 参数解析 | 已在 PR #266 修复，只差验证与关闭 |
+| **已完成** | #265、#253、#280 | install.sh 参数 / CI+验证 / 搜索索引 | #265 由 PR #266；#253 由 `69f5e23`；#280 由 `d01333d` 等，均已关闭 |
 
 **一句话顺序**：先装仪表（#256；#253 已关闭），再改语义（#254/#258），最后限流（#259）；质量门（#255/#257）全程并行。
 
@@ -45,7 +46,12 @@ P3  #255 golden corpus    #257 PHPStan + property/fuzz
 
 ### #265 — install.sh 参数解析（已完成，补验证）
 
-**现状**：PR #266（merge `32db740`，提交 `5bf79de`）已把解析改成 `while [ $# -gt 0 ]` + 显式消费值：`--webroot=` / `--data-owner=` / 未知选项报错 / 端口范围校验 / webroot 必须绝对路径。issue 仍 open，只差验证。
+> **2026-11-08 复核：** #265 已 **CLOSED**，但这里描述的验证入口并不在树里 ——
+> `install.sh` 没有 `--check-args`，`test/unit/test_install_args.php` 也不存在。
+> 关闭依据可能只是 PR #266 的合并，而不是这份矩阵。要么补上入口并跑一次矩阵，
+> 要么把本节标为「未按此设计验证」。下面的设计保留作为记录。
+
+**现状**：PR #266（merge `32db740`，提交 `5bf79de`）已把解析改成 `while [ $# -gt 0 ]` + 显式消费值：`--webroot=` / `--data-owner=` / 未知选项报错 / 端口范围校验 / webroot 必须绝对路径。issue 已关闭（见上方复核）。
 
 **设计**
 
@@ -70,7 +76,7 @@ P3  #255 golden corpus    #257 PHPStan + property/fuzz
 
 ### #253 — 部署后自动验证 + CI
 
-**现状**：`make verify` 只 `curl -o /dev/null -w %{http_code}`；`test/phpman-regression.sh` 有 8 类检查但手工跑；仓库无 `.github/workflows`。
+**现状（2026-11-08 复核）**：`make verify` 只 `curl -o /dev/null -w %{http_code}`；`test/phpman-regression.sh` 有 8 类检查但手工跑。**`.github/workflows/ci.yml` 已经存在**（unit 矩阵 + shellcheck），所以「仓库无 CI」这句话已过期；下面保留原始设计作为记录。
 
 **设计**
 
@@ -106,27 +112,24 @@ P3  #255 golden corpus    #257 PHPStan + property/fuzz
 
 #### B. Makefile 接线
 
-**验证必须在重建索引之后、打 tag 之前。** GNU make 会先执行所有前置依赖，
-再执行 recipe；把 `_verify-release` 写成 `release-reindex` 的 prerequisite，
-它会在 recipe 里的 `build-index.php` 之前跑 —— 用旧索引验证新代码，坏索引照样
-会被打上 tag。正确做法是把它放进 recipe：
+**现状已经对了：`release-reindex` 在 recipe 里、rebuild 之后调用
+`$(MAKE) _verify-release`**（Makefile 末尾），并没有把它写成 prerequisite。
+所以「验证跑到 rebuild 之前」不是现存 bug —— 之前那版设计写错了。
 
-```make
-release: test test-unit _release-code
-	@deploy/verify-release.sh "$$(cat .release-version)" "$(DEMO_URL)"
-	@$(MAKE) _release-tag
+**真正的问题是验证看不到索引。** `deploy/verify-release.sh` 不请求 `/search`，
+`cli/build-index.php` 也忽略 `rebuildSearchIndex()` 的返回值、总是 exit 0。
+于是在缺 `pydoc3` / `ri`（或 whatis DB 坏掉）的主机上，重建只提交 man 行、
+命令返回 0、sitemap 照跑、verify 只查 footer/MCP/静态资源，最后照样打 tag ——
+「坏索引被打上 tag」依然成立。
 
-release-reindex: test test-unit _release-code
-	@echo "=== Rebuilding production search index ==="
-	ssh ... "cd $(DEMO_HOME)/.phpman && php cli/build-index.php --cron"
-	@echo "=== Generating production sitemap ==="
-	ssh ... "cd $(DEMO_HOME)/.phpman && php cli/build-sitemap.php ..."
-	@deploy/verify-release.sh "$$(cat .release-version)" "$(DEMO_URL)"
-	@$(MAKE) _release-tag
-```
+要补的是：
 
-（ssh 细节与现有 `release-reindex` recipe 相同，此处省略；关键是
-`_verify-release` 从 prerequisite 移到 rebuild **之后**。）验证不过就不打 tag。
+1. `cli/build-index.php` 在 `rebuildSearchIndex()` 报告 0 行、或某来源计数比
+   上次骤降（例如 pydoc 从 330 → 0）时 **非 0 退出**；
+2. `verify-release.sh` 增加一项：`/search/json` 的 JSON 里
+   `pydoc_results` / `ri_results` 非空（或直接查 `search_index_meta` 的
+   source 计数）；
+3. 用测试断言脚本顺序（verify 在 rebuild 之后），而不是靠文档约定。
 
 #### C. GitHub Actions
 
@@ -216,11 +219,18 @@ phpman_5xx_ratio 0.0023
 - **HTML 是「慢的 100% + 快的 1%」**，属于不等概率抽样；直接混合求分位数同样
   有偏（慢请求被高估约 100 倍）。
 
-所以分位数**只能用等概率样本**：
+所以分位数**只能用等概率样本**。
 
-- 在 `phpManLogMachineRender()` 里给每个请求一个**与耗时无关**的 1% 稳定抽样
-  标记（`sampled=1`）；p95 只在这个子集上算；
-- 阈值触发的行（`sampled=0`）只用于诊断与计数，不参与分位数；
+**现有采样器不能直接用。** `phpManSampleHit($key, $rate)` 的 key 是**页面身份**
+（同一页面要么全采要么全不采），而且目前只有「快的 HTML」走 `sampled=1`，
+机器格式从不采样，未采样行也不写 `sampled=0`。实现时要：
+
+- 新增一个**按请求**的采样键（如 `REQUEST_TIME_FLOAT` + client + URI 的哈希），
+  而不是页面名；
+- 慢的 HTML 行也要带 `sampled=1`（否则 `sampled=1` 子集在 500ms 处被截断，
+  真实的 1.5s p95 会被报成 <500ms，"<2s" 的 SLO 永远不会触发）；
+- 机器格式同样参与等概率采样；
+- 未采样的行显式写 `sampled=0`，便于区分「没采到」与「没有这个字段」；
 - `--check-slo` 在 1h 内等概率样本 < 100 时输出「样本不足，未判定」并**非 0**，
   不要静默当作通过。
 
@@ -307,23 +317,37 @@ final class RenderResult {
 **不变量（构造函数/工厂里 assert）**
 
 1. `NOT_FOUND` 的 body 非空；JSON/MCP 是合法空信封，不是 0 字节。
+   **迁移**：负行可能带 NULL/'' 正文（#247 之前的行），而适配器要求
+   `notFound($body)`。不要用 assert 把空正文判死 —— 适配器对空正文合成
+   `noMatchNotice()`（或允许内部 `notFoundRaw`），否则「旧负行原样复用」的
+   现有断言会失败。
 2. `INDETERMINATE` 不写**最终**负行（found / 24h not_found），但**可以**写 600s 的
    超时短行（`PHPMAN_CACHE_TTL_TIMEOUT`），否则同名会被反复打满 20 秒（#248 的原始
    问题）。HTTP 用 503 + `Retry-After`，不是 404。因此接口用 `ttl()` /
    `cacheStatus()` 表达这件事，**不要**用二值的 `cacheable()` —— 原文「永远
    `cacheable() === false`」与 #258 D 的「保留 600s 短 TTL 行」互相矛盾；照前者做
    会让重复请求重跑 20 秒扫描，照后者做又会让行在 TTL 内被读成确定的 404。
+   **读侧必须能分辨 600s 行**：`PageCache::getWithStatus()` 现在只返回
+   `{status, content}`，`fetchRow()` 在返回前丢掉了 `ttl`，所以一条 600s 行
+   被命中时只会被当成确定的 `not_found` + 404。迁移时让 `getWithStatus()`
+   一并返回 `ttl`（或 `freshFor`），`cacheOrSearchFallback()` 据此决定
+   「继续 503 + 可重试」还是「确定的 404」。
 3. `NOT_FOUND` 只能由"命令成功返回、确认无结果"产生；`rc=124` / 非零退出 ≠ not found。
    **这要求每个 generator 都能把 rc 带出来**：`getManPage()` 目前把 rc=124 收敛成
    `''`（BSD 回退后 `return ""`），man 分支于是调用 `cacheNotFoundOnce()` 写 24h
    负行。迁移时必须给 `getManPage()` 加 indeterminate 出参（或直接返回
    RenderResult），否则不变量 3 在 man 上不成立，"注入超时后只剩 600s 行"的验收
    也过不了。
+   **还有一条链**：man 分支在 `getManPage()` 返回空后还会调 `getSearchPage()`，
+   而 `source_search.php` 的 `$aproposRc` 同样被丢弃（注释写明「退出码这里仍然
+   不用」）。apropos 超时同样会落到 `cacheNotFoundOnce('man', ...)`。
+   `getManPage` 与 `getSearchPage` 两条路径都要把 indeterminate 带出来，否则
+   不变量 3 只修了一半。
 4. HTTP 状态只由 `httpStatus()` 映射，调用点不再各自 `http_response_code()`。
 
 #### B. 迁移顺序（一次只动一组）
 
-1. `cacheOrSearchFallback()` → 新增 `resolvePageWithFallback(): RenderResult`；旧函数保留为**适配器**（返回 `$r->body` 并回填旧 out-params），保证现有 751 条断言先绿。
+1. `cacheOrSearchFallback()` → 新增 `resolvePageWithFallback(): RenderResult`；旧函数保留为**适配器**（返回 `$r->body` 并回填旧 out-params），保证现有断言先绿（2026-11-08：862 条）。
 2. `pydoc`、`ri`、`man` 三个 miss 分支改用新函数。
 3. `search` 级联最后改（它现在把空串当"无该来源"信号）。
 4. 输出边界（`phpMan.php` markdown/json/html 三个分支）统一读 `$result->httpStatus()`。
@@ -399,8 +423,12 @@ final class RequestBudget {
 - `$budgetMs = RequestBudget::current()->remainingMs()`；
 - `$budgetMs <= 0` → **不 spawn**：`$rc = 124; $lines = [];`，记一行
   `budget exhausted: mode=… stage=…`，返回 false；
-- 否则 `$effectiveSec = min($requestedSec, intdiv($budgetMs + 999, 1000))`，
-  最小 1 秒；因此预算有 ≤1s 的粒度误差，配置上留 1s 余量。
+- `$budgetMs === PHP_INT_MAX`（不限）→ `$effectiveSec = $requestedSec`；
+- 否则 `$effectiveSec = min($requestedSec, intdiv($budgetMs - 1, 1000) + 1)`。
+  **不要写 `intdiv($budgetMs + 999, 1000)`**：不限模式下 `PHP_INT_MAX + 999`
+  会先溢出成 float，`intdiv(float)` 抛 `TypeError`（PHP 8 实测），于是所有
+  冷请求 500、缓存命中正常 —— 正是本节警告的「命中正常、未命中全挂」。
+  最小 1 秒；预算有 ≤1s 粒度误差，配置上留 1s 余量。
 - 新增可选 `$stage` 参数（`man.primary` / `man.bsd` / `man.search` / `pydoc.page` / `pydoc.search` / `ri.page` / `perldoc.page` / `info.page` / `search.apropos`），用于日志与指标。
 
 #### C. 调用点的短路
@@ -467,12 +495,16 @@ CREATE TABLE IF NOT EXISTS inflight (
 CREATE INDEX IF NOT EXISTS idx_inflight_started ON inflight(started_at);
 ```
 
-获取（`BEGIN IMMEDIATE`，微秒级临界区）：
+获取（微秒级临界区）：
 
+0. **先 `busy_timeout(250)`，再 `BEGIN IMMEDIATE`** —— 争锁的是 `BEGIN IMMEDIATE`，
+   放在它后面设置，拿锁时用的还是连接的旧超时：新连接是 0（立即
+   `SQLITE_BUSY`，闸在负载下静默 fail-open），若表建在 `cacheDb()` 里则可能是
+   10s（反而在 FCGI 槽里阻塞，正是闸要避免的事）。
 1. `DELETE FROM inflight WHERE started_at < now - 120`（回收崩溃请求）；
 2. `SELECT COUNT(*)`；
 3. `< PHPMAN_MAX_CONCURRENT_RENDERS` 才 `INSERT`；
-4. `busy_timeout(250)`；`SQLITE_BUSY` → **fail open**（继续渲染）+ `gate_error` 指标（坏掉的闸不能把站点打死）。
+4. `SQLITE_BUSY` → **fail open**（继续渲染）+ `gate_error` 指标（坏掉的闸不能把站点打死）。
 
 `PHPMAN_MAX_CONCURRENT_RENDERS` 默认 `0`（关闭），等测到槽数后设为 `池槽数 - 2`（给缓存命中留余量）。**先观察、再启用**。
 
@@ -484,7 +516,10 @@ CREATE INDEX IF NOT EXISTS idx_inflight_started ON inflight(started_at);
 
 1. `build-index.php` 产一张 `known_names(mode, name, section)`（来自 man-db/perldoc/pydoc/ri/info 的完整清单）；
 2. 每个 mode 一个 `complete` 标志：**只有 complete=1 才允许用"不在表里"直接 404**；
-3. pydoc 先做（`pydoc3 modules` 本身就是完整清单）；man/perldoc 先只做**测量**，不启用；
+3. pydoc 先做（`pydoc3 modules` 本身就是完整清单）—— **但只对不含 `.` 的名字**。
+   `pydoc3 modules` 只列 top-level；`/pydoc/json.decoder` 今天是 200，若按清单
+   判定「不在表里」会误杀。含点名字必须继续走 `pydoc3`，不能进廉价 404；
+   man/perldoc 先只做**测量**，不启用；
 4. 上线前用 access.log 回放：对过去 7 天的 200 请求检查是否会被误判 404，误杀率必须为 0。
 
 #### D. 不做的事
@@ -514,7 +549,7 @@ CREATE INDEX IF NOT EXISTS idx_inflight_started ON inflight(started_at);
 
 ### #255 — golden corpus + 参考实现差分
 
-**现状**：751 条断言验函数行为，但没有真实语料的逐字节基准；`phpman-regression.sh` 的 W3C 只测 `man/gzip/1`。
+**现状**：862 条断言验函数行为，但没有真实语料的逐字节基准；`phpman-regression.sh` 的 W3C 只测 `man/gzip/1`。
 
 **设计**
 
@@ -561,6 +596,11 @@ test/corpus/
   `PHPMAN_TLDR=0`），生成与比较都置为关闭。
 - **归一化易变字段** —— JSON 里的生成时间戳、footer 的日期/版本串、ETag；
   在 sha256 之前替换成固定占位符，或把这些页面排除在字节比较之外。
+- **CSP nonce** —— `web_header.php:10` 每次请求用 `random_bytes(18)` 生成
+  `PHPMAN_CSP_NONCE` 并写进 `script-src`。它必须归一化，否则 HTML 的 sha256
+  永远对不上。注意 `nonce` 属性在 XHTML 1.0 Transitional 里没有声明，
+  本地 DTD 校验会报错 —— corpus 的 HTML 校验要么放宽到 `--noout`（不校验
+  DTD），要么先修 markup；这是已存在的约束，不是 corpus 引入的。
 - **固定 locale / TZ** —— 写进 `meta.json`，并在 runner 里 export。
 
 **风险**：不同 OS 的工具版本会产生不同 raw 输出。语料在**生产同款 OS** 生成；CI 只跑纯格式断言，sha256 断言在 staging-smoke 跑。
@@ -569,7 +609,7 @@ test/corpus/
 
 ### #257 — PHPStan L9 + 属性/模糊测试
 
-**现状**：无 Composer / 无 CI / 无静态分析；解析器与转义只有样例断言。
+**现状**：无 Composer / 无静态分析；CI 已有（`.github/workflows/ci.yml`，unit + shellcheck），但还没有 PHPStan 或属性/模糊测试。
 
 **设计**
 
@@ -757,8 +797,9 @@ gate shed: mode=man limit=8 inflight=8 wait=0ms
 >
 > **结论：`parseAproposLine()` 不用扩，perldoc 不进索引。**
 >
-> 也就是说：**目标 1（关键词 search 不再 shell）已达成；目标 2（按覆盖范围逐个
-> 拆）现在成立了** —— 词表类宽泛查询不再被常量带偏。
+> 也就是说：**目标 1 只达成了 pydoc/ri 那一半** —— 词表类宽泛查询不再被常量
+> 带偏；man 的 `apropos` 仍然保留，关键词 miss 还会 shell 一次（0.03s，代价
+> 可接受）。目标 2（按覆盖范围逐个拆）成立。
 
 ### 7.1 现状与数据（生产，24h）
 
@@ -774,6 +815,16 @@ gate shed: mode=man limit=8 inflight=8 wait=0ms
 `search_fts` 的实际来源（`section` 列就是来源）：**只有 man**
 （3pm 3468 / 1 2728 / 8 1156 / 3perl 598 / 5 490 / 7 394 / …），
 **pydoc、ri、perldoc、info 各 0 行**。
+
+> **2026-11-07 复核（`e64b265`）：下面这段已经过期。** 索引重建后
+> `search_index_meta` 是 man + pydoc 330 + ri 3,699。当前的实际行为：
+>
+> - **pydoc / ri**：FTS 命中就不再 shell（`sourceIsIndexed()` 为真）；未命中
+>   仍走回退，但 `pydoc3 -k` 只对**非点号**关键词执行。
+> - **man**：`apropos` 仍保留（0.03s，用来兜住索引重建前新装的 man page），
+>   所以**关键词 miss 仍会 fork 一次 `apropos`**。
+>
+> 保留下面两段作为 2026-11-05 的原始记录。
 
 所以 `case "search":` 的级联是：apropos 查 man → pydoc 的 FTS 空 →
 `pydoc3 -k`（8–14s）→ ri 的 FTS 空 → `ri`（0.4–1.3s）。
@@ -798,24 +849,28 @@ gate shed: mode=man limit=8 inflight=8 wait=0ms
 
 | 来源 | 现状 | 清单命令 | 条数 | 描述列 |
 |---|---|---|---|---|
-| **ri** | **已有代码** | `ri -l` | 3,699 | 常量（"Ruby class/module"） |
-| **pydoc** | **已有代码** | `pydoc3 modules` | ~331（仅 top-level） | 常量（"Python 3 module"） |
-| **perldoc** | **没有** | 递归扫 `@INC` 的 `*.pm` | 6,419 | **不做** —— 与 man 的 3pm/3perl 重叠 3,888，净增仅 98 条（见 §7 顶部） |
+| **ri** | **已有代码** | `ri -l` | 3,699 | `''`（#280 起不再存常量） |
+| **pydoc** | **已有代码** | `pydoc3 modules` | ~330（仅 top-level） | `''`（同上） |
+| **perldoc** | **没有代码，且决定不做** | 递归扫 `@INC` 的 `*.pm` | 6,419 | —（与 man 的 3pm/3perl 重叠 3,888，净增仅 98 条） |
 
 **修正原文的三处事实错误：**
 
 1. **pydoc / ri 不需要新增 ingestion。** `rebuildSearchIndex()` 已经在跑
    `pydoc3 modules` 与 `ri -l`（`src/search_index.php:652,716`）。生产里 0 行是
-   「这份索引没重建过」，不是「代码没灌」—— 见 §7.1 的复核命令。真正缺的只有
-   **perldoc**。
-2. **`pydoc3 modules` 只列 top-level，约 331 行，不是 6,197。** 它不会列出
-   `json.decoder` 这类子模块；`walk_packages` 的 6,197 与「不传 onerror 会截断到
-   791」都不适用于现有实现（`pydoc3 modules` 是外部命令，不走 `walk_packages`）。
-   含点子模块在索引里**仍然没有**，所以 pydoc 回退还不能删。
-3. **常量描述会污染 `MATCH`。** FTS5 的 `MATCH` 会命中 `description` 列：搜
-   `python` 会匹配所有 `Python 3 module` 行，`searchFtsBySource()` 返回 LIMIT 100
-   的任意集合，级联随即认为「pydoc 有结果」而跳过 `pydoc3 -k`。因此 §7.5 的开关
-   不能只数行数。
+   「这份索引没重建过」，不是「代码没灌」—— 见 §7.1 的复核命令。**perldoc 确实
+   没有代码，但按 §7 顶部的决定不做**（与 3pm/3perl 重叠 3,888，净增 98 条）。
+2. **`pydoc3 modules` 只列 top-level，约 330 行，不是 6,197。** 它内部确实走
+   `pkgutil.walk_packages`（CPython 的 `pydoc.ModuleScanner.run`），但回调会丢掉
+   名字里带 `.` 的模块（`if modname.find('.') < 0`），所以输出只有 top-level。
+   含点子模块在索引里**仍然没有**。
+   **但这不是「pydoc 回退必须保留」的理由**：`pydocSearchWorthScanning()` 在参数
+   含 `.` 时直接返回 false（`src/source_pydoc.php:115`），回退本来就不处理含点
+   名字。回退真正有用的是**非点号关键词到模块摘要的匹配**（`pydoc3 -k` 会匹配
+   summary；索引只有名字）。
+3. **常量描述会污染 `MATCH`** —— 已在 `ea4d0a5` 修掉：pydoc/ri 现在存 `''`。
+   但 `MATCH` 仍会搜 `description` 列（apropos 语义需要它），所以任何**将来**给
+   某来源写常量描述都会重现这个问题；`searchFtsBySource()` 的查询也不要再假设
+   description 非空。
 
 **perldoc 的读侧还差一步。** `getSearchPage()` 把非 pydoc/ri 的行放进 `$lines`，
 而 `parseAproposLine()` 只接受 `(?:\d\w*|n)\w*` 形式的 section
