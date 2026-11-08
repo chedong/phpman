@@ -788,7 +788,7 @@ gate shed: mode=man limit=8 inflight=8 wait=0ms
 >
 > Debian 把 `.pm` 里的 POD 同时装成 `3perl`/`3pm` 的 man page，所以
 > `perldoc File::Find` 和 `man File::Find` 渲染的是同一份文档（实测
-> 18,425B vs 18,443B，NAME/SYNOPSIS 一致）。补 6,419 行索引，其中 3,729 行
+> 18,425B vs 18,443B，NAME/SYNOPSIS 一致）。补 6,419 行索引，其中 3,888 行
 > 和 `3pm` 重复，真正新增的有效结果只有 **98 条** —— 而这个来源的描述还得靠
 > 读每个 `.pm` 的 `=head1 NAME` 才有内容，否则又是常量（正是刚修掉的坑）。
 >
@@ -927,7 +927,7 @@ reindex 之前完全搜不到」，而 reindex 是手工的。
 
 ### 7.6 验证
 
-1. `make reindex` 后 `search_fts` 里 pydoc / ri / perldoc 各 > 0；
+1. `make reindex` 后 `search_fts` 里 pydoc / ri 各 > 0（perldoc 不建索引）；
 2. 用 exec 日志确认 `/search/<关键词>` **不再**出现 `pydoc3 -k` / `ri`
    （方法与分节列表那次相同：临时给 `phpManExec` 加一行日志）；
 3. `cli/metrics.php` 里 `mode=search` 的 p95 从 21s 落到 < 1s；
@@ -941,8 +941,8 @@ reindex 之前完全搜不到」，而 reindex 是手工的。
   前缀/布尔查询。搜类名（`DatabaseError`）两者都找不到 —— 索引里只有模块名，
   与 #252 已经记过的边界一致。
 - **索引体积**：`search_fts` 是**普通（standalone）FTS5 表**，没有 `content=`；
-  只有 `cache_fts` 是 external-content（`content='cache'`）。所以新行会各自存
-  一份索引数据，约 9,000 行（ri 3,699 + perldoc 5,357）相对现有 ~15,000 行
-  增长约 60%。`make reindex` 的耗时与 DB 大小要在实施时量一次。
+  只有 `cache_fts` 是 external-content（`content='cache'`）。本轮实际新增的是
+  pydoc ~330 + ri ~3,699（perldoc 决定不做），相对现有 ~15,000 行增长约 27%。
+  `make reindex` 的耗时与 DB 大小要在实施时量一次。
   **不要按 external-content 的方式写清理/重建逻辑** —— `INSERT INTO
   search_fts(search_fts) VALUES('rebuild')` 那套只适用于 `cache_fts`。
