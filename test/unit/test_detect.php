@@ -70,6 +70,44 @@ foreach ($tests as $test) {
     }
 }
 
+// ──────────────────────────────────────────────
+// Mode gating (#281): the pydoc class/function heuristics must not fire in
+// man mode. A man page line indented by exactly four spaces and starting with
+// `name(` is body text, not an L2 section — treating it as one drops the
+// cross-reference link and invents a TOC entry.
+// ──────────────────────────────────────────────
+echo "\n--- mode gating: pydoc patterns vs body text (#281) ---\n";
+$modeTests = [
+    // [input, mode, expectedLevel, expectedText]
+    ["    other(1)",        "man",     null, ""],   // body text: must NOT become L2
+    ["    ls(1)",           "man",     null, ""],
+    ["    class Foo(Bar)",  "pydoc",   2,    "class Foo"],
+    ["    func(args)",      "pydoc",   2,    "func"],
+    ["    other(1)",        "perldoc", null, ""],
+];
+foreach ($modeTests as [$input, $mode, $expectedLevel, $expectedText]) {
+    $result = detectHeadingType($input, $mode);
+    $label = "[{$mode}] " . substr($input, 0, 30);
+    if ($expectedLevel === null) {
+        if ($result === null) {
+            $pass++;
+            echo "  ✅ reject: {$label}\n";
+        } else {
+            $fail++;
+            echo "  ❌ false positive: {$label} → L{$result['level']}\n";
+        }
+    } elseif ($result === null) {
+        $fail++;
+        echo "  ❌ missed: {$label}\n";
+    } elseif ($result['level'] !== $expectedLevel || trim($result['text']) !== $expectedText) {
+        $fail++;
+        echo "  ❌ wrong: {$label} expected L{$expectedLevel} '{$expectedText}' got L{$result['level']} '{$result['text']}'\n";
+    } else {
+        $pass++;
+        echo "  ✅ L{$expectedLevel}: {$label}\n";
+    }
+}
+
 echo "\n═══════════════════════════════════════\n";
 echo "  {$pass} passed, {$fail} failed\n";
 echo "═══════════════════════════════════════\n";

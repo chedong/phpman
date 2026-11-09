@@ -300,7 +300,7 @@
 
     Individual driver implementors are free to provide any private functions and/or handle
     attributes that they feel are useful. Private driver functions can be invoked using the DBI
-### func
+    func() method. Private driver attributes are accessed just like standard attributes.
 
     Many methods have an optional "\%attr" parameter which can be used to pass information to the
     driver implementing the method. Except where specifically documented, the "\%attr" parameter can
@@ -737,7 +737,7 @@
 
     Where multiple separate parts of a program are using connect_cached() to connect to the same
     database with the same (initial) attributes it is a good idea to add a private attribute to the
-### connect_cached
+    connect_cached() call to effectively limit the scope of the caching. For example:
 
       DBI->connect_cached(..., { private_foo_cachekey => "Bar", ... });
 
@@ -753,7 +753,7 @@
       DBI->connect_cached(..., { private_foo_cachekey => __FILE__.__LINE__, ... });
 
     By using a private attribute you still get connection caching for the individual calls to
-### connect_cached
+    connect_cached() but, by making separate database connections for separate parts of the code,
     the database handles are isolated from any attribute changes made to other handles.
 
     The cache can be accessed (and cleared) via the "CachedKids" attribute:
@@ -817,7 +817,7 @@
     or "undef", then the value of the "DBI_DRIVER" environment variable is used.
 
     The driver will be loaded if it hasn't been already. Note that if the driver loading fails then
-### data_sources
+    data_sources() *dies* with an error message that includes the string ""install_driver"" and the
     underlying problem.
 
     Data sources are returned in a form suitable for passing to the "connect" method (that is, they
@@ -1074,7 +1074,7 @@
     handles.
 
     (Methods which don't reset err before being called include err() and errstr(), obviously,
-### state
+    state(), rows(), func(), trace(), trace_msg(), ping(), and the tied hash attribute FETCH() and
     STORE() methods.)
 
     If you need to test for specific error conditions *and* have your program be portable to
@@ -1371,7 +1371,7 @@
     the "Executed" attribute.
 
     When it's set on a handle it is also set on the parent handle at the same time. So calling
-### execute
+    execute() on a $sth also sets the "Executed" attribute on the parent $dbh.
 
     The "Executed" attribute for a database handle is cleared by the commit() and rollback() methods
     (even if they fail). The "Executed" attribute of a statement handle is not cleared by the DBI
@@ -1652,7 +1652,7 @@
 
     The "HandleSetErr" attribute can be used to intercept the setting of handle "err", "errstr", and
     "state" values. If set to a reference to a subroutine then that subroutine is called whenever
-### set_err
+    set_err() is called, typically by the driver or a subclass.
 
     The subroutine is called with five arguments, the first five that were passed to set_err(): the
     handle, the "err", "errstr", and "state" values being set, and the method name. These can be
@@ -1685,7 +1685,7 @@
     incremented by warnings or information states. It is not reset by the DBI at any time.
 
     The "ErrCount" attribute was added in DBI 1.41. Older drivers may not have been updated to use
-### set_err
+    set_err() to record errors and so this attribute may not be incremented when using them.
 
    "ShowErrorStatement"
     Type: boolean, inherited
@@ -1933,7 +1933,7 @@
       };
 
     As with other attributes, Callbacks can be specified on a handle or via the attributes to
-### connect
+    connect(). Callbacks can also be applied to a statement methods on a statement handle. For
     example:
 
       $sth->{Callbacks} = {
@@ -1984,7 +1984,7 @@
     callback.
 
     Because the "connect_cached.new" and "connect_cached.reused" callbacks are invoked before
-### connect_cached
+    connect_cached() has applied the connect attributes, you can use them to edit the attributes
     that will be applied. To prevent a cached handle from having its transactions committed before
     it's returned, you can eliminate the "AutoCommit" attribute in a "connect_cached.reused"
     callback, like so:
@@ -2008,7 +2008,7 @@
     from the cache.
 
     Note that we've also used a lexical for the callbacks hash reference. This is because
-### connect_cached
+    connect_cached() returns a new database handle if any of the attributes passed to is have
     changed. If we used an inline hash reference, connect_cached() would return a new database
     handle every time. Which would rather defeat the purpose.
 
@@ -2322,7 +2322,7 @@
 
     This utility method combines "prepare", "execute" and "fetchall_hashref" into a single call. It
     returns a reference to a hash containing one entry, at most, for each row, as returned by
-### fetchall_hashref
+    fetchall_hashref().
 
     The $statement parameter can be a previously prepared statement handle, in which case the
     "prepare" is skipped. This is recommended if the statement is going to be executed many times.
@@ -2791,7 +2791,7 @@
 
     Returns an active statement handle that can be used to fetch information about columns that make
     up the primary key for a table. The arguments don't accept search patterns (unlike
-### table_info
+    table_info()).
 
     The statement handle will return one row per column, ordered by TABLE_CAT, TABLE_SCHEM,
     TABLE_NAME, and KEY_SEQ. If there is no primary key then the statement handle will fetch no
@@ -2840,7 +2840,7 @@
 
     Returns an active statement handle that can be used to fetch information about foreign keys in
     and/or referencing the specified table(s). The arguments don't accept search patterns (unlike
-### table_info
+    table_info()).
 
     $pk_catalog, $pk_schema, $pk_table identify the primary (unique) key table (PKT).
 
@@ -3277,7 +3277,7 @@
     Leaves the $dbh in an almost dead, zombie-like, state and returns a binary string of raw
     implementation data from the driver which describes the current database connection. Effectively
     it detaches the underlying database API connection data from the DBI handle. After calling
-### take_imp_data
+    take_imp_data(), all other methods except "DESTROY" will generate a warning and return undef.
 
     Why would you want to do this? You don't, forget I even mentioned it. Unless, that is, you're
     implementing something advanced like a multi-threaded connection pool. See [DBI::Pool](https://www.chedong.com/phpMan.php/perldoc/DBI%3A%3APool/markdown).
@@ -3470,7 +3470,7 @@
 
     Perl only has string and number scalar data types. All database types that aren't numbers are
     bound as strings and must be in a format the database will understand except where the
-### bind_param
+    bind_param() TYPE attribute specifies a type that implies a particular format. For example,
     given:
 
       $sth->bind_param(1, $value, SQL_DATETIME);
@@ -3623,7 +3623,7 @@
     array with all elements having the same value. It does not influence the number of tuples
     executed, so if all bound arrays have zero elements then zero tuples will be executed. If *all*
     bound values are scalars then one tuple will be executed, making execute_array() act just like
-### execute
+    execute().
 
     The "ArrayTupleFetch" attribute can be used to specify a reference to a subroutine that will be
     called to provide the bind values for each tuple execution. The subroutine should return an
@@ -3721,7 +3721,7 @@
 
     In scalar context execute_for_fetch() returns "undef" if there were any errors and the number of
     tuples executed otherwise. Like execute() and execute_array() a zero is returned as "0E0" so
-### execute_for_fetch
+    execute_for_fetch() is only false on error. If there were any errors the @tuple_status array can
     be used to discover which tuples failed and with what errors.
 
     When called in list context execute_for_fetch() returns two scalars; $tuples is the same as
@@ -3839,7 +3839,7 @@
     "count(*)" or "max(c_foo)" and they may clash with existing column names (most databases don't
     care about duplicate column names in a result-set). If you want these to return as unique names
     that are the same across databases, use *aliases*, as in ""select count(*) as cnt"" or ""select
-### max
+    max(c_foo) mx_foo, ..."" depending on the syntax your database supports.
 
     Because of the extra work "fetchrow_hashref" and Perl have to perform, it is not as efficient as
     "fetchrow_arrayref" or "fetchrow_array".
@@ -3939,7 +3939,7 @@
     and executed statement handle. It returns a reference to a hash containing a key for each
     distinct value of the $key_field column that was fetched. For each key the corresponding value
     is a reference to a hash containing all the selected columns and their values, as returned by
-### fetchrow_hashref
+    fetchrow_hashref().
 
     If there are no rows to return, "fetchall_hashref" returns a reference to an empty hash. If an
     error occurs, "fetchall_hashref" returns the data fetched thus far, which may be none. You
@@ -4353,7 +4353,7 @@
     * Values:
 
     The hash values are hashrefs of type information in the same form as that passed to the various
-### bind_param
+    bind_param() methods (See "bind_param" for the format and values).
 
     It is possible that the values in the hash returned by "ParamTypes" are not exactly the same as
     those passed to bind_param() or execute(). Param attributes specified using the abbreviated
@@ -4446,7 +4446,7 @@
     restrict the result set in SQL/CLI.
 
     Most arguments in the catalog methods accept only *ordinary values*, e.g. the arguments of
-### primary_key_info
+    primary_key_info(). Such arguments are treated as a literal string, i.e. the case is significant
     and quote characters are taken literally.
 
     Some arguments in the catalog methods accept *search patterns* (strings containing '_' and/or
@@ -4637,7 +4637,7 @@
     present in all perls up through 5.8.0.
 
     Beginning in perl 5.8.0 perl implements 'safe' signal handling if your system has the POSIX
-### sigaction
+    sigaction() routine. Now when a signal is delivered perl just makes a note of it but does *not*
     run the %SIG handler. The handling is 'deferred' until a 'safe' moment.
 
     Although this change made signal handling safe, it also lead to a problem with signals being
@@ -4801,7 +4801,7 @@
     If your subclass supplies a connected method, it should be part of the [MySubDBI::db](https://www.chedong.com/phpMan.php/perldoc/MySubDBI%3A%3Adb/markdown) package.
 
     One more thing to note: you must let the DBI do the handle creation. If you want to override the
-### connect
+    connect() method in your *::dr class then it must still call [SUPER::connect](https://www.chedong.com/phpMan.php/perldoc/SUPER%3A%3Aconnect/markdown) to get a $dbh to
     work with. Similarly, an overridden prepare() method in *::db must still call [SUPER::prepare](https://www.chedong.com/phpMan.php/perldoc/SUPER%3A%3Aprepare/markdown) to
     get a $sth. If you try to create your own handles using bless() then you'll find the DBI will
     reject them with an "is not a DBI handle (has no magic)" error.
@@ -4855,7 +4855,7 @@
     recorded in the handle and available via "$h->err" and $[DBI::errstr](https://www.chedong.com/phpMan.php/perldoc/DBI%3A%3Aerrstr/markdown) etc. The set_err() method
     always returns an undef or empty list as appropriate. Since your method should nearly always
     return an undef or empty list as soon as an error is detected it's handy to simply return what
-### set_err
+    set_err() returns, as shown in the example above.
 
     If the handle has "RaiseError", "PrintError", or "HandleError" etc. set then the set_err()
     method will honour them. This means that if "RaiseError" is set then set_err() won't return in
@@ -4967,7 +4967,7 @@
 
     NOTE: If $trace_file is specified as a filehandle, the filehandle should not be closed until all
     DBI operations are completed, or the application has reset the trace file via another call to
-### trace
+    trace() that changes the trace file.
 
 ### Tracing to Layered Filehandles
     NOTE:

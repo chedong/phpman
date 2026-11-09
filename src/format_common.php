@@ -314,7 +314,7 @@ function detectL2BoldSubheading (string $line): ?array {
  *     indented plain-text option flags.
  * Handles: bold+type pairs, bold option flags, perldoc head2, plain-text options.
  */
-function detectL2IndentedPatterns (string $line): ?array {
+function detectL2IndentedPatterns (string $line, string $mode = "man"): ?array {
     // man .TP tagged paragraphs with bold variable names + optional type
     // e.g. "       **CREATE**_**HOME** (boolean)"
     if (preg_match('/^ {7,}((?:(?:\*\*[^*]+\*\*[_\s]*)+\([a-z]+\)[,\s]*)+)/', $line, $m)) {
@@ -363,13 +363,18 @@ function detectL2IndentedPatterns (string $line): ?array {
     }
 
     // pydoc class definitions: "    class Name(Parent)" (Parent may contain HTML link)
+    // Gated on pydoc (#281): in man/perldoc/info body text a line indented by
+    // exactly four spaces and starting with `name(` is a cross-reference such
+    // as "    other(1)", not a section heading. Without the gate it became an
+    // L2 heading, which dropped the link and invented a TOC entry.
     $testLine = preg_replace('#<a[^>]*>|</a>#', '', $line);
-    if (preg_match('/^ {4}class (\w+)\(/', $testLine, $m)) {
+    if ($mode === "pydoc" && preg_match('/^ {4}class (\w+)\(/', $testLine, $m)) {
         return ['level' => 2, 'text' => 'class ' . $m[1]];
     }
 
     // pydoc function definitions: "    funcName(args)"
-    if (preg_match('/^ {4}([a-z]\w*)\(/', $testLine, $m)
+    if ($mode === "pydoc"
+        && preg_match('/^ {4}([a-z]\w*)\(/', $testLine, $m)
         && !preg_match('/^(class|def|if|for|while|with|try|import|from|return|yield|raise|print|assert|del|global|nonlocal|lambda|pass|break|continue|except|finally|elif|else|and|or|not|in|is)\b/', $m[1])) {
         return ['level' => 2, 'text' => $m[1]];
     }
@@ -471,7 +476,7 @@ function detectHeadingType (string $line, string $mode = "man", ?string $nextLin
     $result = detectL2BoldSubheading($line);
     if ($result !== null) return $result;
 
-    $result = detectL2IndentedPatterns($line);
+    $result = detectL2IndentedPatterns($line, $mode);
     if ($result !== null) return $result;
 
     // L1 strategies (checked last — broader patterns)

@@ -650,7 +650,7 @@
         Portability issues: "chmod" in perlport.
 
     chomp VARIABLE
-### chomp
+    chomp( LIST )
     chomp
         This safer version of "chop" removes any trailing string that corresponds to the current
         value of $/ (also known as $INPUT_RECORD_SEPARATOR in the "English" module). It returns the
@@ -684,7 +684,7 @@
         interpreted as "chomp($a), $b" rather than as "chomp($a, $b)".
 
     chop VARIABLE
-### chop
+    chop( LIST )
     chop
         Chops off the last character of a string and returns the character chopped. It is much more
         efficient than "s/.$//s" because it neither scans nor copies the string. If VARIABLE is

@@ -1240,7 +1240,7 @@
         "1\f2\f3\f"
 
     Why? Because nasty_break() modifies $\ without localizing it first. The value you set in
-### nasty_break
+    nasty_break() is still there when you return. The fix is to add local() so the value doesn't
     leak out of nasty_break():
 
         local $\ = "\f";
