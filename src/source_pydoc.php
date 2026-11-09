@@ -116,7 +116,25 @@ function pydocSearchWorthScanning (string $parameter): bool {
     return strpos(trim($parameter), '.') === false;
 }
 
-function getPydocSearchPage (string $parameter, string $format = "html", ?bool &$timedOut = null): string {
+/**
+ * Should this call pay for a live `pydoc3 -k` scan? (#282)
+ *
+ * Two independent reasons to skip it:
+ *   - a dotted path is never worth scanning (see pydocSearchWorthScanning);
+ *   - the page-fallback caller already ran the primary `pydoc3 <name>` lookup,
+ *     so its scan can only be a "did you mean" hint. Measured over a day of
+ *     crawler traffic (2026-11-08): 126 distinct non-dotted names paid 8–20s
+ *     each and returned nothing. The FTS module index answers the same hint in
+ *     milliseconds, so `$allowShellScan = false` routes there instead.
+ *
+ * Search pages keep the scan: the user asked for a search there, and the
+ * keyword-to-module mapping is what the scan is genuinely good at.
+ */
+function pydocShouldShellScan (string $parameter, bool $allowShellScan = true): bool {
+    return $allowShellScan && pydocSearchWorthScanning($parameter);
+}
+
+function getPydocSearchPage (string $parameter, string $format = "html", ?bool &$timedOut = null, bool $allowShellScan = true): string {
     $lines = array();
     $timedOut = false;
 
@@ -132,27 +150,36 @@ function getPydocSearchPage (string $parameter, string $format = "html", ?bool &
         return "";
     }
 
-    $ok = phpManExec("pydoc3 -k ".escapeshellarg($parameter), $lines, $return_code, PHPMAN_PYDOC_K_TIMEOUT);
-    // rc 124 is timeout(1)'s own exit code: the scan was cut off, so we do not
-    // know whether the name exists. Callers must not cache that as "not found" —
-    // a negative row written from a timeout turns a transient failure into a
-    // 24-hour 404, which is what happened to BaseHTTPRequestHandler on production.
-    $timedOut = ($return_code === 124);
-    if (!$ok || empty($lines)) {
-        // #247/#248: pydoc3 -k 会 import 整个 stdlib —— 实测生产上 9.5 秒、病态时 30 秒，
-        // 而这是每次「未命中的 pydoc 名」的首次访问都要付的。超时（或真的没有结果）时
-        // 退到 FTS：索引里已经有 pydoc 的模块名，查询是毫秒级的。
-        //
-        // 代价是描述没有了 —— `pydoc3 modules` 只给名字，索引里的 description 是空的
-        // （曾经写死 'Python 3 module'，那是常量，会把 MATCH 带偏，见 #280）。
-        // **有名字好过挂 20 秒然后报错**，而且这是 404 兜底页，语境已经说明
-        // 「没找到，这是相近的」。
-        //
-        // 这是**降级路径，不是替代**：正常路径仍然用 pydoc3 -k 的真 docstring 描述
-        // （`json - JSON (JavaScript Object Notation) <https://json.org> is a subset of`）。
+    if (!$allowShellScan) {
+        // #282: page-fallback caller. Answer the "did you mean" hint from the
+        // module index instead of paying the scan; see pydocShouldShellScan().
         $lines = pydocSearchLinesFromFts($parameter);
         if (empty($lines)) {
             return "";
+        }
+    } else {
+        $ok = phpManExec("pydoc3 -k ".escapeshellarg($parameter), $lines, $return_code, PHPMAN_PYDOC_K_TIMEOUT);
+        // rc 124 is timeout(1)'s own exit code: the scan was cut off, so we do not
+        // know whether the name exists. Callers must not cache that as "not found" —
+        // a negative row written from a timeout turns a transient failure into a
+        // 24-hour 404, which is what happened to BaseHTTPRequestHandler on production.
+        $timedOut = ($return_code === 124);
+        if (!$ok || empty($lines)) {
+            // #247/#248: pydoc3 -k 会 import 整个 stdlib —— 实测生产上 9.5 秒、病态时 30 秒，
+            // 而这是每次「未命中的 pydoc 名」的首次访问都要付的。超时（或真的没有结果）时
+            // 退到 FTS：索引里已经有 pydoc 的模块名，查询是毫秒级的。
+            //
+            // 代价是描述没有了 —— `pydoc3 modules` 只给名字，索引里的 description 是空的
+            // （曾经写死 'Python 3 module'，那是常量，会把 MATCH 带偏，见 #280）。
+            // **有名字好过挂 20 秒然后报错**，而且这是 404 兜底页，语境已经说明
+            // 「没找到，这是相近的」。
+            //
+            // 这是**降级路径，不是替代**：正常路径仍然用 pydoc3 -k 的真 docstring 描述
+            // （`json - JSON (JavaScript Object Notation) <https://json.org> is a subset of`）。
+            $lines = pydocSearchLinesFromFts($parameter);
+            if (empty($lines)) {
+                return "";
+            }
         }
     }
     $script_name = ($format === "markdown" || $format === "json" || $format === "mcp") ? baseUrl() : scriptName();

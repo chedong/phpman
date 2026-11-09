@@ -574,8 +574,16 @@ switch ( $mode ) {
                     // and flag the uncertainty instead; cacheOrSearchFallback()
                     // keeps the body but gives the row the short timeout TTL.
                     $timedOut = false;
-                    $body = getPydocSearchPage($parameter, $format, $timedOut);
-                    $indeterminate = $timedOut;
+                    // #282: no shell scan on the page fallback. The primary
+                    // `pydoc3 <name>` lookup above already failed, so this call
+                    // only supplies a "did you mean" hint — answer it from the
+                    // module index (ms) instead of an 8–20s `pydoc3 -k`.
+                    $body = getPydocSearchPage($parameter, $format, $timedOut, false);
+                    // Without the scan, an empty body means "the index has
+                    // nothing", which is weaker evidence than a failed lookup:
+                    // keep the negative row short-lived (#248) rather than
+                    // freezing a possibly-unindexed module for 24h.
+                    $indeterminate = ($body === '');
                     return $body;
                 },
                 $isSearchFallback,
