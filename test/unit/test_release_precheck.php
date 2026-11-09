@@ -185,5 +185,7 @@ assert_equals(1, preg_match('/git show .*PREV_TAG.*src\/config\.php/', $code),
     "比较的是从两个提交解析出的数值，不是 diff 行数（后者可被删定义/改注释绕过）");
 assert_contains('RENDERER_VERSION 没有变', $code,
     "失败信息直接点名了该做什么");
+assert_contains('RENDERER_VERSION_BASELINE', $code,
+    "基线解析不出来时失败关闭，只留显式基线这一个逃生口");
 
 exit(test_summary());

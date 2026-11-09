@@ -157,13 +157,24 @@ if [ -n "$PREV_TAG" ] && git cat-file -e "HEAD:src/config.php" 2>/dev/null; then
     # （有一行 "-"）或只改注释（有一行 "+"）都会让计数非零，守卫就放行了。
     # `git show TAG:path` 对 annotated tag 会先剥到提交，两种 tag 都能用。
     PREV_RV=$(git show "${PREV_TAG}:src/config.php" 2>/dev/null \
-        | sed -n "s/.*define('RENDERER_VERSION', *\([0-9][0-9]*\)).*/\1/p" | head -1)
+        | sed -n "s/.*define([\"']RENDERER_VERSION[\"'], *\([0-9][0-9]*\)).*/\1/p" | head -1)
     HEAD_RV=$(git show "HEAD:src/config.php" 2>/dev/null \
-        | sed -n "s/.*define('RENDERER_VERSION', *\([0-9][0-9]*\)).*/\1/p" | head -1)
+        | sed -n "s/.*define([\"']RENDERER_VERSION[\"'], *\([0-9][0-9]*\)).*/\1/p" | head -1)
     if [ -z "$HEAD_RV" ]; then
         echo "错误：src/config.php 里解析不出 RENDERER_VERSION 的数值定义。" >&2
         echo "      它在缓存失效机制里是必需的；先确认这行没被删掉或改坏。" >&2
         exit 1
+    fi
+    # 基线解析不出来就**失败关闭**：空值会与任何 HEAD_RV 都不等，守卫就静默放行了。
+    # 唯一合法的「缺失」是上一个 tag 早于这个常量；那种情况用显式基线覆盖。
+    if [ -z "$PREV_RV" ]; then
+        if [ -z "${RENDERER_VERSION_BASELINE:-}" ]; then
+            echo "错误：无法从 ${PREV_TAG} 解析 RENDERER_VERSION 基线。" >&2
+            echo "      若上一版确实没有这个定义，确认本次已 bump 后，用显式基线重跑：" >&2
+            echo "      RENDERER_VERSION_BASELINE=<上一版的语义值> make release" >&2
+            exit 1
+        fi
+        PREV_RV=$RENDERER_VERSION_BASELINE
     fi
     GOLDEN_CHANGED=$(git diff --name-only "$PREV_TAG"..HEAD -- test/corpus/golden | head -1)
     if [ -n "$GOLDEN_CHANGED" ] && [ "$HEAD_RV" = "$PREV_RV" ]; then
