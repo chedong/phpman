@@ -299,7 +299,12 @@ if (!defined('PHPMAN_PYDOC_K_TIMEOUT')) {
 // 5 — section listings no longer run the pydoc/ri FTS lookup (#280). Cached
 //     `/search/(1)` pages carry a "Ruby (ri)" block whose three entries match
 //     `"1"*` on their names, and a page row is reused whatever it carries.
-define('RENDERER_VERSION', 5);
+// 6 — SGR attribute changes produce well-nested markup in both paths (#255),
+//     and pydoc's indented-L2 heuristics no longer fire outside pydoc (#281).
+//     Cached rows hold the old interleaved `<b>-f <u></b>ARCHIVE</u>` in HTML
+//     and `**-f _**ARCHIVE_` in markdown, plus perldoc body lines promoted to
+//     `### chomp` headings; a page row is reused whatever it carries.
+define('RENDERER_VERSION', 6);
 
 // PHPMAN_VERSION — numeric version (e.g. "4.9.19").
 // Set by Makefile in phpMan.php at deploy time; provide fallback for CLI scripts.
