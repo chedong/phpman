@@ -1,5 +1,5 @@
 #!/bin/sh
-# release-precheck.sh — 发布前的三条守卫，任一不过就中止。
+# release-precheck.sh — 发布前的四条守卫，任一不过就中止。
 #
 # 为什么需要它们
 # --------------
@@ -131,6 +131,65 @@ if [ -n "$DIRTY" ]; then
     echo "错误：部署路径上有未提交的改动 —— 传上去的字节不会等于 tag 指向的提交。" >&2
     printf '%s\n' "$DIRTY" | sed 's/^/      /' >&2
     exit 1
+fi
+
+# ── 守卫 4 ──
+# 渲染输出的变化必须让页面缓存失效（RENDERER_VERSION）。
+#
+# 2026-11-09 的教训：v4.12.23 部署了 SGR 状态机与 pydoc 模式门两处渲染修复，线上却
+# 原样返回旧输出 —— 页面缓存按 RENDERER_VERSION 失效，而那次发布没有 bump 它。语料门
+# 直接调渲染函数、绕过了缓存，所以它能证明"渲染器对了"，证明不了"线上会变"。
+#
+# 判据用冻结语料的黄金：黄金变了 = 渲染输出变了。与上一个发布 tag 比较，要求同一段
+# 提交里 src/config.php 的 RENDERER_VERSION 定义也变了。重新采集语料（工具升级）同样
+# 会触发它 —— 那种情况缓存里也是旧工具的输出，同样该刷新。
+#
+# 没有可达 tag 时跳过（首次发布没有比较基准）。
+#
+# 覆盖面：语料只冻结了 man/perldoc 六页。其他渲染路径（pydoc/info/ri、页头页脚）
+# 改了但黄金没变时，硬判据不会触发 —— 那里只打一条警告，不中止。为什么不一并做成
+# 硬失败：无谓的 bump 会让整库缓存失效、部署后瞬间全量重建，正是 #259 那类 503 的
+# 触发条件。硬判据只认"有证据的输出变化"，其余交给人和警告。
+PREV_TAG=$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)
+# 没有 src/config.php 的检出（测试夹具里的假仓库）不是 phpman，这条守卫不适用。
+if [ -n "$PREV_TAG" ] && git cat-file -e "HEAD:src/config.php" 2>/dev/null; then
+    # 比较**解析出的数值**，不是 diff 行。按 diff 行匹配有两个绕过口：删掉定义
+    # （有一行 "-"）或只改注释（有一行 "+"）都会让计数非零，守卫就放行了。
+    # `git show TAG:path` 对 annotated tag 会先剥到提交，两种 tag 都能用。
+    PREV_RV=$(git show "${PREV_TAG}:src/config.php" 2>/dev/null \
+        | sed -n "s/.*define('RENDERER_VERSION', *\([0-9][0-9]*\)).*/\1/p" | head -1)
+    HEAD_RV=$(git show "HEAD:src/config.php" 2>/dev/null \
+        | sed -n "s/.*define('RENDERER_VERSION', *\([0-9][0-9]*\)).*/\1/p" | head -1)
+    if [ -z "$HEAD_RV" ]; then
+        echo "错误：src/config.php 里解析不出 RENDERER_VERSION 的数值定义。" >&2
+        echo "      它在缓存失效机制里是必需的；先确认这行没被删掉或改坏。" >&2
+        exit 1
+    fi
+    GOLDEN_CHANGED=$(git diff --name-only "$PREV_TAG"..HEAD -- test/corpus/golden | head -1)
+    if [ -n "$GOLDEN_CHANGED" ] && [ "$HEAD_RV" = "$PREV_RV" ]; then
+        echo "错误：语料黄金变了，但 RENDERER_VERSION 没有变（仍是 ${HEAD_RV}）。" >&2
+        echo "      上一个发布 tag: $PREV_TAG" >&2
+        echo "      改动示例: $GOLDEN_CHANGED" >&2
+        echo "      黄金变 = 渲染输出变；缓存按 RENDERER_VERSION 失效，不 bump 的话" >&2
+        echo "      线上会继续返回旧渲染（v4.12.23 就是这样把修复发了个空）。" >&2
+        echo "      在 src/config.php 里 bump RENDERER_VERSION 并写明改了什么，再发布。" >&2
+        exit 1
+    fi
+    if [ -z "$GOLDEN_CHANGED" ] && [ "$HEAD_RV" = "$PREV_RV" ]; then
+        RENDERER_CHANGED=$(git diff --name-only "$PREV_TAG"..HEAD -- \
+            src/format_common.php src/format_html.php src/format_markdown.php \
+            src/format_json.php src/format_mcp.php src/source_man.php \
+            src/source_perldoc.php src/source_info.php src/source_pydoc.php \
+            src/source_ri.php src/source_search.php src/web_header.php \
+            src/web_footer.php src/exec.php src/tldr.php | head -1)
+        if [ -n "$RENDERER_CHANGED" ]; then
+            echo "提示：改动触及渲染路径，但语料黄金与 RENDERER_VERSION 都没变。" >&2
+            echo "      示例: ${RENDERER_CHANGED}（上一个 tag: ${PREV_TAG}）" >&2
+            echo "      如果这次真的改了渲染输出，请 bump RENDERER_VERSION —— 否则线上缓存" >&2
+            echo "      会继续返回旧输出。语料只覆盖 man/perldoc 六页，pydoc/info/ri 与" >&2
+            echo "      页头页脚不在它的判据里。" >&2
+        fi
+    fi
 fi
 
 # 三条守卫都过了。把这份已经验证过的 tag 快照交给调用方算版本号（见文件头）。

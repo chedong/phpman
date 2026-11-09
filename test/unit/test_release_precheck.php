@@ -7,6 +7,7 @@
  *   1. origin/master 是 HEAD 的祖先 —— 挡住「从落后的 checkout 发布」
  *   2. HEAD 未被 origin 上的任何 tag 指着 —— 挡住重复发布同一提交
  *   3. 部署路径上工作树干净 —— 挡住「部署的字节 ≠ tag 指向的提交」
+ *   4. 语料黄金变了就必须 bump RENDERER_VERSION —— 挡住「渲染修复发了但缓存不失效」
  *
  * 每条都造一个真实的临时 git 仓库来测，因为守卫的价值全在「真的能拦住」。
  */
@@ -171,5 +172,18 @@ assert_equals(false, strpos($code, 'eval ') !== false,
     "脚本正文里没有 eval —— with_retry 通过 \$_out 把输出交给调用方");
 assert_equals(true, strpos($code, 'REMOTE_TAGS=$_out') !== false,
     "tag 列表确实是由调用方从 \$_out 赋值的（不是靠 eval）");
+
+echo "\n--- renderer-output guard (#255) ---";
+
+// v4.12.23 发布过两处渲染修复，线上却原样返回旧输出：页面缓存按
+// RENDERER_VERSION 失效，而那次没有 bump。语料门直接调渲染函数、绕过缓存，
+// 所以它能证明"渲染器对了"，证明不了"线上会变"。这条守卫从句柄补齐：
+// 黄金变了 = 渲染输出变了 = 必须 bump，否则发布中止。
+assert_contains('test/corpus/golden', $code,
+    "发布前比较冻结语料的黄金是否变化");
+assert_equals(1, preg_match('/git show .*PREV_TAG.*src\/config\.php/', $code),
+    "比较的是从两个提交解析出的数值，不是 diff 行数（后者可被删定义/改注释绕过）");
+assert_contains('RENDERER_VERSION 没有变', $code,
+    "失败信息直接点名了该做什么");
 
 exit(test_summary());
