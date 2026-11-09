@@ -304,7 +304,12 @@ if (!defined('PHPMAN_PYDOC_K_TIMEOUT')) {
 //     Cached rows hold the old interleaved `<b>-f <u></b>ARCHIVE</u>` in HTML
 //     and `**-f _**ARCHIVE_` in markdown, plus perldoc body lines promoted to
 //     `### chomp` headings; a page row is reused whatever it carries.
-define('RENDERER_VERSION', 6);
+// 7 — the pydoc 404 fallback no longer runs the 8–20s `pydoc3 -k` scan and
+//     answers its "did you mean" hint from the module index (#282). A row
+//     written before the deploy holds scan-derived suggestions, or an empty
+//     body where the scan timed out; not_found rows live 24h, so the deploy
+//     alone would keep serving them for a day.
+define('RENDERER_VERSION', 7);
 
 // PHPMAN_VERSION — numeric version (e.g. "4.9.19").
 // Set by Makefile in phpMan.php at deploy time; provide fallback for CLI scripts.
