@@ -100,8 +100,13 @@ function phpManExec(string $cmd, array &$lines, ?int &$rc = null, ?int $timeout 
         if (phpManTimeoutPrefix($timeout) !== '' && $elapsed >= $secs - 0.5) {
             phpManLog(sprintf('exec timed out after %ds (elapsed %.1fs): %s', $secs, $elapsed, $cmd));
         } else {
-            phpManLog(sprintf('exec exited 124 after %dms — not a timeout (bound %ds): %s',
-                (int)round($elapsed * 1000), $secs, $cmd));
+            // 没有 timeout(1) 的机器（macOS 默认）根本没有上界，这时说
+            // "(bound 15s)" 会把人引到错误的方向 —— 124 只可能来自命令自己。
+            $where = phpManTimeoutPrefix($timeout) !== ''
+                ? sprintf(' (bound %ds)', $secs)
+                : ' (no timeout(1) on this host)';
+            phpManLog(sprintf('exec exited 124 after %dms — not a timeout%s: %s',
+                (int)round($elapsed * 1000), $where, $cmd));
         }
     }
     return $rc === 0;
