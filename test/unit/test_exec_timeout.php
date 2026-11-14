@@ -39,6 +39,37 @@ function execStringInFreshProcess(string $timeoutExpr, string $cmd): string {
     return implode("\n", $out);
 }
 
+/**
+ * 全新进程里跑 phpManExec，并抓它写进日志的行。
+ *
+ * phpManLog() 由探针自己定义一个同名函数：exec.php 只在 function_exists()
+ * 时调用它，所以这里截获的就是生产上会落进 phpman_error.log 的那行文本，
+ * 不需要去读真实日志文件。
+ *
+ * @return array{ok:?bool, rc:int, elog:string}
+ */
+function execCaptureLog(string $timeoutExpr, string $cmd): array {
+    $code = 'define("PHPMAN_CMD_TIMEOUT", ' . $timeoutExpr . ');'
+          . 'function phpManLog(string $m): void { echo "LOG|" . $m . "\n"; }'
+          . 'require ' . var_export(__DIR__ . '/../../src/exec.php', true) . ';'
+          . '$l=[];$rc=0;$ok=phpManExec(' . var_export($cmd, true) . ',$l,$rc);'
+          . 'echo "JSON|" . json_encode(["ok"=>$ok,"rc"=>$rc]);';
+    $out = [];
+    $exit = 0;
+    exec('php -r ' . escapeshellarg($code) . ' 2>&1', $out, $exit);
+    $log = '';
+    $decoded = null;
+    foreach ($out as $line) {
+        if (strpos($line, 'LOG|') === 0) $log .= substr($line, 4);
+        if (strpos($line, 'JSON|') === 0) $decoded = json_decode(substr($line, 5), true);
+    }
+    return [
+        'ok'   => $decoded['ok'] ?? null,
+        'rc'   => (int)($decoded['rc'] ?? -1),
+        'elog' => $log,
+    ];
+}
+
 // 这台机器上有没有 timeout(1)？没有（macOS 默认）时，切断类断言无从谈起 ——
 // 但要**显式跳过并说明**，不能让它静默通过。
 $hasTimeout = is_executable('/usr/bin/timeout') || is_executable('/bin/timeout');
@@ -100,6 +131,44 @@ if (!$hasTimeout) {
     assert_equals([], $r['lines'], "被切断的命令不产出半截输出");
     assert_equals(true, $elapsed < 10, "1 秒的上界真的生效（实测耗时 " . round($elapsed, 1) . "s，而非 30s）");
 }
+
+echo "\n--- #283：124 不是 timeout(1) 独有的 ---\n";
+
+// GNU xargs 的约定：子进程以 1–125 退出 → xargs 返回 123；**子进程以 255 退出
+// → xargs 返回 124**；被信号杀死 → 125。perldoc 的渲染管道是
+//   perldoc -l X | head -1 | tr '\n' '\0' | xargs -0 pod2text
+// 所以 pod2text 只要因为 POD 语法错以 255 失败，整条管道就返回 124，和
+// timeout(1) 切出来的 124 完全一样。生产上 35 条「exec timed out after 15s」
+// 全是这个来路（Plucene::TestCase / Plucene::Search::BooleanQuery /
+// Amazon::S3::Bucket 三个模块），实测每条只跑 0.1 秒。判据因此带上了耗时。
+$r = execCaptureLog('15', 'exit 124');
+assert_equals(124, $r['rc'], "命令自己返回 124 时，退出码原样传回");
+assert_equals(false, strpos($r['elog'], 'timed out') !== false,
+    "…但日志不能说「超时」（这是 xargs 的子进程-255，不是上界切断）");
+assert_equals(true, strpos($r['elog'], 'not a timeout') !== false,
+    "…而要说它不是超时");
+assert_equals(true, (bool)preg_match('/\d+ms/', $r['elog']),
+    "…并带上真实耗时（毫秒）：" . $r['elog']);
+
+if ($hasTimeout) {
+    $r = execCaptureLog('1', 'sleep 30');
+    assert_equals(124, $r['rc'], "真超时的退出码同样是 124");
+    assert_equals(true, strpos($r['elog'], 'timed out after 1s') !== false,
+        "…这一次日志必须说「超时」：" . $r['elog']);
+    assert_equals(true, (bool)preg_match('/elapsed \d+\.\d+s/', $r['elog']),
+        "…并带上真实耗时（秒）");
+} else {
+    echo "  ⏭️  本机没有 timeout(1)，真超时那一半跳过（CI 的 Ubuntu 与生产会真跑）\n";
+}
+
+echo "\n--- #283：没有上界时，124 一定来自命令自己 ---\n";
+
+// PHPMAN_CMD_TIMEOUT=0 时 phpManTimeoutPrefix() 返回空串，命令根本没被 timeout
+// 包住 —— 这时候任何 124 都只能是命令自己返回的，不能记成超时。
+$r = execCaptureLog('0', 'exit 124');
+assert_equals(124, $r['rc'], "无上界时 124 原样传回");
+assert_equals(false, strpos($r['elog'], 'timed out') !== false,
+    "无上界时更不能说「超时」");
 
 echo "\n--- PHPMAN_CMD_TIMEOUT=0 表示不限制 ---\n";
 

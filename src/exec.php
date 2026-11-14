@@ -78,16 +78,31 @@ function phpManWrapCommand(string $cmd, ?int $seconds = null): string {
  * `?int` 是把 exec() 的行为原样接过来 —— 函数内部第 73 行立刻就赋 0，
  * 所以调用点拿到的永远是 int，`$rc === 0` 之类的比较不受影响。
  *
- * 返回 true 表示命令成功（退出码 0）。超时会被记一行日志 —— 它是「这条路径
- * 病态」的直接证据，而 mf 遥测只在渲染跑完时才写行，看不到它。
+ * 返回 true 表示命令成功（退出码 0）。退出码 124 会被记一行日志 —— 它是「这条
+ * 路径病态」的直接证据，而 mf 遥测只在渲染跑完时才写行，看不到它。日志会区分
+ * 「真超时」和「命令自己返回 124」：124 不是 timeout(1) 独占的，xargs 在子进程
+ * 以 255 退出时也返回它（#283），只看退出码会把 0.1 秒的失败记成 15 秒超时。
  */
 function phpManExec(string $cmd, array &$lines, ?int &$rc = null, ?int $timeout = null): bool {
     $lines = [];
     $rc = 0;
+    $start = microtime(true);
     exec(phpManWrapCommand($cmd, $timeout), $lines, $rc);
+    $elapsed = microtime(true) - $start;
     if ($rc === 124 && function_exists('phpManLog')) {
         $secs = $timeout ?? (int)PHPMAN_CMD_TIMEOUT;
-        phpManLog("exec timed out after {$secs}s: " . $cmd);
+        // 124 不是 timeout(1) 独占的退出码。GNU xargs 的约定是：123 = 子进程以
+        // 1–125 退出，**124 = 子进程以 255 退出**，125 = 子进程被信号杀死。所以
+        // `perldoc -l X | head -1 | tr | xargs -0 pod2text` 里只要 pod2text 以
+        // 255 失败（POD 语法错），整条管道就返回 124 —— 和生产上「15 秒超时」
+        // 长得一模一样，而它其实 0.1 秒就结束了，日志里 35 条假「超时」全是这个
+        // 来路（#283）。判据因此必须带耗时：只有真的跑到了上界才算超时。
+        if (phpManTimeoutPrefix($timeout) !== '' && $elapsed >= $secs - 0.5) {
+            phpManLog(sprintf('exec timed out after %ds (elapsed %.1fs): %s', $secs, $elapsed, $cmd));
+        } else {
+            phpManLog(sprintf('exec exited 124 after %dms — not a timeout (bound %ds): %s',
+                (int)round($elapsed * 1000), $secs, $cmd));
+        }
     }
     return $rc === 0;
 }
