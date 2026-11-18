@@ -309,7 +309,7 @@ if (!defined('PHPMAN_PYDOC_K_TIMEOUT')) {
 //     written before the deploy holds scan-derived suggestions, or an empty
 //     body where the scan timed out; not_found rows live 24h, so the deploy
 //     alone would keep serving them for a day.
-define('RENDERER_VERSION', 7);
+define('RENDERER_VERSION', 8);  // 7→8: #283 exec 超时判定改变了渲染文案（124 误判修正 / "bound 15s" 移除）
 
 // PHPMAN_VERSION — numeric version (e.g. "4.9.19").
 // Set by Makefile in phpMan.php at deploy time; provide fallback for CLI scripts.
