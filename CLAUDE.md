@@ -123,6 +123,31 @@ grep -o '"model":"[^"]*"' ~/.claude/projects/<project-slug>/$CLAUDE_CODE_SESSION
 
 示例：`Co-Authored-By: Claude code 2.1.285 with deepseek-flash <noreply@taotoken.net>`
 
+### 提交邮箱必须用 GitHub noreply 地址（2026-11）
+
+GitHub 现在会拒绝暴露私人邮箱的推送：
+
+```
+! [remote rejected] master -> master (push declined due to email privacy restrictions)
+```
+
+所以 `git config user.email` 必须是 **`17562182+chedong@users.noreply.github.com`**，
+不能是 `chedong@gmail.com`。提交被拒时不必重做 —— 用 noreply 地址 amend 作者与
+提交者，再 push：
+
+```bash
+GIT_AUTHOR_NAME="Che Dong" \
+GIT_AUTHOR_EMAIL="17562182+chedong@users.noreply.github.com" \
+GIT_COMMITTER_NAME="Che Dong" \
+GIT_COMMITTER_EMAIL="17562182+chedong@users.noreply.github.com" \
+git commit --amend --no-edit \
+  --author="Che Dong <17562182+chedong@users.noreply.github.com>"
+git push origin master
+```
+
+`Co-Authored-By` 行（见上一节）是另一回事，不要混用：署名行用
+`noreply@taotoken.net`，**提交身份**用 GitHub noreply 地址。
+
 ### Rule: rebase before commit in any worktree
 
 Worktrees are snapshots frozen at creation time. If you commit from a worktree without rebasing first, you will **silently overwrite** commits pushed to master since the worktree was created. This has happened multiple times (CSS fixes, font sizes, format link positions all lost to overwrites).
