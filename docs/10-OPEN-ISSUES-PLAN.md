@@ -1,26 +1,48 @@
-# 10 — Open Issues 解决方案设计
+# 10 — Open Issues 解决方案设计（已归档）
 
-> 状态：设计（2026-11-08 复核；#254/#258/#259/#280 的实现细节已按代码校正）
-> 基线：`master` @ `2bce1d3`
-> 覆盖的 open issue（9）：[#282](https://github.com/chedong/phpman/issues/282)、[#259](https://github.com/chedong/phpman/issues/259)、[#258](https://github.com/chedong/phpman/issues/258)、[#257](https://github.com/chedong/phpman/issues/257)、[#256](https://github.com/chedong/phpman/issues/256)、[#255](https://github.com/chedong/phpman/issues/255)、[#254](https://github.com/chedong/phpman/issues/254)、[#249](https://github.com/chedong/phpman/issues/249)、[#281](https://github.com/chedong/phpman/issues/281)
-> [#280](https://github.com/chedong/phpman/issues/280) 已于 2026-11-07 **关闭**（`d01333d` / `ea4d0a5` / `f625264` / `2bce1d3` 修掉了 pydoc/ri 常量描述与分节列表的两次 shell）；§7 保留为已实现的记录。
-> [#253](https://github.com/chedong/phpman/issues/253) 与 [#265](https://github.com/chedong/phpman/issues/265) 也**已关闭**；§2 保留为已实现的记录。#281 是独立的渲染器问题，本文未展开；#282（pydoc/ri 的 404 兜底被爬虫扫类名）与 §7 强相关，但尚未展开设计。
+> **状态：已归档（2026-11-19）。覆盖的 issue 全部关闭，本文只保留为实现记录。**
+> 基线：`master` @ `ac3bd61`；`gh issue list --state open` 已为空。
+>
+> | Issue | 关闭日期 | 主题 |
+> |---|---|---|
+> | [#283](https://github.com/chedong/phpman/issues/283) | 2026-11-18 | 超时判定只看 `rc=124`（xargs 把 255 映射成 124） |
+> | [#282](https://github.com/chedong/phpman/issues/282) | 2026-11-09 | pydoc/ri 的 404 兜底被爬虫扫类名 |
+> | [#281](https://github.com/chedong/phpman/issues/281) | 2026-11-09 | pydoc 的 L2 启发式误伤 man |
+> | [#280](https://github.com/chedong/phpman/issues/280) | 2026-11-07 | 搜索每次 shell 两次 |
+> | [#259](https://github.com/chedong/phpman/issues/259) | 2026-11-09 | 31-Oct 503（FastCGI 池打满） |
+> | [#258](https://github.com/chedong/phpman/issues/258) | 2026-11-09 | RequestBudget：请求级 deadline |
+> | [#257](https://github.com/chedong/phpman/issues/257) | 2026-11-09 | PHPStan + 属性/模糊测试 |
+> | [#256](https://github.com/chedong/phpman/issues/256) | 2026-11-09 | mf 日志 → 指标 + SLO |
+> | [#255](https://github.com/chedong/phpman/issues/255) | 2026-11-09 | golden corpus + 参考实现差分 |
+> | [#254](https://github.com/chedong/phpman/issues/254) | 2026-11-09 | RenderResult：found / not-found / indeterminate |
+> | [#249](https://github.com/chedong/phpman/issues/249) | 2026-11-09 | 500/Broken pipe 一等信号 |
+> | [#253](https://github.com/chedong/phpman/issues/253) | 2026-11-04 | 部署后自动验证 + CI |
+> | [#265](https://github.com/chedong/phpman/issues/265) | 2026-11-03 | install.sh 参数解析 |
+>
+> **§0–§1 是 2026-11-08 的计划视图，保留用于追溯当时的排序取舍，不要再按它排期。**
+> 当前行为以代码、`CHANGELOG.md` 与 `09-QUALITY-GATES.md` 为准；各 issue 的实现
+> 细节见对应 commit 与测试。
 > 前置阅读：[09-QUALITY-GATES.md](09-QUALITY-GATES.md)（四层验证模型、G1–G9）、[08-RELEASE-VERSION-INTEGRITY.md](08-RELEASE-VERSION-INTEGRITY.md)（发布版本号）
 
-## 0. 一页结论
+## 0. 一页结论（计划视图，已归档）
 
-9 个 issue 不是 9 件独立的事，而是**三条链**（另外记录三件已完成）：
+> 以下三链是 2026-11-08 的计划快照；所有条目均已关闭，保留用于追溯
+> 「为什么先装仪表再改语义」。**不要再按它排期。**
 
-| 链 | issue | 目标 | 先做哪条 |
-|---|---|---|---|
-| **A. 可观测性与发布安全** | #256（#253 已关闭） | 让"部署没生效 / 池饱和 / 500 分族"变成机器判定 | **最先**：没有判据，后面的改动无法验收 |
-| **B. 渲染语义与资源占用** | #254 → #258 → #259（+ #249、#282） | 把"空串/超时/不存在"类型化，再给请求与并发封顶 | 第二步：#254 是 #258/#259 的地基 |
-| **C. 质量基础设施** | #255、#257 | 用真实语料与不变量抓住"输出形状"和"解析器"回归 | 可并行，但依赖 #253 的 CI 落点 |
-| **已完成** | #265、#253、#280 | install.sh 参数 / CI+验证 / 搜索索引 | #265 由 PR #266；#253 由 `69f5e23`；#280 由 `d01333d` 等，均已关闭 |
+| 链 | issue | 结果 |
+|---|---|---|
+| **A. 可观测性与发布安全** | #256、#253 | ✅ 已关闭（#253 2026-11-04，#256 2026-11-09） |
+| **B. 渲染语义与资源占用** | #254 → #258 → #259（+ #249、#282） | ✅ 已关闭（2026-11-09） |
+| **C. 质量基础设施** | #255、#257 | ✅ 已关闭（2026-11-09） |
+| **其他** | #280、#281、#283、#265 | ✅ 已关闭（2026-11-03 → 2026-11-18） |
 
-**一句话顺序**：先装仪表（#256；#253 已关闭），再改语义（#254/#258），最后限流（#259）；质量门（#255/#257）全程并行。
+**当时的顺序**：先装仪表（#256）→ 改语义（#254/#258）→ 限流（#259）；
+质量门（#255/#257）全程并行。事后看这个顺序成立 —— 先有 metrics/verify，
+#258/#259 的验收才有判据。
 
-## 1. 依赖图与阶段
+## 1. 依赖图与阶段（计划快照，已全部完成）
+
+> 保留原始阶段划分用于追溯；不要再用它排期。
 
 ```
 P0  #265 验证+关闭        #253 verify-release + CI unit
@@ -150,7 +172,7 @@ P3  #255 golden corpus    #257 PHPStan + property/fuzz
 ### #256 — mf 日志 → 指标 + SLO；缓存抽样复算
 
 > **实现状态（2026-11-05，`658a706`）**：**A / B / C 已实现**，CI 在 PHP 8.1–8.3 全绿；
-> **D（缓存抽样复算）未做**。B 里「5xx 分族复用 logcheck 的配对」这一条**没有照做**，
+> **D（缓存抽样复算）未做** —— #256 关闭时明确留作第二期，不是阻塞项。B 里「5xx 分族复用 logcheck 的配对」这一条**没有照做**，
 > 理由见 B 末尾。`.prom` 的落盘与消费见新增的 E。
 
 **现状**：`phpman_mf.log` 只能 grep；HTML 完全不在遥测里（31-Oct 故障的 7,805 个 200 绝大多数是 HTML）；缓存没有一致性校验。
@@ -234,7 +256,7 @@ phpman_5xx_ratio 0.0023
 - `--check-slo` 在 1h 内等概率样本 < 100 时输出「样本不足，未判定」并**非 0**，
   不要静默当作通过。
 
-#### D. 缓存抽样复算（第二期，**未做**）
+#### D. 缓存抽样复算（第二期，**未做**；#256 关闭时明确留作后续，不是阻塞项）
 
 `cli/cache-verify.php --sample=0.001`：
 
