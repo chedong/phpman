@@ -346,8 +346,16 @@ _release-code:
 # 本地 tag 已存在时跳过创建：那是上一次发布创建了 tag 但 push 失败留下的。push 失败
 # 时**删掉本地 tag** 再退出 —— 守卫 2 只查远端，删掉本地 tag 后重跑时四条守卫全过，
 # 会重新算出同一个版本号并补推，天然自愈。
+# #286: [Unreleased] 的定版是打 tag 的同一步 —— 同一个版本串，不再靠人记得。
+# 空 Unreleased 用一条占位说明：此时代码已经部署并验证过，因为"没写发布说明"就不打
+# tag 会让线上跑着一个没有版本号的提交，比一句如实的占位更糟。
 _release-tag:
 	@RELVER=$$(cat .release-version); \
+	  php cli/changelog-cut.php "$$RELVER" --allow-empty || exit 1; \
+	  if [ -n "$$(git status --porcelain -- CHANGELOG.md)" ]; then \
+	    git add CHANGELOG.md; \
+	    git commit -q -m "chore(release): $$RELVER — CHANGELOG 定版"; \
+	  fi; \
 	  if git rev-parse -q --verify "refs/tags/$$RELVER" >/dev/null; then \
 	    echo "本地已有 $$RELVER（上一次 push 失败留下的），确认它指向 HEAD"; \
 	    [ "$$(git rev-parse "$$RELVER^{commit}")" = "$$(git rev-parse HEAD)" ] \

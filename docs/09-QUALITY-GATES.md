@@ -58,7 +58,7 @@
 | 门 | 命令/判据 | 通过标准 | 失败动作 | 状态 |
 |---|---|---|---|---|
 | G1 单测 | `make test-unit` | 全绿 | block | 已有 |
-| G2 发布前置 | `deploy/release-precheck.sh` | 三守卫全过 | block | 已有 |
+| G2 发布前置 | `deploy/release-precheck.sh` | 五条守卫全过（含 CHANGELOG 干净，见 #286） | block | 已有 |
 | G3 部署后验证 | `deploy/verify-release.sh <tag>` | 版本/ETag/行为/缓存/日志分离全过 | block + 打印回滚命令 | 待建（#253） |
 | G4 XHTML corpus | 语料 × 4 格式 | `xmllint --valid` 0 errors | block | 待建（#255） |
 | G5 JSON 契约 | `jq` / JSON Schema | 全部可解析、字段齐全 | block | 待建（#253） |

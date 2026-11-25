@@ -1,5 +1,5 @@
 #!/bin/sh
-# release-precheck.sh — 发布前的四条守卫，任一不过就中止。
+# release-precheck.sh — 发布前的五条守卫，任一不过就中止。
 #
 # 为什么需要它们
 # --------------
@@ -203,6 +203,21 @@ if [ -n "$PREV_TAG" ] && git cat-file -e "HEAD:src/config.php" 2>/dev/null; then
     fi
 fi
 
-# 三条守卫都过了。把这份已经验证过的 tag 快照交给调用方算版本号（见文件头）。
+# ── 守卫 5 ──
+# CHANGELOG.md 必须干净（#286）。_release-tag 在部署与验证之后把
+# `## [Unreleased]` 切成 `## [<version>]` 并**提交**这一步，所以它不能把发布时
+# 碰巧存在的、无关的 CHANGELOG 编辑一起卷进那个提交。
+#
+# 放在 precheck 里还有一个更重要的原因：这里跑在**任何 rsync 之前**。等到
+# _release-tag 才发现问题，代码已经上线，却打不了 tag —— 部署了但没有版本号。
+CHANGELOG_DIRTY=$(git status --porcelain -uall -- CHANGELOG.md)
+if [ -n "$CHANGELOG_DIRTY" ]; then
+    echo "错误：CHANGELOG.md 有未提交的改动。" >&2
+    printf '%s\n' "$CHANGELOG_DIRTY" | sed 's/^/      /' >&2
+    echo "      发布时会自动把 [Unreleased] 定版并提交；先提交发布说明再发布。" >&2
+    exit 1
+fi
+
+# 五条守卫都过了。把这份已经验证过的 tag 快照交给调用方算版本号（见文件头）。
 printf '%s\n' "$REMOTE_TAGS"
 exit 0
