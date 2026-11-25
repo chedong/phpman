@@ -121,11 +121,14 @@ function phpManSampleHit(string $key, float $rate): bool {
  *   a 5xx with a matching line  -> the render finished; delivery failed
  *   a 5xx with no matching line -> the process died before reaching the end
  *
- * Only renders at or above PHPMAN_MF_LOG_MS are written. That threshold is the
- * whole volume control: measured on staging 2026-10-13, a cache hit renders in
- * 30-90ms and a cold render of the same page in 400-4200ms, so 500 keeps the
- * log proportional to pages crawled for the first time rather than to all
- * 28k/day machine-format requests.
+ * Two kinds of line come out of here:
+ *   - threshold lines: a render at or above PHPMAN_MF_LOG_MS / the bytes bound,
+ *     i.e. the slow or large tail that is worth attributing;
+ *   - `sampled=1` lines: an independent 1% slice of *all* renders (machine
+ *     formats and HTML). Percentiles in cli/metrics.php are computed from these
+ *     only, because a threshold-only population is biased by construction
+ *     (#284): every unsampled machine line is slow, so its p95 can never
+ *     describe traffic.
  */
 function phpManLogMachineRender(
     string $mode, string $parameter, string $section, string $format, string $content
@@ -144,20 +147,20 @@ function phpManLogMachineRender(
     $startedAt = $_SERVER['REQUEST_TIME_FLOAT'] ?? null;
     if (!is_numeric($startedAt)) return;
     $startedAt = (float) $startedAt;
-    $line = phpManMachineRenderLine(
-        $mode, $parameter, $section, $format, $content, $startedAt,
-        (int) $threshold, (int) $thresholdBytes
-    );
-    if ($line === null && !$isMachine) {
-        // Fast HTML render: take the deterministic 1% slice instead, so the log
-        // describes traffic rather than only its slow tail.
-        $rate = defined('PHPMAN_HTML_SAMPLE') ? (float) PHPMAN_HTML_SAMPLE : 0.0;
-        if (phpManSampleHit($mode . '/' . $parameter . '/' . $section . '/' . $format, $rate)) {
-            $line = phpManMachineRenderLine(
-                $mode, $parameter, $section, $format, $content, $startedAt, 0, 0, null, true
-            );
-        }
-    }
+
+    // #284: sample before applying the thresholds. A sampled line stands in for
+    // its whole population (1/rate requests), so it must exist for fast *and*
+    // slow renders of both kinds; if sampling only covered fast HTML, the
+    // percentiles would still be computed over a biased mixture.
+    $rate = $isMachine
+        ? (defined('PHPMAN_MF_SAMPLE') ? (float) PHPMAN_MF_SAMPLE : 0.01)
+        : (defined('PHPMAN_HTML_SAMPLE') ? (float) PHPMAN_HTML_SAMPLE : 0.01);
+    $sampled = $rate > 0
+        && phpManSampleHit($mode . '/' . $parameter . '/' . $section . '/' . $format, $rate);
+
+    $line = $sampled
+        ? phpManMachineRenderLine($mode, $parameter, $section, $format, $content, $startedAt, 0, 0, null, true)
+        : phpManMachineRenderLine($mode, $parameter, $section, $format, $content, $startedAt, (int) $threshold, (int) $thresholdBytes);
     if ($line !== null) phpManLogMachine($line);
 }
 

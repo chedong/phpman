@@ -40,7 +40,7 @@ assert_equals(true, pydocShouldShellScan('Collection', true),
 // ──────────────────────────────────────────────
 echo "\n--- 页面兜底调用点 ---\n";
 $phpMan = (string)file_get_contents(__DIR__ . '/../../phpMan.php');
-assert_contains('getPydocSearchPage($parameter, $format, $timedOut, false)', $phpMan,
+assert_contains('getPydocSearchPage($parameter, $format, false)', $phpMan,
     "phpMan.php 的 pydoc 404 兜底显式传了 false —— 没有这个参数，策略函数再多也没人用");
 
 // ──────────────────────────────────────────────
@@ -48,11 +48,9 @@ assert_contains('getPydocSearchPage($parameter, $format, $timedOut, false)', $ph
 // ──────────────────────────────────────────────
 echo "\n--- 不扫描时立刻返回 ---\n";
 $t0 = microtime(true);
-$timedOut = null;
-$out = getPydocSearchPage('DefinitelyNotAModuleZzz123', 'html', $timedOut, false);
+$out = getPydocSearchPage('DefinitelyNotAModuleZzz123', 'html', false);
 $elapsed = microtime(true) - $t0;
 assert_equals('', $out, "未知名字没有索引命中 → 空结果");
-assert_equals(false, $timedOut, "没扫描就谈不上超时");
 assert_equals(true, $elapsed < 2.0, "耗时 < 2s（实测 " . round($elapsed, 3) . "s）；扫描路径需要 8–20s");
 
 exit(test_summary());

@@ -206,10 +206,13 @@ if (!defined('PHPMAN_MF_LOG_BYTES')) {
 //
 //   PHPMAN_HTML_LOG_MS  same role as PHPMAN_MF_LOG_MS, for HTML (default 500).
 //                       A slow HTML render is always logged, no sampling.
-//   PHPMAN_HTML_SAMPLE  fraction of the *fast* HTML renders to log (default
-//                       0.01 = 1%). Without it the log holds only the slow
-//                       tail, and a p95 over a tail-only sample is a
-//                       percentile of the bad requests, not of traffic.
+//   PHPMAN_HTML_SAMPLE  fraction of ALL HTML renders to log, independent of the
+//                       threshold (default 0.01 = 1%). cli/metrics.php computes
+//                       percentiles only from `sampled=1` lines; without the
+//                       sample the log holds only the slow tail, and a p95 over
+//                       a tail-only sample describes the bad requests, not the
+//                       traffic. Machine formats have the same knob:
+//                       PHPMAN_MF_SAMPLE, below.
 //
 // Sampling is deterministic on the page identity, not random per request — see
 // phpManSampleHit(). 0 disables the sample; the elapsed/size thresholds still
@@ -221,6 +224,19 @@ if (!defined('PHPMAN_HTML_LOG_MS')) {
 if (!defined('PHPMAN_HTML_SAMPLE')) {
     $phpman_html_sample = getenv('PHPMAN_HTML_SAMPLE');
     define('PHPMAN_HTML_SAMPLE', ($phpman_html_sample === false || $phpman_html_sample === '') ? 0.01 : (float) $phpman_html_sample);
+}
+
+// #284: machine formats need the same traffic sample as HTML. A percentile
+// computed from the mf log alone is a percentile of the *slow* population —
+// every unsampled machine line is there because it crossed 500ms or 64KB — so
+// "p95 < 3s" could never describe traffic. A `sampled=1` line is an independent
+// 1% slice of ALL machine renders (slow ones included), and cli/metrics.php
+// computes duration quantiles only from those lines. 0 disables the sample; the
+// elapsed/size thresholds still apply, and both thresholds at 0 still turn
+// telemetry off entirely.
+if (!defined('PHPMAN_MF_SAMPLE')) {
+    $phpman_mf_sample = getenv('PHPMAN_MF_SAMPLE');
+    define('PHPMAN_MF_SAMPLE', ($phpman_mf_sample === false || $phpman_mf_sample === '') ? 0.01 : (float) $phpman_mf_sample);
 }
 
 // #248: upper bound, in seconds, on every document-render subprocess (man,
@@ -236,6 +252,17 @@ if (!defined('PHPMAN_HTML_SAMPLE')) {
 if (!defined('PHPMAN_CMD_TIMEOUT')) {
     $phpman_cmd_timeout = getenv('PHPMAN_CMD_TIMEOUT');
     define('PHPMAN_CMD_TIMEOUT', ($phpman_cmd_timeout === false || $phpman_cmd_timeout === '') ? 15 : (int) $phpman_cmd_timeout);
+}
+
+// #285: `timeout N cmd` only *asks* the child to stop (SIGTERM). If the child
+// ignores SIGTERM, timeout(1) waits for it and the "bound" is not a bound:
+// measured on production, `timeout 1 sh -c 'trap "" TERM; sleep 5'` returned
+// after 5.01s, while `timeout -k 1 1 …` returned after 2.00s. This is how long
+// timeout waits after SIGTERM before sending SIGKILL, so the real ceiling is
+// PHPMAN_CMD_TIMEOUT + PHPMAN_CMD_KILL_AFTER seconds. 0 = no -k (pre-#285).
+if (!defined('PHPMAN_CMD_KILL_AFTER')) {
+    $phpman_cmd_kill_after = getenv('PHPMAN_CMD_KILL_AFTER');
+    define('PHPMAN_CMD_KILL_AFTER', ($phpman_cmd_kill_after === false || $phpman_cmd_kill_after === '') ? 5 : (int) $phpman_cmd_kill_after);
 }
 
 // #247: a longer bound for `pydoc3 -k` alone, which is the one command that

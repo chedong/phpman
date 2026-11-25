@@ -91,14 +91,24 @@ function tailLines(string $path, int $max = MAX_LINES): array {
     return count($lines) > $max ? array_slice($lines, -$max) : $lines;
 }
 
-/** Parse a timestamp to epoch seconds, or null. Accepts both log formats. */
+/** Parse a timestamp to epoch seconds, or null. Accepts every log format we read. */
 function parseStamp(string $s): ?int {
     // phpMan log:  26-Oct-2026 21:51:03 America/Los_Angeles
     // Apache log:  18/Oct/2026:17:22:43 -0700
+    // Apache *error* log: Wed Nov 25 09:40:50 2026
     // The numeric-month variant is not what PHP writes, but fixtures and
     // hand-edited logs produce it often enough to be worth accepting.
     foreach (['d-M-Y H:i:s T', 'd-m-Y H:i:s T', 'd/M/Y:H:i:s O'] as $fmt) {
         $d = DateTime::createFromFormat($fmt, $s);
+        if ($d !== false) return $d->getTimestamp();
+    }
+    // The Apache error log prepends a weekday. It has to be stripped, not put
+    // into the format: createFromFormat('D M j H:i:s Y', 'Wed Nov 25 …')
+    // re-derives the date from the weekday and lands on 11 Nov, not 25 Nov
+    // (verified on PHP 8.3). 'M j H:i:s Y' parses the rest correctly, including
+    // Apache's space-padded day ("Nov  5").
+    if (preg_match('/^[A-Za-z]{3}\s+(\S.*)$/', $s, $m) === 1) {
+        $d = DateTime::createFromFormat('M j H:i:s Y', $m[1]);
         if ($d !== false) return $d->getTimestamp();
     }
     return null;
@@ -129,9 +139,14 @@ foreach ($mfLines as $line) {
     $ts = parseStamp($m[1]);
     if ($ts === null || $ts < $cutoff) continue;
     $key = $m[2] . '|' . $m[3];
+    $isSampled = isset($m[6]) && $m[6] !== '';
     $render[$key]['durations'][] = (int) $m[4];
     $render[$key]['bytes'][]     = (int) $m[5];
-    $render[$key]['sampled']     = ($render[$key]['sampled'] ?? 0) + (isset($m[6]) && $m[6] !== '' ? 1 : 0);
+    $render[$key]['sampled']     = ($render[$key]['sampled'] ?? 0) + ($isSampled ? 1 : 0);
+    if ($isSampled) {
+        $render[$key]['sampled_durations'][] = (int) $m[4];
+        $render[$key]['sampled_bytes'][]     = (int) $m[5];
+    }
     $mfSeen++;
 }
 if ($mfPath === '') {
@@ -163,13 +178,21 @@ if ($weblogDir !== '' && is_dir($weblogDir)) {
 }
 
 // ─── slot exhaustion ─────────────────────────────────────────────────────────
-$slots = 0;
+// null = "we could not read the log", 0 = "read it, nothing there". The
+// distinction matters: an unreadable log must not make the SLO pass (#284).
+$slots = null;
 if ($weblogDir !== '' && is_dir($weblogDir)) {
-    foreach (tailLines(rtrim($weblogDir, '/') . '/error.log') as $line) {
-        if (strpos($line, "can't apply process slot") === false) continue;
-        if (preg_match('/^\[([^\]]+)\]/', $line, $m) !== 1) continue;
-        $ts = parseStamp($m[1]);
-        if ($ts !== null && $ts >= $cutoff) $slots++;
+    $errPath = rtrim($weblogDir, '/') . '/error.log';
+    if (is_file($errPath) && is_readable($errPath)) {
+        $slots = 0;
+        foreach (tailLines($errPath) as $line) {
+            if (strpos($line, "can't apply process slot") === false) continue;
+            if (preg_match('/^\[([^\]]+)\]/', $line, $m) !== 1) continue;
+            $ts = parseStamp($m[1]);
+            if ($ts !== null && $ts >= $cutoff) $slots++;
+        }
+    } else {
+        $notes[] = "读不到 {$errPath}，slot 指标为空";
     }
 }
 
@@ -194,10 +217,11 @@ $p95Html    = null;
 $durations  = ['machine' => [], 'html' => []];
 foreach ($render as $key => $r) {
     [$mode, $fmt] = explode('|', $key, 2);
-    $sorted = $r['durations'];
-    sort($sorted);
     $bucket = ($fmt === 'html') ? 'html' : 'machine';
-    $durations[$bucket] = array_merge($durations[$bucket], $sorted);
+    // #284: percentiles come from the independent 1% sample only. Merging in
+    // the threshold lines would make every machine p95 a percentile of a
+    // population that is slow by construction.
+    $durations[$bucket] = array_merge($durations[$bucket], $r['sampled_durations'] ?? []);
 }
 foreach ($durations as $bucket => $list) {
     sort($list);
@@ -212,7 +236,7 @@ $slos = [
     ['machine p95 < 3s',   $p95Machine !== null ? $p95Machine < 3000 : null, $p95Machine !== null ? round($p95Machine) . 'ms' : 'n/a'],
     ['HTML p95 < 2s',      $p95Html    !== null ? $p95Html    < 2000 : null, $p95Html    !== null ? round($p95Html) . 'ms'    : 'n/a'],
     ['5xx ratio < 1%',     $ratio      !== null ? $ratio      < 0.01 : null, $ratio      !== null ? sprintf('%.2f%%', $ratio * 100) : 'n/a'],
-    ['slot exhausted = 0', $slots === 0 ? true : false, (string) $slots],
+    ['slot exhausted = 0', $slots === null ? null : $slots === 0, $slots === null ? 'n/a' : (string) $slots],
 ];
 
 if ($checkSlo) {
@@ -237,13 +261,13 @@ if ($asJson) {
     ];
     foreach ($render as $key => $r) {
         [$mode, $fmt] = explode('|', $key, 2);
-        $sorted = $r['durations'];
+        $sorted = $r['sampled_durations'] ?? [];
         sort($sorted);
-        $b = $r['bytes'];
+        $b = $r['sampled_bytes'] ?? [];
         sort($b);
         $snapshot['render'][] = [
             'mode' => $mode, 'format' => $fmt,
-            'count' => count($sorted),
+            'count' => count($r['durations']),
             'sampled' => $r['sampled'],
             'elapsed_p50' => percentile($sorted, 0.50),
             'elapsed_p95' => percentile($sorted, 0.95),
@@ -256,7 +280,7 @@ if ($asJson) {
 
 // ─── output: Prometheus textfile ─────────────────────────────────────────────
 $lines = [];
-$lines[] = '# HELP phpman_render_count Renders observed in the window (HTML is sampled 1%).';
+$lines[] = '# HELP phpman_render_count Renders in the window (threshold lines + sampled lines).';
 $lines[] = '# TYPE phpman_render_count gauge';
 foreach ($render as $key => $r) {
     [$mode, $fmt] = explode('|', $key, 2);
@@ -265,7 +289,8 @@ foreach ($render as $key => $r) {
 $lines[] = '# TYPE phpman_render_duration_ms gauge';
 foreach ($render as $key => $r) {
     [$mode, $fmt] = explode('|', $key, 2);
-    $sorted = $r['durations'];
+    // #284: sampled lines only — see the note at the percentile assembly.
+    $sorted = $r['sampled_durations'] ?? [];
     sort($sorted);
     // A list of pairs, NOT [0.5 => ..., 0.95 => ...]: PHP casts float array
     // keys to int, so both would collapse to key 0 and every "quantile" would
@@ -279,7 +304,7 @@ foreach ($render as $key => $r) {
 $lines[] = '# TYPE phpman_render_bytes gauge';
 foreach ($render as $key => $r) {
     [$mode, $fmt] = explode('|', $key, 2);
-    $b = $r['bytes'];
+    $b = $r['sampled_bytes'] ?? [];
     sort($b);
     $v = percentile($b, 0.95);
     if ($v !== null) {
@@ -296,8 +321,10 @@ if ($ratio !== null) {
     $lines[] = '# TYPE phpman_http_5xx_ratio gauge';
     $lines[] = sprintf('phpman_http_5xx_ratio %.6f', $ratio);
 }
-$lines[] = '# TYPE phpman_slot_exhausted_total gauge';
-$lines[] = sprintf('phpman_slot_exhausted_total %d', $slots);
+if ($slots !== null) {
+    $lines[] = '# TYPE phpman_slot_exhausted_total gauge';
+    $lines[] = sprintf('phpman_slot_exhausted_total %d', $slots);
+}
 $lines[] = '# TYPE phpman_cache_rows gauge';
 foreach ($cacheRows as $key => $n) {
     [$mode, $status] = explode('|', $key, 2);

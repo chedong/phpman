@@ -67,6 +67,15 @@
 | G8 安全 | ZAP baseline / SSL Labs / headers | 0 high；A+；无缺失头 | warn | 待建 |
 | G9 参考实现差分 | 归一化文本 diff | 0 diff（或已审阅的差异清单） | block | 待建（#255） |
 
+> **SLO 的数据来源（#284）**：duration/bytes 分位只从 `sampled=1` 行计算 —
+> 机器格式与 HTML 各自 1%（`PHPMAN_MF_SAMPLE` / `PHPMAN_HTML_SAMPLE`），阈值行是
+> 慢/大尾部，只用于归因。slot 计数读 Apache error.log 的 `D M j H:i:s Y` 时间戳；
+> 日志不可读时指标为 `null`，SLO 不参与判定（不能显示 ✓）。
+>
+> **子进程上界（#285）**：`PHPMAN_CMD_TIMEOUT` 秒后 SIGTERM，再
+> `PHPMAN_CMD_KILL_AFTER` 秒后 SIGKILL；真实上限是两者之和。忽略 SIGTERM 的命令
+> 会在升级后被 SIGKILL 收尾，PHP 的 `exec()` 此时报信号号 9（不是 137）。
+
 ## 6. 现状与差距
 
 **已有**：714 条断言、原子发布 + 三道 precheck、`logcheck` 的分族/窗口计数、`RENDERER_VERSION` 失效机制、事故叙事详尽的 CHANGELOG、`phpman-regression.sh` 的 8 类检查。

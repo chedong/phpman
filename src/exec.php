@@ -34,20 +34,28 @@
  * 10–14s，正好压在全局 15s 上，需要一个更宽的上界（PHPMAN_PYDOC_K_TIMEOUT）——
  * 而放宽全局会削弱所有命令的槽保证，所以做成按调用点覆盖。结果按秒数缓存，
  * 每条命令仍然只探测一次文件系统。
+ *
+ * #285: SIGTERM 只是"请求退出"，不响应它的子进程会把 timeout(1) 自己拖住。
+ * 生产实测 `timeout 1 sh -c 'trap "" TERM; sleep 5'` 跑了 5.01s，而
+ * `timeout -k 1 1 …` 在 2.00s 就结束。所以真实上界是 N + PHPMAN_CMD_KILL_AFTER
+ * （默认 5 秒）—— 后者为 0 时退回只有 SIGTERM 的旧行为。
  */
 function phpManTimeoutPrefix(?int $seconds = null): string {
     static $cache = [];
     $seconds = $seconds ?? (defined('PHPMAN_CMD_TIMEOUT') ? (int)PHPMAN_CMD_TIMEOUT : 0);
     if ($seconds <= 0) return '';
-    if (array_key_exists($seconds, $cache)) return $cache[$seconds];
+    $killAfter = defined('PHPMAN_CMD_KILL_AFTER') ? (int)PHPMAN_CMD_KILL_AFTER : 0;
+    if ($killAfter < 0) $killAfter = 0;
+    $key = $seconds . '|' . $killAfter;
+    if (array_key_exists($key, $cache)) return $cache[$key];
     $prefix = '';
     foreach (['/usr/bin/timeout', '/bin/timeout'] as $p) {
         if (is_executable($p)) {
-            $prefix = $p . ' ' . $seconds . ' ';
+            $prefix = $p . ($killAfter > 0 ? ' -k ' . $killAfter : '') . ' ' . $seconds . ' ';
             break;
         }
     }
-    return $cache[$seconds] = $prefix;
+    return $cache[$key] = $prefix;
 }
 
 /**
@@ -60,6 +68,7 @@ function phpManTimeoutPrefix(?int $seconds = null): string {
  *
  * `/bin/sh -c` 也正是 PHP 的 exec() 在 Unix 上用的形式，所以语义与替换前一致。
  * escapeshellarg 负责把命令里的引号（`tr '\n' '\0'`）安全地交给内层 shell。
+ * 上界由两段组成：N 秒后 SIGTERM，再 PHPMAN_CMD_KILL_AFTER 秒后 SIGKILL。
  */
 function phpManWrapCommand(string $cmd, ?int $seconds = null): string {
     $prefix = phpManTimeoutPrefix($seconds);
@@ -78,10 +87,16 @@ function phpManWrapCommand(string $cmd, ?int $seconds = null): string {
  * `?int` 是把 exec() 的行为原样接过来 —— 函数内部第 73 行立刻就赋 0，
  * 所以调用点拿到的永远是 int，`$rc === 0` 之类的比较不受影响。
  *
- * 返回 true 表示命令成功（退出码 0）。退出码 124 会被记一行日志 —— 它是「这条
+ * 返回 true 表示命令成功（退出码 0）。超时类退出码会被记一行日志 —— 它是「这条
  * 路径病态」的直接证据，而 mf 遥测只在渲染跑完时才写行，看不到它。日志会区分
  * 「真超时」和「命令自己返回 124」：124 不是 timeout(1) 独占的，xargs 在子进程
  * 以 255 退出时也返回它（#283），只看退出码会把 0.1 秒的失败记成 15 秒超时。
+ *
+ * 加了 -k 之后还有一个坑：timeout 用 SIGKILL 收尾时，**PHP 的 exec() 报的是
+ * 信号号 9**，不是 shell 里看到的 137（128+9）。生产 PHP 8.3 实测：
+ *   timeout -k 1 1 sh -c 'trap "" TERM; sleep 5'  → rc=9
+ *   timeout 1     sh -c 'sleep 5'                 → rc=124
+ * 所以超时类要同时认 9 / 124 / 137，再用「是否跑到上界」区分真超时。
  */
 function phpManExec(string $cmd, array &$lines, ?int &$rc = null, ?int $timeout = null): bool {
     $lines = [];
@@ -89,8 +104,8 @@ function phpManExec(string $cmd, array &$lines, ?int &$rc = null, ?int $timeout 
     $start = microtime(true);
     exec(phpManWrapCommand($cmd, $timeout), $lines, $rc);
     $elapsed = microtime(true) - $start;
-    if ($rc === 124 && function_exists('phpManLog')) {
-        $secs = $timeout ?? (int)PHPMAN_CMD_TIMEOUT;
+    if (in_array($rc, [9, 124, 137], true) && function_exists('phpManLog')) {
+        $secs = $timeout ?? (defined('PHPMAN_CMD_TIMEOUT') ? (int)PHPMAN_CMD_TIMEOUT : 0);
         // 124 不是 timeout(1) 独占的退出码。GNU xargs 的约定是：123 = 子进程以
         // 1–125 退出，**124 = 子进程以 255 退出**，125 = 子进程被信号杀死。所以
         // `perldoc -l X | head -1 | tr | xargs -0 pod2text` 里只要 pod2text 以
@@ -98,15 +113,19 @@ function phpManExec(string $cmd, array &$lines, ?int &$rc = null, ?int $timeout 
         // 长得一模一样，而它其实 0.1 秒就结束了，日志里 35 条假「超时」全是这个
         // 来路（#283）。判据因此必须带耗时：只有真的跑到了上界才算超时。
         if (phpManTimeoutPrefix($timeout) !== '' && $elapsed >= $secs - 0.5) {
-            phpManLog(sprintf('exec timed out after %ds (elapsed %.1fs): %s', $secs, $elapsed, $cmd));
+            phpManLog(sprintf('exec timed out after %ds (elapsed %.1fs, rc %d): %s', $secs, $elapsed, $rc, $cmd));
         } else {
             // 没有 timeout(1) 的机器（macOS 默认）根本没有上界，这时说
             // "(bound 15s)" 会把人引到错误的方向 —— 124 只可能来自命令自己。
-            $where = phpManTimeoutPrefix($timeout) !== ''
-                ? sprintf(' (bound %ds)', $secs)
-                : ' (no timeout(1) on this host)';
-            phpManLog(sprintf('exec exited 124 after %dms — not a timeout%s: %s',
-                (int)round($elapsed * 1000), $where, $cmd));
+            // $secs <= 0 是"显式关掉了上界"，与"这台机器没有 timeout(1)"是两件事
+            // —— 前者在 macOS 上也会出现（PHPMAN_CMD_TIMEOUT=0）。
+            $where = $secs <= 0
+                ? ' (no bound configured)'
+                : (phpManTimeoutPrefix($timeout) !== ''
+                    ? sprintf(' (bound %ds)', $secs)
+                    : ' (no timeout(1) on this host)');
+            phpManLog(sprintf('exec exited %d after %dms — not a timeout%s: %s',
+                $rc, (int)round($elapsed * 1000), $where, $cmd));
         }
     }
     return $rc === 0;

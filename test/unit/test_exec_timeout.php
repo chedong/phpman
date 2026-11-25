@@ -16,8 +16,9 @@ require_once __DIR__ . '/../test_helper.php';
 echo "=== Unit: Render subprocess timeout ===\n\n";
 
 /** 全新进程里加载 src/exec.php 并跑 phpManExec，返回 ['ok'=>bool,'rc'=>int,'lines'=>array] */
-function execInFreshProcess(string $timeoutExpr, string $cmd): array {
+function execInFreshProcess(string $timeoutExpr, string $cmd, string $killAfterExpr = '5'): array {
     $code = 'define("PHPMAN_CMD_TIMEOUT", ' . $timeoutExpr . ');'
+          . 'define("PHPMAN_CMD_KILL_AFTER", ' . $killAfterExpr . ');'
           . 'require ' . var_export(__DIR__ . '/../../src/exec.php', true) . ';'
           . '$l=[];$rc=0;$ok=phpManExec(' . var_export($cmd, true) . ',$l,$rc);'
           . 'echo json_encode(["ok"=>$ok,"rc"=>$rc,"lines"=>$l]);';
@@ -48,8 +49,9 @@ function execStringInFreshProcess(string $timeoutExpr, string $cmd): string {
  *
  * @return array{ok:?bool, rc:int, elog:string}
  */
-function execCaptureLog(string $timeoutExpr, string $cmd): array {
+function execCaptureLog(string $timeoutExpr, string $cmd, string $killAfterExpr = '5'): array {
     $code = 'define("PHPMAN_CMD_TIMEOUT", ' . $timeoutExpr . ');'
+          . 'define("PHPMAN_CMD_KILL_AFTER", ' . $killAfterExpr . ');'
           . 'function phpManLog(string $m): void { echo "LOG|" . $m . "\n"; }'
           . 'require ' . var_export(__DIR__ . '/../../src/exec.php', true) . ';'
           . '$l=[];$rc=0;$ok=phpManExec(' . var_export($cmd, true) . ',$l,$rc);'
@@ -179,6 +181,38 @@ assert_equals(true, $r['ok'], "0 = 不限制，命令能跑完");
 assert_equals(['done'], $r['lines'], "0 = 不限制时输出完整");
 assert_equals(true, $elapsed >= 1.5, "确实等满了 2 秒（说明没被切断）");
 
+echo "\n--- #285：timeout 还要能 SIGKILL ---\n";
+
+// `timeout N cmd` 只发 SIGTERM，然后**等**子进程退出。忽略 TERM 的子进程会把
+// 上界拖长：生产实测 `timeout 1 sh -c 'trap "" TERM; sleep 5'` 跑了 5.01s。
+// -k 让它在 N + killAfter 秒后发 SIGKILL，才是真的上界。
+if (!$hasTimeout) {
+    echo "  ⏭️  本机没有 timeout(1)，跳过；CI 的 Ubuntu 与生产会真跑\n";
+} else {
+    $t0 = microtime(true);
+    $r = execInFreshProcess('1', 'trap "" TERM; sleep 5', '1');
+    $elapsed = microtime(true) - $t0;
+
+    assert_equals(9, $r['rc'], "需要 SIGKILL 时 PHP 的 exec() 报信号号 9（shell 里是 137），不是 124");
+    assert_equals(true, $elapsed < 3.5,
+        "1s 上界 + 1s kill-after 生效（实测 " . round($elapsed, 2) . "s，而非 5s+）");
+
+    // 真的靠 SIGKILL 才停下时，timeout(1) 返回 137（128+9），不是 124 —— 日志
+    // 必须仍把它算作超时，否则 #248 的超时信号会漏掉这一半。
+    $r = execCaptureLog('1', 'trap "" TERM; sleep 5', '1');
+    assert_equals(9, $r['rc'], "kill-after 触发的退出码是 9（SIGKILL 的信号号）");
+    assert_equals(true, strpos($r['elog'], 'timed out after 1s') !== false,
+        "…这一次日志必须说「超时」：" . $r['elog']);
+    assert_equals(true, strpos($r['elog'], 'rc 9') !== false, "…并带上退出码");
+}
+
+// 9 也可能来自命令自己（OOM / kill -9），不能只看退出码 —— 与 #283 的 124
+// 同一条规则：带耗时，跑到上界才算超时。
+$r = execCaptureLog('15', 'kill -9 $$');
+assert_equals(9, $r['rc'], "命令自己 SIGKILL 时退出码同样是 9");
+assert_equals(false, strpos($r['elog'], 'timed out') !== false, "…不能记成超时");
+assert_equals(true, strpos($r['elog'], 'not a timeout') !== false, "…要说明它不是超时");
+
 echo "\n--- phpManExecString ---\n";
 
 assert_equals('abc', execStringInFreshProcess('15', 'echo abc'), "输出被 trim");
@@ -192,6 +226,7 @@ echo "\n--- timeout(1) 探测 ---\n";
 
 $probe = 'require ' . var_export(__DIR__ . '/../../src/exec.php', true) . ';'
        . 'define("PHPMAN_CMD_TIMEOUT", 7);'
+       . 'define("PHPMAN_CMD_KILL_AFTER", 5);'
        // 包进括号：exec() 会吃掉每行末尾的空白，而这个前缀的尾随空格是有意义的
        // （它要直接前置到命令前面）。不包的话测的是被 trim 过的值，永远对不上。
        . 'echo "[" . phpManTimeoutPrefix() . "]";';
@@ -201,9 +236,26 @@ exec('php -r ' . escapeshellarg($probe) . ' 2>&1', $out, $exit);
 $prefix = implode("\n", $out);
 
 if ($hasTimeout) {
-    assert_equals('[/usr/bin/timeout 7 ]', $prefix, "有 timeout(1) 时前缀是「路径 + 秒数 + 空格」");
+    assert_equals('[/usr/bin/timeout -k 5 7 ]', $prefix,
+        "有 timeout(1) 时前缀含 -k（SIGTERM 后 5s SIGKILL）");
 } else {
     assert_equals('[]', $prefix, "没有 timeout(1) 时前缀为空 —— 退回裸 exec，本地开发不受影响");
+}
+
+// kill-after 0 = 退回只有 SIGTERM 的旧行为（显式可选，不是默认）。
+$probe = 'require ' . var_export(__DIR__ . '/../../src/exec.php', true) . ';'
+       . 'define("PHPMAN_CMD_TIMEOUT", 7);'
+       . 'define("PHPMAN_CMD_KILL_AFTER", 0);'
+       . 'echo "[" . phpManTimeoutPrefix() . "]";';
+$out = [];
+$exit = 0;
+exec('php -r ' . escapeshellarg($probe) . ' 2>&1', $out, $exit);
+$prefix = implode("\n", $out);
+if ($hasTimeout) {
+    assert_equals('[/usr/bin/timeout 7 ]', $prefix,
+        "PHPMAN_CMD_KILL_AFTER=0 时不加 -k（旧行为可显式恢复）");
+} else {
+    assert_equals('[]', $prefix, "没有 timeout(1) 时仍为空");
 }
 
 echo "\n--- 降级路径的守卫 ---\n";

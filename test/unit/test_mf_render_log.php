@@ -22,6 +22,10 @@ define('PHPMAN_TEST_MODE', true);
 // Pinned so the wrapper test below exercises a known threshold. config.php
 // guards every define with !defined(), so this wins.
 define('PHPMAN_MF_LOG_MS', 500);
+// #284: sampling is off here so "a fast render writes nothing" stays
+// deterministic. Sampling itself is tested separately below.
+define('PHPMAN_MF_SAMPLE', 0);
+define('PHPMAN_HTML_SAMPLE', 0);
 // #251: telemetry has its own file. Point it at a temp path before phpMan.php
 // loads — the constant is fixed at config load, so ini_set('error_log') no
 // longer reaches it.
@@ -133,6 +137,44 @@ assert_equals('', file_get_contents($errLog), "a telemetry line does not reach e
 assert_contains('mf mode=man name=perldiag', file_get_contents($log), "…it went to the telemetry file instead");
 ini_set('error_log', $prev === false ? '' : $prev);
 @unlink($errLog);
+
+echo "\n--- #284: deterministic traffic sampling ---\n";
+
+// The sample must be stable for a page (two runs comparable) and empty at 0 /
+// total at 1.
+assert_equals(false, phpManSampleHit('man/ls/1/markdown', 0.0), "rate 0 never samples");
+assert_equals(true,  phpManSampleHit('man/ls/1/markdown', 1.0), "rate 1 always samples");
+assert_equals(
+    phpManSampleHit('man/ls/1/markdown', 0.01),
+    phpManSampleHit('man/ls/1/markdown', 0.01),
+    "the same page lands on the same side every time"
+);
+$hits = 0;
+for ($i = 0; $i < 20000; $i++) {
+    if (phpManSampleHit('man/page' . $i . '/1/markdown', 0.01)) $hits++;
+}
+assert_equals(true, $hits > 120 && $hits < 280,
+    "1% over 20k keys is ~200 (got {$hits}) — the hash is uniform enough");
+
+// A sampled fast render must produce a line even below the thresholds. Run in a
+// fresh process: the rate is read from the constant at call time, but the main
+// test file pinned it to 0 for determinism.
+$probeLog = sys_get_temp_dir() . '/phpman_sampled_' . getmypid() . '.log';
+@unlink($probeLog);
+$probe = 'define("PHPMAN_TEST_MODE", true);'
+       . 'define("PHPMAN_MF_LOG_MS", 500);'
+       . 'define("PHPMAN_MF_SAMPLE", 1);'
+       . 'define("PHPMAN_MF_LOG_FILE", ' . var_export($probeLog, true) . ');'
+       . 'require ' . var_export(__DIR__ . '/../../phpMan.php', true) . ';'
+       . '$_SERVER["REQUEST_TIME_FLOAT"] = microtime(true);'
+       . 'phpManLogMachineRender("man", "fastpage", "1", "markdown", "body");';
+$out = [];
+$exit = 0;
+exec('php -r ' . escapeshellarg($probe) . ' 2>&1', $out, $exit);
+$sampled = (string) @file_get_contents($probeLog);
+assert_contains('name=fastpage', $sampled, "a sampled fast render is written despite the 500ms threshold");
+assert_contains('sampled=1', $sampled, "…and is marked so metrics can tell it from the tail");
+@unlink($probeLog);
 
 @unlink($log);
 

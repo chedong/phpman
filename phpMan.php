@@ -566,19 +566,11 @@ switch ( $mode ) {
             $content = cacheOrSearchFallback('pydoc', $parameter, '', $format,
                 function() use ($parameter, $format) { return getPydocPage($parameter, $format); },
                 function() use ($parameter, $format, &$indeterminate) {
-                    // A timed-out keyword scan means "could not determine", not
-                    // "does not exist". But getPydocSearchPage() may still have
-                    // built a real body from the FTS pydoc index before the scan
-                    // was killed — returning null here threw those matches away
-                    // and then told the user nothing matched. Hand the body back
-                    // and flag the uncertainty instead; cacheOrSearchFallback()
-                    // keeps the body but gives the row the short timeout TTL.
-                    $timedOut = false;
                     // #282: no shell scan on the page fallback. The primary
                     // `pydoc3 <name>` lookup above already failed, so this call
                     // only supplies a "did you mean" hint — answer it from the
                     // module index (ms) instead of an 8–20s `pydoc3 -k`.
-                    $body = getPydocSearchPage($parameter, $format, $timedOut, false);
+                    $body = getPydocSearchPage($parameter, $format, false);
                     // Without the scan, an empty body means "the index has
                     // nothing", which is weaker evidence than a failed lookup:
                     // keep the negative row short-lived (#248) rather than

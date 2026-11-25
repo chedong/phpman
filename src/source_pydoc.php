@@ -134,9 +134,8 @@ function pydocShouldShellScan (string $parameter, bool $allowShellScan = true): 
     return $allowShellScan && pydocSearchWorthScanning($parameter);
 }
 
-function getPydocSearchPage (string $parameter, string $format = "html", ?bool &$timedOut = null, bool $allowShellScan = true): string {
+function getPydocSearchPage (string $parameter, string $format = "html", bool $allowShellScan = true): string {
     $lines = array();
-    $timedOut = false;
 
     // #247: a dotted parameter is a full module path (sos.report.plugins.kafka).
     // Measured 2026-10-20 over 1,600 production pydoc 404s: 86.9% are dotted, and
@@ -159,11 +158,6 @@ function getPydocSearchPage (string $parameter, string $format = "html", ?bool &
         }
     } else {
         $ok = phpManExec("pydoc3 -k ".escapeshellarg($parameter), $lines, $return_code, PHPMAN_PYDOC_K_TIMEOUT);
-        // rc 124 is timeout(1)'s own exit code: the scan was cut off, so we do not
-        // know whether the name exists. Callers must not cache that as "not found" —
-        // a negative row written from a timeout turns a transient failure into a
-        // 24-hour 404, which is what happened to BaseHTTPRequestHandler on production.
-        $timedOut = ($return_code === 124);
         if (!$ok || empty($lines)) {
             // #247/#248: pydoc3 -k 会 import 整个 stdlib —— 实测生产上 9.5 秒、病态时 30 秒，
             // 而这是每次「未命中的 pydoc 名」的首次访问都要付的。超时（或真的没有结果）时

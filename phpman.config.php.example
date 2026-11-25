@@ -82,6 +82,11 @@
 // differently under load. Raising the *global* bound would weaken the slot
 // guarantee for every command, so the scan gets its own:
 // define('PHPMAN_PYDOC_K_TIMEOUT', 20);
+//
+// `timeout N cmd` only sends SIGTERM; a child that ignores it keeps timeout(1)
+// waiting (#285). The second number is how long to wait before SIGKILL, so the
+// real ceiling is PHPMAN_CMD_TIMEOUT + PHPMAN_CMD_KILL_AFTER. 0 = no -k.
+// define('PHPMAN_CMD_KILL_AFTER', 5);
 
 // --- Machine-format render telemetry (#244, #249) ---
 // One line per machine-format render (/markdown, /json, /mcp) that was slow OR
@@ -108,6 +113,11 @@
 // 0 on either disables that trigger. Both 0 = no telemetry.
 // define('PHPMAN_MF_LOG_MS', 500);
 // define('PHPMAN_MF_LOG_BYTES', 65536);
+// Fraction of ALL machine renders logged as `sampled=1`, independent of the two
+// thresholds (#284). cli/metrics.php computes p50/p95 only from sampled lines;
+// without it the log holds only the slow tail, so its "p95" describes the bad
+// requests rather than the traffic. HTML has the same knob (PHPMAN_HTML_SAMPLE).
+// define('PHPMAN_MF_SAMPLE', 0.01);
 // Literal path on purpose: PHPMAN_LOG_DIR is not defined yet when this file
 // loads (see the PHPMAN_HOME section above).
 // define('PHPMAN_MF_LOG_FILE', '/path/to/logs/phpman_mf.log');
