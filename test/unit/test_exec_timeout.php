@@ -186,11 +186,17 @@ echo "\n--- #285：timeout 还要能 SIGKILL ---\n";
 // `timeout N cmd` 只发 SIGTERM，然后**等**子进程退出。忽略 TERM 的子进程会把
 // 上界拖长：生产实测 `timeout 1 sh -c 'trap "" TERM; sleep 5'` 跑了 5.01s。
 // -k 让它在 N + killAfter 秒后发 SIGKILL，才是真的上界。
+//
+// 孙进程必须把 stdout 重定向走，否则测的是另一件事：CI 上 `sleep` 继承了捕获
+// 管道并活过被杀的 sh，timeout 在 2s 就返回了（rc 137），而 PHP 的 exec() 要
+// 等到管道 EOF 才回来，实测 5.05s。上界保证的是「命令在 N+killAfter 内被杀」，
+// 不是「孤儿子孙进程也立刻消失」—— 产品的命令（man/perldoc/pydoc3/ri）都不
+// fork 出占着管道的子进程，但测量时要把这两个变量分开。
 if (!$hasTimeout) {
     echo "  ⏭️  本机没有 timeout(1)，跳过；CI 的 Ubuntu 与生产会真跑\n";
 } else {
     $t0 = microtime(true);
-    $r = execInFreshProcess('1', 'trap "" TERM; sleep 5', '1');
+    $r = execInFreshProcess('1', 'trap "" TERM; sleep 5 >/dev/null 2>&1', '1');
     $elapsed = microtime(true) - $t0;
 
     // 退出码取决于 timeout 在不在链路里：有 timeout 时它自己以 137（128+9）
@@ -203,7 +209,7 @@ if (!$hasTimeout) {
 
     // 真的靠 SIGKILL 才停下时，timeout(1) 返回 137（128+9），不是 124 —— 日志
     // 必须仍把它算作超时，否则 #248 的超时信号会漏掉这一半。
-    $r = execCaptureLog('1', 'trap "" TERM; sleep 5', '1');
+    $r = execCaptureLog('1', 'trap "" TERM; sleep 5 >/dev/null 2>&1', '1');
     assert_equals(true, in_array($r['rc'], [9, 137], true),
         "kill-after 触发的退出码是 9 或 137；实际 {$r['rc']}");
     assert_equals(true, strpos($r['elog'], 'timed out after 1s') !== false,

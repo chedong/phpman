@@ -97,6 +97,12 @@ function phpManWrapCommand(string $cmd, ?int $seconds = null): string {
  *   timeout -k 1 1 sh -c 'trap "" TERM; sleep 5'  → rc=9
  *   timeout 1     sh -c 'sleep 5'                 → rc=124
  * 所以超时类要同时认 9 / 124 / 137，再用「是否跑到上界」区分真超时。
+ *
+ * 边界说明：这个上界保证**命令本身**在 N + killAfter 内被杀，不保证调用方同样
+ * 早返回。若命令 fork 出的孙进程继承了 stdout 并活过被杀的父进程，exec() 仍要
+ * 等到管道 EOF —— CI 上实测过这一形态：timeout 2s 就返回 rc=137，而调用方
+ * 5.05s 才回来。产品的命令（man/perldoc/pydoc3/ri/info）都不这样做，但如果将来
+ * 接一个会 fork 常驻子进程的命令，这里需要改 proc_open + 截止时间。
  */
 function phpManExec(string $cmd, array &$lines, ?int &$rc = null, ?int $timeout = null): bool {
     $lines = [];
