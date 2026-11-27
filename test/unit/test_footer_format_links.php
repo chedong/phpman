@@ -30,7 +30,11 @@ $html = footerFor("man", "ls", "1",
 assert_contains('class="fmt-link"', $html, "detail page has format links");
 assert_contains(">Markdown</a>", $html, "Markdown link present");
 assert_contains(">JSON</a>", $html, "JSON link present");
-assert_not_contains("/mcp", $html, "no dead /mcp format link");
+// Anchor on the closing quote: the dead /mcp link was a fmt href ending in
+// /mcp". A bare "/mcp" substring false-positives whenever this repo is checked
+// out under a path containing /mcp (e.g. a worktree named mcp-*): scriptName()
+// then leaks that path into the copyright link and phpman.js src.
+assert_not_contains('/mcp"', $html, "no dead /mcp format link");
 assert_not_contains(">MCP</a>", $html, "no MCP entry in the format list");
 assert_contains("https://example.test/phpMan.php/man/ls/1/markdown", $html, "markdown href is used verbatim");
 assert_contains("https://example.test/phpMan.php/man/ls/1/json", $html, "json href is used verbatim");
