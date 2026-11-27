@@ -193,23 +193,30 @@ if (!$hasTimeout) {
     $r = execInFreshProcess('1', 'trap "" TERM; sleep 5', '1');
     $elapsed = microtime(true) - $t0;
 
-    assert_equals(9, $r['rc'], "需要 SIGKILL 时 PHP 的 exec() 报信号号 9（shell 里是 137），不是 124");
+    // 退出码取决于 timeout 在不在链路里：有 timeout 时它自己以 137（128+9）
+    // 退出，PHP 看到的就是 137；没有 timeout、由 shell 直接被杀时才是信号号 9。
+    // 实现(src/exec.php)同时认 9 / 124 / 137，测试也必须接受这两种编码。
+    assert_equals(true, in_array($r['rc'], [9, 137], true),
+        "需要 SIGKILL 时退出码是 9（信号号）或 137（timeout 的 128+9），不是 124；实际 {$r['rc']}");
     assert_equals(true, $elapsed < 3.5,
         "1s 上界 + 1s kill-after 生效（实测 " . round($elapsed, 2) . "s，而非 5s+）");
 
     // 真的靠 SIGKILL 才停下时，timeout(1) 返回 137（128+9），不是 124 —— 日志
     // 必须仍把它算作超时，否则 #248 的超时信号会漏掉这一半。
     $r = execCaptureLog('1', 'trap "" TERM; sleep 5', '1');
-    assert_equals(9, $r['rc'], "kill-after 触发的退出码是 9（SIGKILL 的信号号）");
+    assert_equals(true, in_array($r['rc'], [9, 137], true),
+        "kill-after 触发的退出码是 9 或 137；实际 {$r['rc']}");
     assert_equals(true, strpos($r['elog'], 'timed out after 1s') !== false,
         "…这一次日志必须说「超时」：" . $r['elog']);
-    assert_equals(true, strpos($r['elog'], 'rc 9') !== false, "…并带上退出码");
+    assert_equals(1, preg_match('/rc (9|137)/', $r['elog']),
+        "…并带上退出码：" . $r['elog']);
 }
 
 // 9 也可能来自命令自己（OOM / kill -9），不能只看退出码 —— 与 #283 的 124
-// 同一条规则：带耗时，跑到上界才算超时。
+// 同一条规则：带耗时，跑到上界才算超时。退出码同样有 9 / 137 两种编码。
 $r = execCaptureLog('15', 'kill -9 $$');
-assert_equals(9, $r['rc'], "命令自己 SIGKILL 时退出码同样是 9");
+assert_equals(true, in_array($r['rc'], [9, 137], true),
+    "命令自己 SIGKILL 时退出码是 9 或 137；实际 {$r['rc']}");
 assert_equals(false, strpos($r['elog'], 'timed out') !== false, "…不能记成超时");
 assert_equals(true, strpos($r['elog'], 'not a timeout') !== false, "…要说明它不是超时");
 

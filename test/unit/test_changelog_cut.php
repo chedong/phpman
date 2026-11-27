@@ -131,15 +131,21 @@ assert_equals($before, md5((string) file_get_contents($f3)), "…and writes noth
 
 // ── the real CHANGELOG, dry-run only ──
 echo "\n--- real CHANGELOG (dry-run) ---\n";
+// The real file's [Unreleased] section is EMPTY between releases — `make release`
+// drains it into the version section. A test that seeds nothing therefore asks
+// the tool to cut an empty section, which correctly exits 3 (see the empty
+// fixture above), and the failed run used to crash the assertions below on
+// `substr(..., false, ...)`. Seed one bullet into a *copy* of the real file:
+// the real heading structure stays under test without depending on release state.
 $real = (string) file_get_contents($repo . '/CHANGELOG.md');
-$realBullets = preg_match_all('/^- /m', substr($real, strpos($real, '## [Unreleased]'),
-    strpos($real, '## [4.12.2]') - strpos($real, '## [Unreleased]')));
-[$out, $rc] = runCut($script, '9.9.9 --date=2026-12-31 --file=' . escapeshellarg($repo . '/CHANGELOG.md') . ' --dry-run', $err);
-assert_equals(0, $rc, "the real CHANGELOG cuts cleanly");
+$realCopy = $tmp . '/real-copy.md';
+$seeded = preg_replace('/^(## \[Unreleased\]\n)/m', "$1\n- seeded entry for the cut test\n", $real, 1);
+fixture($realCopy, (string) $seeded);
+
+[$out, $rc] = runCut($script, '9.9.9 --date=2026-12-31 --file=' . escapeshellarg($realCopy) . ' --dry-run', $err);
+assert_equals(0, $rc, "the real CHANGELOG structure cuts cleanly");
 assert_contains('## [9.9.9] — 2026-12-31', $out, "…into the requested section");
-$cutBullets = preg_match_all('/^- /m', substr($out, strpos($out, '## [9.9.9]'),
-    strpos($out, '## [4.12.2]') - strpos($out, '## [9.9.9]')));
-assert_equals($realBullets, $cutBullets, "all {$realBullets} entries moved, none lost");
+assert_contains('- seeded entry for the cut test', $out, "…with the entry moved, not lost");
 assert_equals($real, (string) file_get_contents($repo . '/CHANGELOG.md'), "the real file was not touched");
 
 // ── cleanup ──
