@@ -6,6 +6,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.12.29] — 2026-11-27
+
 ### Security
 - **MCP `cli_help`/`cli_search` 参数现在与 web 路由同标准校验，堵住 man 选项注入 → RCE。** 安全审查（2026-10-31）发现：MCP 路径的 `command`/`section`/`query` 只做 `trim()` 就传入渲染链——`escapeshellarg()` 挡得住 shell 元字符，挡不住**选项注入**：`getManPage()` 把 section 参数放在页面操作数**之前**，man-db 把带引号的 `-` 开头参数解析成自己的选项。`section:"-Hsh -c '…'"` → man 的 `-H`（html pager）→ man 渲染后以 `/bin/sh -c "<pager> <tmpfile>"` 执行 → 以 web 用户身份任意命令执行；`section:"-l"` + `command:"/etc/passwd"` → `man -l` 任意本地文件读取。web 路由早有 `normalizeSection()`（`^[A-Za-z0-9_]+$`，天然拒绝 `-` 开头）与 `normalizeParameter()` 防线，MCP 是绕过了同一防线的旁路。修复：新增 `normalizeMcpArg()`（`src/mcp_server.php`），两个 MCP 工具入口的三个参数全部过 normalizer，并对 command/query 显式拒绝 `-` 开头的值（真实页面名/搜索词无此前缀；option-shaped section 由 normalizeSection 还原为空串）。21 个新单测（`test/unit/test_mcp_arg_validation.php`，已入 `run_all.php` 清单）覆盖 `-H…`/`-l`/`--help`/元字符/路径穿越与合法名（`ls`、`File::Basename`、`Array#map`、`os.path`、`3pm`）双向用例；入口级回归断言验证 option-shaped section 降级为空信封而非执行。不设 `--` 分隔符（BSD/macOS 的 man 对 `--` 支持不确定，会破坏 BSD fallback）；allowlist + 前导 `-` 拒绝在两个入口（web/MCP）都已生效。
 
