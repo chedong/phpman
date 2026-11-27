@@ -294,9 +294,37 @@ function executeMcpTool (string $name, array $args): string {
     }
 }
 
+/**
+ * Normalize + validate an MCP tool string argument the same way the web route
+ * does (phpMan.php normalizeParameter/normalizeSection), plus one extra rule
+ * the command/query path needs: reject values that BEGIN with "-".
+ *
+ * escapeshellarg() stops shell metacharacters but NOT option injection: a
+ * quoted argv element still starts with "-" and man-db parses it as an option.
+ * In getManPage() the section slot sits BEFORE the page operand, so an
+ * option-shaped section is parsed by man itself — e.g. section "-Hsh -c '…'"
+ * would become man's -H (html pager), which man runs via /bin/sh -c after
+ * rendering → arbitrary command execution as the web user. normalizeSection()
+ * already neutralizes option-shaped sections (it returns "" for anything
+ * outside [A-Za-z0-9_]+), so the explicit rejection below only ever fires for
+ * command/query — but no legitimate page name, module name, or search query
+ * starts with "-", so rejecting outright loses nothing there either.
+ */
+function normalizeMcpArg (string $value, string $kind, bool $isSection = false): string {
+    if ($kind === "section") {
+        $value = normalizeSection($value);
+    } else {
+        $value = normalizeParameter($value);
+    }
+    if ($value !== "" && $value[0] === "-") {
+        throw new McpInvalidParams("Invalid {$kind}: must not start with '-'");
+    }
+    return $value;
+}
+
 function executeCliHelp (array $args): string {
-    $command = trim($args["command"] ?? "");
-    $section = trim($args["section"] ?? "");
+    $command = normalizeMcpArg(trim((string)($args["command"] ?? "")), "command");
+    $section = normalizeMcpArg(trim((string)($args["section"] ?? "")), "section", true);
 
     if ($command === "") {
         throw new McpInvalidParams("Missing required parameter: command");
@@ -342,8 +370,8 @@ function executeCliHelp (array $args): string {
 }
 
 function executeCliSearch (array $args): string {
-    $query = trim($args["query"] ?? "");
-    $section = trim($args["section"] ?? "");
+    $query = normalizeMcpArg(trim((string)($args["query"] ?? "")), "query");
+    $section = normalizeMcpArg(trim((string)($args["section"] ?? "")), "section", true);
 
     if ($query === "") {
         throw new McpInvalidParams("Missing required parameter: query");

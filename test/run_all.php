@@ -20,6 +20,7 @@ $suites = [
         "{$testDir}/unit/test_tldr_disable.php",
         "{$testDir}/unit/test_path_guard.php",
         "{$testDir}/unit/test_malformed_segment.php",
+        "{$testDir}/unit/test_mcp_arg_validation.php",
         "{$testDir}/unit/test_profiling_append.php",
         "{$testDir}/unit/test_footer_format_links.php",
         "{$testDir}/unit/test_tools_config_fallback.php",

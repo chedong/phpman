@@ -75,6 +75,29 @@ function assert_empty(string $value, string $msg = ""): void {
     assert_equals("", $value, $msg);
 }
 
+function assert_true(bool $condition, string $msg = ""): void {
+    assert_equals(true, $condition, $msg);
+}
+
+function assert_throws(callable $fn, string $exceptionClass, string $msg = ""): void {
+    global $_test_pass, $_test_fail, $_test_errors;
+    try {
+        $fn();
+        $_test_fail++;
+        echo "  ❌ {$msg}\n     expected {$exceptionClass}, nothing thrown\n";
+        $_test_errors[] = $msg;
+    } catch (Throwable $e) {
+        if ($e instanceof $exceptionClass) {
+            $_test_pass++;
+            echo "  ✅ {$msg}\n";
+        } else {
+            $_test_fail++;
+            echo "  ❌ {$msg}\n     expected {$exceptionClass}, got " . get_class($e) . ": {$e->getMessage()}\n";
+            $_test_errors[] = $msg;
+        }
+    }
+}
+
 function test_summary(): int {
     global $_test_pass, $_test_fail, $_test_errors;
     echo "\n═══════════════════════════════════════\n";
