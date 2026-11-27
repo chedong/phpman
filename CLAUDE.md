@@ -2,10 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project overview
-
-phpMan is a PHP web app (`phpMan.php` ~795 lines + 21 source files in `src/`) that wraps Unix `man`, `perldoc`, `info`, `pydoc3`, `ri`, and `apropos` commands into HTML, Markdown, and JSON responses. It also runs as an MCP Server for AI agent integration. CLI tools (search index rebuild, sitemap generation, cache stats/flush) are in `cli/`.
-
 ## Build / test / deploy
 
 ```bash
@@ -47,21 +43,7 @@ The test framework is minimal (no PHPUnit): `assert_equals`, `assert_contains`, 
 
 ## CLI tools
 
-CLI functionality has been split into standalone scripts under `cli/`:
-
-```bash
-# Search index
-php cli/build-index.php              # Rebuild FTS5 search index
-php cli/build-index.php --cron       # Rebuild with UTC timestamp
-
-# Sitemap
-php cli/build-sitemap.php --output sitemap-phpman.xml.gz
-```
-
-All CLI scripts resolve `PHPMAN_HOME`, then require `src/bootstrap.php` directly
-(no longer load `phpMan.php`). `src/config.php` sets defaults and loads
-`~/.phpman/phpman.config.php` for user overrides. The old
-`php phpMan.php --build-index` / `--build-index-cron` / `--enhance` flags are removed.
+CLI 脚本用法与 `PHPMAN_HOME` 约定见 `docs/cli.md`。
 
 ## Architecture
 
